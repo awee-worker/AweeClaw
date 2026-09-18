@@ -28,6 +28,8 @@ import { useAgentStore } from '../state/IntelligenceStore'
 import { buildExecutionBatches } from './executionPlanner'
 import { streamingEditService } from '../runtime/streamingEditor'
 import { resolveStreamingEditFilePath } from '../runtime/editPreviewStreamer'
+import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter'
+import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
 
 // ===== 审批服务 =====
 
@@ -742,7 +744,7 @@ async function invokeToolInvocation(
  * - 需要审批的工具：逐个审批，用户可以选择批准或拒绝每个工具
  * - 如果用户拒绝某个工具，该工具被跳过，继续执行其他工具
  */
-export async function orchestrateToolBatch(
+async function orchestrateToolBatchInternal(
   toolCalls: ToolCall[],
   context: ToolExecutionContext,
   store: import('../state/IntelligenceStore').ThreadBoundStore,
@@ -1027,6 +1029,51 @@ export async function orchestrateToolBatch(
   }
 
   return { results, userRejected }
+}
+
+/**
+ * 执行工具列表（智能并行 + 逐个审批）
+ *
+ * 观测外壳：批次起止锚点与工具计数在这里打点，内部实现不感知性能追踪。
+ * 「怎么执行」和「怎么观测」分开之后，替换内部实现不会丢掉时间轴上的
+ * 批次区间，诊断代码也不会穿插进执行逻辑里。
+ */
+export async function orchestrateToolBatch(
+  toolCalls: ToolCall[],
+  context: ToolExecutionContext,
+  store: import('../state/IntelligenceStore').ThreadBoundStore,
+  abortSignal?: AbortSignal,
+): Promise<{ results: AgentToolExecutionResult[]; userRejected: boolean }> {
+  if (toolCalls.length === 0) {
+    return { results: [], userRejected: false }
+  }
+
+  const startedAt = Date.now()
+
+  perfTrace.bump(PERF_TRACE_COUNTERS.toolCalls, toolCalls.length)
+  perfTrace.anchor('tool-batch', 'begin', {
+    count: toolCalls.length,
+    // 只保留前若干个工具名：锚点会逐行写入文件，把整批名字都塞进去会让文件迅速膨胀
+    tools: toolCalls.slice(0, 12).map((tc) => tc.name),
+  })
+
+  try {
+    const outcome = await orchestrateToolBatchInternal(toolCalls, context, store, abortSignal)
+    perfTrace.anchor('tool-batch', 'end', {
+      count: toolCalls.length,
+      ms: Date.now() - startedAt,
+      rejected: outcome.userRejected,
+    })
+    return outcome
+  } catch (err) {
+    // 抛出的批次同样要留下区间，否则时间轴上会多出一段无法解释的空档
+    perfTrace.anchor('tool-batch', 'end', {
+      count: toolCalls.length,
+      ms: Date.now() - startedAt,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    throw err
+  }
 }
 
 /** @deprecated 请使用 orchestrateToolBatch */

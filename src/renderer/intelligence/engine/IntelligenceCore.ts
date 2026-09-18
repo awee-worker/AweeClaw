@@ -58,6 +58,7 @@ import {
   beginAgentTaskPowerGuard,
   endAgentTaskPowerGuard,
 } from '@renderer/services/powerGuard'
+import { enterAgentBusy, exitAgentBusy } from '@renderer/services/renderBudget'
 
 export class AgentClass {
   /** 运行中的任务（按线程追踪） */
@@ -229,6 +230,10 @@ export class AgentClass {
       // 长任务期间阻止系统休眠（是否真的生效由主进程按配置裁决）。
       // 与下面 finally 中的 release 严格配对：引用计数错配会让断言永久滞留。
       beginAgentTaskPowerGuard()
+
+      // 执行期间收敛界面动效：装饰性动画在流式重渲染叠加下会把渲染进程钉在高位，
+      // 同样与 finally 中的 exit 配对，漏掉 release 会让动效再也不恢复。
+      enterAgentBusy()
 
       // 【核心优化】立即让出主线程，确保用户消息和助手气泡瞬间在 UI 渲染
       await new Promise(resolve => setTimeout(resolve, 0))
@@ -474,6 +479,7 @@ export class AgentClass {
 
       if (taskRegistered) {
         endAgentTaskPowerGuard()
+        exitAgentBusy()
         this.cleanupTask(threadId)
       }
     }

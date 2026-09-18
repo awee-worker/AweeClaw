@@ -26,6 +26,12 @@ import './styles/globals.css'
 globalThis.__PROD__ = import.meta.env.PROD
 logger.refreshProductionMode()
 
+// 性能追踪跟随：主进程开始采样时本窗口自动上报。
+// 未开启追踪时的成本只有一次订阅与一次状态查询。
+void import('@intelligence/diagnostics/perfTraceAutoStart').then(({ installPerfTraceAutoStart }) =>
+  installPerfTraceAutoStart()
+)
+
 // 顶层错误边界：捕获渲染异常，避免头像窗口白屏
 class AvatarErrorBoundary extends React.Component<
   { children: React.ReactNode },

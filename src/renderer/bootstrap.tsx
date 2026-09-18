@@ -56,6 +56,20 @@ void import('./intelligence/toolkit/trustedPathRegistry').then(({ initTrustedApp
   initTrustedAppDataRoots()
 )
 
+// 挂载性能追踪上报器：把入口暴露为 window.__perfTrace，排查时在 DevTools
+// 控制台执行 __perfTrace.start() 即可开始采集。刻意不自动启动——
+// 常驻采集对绝大多数会话都是无谓开销。
+void import('./intelligence/diagnostics/perfTraceReporter').then(({ initPerfTraceReporter }) =>
+  initPerfTraceReporter()
+)
+
+// 跟随主进程的启停：主窗口之外还有桌面伴侣、悬浮头像、预览等渲染窗口，
+// 它们都走各自的入口，不会主动开启上报。主进程开始采样时统一广播，
+// 各窗口据此自动跟随，避免只有主窗口有数据。
+void import('./intelligence/diagnostics/perfTraceAutoStart').then(({ installPerfTraceAutoStart }) =>
+  installPerfTraceAutoStart()
+)
+
 // ============================================
 // 主应用入口
 // ============================================

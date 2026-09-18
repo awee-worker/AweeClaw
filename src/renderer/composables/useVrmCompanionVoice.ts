@@ -38,6 +38,13 @@ export interface VrmCompanionVoiceOptions {
   ) => void
   /** 用户说「结束对话」等指令时触发（伴侣窗口据此退出语音态） */
   onEndConversation?: () => void
+  /**
+   * TTS 播放电平（0~1，约 30Hz）→ 驱动伴侣口型。
+   *
+   * 透传 useVoiceChat 的播放电平：口型必须跟「朗读出来的声音」走，
+   * 不能用麦克风采集电平（那反映的是用户在说什么）。
+   */
+  onPlaybackVolume?: (volume: number) => void
   /** 错误提示 */
   onError?: (message: string) => void
 }
@@ -88,17 +95,26 @@ function buildVoiceChatOptions(
 }
 
 export function useVrmCompanionVoice(options: VrmCompanionVoiceOptions) {
-  const { voiceContext, onStateChanged, onConversationComplete, onEndConversation, onError } = options
+  const {
+    voiceContext,
+    onStateChanged,
+    onConversationComplete,
+    onEndConversation,
+    onPlaybackVolume,
+    onError,
+  } = options
 
   // 用 ref 保存最新回调：避免回调每次渲染变化都重建 useVoiceChat 的 options，
   // 进而避免 useVoiceChat 内部 effect 重跑（会打断正在进行的录音/VAD 循环）。
   const onStateChangedRef = useRef(onStateChanged)
   const onConversationCompleteRef = useRef(onConversationComplete)
   const onEndConversationRef = useRef(onEndConversation)
+  const onPlaybackVolumeRef = useRef(onPlaybackVolume)
   const onErrorRef = useRef(onError)
   onStateChangedRef.current = onStateChanged
   onConversationCompleteRef.current = onConversationComplete
   onEndConversationRef.current = onEndConversation
+  onPlaybackVolumeRef.current = onPlaybackVolume
   onErrorRef.current = onError
 
   const stableCallbacks = useMemo<VoiceChatOptions>(
@@ -108,6 +124,9 @@ export function useVrmCompanionVoice(options: VrmCompanionVoiceOptions) {
       },
       onEndConversation: () => {
         onEndConversationRef.current?.()
+      },
+      onPlaybackVolume: (volume) => {
+        onPlaybackVolumeRef.current?.(volume)
       },
       onError: (message) => {
         onErrorRef.current?.(message)

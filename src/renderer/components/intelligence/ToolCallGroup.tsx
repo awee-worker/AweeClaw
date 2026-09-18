@@ -29,6 +29,8 @@ import BatchApprovalPanel from './toolCallCard/BatchApprovalPanel'
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
 import { getFriendlyToolName } from '@intelligence/display/toolFriendlyName'
+import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter'
+import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
 
 /** 工具状态分组 */
 type ToolGroupStatus = 'pending' | 'awaiting' | 'success' | 'error'
@@ -238,6 +240,15 @@ function ToolCallGroup({
   onOpenDiff,
   messageId,
 }: ToolCallGroupProps) {
+  /**
+   * 计量本组件的重渲染次数。
+   *
+   * 这一项是判断「卡片的 props 身份是否稳定」的前提：本组件一旦重渲染，
+   * 就会重算分组并对全部卡片重建元素。若该计数与工具状态的实际变化次数
+   * 严重不符（例如文本流式推进时也在涨），说明上游数组引用在无谓地更换。
+   */
+  perfTrace.bump(PERF_TRACE_COUNTERS.toolGroupRenders)
+
   // 注意：选择器必须返回原始值（字符串），不能返回对象字面量。
   // 否则每次渲染都会产生新对象引用，Zustand 用 Object.is 比较会判定为变化，
   // 触发 forceStoreRerender → 重渲染 → 再次调用选择器 → 无限循环（Maximum update depth exceeded）。

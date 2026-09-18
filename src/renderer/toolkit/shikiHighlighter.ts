@@ -152,6 +152,23 @@ const LANG_ALIASES: Record<string, string> = {
 const codeCache = new Map<string, string>()
 const MAX_CACHE_SIZE = 200
 
+/**
+ * 可缓存代码的最大长度。
+ *
+ * 缓存 key 需要涵盖完整代码（见 cacheKey），单条的持有成本因此与代码长度成正比。
+ * 超过此长度的块照常高亮，只是不进缓存，避免少数超大代码长期占住内存。
+ */
+const MAX_CACHEABLE_CODE_CHARS = 10_000
+
+/**
+ * 允许高亮的代码最大长度。
+ *
+ * 高亮用 JS 正则引擎逐行跑语法规则，成本随行数快速上升。超长文本多为日志、
+ * 构建产物或生成代码，同步高亮一次就可能让渲染主线程卡住数百毫秒，这类内容
+ * 直接回退纯文本展示。
+ */
+const MAX_HIGHLIGHT_CODE_CHARS = 30_000
+
 // ============================================================
 // 高亮器实例（懒加载单例）
 // ============================================================
@@ -232,9 +249,12 @@ function normalizeLang(lang: string | undefined): string {
 
 /**
  * 构建缓存 key
+ *
+ * 必须涵盖完整代码。只取前缀时，前 120 字符相同的两段不同代码会互相命中，
+ * 后者直接拿回前者的高亮结果，渲染出与源码不符的内容。
  */
 function cacheKey(code: string, lang: string, theme: string): string {
-  return `${theme}:${lang}:${code.slice(0, 120)}`
+  return `${theme}:${lang}:${code}`
 }
 
 /**
@@ -255,21 +275,36 @@ export function highlightCode(
     return escapeHtml(code)
   }
 
+  // 超长代码不做高亮：同步跑一次语法规则就可能占住主线程数百毫秒
+  if (code.length > MAX_HIGHLIGHT_CODE_CHARS) {
+    return escapeHtml(code)
+  }
+
   const lang = normalizeLang(language)
   const theme = isDark ? DARK_THEME : LIGHT_THEME
-  const key = cacheKey(code, lang, theme)
+  // 超长代码不进缓存，避免为少数大块长期持有完整副本
+  const key = code.length <= MAX_CACHEABLE_CODE_CHARS ? cacheKey(code, lang, theme) : null
 
-  const cached = codeCache.get(key)
-  if (cached) return cached
+  if (key) {
+    const cached = codeCache.get(key)
+    if (cached !== undefined) {
+      // 命中即调整顺序，使淘汰接近 LRU：反复出现的代码块不会被一次性的长代码挤掉
+      codeCache.delete(key)
+      codeCache.set(key, cached)
+      return cached
+    }
+  }
 
   try {
     const html = hl.codeToHtml(code, { lang, theme })
-    // 缓存管理
-    if (codeCache.size >= MAX_CACHE_SIZE) {
-      const firstKey = codeCache.keys().next().value
-      if (firstKey !== undefined) codeCache.delete(firstKey)
+    if (key) {
+      // 缓存管理
+      if (codeCache.size >= MAX_CACHE_SIZE) {
+        const firstKey = codeCache.keys().next().value
+        if (firstKey !== undefined) codeCache.delete(firstKey)
+      }
+      codeCache.set(key, html)
     }
-    codeCache.set(key, html)
     return html
   } catch {
     // 语言不支持时回退到纯文本

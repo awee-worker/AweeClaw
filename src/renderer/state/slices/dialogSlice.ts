@@ -10,6 +10,8 @@ import { StateCreator } from 'zustand'
 export interface SettingsIntent {
   /** 设置面板一级 Tab（如 'agent'） */
   tab: string
+  /** 目标设置项锚点：面板渲染完成后滚动定位到该设置项（对应 DOM 上的 data-settings-anchor） */
+  anchor?: string
   /** 智能体 Tab 下的二级子 Tab（'agentConfig' | 'custom'） */
   agentSubTab?: 'agentConfig' | 'custom'
   /** 是否自动打开「自定义智能体」新建表单 */

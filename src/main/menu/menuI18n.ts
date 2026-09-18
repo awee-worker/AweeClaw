@@ -28,7 +28,6 @@ export type MenuKey =
   | 'quit'
   | 'settings'
   // 文件菜单
-  | 'newWindow'
   | 'openFolder'
   | 'addFolderToWorkspace'
   | 'saveWorkspaceAs'
@@ -109,7 +108,6 @@ const zh: Record<MenuKey, string> = {
   quit: '退出 AweeClaw',
   settings: '设置...',
 
-  newWindow: '新建窗口',
   openFolder: '打开文件夹...',
   addFolderToWorkspace: '添加文件夹到工作区...',
   saveWorkspaceAs: '保存工作区为...',
@@ -190,7 +188,6 @@ const en: Record<MenuKey, string> = {
   quit: 'Quit AweeClaw',
   settings: 'Settings...',
 
-  newWindow: 'New Window',
   openFolder: 'Open Folder...',
   addFolderToWorkspace: 'Add Folder to Workspace...',
   saveWorkspaceAs: 'Save Workspace As...',

@@ -86,9 +86,20 @@ export function buildAgentSessionSnapshot(
   }
 }
 
+/**
+ * 序列化会话快照
+ *
+ * 入参已经是持久化形状，这里不再走一遍线程转换 —— 该转换会对每个线程做整体深拷贝，
+ * 在高频持久化路径上重复执行会白白消耗主线程时间。
+ */
 export function serializeAgentSessionSnapshot(snapshot: AgentSessionSnapshot): string {
   const envelope: PersistedAgentStorageEnvelope = {
-    state: buildPersistedAgentSessionState(snapshot),
+    state: {
+      threads: snapshot.threads as Record<string, unknown>,
+      currentThreadId: snapshot.currentThreadId,
+      branches: snapshot.branches,
+      activeBranchId: snapshot.activeBranchId,
+    },
     version: snapshot.version,
   }
 

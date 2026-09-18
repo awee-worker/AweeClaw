@@ -21,6 +21,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { motion } from 'framer-motion'
 import { api } from '@renderer/adapters/electronBridge'
 import { tasksApi, projectsApi } from '@renderer/adapters/taskProjectApi'
@@ -106,6 +107,8 @@ export function ProjectExecutionWindowApp({ onReady }: ProjectExecutionWindowApp
   const userResizedVRef = useRef(false)
   const [fileTreeHeight, setFileTreeHeight] = useState(360)
 
+  /** 上一次广播的执行状态签名，用于过滤无实质变化的重发 */
+  const lastPushedStatusRef = useRef<string | null>(null)
   // 初始化 + 窗口尺寸变化时，若用户未手动拖拽过，保持文件树:任务列表 = 3:2
   // ⚠️ 依赖 initialized：组件未初始化时返回 null，leftPanelRef.current 为 null，
   //    ResizeObserver 无法绑定。必须等 initialized=true 后重新执行 effect。
@@ -141,9 +144,12 @@ export function ProjectExecutionWindowApp({ onReady }: ProjectExecutionWindowApp
   // 若项目未设置目录则回退到全局工作区 workspacePath。
   const [projectPath, setProjectPath] = useState<string | null>(null)
 
-  // ─── 线程状态订阅（用于任务完成监控 + 状态推送）─────────
-  // 提前声明，供后续多个 effect 使用（任务完成监控、状态推送等）
-  const threads = useAgentStore((s) => s.threads)
+  // ─── 线程相位订阅（用于状态推送）─────────
+  // 只取各 Tab 对应线程的流式相位：threads 对象在流式期间每批更新都会重建，
+  // 直接订阅整个 threads 会让本组件（含文件树、任务列表、聊天面板）跟着整体重渲染。
+  const tabPhases = useAgentStore(
+    useShallow((s) => tabs.map((tab) => s.threads[tab.threadId]?.streamState?.phase ?? 'idle')),
+  )
 
   // ─── 打开的文件列表（用于决定是否显示文件预览窗口）─────────
   // 无打开文件时隐藏中栏编辑器，聊天窗口占满空间
@@ -652,9 +658,8 @@ export function ProjectExecutionWindowApp({ onReady }: ProjectExecutionWindowApp
   useEffect(() => {
     if (!initialized || tabs.length === 0) return
 
-    const sessions = tabs.map((tab) => {
-      const thread = threads[tab.threadId]
-      const phase = thread?.streamState?.phase ?? 'idle'
+    const sessions = tabs.map((tab, index) => {
+      const phase = tabPhases[index] ?? 'idle'
       const isRunning = phase === 'streaming' || phase === 'tool_running' || phase === 'tool_pending'
 
       return {
@@ -667,13 +672,21 @@ export function ProjectExecutionWindowApp({ onReady }: ProjectExecutionWindowApp
 
     const runningCount = sessions.filter((s) => s.status === 'running').length
 
-    api.projectExecution.pushStatus({
+    const payload = {
       activeCount: runningCount,
       runningCount,
       queuedCount: 0,
       sessions,
-    })
-  }, [initialized, tabs, threads])
+    }
+
+    // 状态摘要未变化时不广播：流式期间本组件不会因内容变化重渲染，
+    // 但仍需拦住 Tab 列表变化带来的重复推送，避免主窗口与悬浮球无谓重渲染。
+    const signature = JSON.stringify(payload)
+    if (lastPushedStatusRef.current === signature) return
+    lastPushedStatusRef.current = signature
+
+    api.projectExecution.pushStatus(payload)
+  }, [initialized, tabs, tabPhases])
 
   // ─── Tab 操作 ────────────────────────────────────────────
 

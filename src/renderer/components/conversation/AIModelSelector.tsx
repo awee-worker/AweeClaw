@@ -306,7 +306,7 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
           </div>
 
           {/* 搜索框 */}
-          <div className="p-2 border-b border-border/50 sticky top-0 bg-surface/95 backdrop-blur-sm z-10 shrink-0">
+          <div className="p-2 border-b border-border/50 sticky top-0 bg-surface z-10 shrink-0">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
               <input

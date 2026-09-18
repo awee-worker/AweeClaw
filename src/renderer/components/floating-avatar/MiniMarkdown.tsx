@@ -45,75 +45,74 @@ function MiniMarkdownImpl({ content, isStreaming }: MiniMarkdownProps) {
 
   return (
     <div style={containerStyle}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          // 代码块
-          pre: ({ children }) => <pre style={codeBlockStyle}>{children}</pre>,
-          code: ({ className, children, ...props }) => {
-            // 行内代码 vs 代码块内的 code
-            const isInline = !className
-            if (isInline) {
-              return (
-                <code style={inlineCodeStyle} {...props}>
-                  {children}
-                </code>
-              )
-            }
-            return (
-              <code className={className} style={codeStyle} {...props}>
-                {children}
-              </code>
-            )
-          },
-          // 标题
-          h1: ({ children }) => <h1 style={h1Style}>{children}</h1>,
-          h2: ({ children }) => <h2 style={h2Style}>{children}</h2>,
-          h3: ({ children }) => <h3 style={h3Style}>{children}</h3>,
-          h4: ({ children }) => <h4 style={h4Style}>{children}</h4>,
-          // 段落
-          p: ({ children }) => <p style={pStyle}>{children}</p>,
-          // 列表
-          ul: ({ children }) => <ul style={ulStyle}>{children}</ul>,
-          ol: ({ children }) => <ol style={olStyle}>{children}</ol>,
-          li: ({ children }) => <li style={liStyle}>{children}</li>,
-          // 引用
-          blockquote: ({ children }) => <blockquote style={blockquoteStyle}>{children}</blockquote>,
-          // 链接
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              style={linkStyle}
-              onClick={(e) => {
-                e.preventDefault()
-                // 通过 window.open 在外部浏览器打开
-                if (href) {
-                  try {
-                    window.open(href, '_blank', 'noopener,noreferrer')
-                  } catch {
-                    /* noop */
-                  }
-                }
-              }}
-            >
-              {children}
-            </a>
-          ),
-          // 表格
-          table: ({ children }) => <table style={tableStyle}>{children}</table>,
-          th: ({ children }) => <th style={thStyle}>{children}</th>,
-          td: ({ children }) => <td style={tdStyle}>{children}</td>,
-          // 分割线
-          hr: () => <hr style={hrStyle} />,
-          // 强调
-          strong: ({ children }) => <strong style={strongStyle}>{children}</strong>,
-          em: ({ children }) => <em style={emStyle}>{children}</em>,
-        }}
-      >
+      <ReactMarkdown remarkPlugins={MINI_MARKDOWN_REMARK_PLUGINS} components={MINI_MARKDOWN_COMPONENTS}>
         {cleanedContent}
       </ReactMarkdown>
     </div>
   )
+}
+
+/**
+ * 插件与组件映射提升到模块级
+ *
+ * 这两个值一旦内联在组件里，每次渲染都会产生新引用，会让 react-markdown
+ * 与其内部节点无法复用；迷你面板每次同步主窗口对话都会重渲染整列消息，
+ * 稳定引用能把开销压到只处理真正变化的内容。
+ */
+const MINI_MARKDOWN_REMARK_PLUGINS = [remarkGfm]
+
+const MINI_MARKDOWN_COMPONENTS: React.ComponentProps<typeof ReactMarkdown>['components'] = {
+  pre: ({ children }) => <pre style={codeBlockStyle}>{children}</pre>,
+  code: ({ className, children, ...props }) => {
+    // 行内代码 vs 代码块内的 code
+    const isInline = !className
+    if (isInline) {
+      return (
+        <code style={inlineCodeStyle} {...props}>
+          {children}
+        </code>
+      )
+    }
+    return (
+      <code className={className} style={codeStyle} {...props}>
+        {children}
+      </code>
+    )
+  },
+  h1: ({ children }) => <h1 style={h1Style}>{children}</h1>,
+  h2: ({ children }) => <h2 style={h2Style}>{children}</h2>,
+  h3: ({ children }) => <h3 style={h3Style}>{children}</h3>,
+  h4: ({ children }) => <h4 style={h4Style}>{children}</h4>,
+  p: ({ children }) => <p style={pStyle}>{children}</p>,
+  ul: ({ children }) => <ul style={ulStyle}>{children}</ul>,
+  ol: ({ children }) => <ol style={olStyle}>{children}</ol>,
+  li: ({ children }) => <li style={liStyle}>{children}</li>,
+  blockquote: ({ children }) => <blockquote style={blockquoteStyle}>{children}</blockquote>,
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      style={linkStyle}
+      onClick={(e) => {
+        e.preventDefault()
+        // 通过 window.open 在外部浏览器打开
+        if (href) {
+          try {
+            window.open(href, '_blank', 'noopener,noreferrer')
+          } catch {
+            /* noop */
+          }
+        }
+      }}
+    >
+      {children}
+    </a>
+  ),
+  table: ({ children }) => <table style={tableStyle}>{children}</table>,
+  th: ({ children }) => <th style={thStyle}>{children}</th>,
+  td: ({ children }) => <td style={tdStyle}>{children}</td>,
+  hr: () => <hr style={hrStyle} />,
+  strong: ({ children }) => <strong style={strongStyle}>{children}</strong>,
+  em: ({ children }) => <em style={emStyle}>{children}</em>,
 }
 
 // ============================================

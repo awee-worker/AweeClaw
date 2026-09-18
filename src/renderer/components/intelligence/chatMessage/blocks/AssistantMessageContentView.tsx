@@ -2,10 +2,12 @@
  * 助手消息内容视图
  * 将 Part 序列分组渲染：连续的工具调用合并为工具组，todo_write 渲染为任务列表，其他 Part 单独渲染
  */
-import React, { useMemo } from 'react'
+import React, { useMemo, useRef } from 'react'
 import type { AssistantPart, ToolCall, TodoItem } from '@intelligence/providerTypes'
 import { isToolCallPart } from '@intelligence/providerTypes'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
+import { CommitProbe } from '@intelligence/diagnostics/CommitProbe'
+import { reuseToolCallsIfUnchanged } from './toolCallsArrayReuse'
 import ToolCallGroup from '../../ToolCallGroup'
 import { TodoListPanel } from '../../TodoListPanel'
 import { renderPart } from '../parts/PartRendererRegistry'
@@ -68,6 +70,14 @@ function AssistantMessageContentViewBase({ parts, hideTodoList, previewToolCalls
     const threadId = s.currentThreadId
     return threadId ? s.threads[threadId]?.todos : undefined
   })
+
+  /**
+   * 上一轮的分组结果，用于回收工具组数组的引用。
+   *
+   * 渲染期写 ref 是有意为之：这里维护的就是「上一次渲染的产物」，语义与
+   * useMemo 的缓存相同；且整个回收过程幂等，重复执行只会得到同一批引用。
+   */
+  const previousGroupsRef = useRef<AssistantGroupItem[]>([])
 
   /**
    * 将 Part 序列分组：
@@ -138,11 +148,27 @@ function AssistantMessageContentViewBase({ parts, hideTodoList, previewToolCalls
       }
     }
 
+    // 引用回收：元素逐个相同的工具组沿用上一轮的数组，保住 ToolCallGroup 的 memo。
+    // 按 startIndex 对齐即可 —— 分组顺序由 parts 顺序决定，同一起点的组必然同源。
+    const previousToolCalls = new Map<number, ToolCall[]>()
+    for (const group of previousGroupsRef.current) {
+      if (group.type === 'tool_group') previousToolCalls.set(group.startIndex, group.toolCalls)
+    }
+    for (let i = 0; i < result.length; i++) {
+      const group = result[i]
+      if (group.type !== 'tool_group') continue
+      const reused = reuseToolCallsIfUnchanged(previousToolCalls.get(group.startIndex), group.toolCalls)
+      if (reused !== group.toolCalls) {
+        result[i] = { ...group, toolCalls: reused }
+      }
+    }
+
+    previousGroupsRef.current = result
     return result
   }, [parts, previewToolCalls])
 
   return (
-    <>
+    <CommitProbe scope="assistant-content">
       {groups.map((group) => {
         // 任务列表：在 AI 调用 todo_write 的位置嵌入渲染
         // 合并快照与最新状态：已完成任务同步更新为 completed，避免历史列表停留在 in_progress
@@ -184,7 +210,7 @@ function AssistantMessageContentViewBase({ parts, hideTodoList, previewToolCalls
           </div>
         )
       })}
-    </>
+    </CommitProbe>
   )
 }
 

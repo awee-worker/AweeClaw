@@ -369,10 +369,9 @@ export function createStreamProcessor(
 
           reasoning += reasoningContent
           if (assistantId && reasoningPartId) {
+            // 增量进入节流缓冲，合并后统一写入推理分段（同时同步消息推理文本）。
+            // 这里不再单独回写整段 reasoning：那等于每个 token 都复制一次完整推理文本。
             store.updateReasoningPart(assistantId, reasoningPartId, reasoningContent, true)
-            store.updateMessage(assistantId, {
-              reasoning,
-            } as Partial<import('../providerTypes').AssistantMessage>)
           }
           EventBus.emit({ type: 'stream:reasoning', text: reasoningContent, phase: 'delta' })
         }
@@ -634,14 +633,10 @@ export function createStreamProcessor(
       const missingReasoning = result.reasoning.slice(reasoning.length)
       reasoning = result.reasoning
 
+      // 补齐流式期间未收到的尾部推理，同样走节流缓冲，
+      // 消息上的 reasoning 由缓冲回写路径同步，不需要在这里再写一次。
       if (assistantId && missingReasoning && reasoningPartId) {
         store.updateReasoningPart(assistantId, reasoningPartId, missingReasoning, true)
-      }
-
-      if (assistantId) {
-        store.updateMessage(assistantId, {
-          reasoning,
-        } as Partial<import('../providerTypes').AssistantMessage>)
       }
     }
     drainToolPreviewQueue()

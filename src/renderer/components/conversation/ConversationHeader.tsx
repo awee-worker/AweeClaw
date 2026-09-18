@@ -28,8 +28,11 @@ export default function ChatHeader({
   const activeScenarioId = useStore(s => s.activeScenarioId)
   const isZh = language === 'zh'
 
+  // 头部改用不透明底色，不再叠加 backdrop-filter：
+  // 会话列表在流式期间每帧都在长高，毛玻璃需要同步重新采样并模糊其背后的内容，
+  // 这份开销在整段回复期间持续存在，换成纯色底色可完全消除。
   return (
-    <div className="h-12 flex items-center justify-between px-4 border-b border-border bg-background/50 backdrop-blur-sm z-20">
+    <div className="h-12 flex items-center justify-between px-4 border-b border-border bg-background z-20">
       <div className="flex items-center gap-2">
         <div className="flex bg-surface rounded-lg p-0.5 border border-border-subtle">
           {HEADER_MODES.map((m) => (

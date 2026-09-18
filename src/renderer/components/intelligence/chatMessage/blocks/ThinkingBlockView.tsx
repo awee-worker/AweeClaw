@@ -2,13 +2,13 @@
  * 思考过程块视图
  * 折叠式展示推理过程，支持流式动画和计时显示
  */
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@store'
 import { useSmoothStream } from '@hooks/useSmoothStream'
+import { useStableTextChunks } from '@hooks/useStableTextChunks'
 import { t, type Language } from '@renderer/i18n'
-import { renderStreamingTailText } from '../markdown/streamingDecorator'
 
 interface ThinkingBlockViewProps {
   content: string
@@ -16,6 +16,17 @@ interface ThinkingBlockViewProps {
   isStreaming: boolean
   fontSize: number
 }
+
+/**
+ * 思考文本的单块渲染单元
+ *
+ * 用 Fragment 承载纯文本，不引入额外元素，因此排版与整段文本完全一致。
+ * 已定型的块 props 不变，memo 会直接短路，只有尾部块会真正写入 DOM。
+ */
+const ThinkingTextChunk = React.memo(function ThinkingTextChunk({ text }: { text: string }) {
+  return <>{text}</>
+})
+ThinkingTextChunk.displayName = 'ThinkingTextChunk'
 
 function ThinkingBlockViewBase({ content, startTime, isStreaming, fontSize }: ThinkingBlockViewProps) {
   const language = useStore(s => s.language)
@@ -62,6 +73,14 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, fontSize }: Th
   }, [startTime, isStreaming])
 
   const { displayedContent: fluidContent } = useSmoothStream(content, isStreaming, 1.5)
+
+  /**
+   * 分块渲染插值结果
+   *
+   * 插值器每帧产出一个新的完整字符串，若整段作为单个文本节点渲染，
+   * 每帧都要重新布局已输出的全部思考内容；分块后每帧只重写尾部一块。
+   */
+  const textChunks = useStableTextChunks(fluidContent)
 
   /** 滚动阴影检测 + 用户手动滚动检测
    *
@@ -110,7 +129,8 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, fontSize }: Th
   useEffect(() => {
     if (!isStreaming || !isExpanded || !scrollRef.current) return
     if (userScrolledUpRef.current) return
-    // 使用 rAF 确保在 DOM 更新后执行，避免 scrollHeight 计算不准
+    // 跟随滚动挂在本帧推进后的内容上：读取 scrollHeight 会触发同步布局，
+    // 按插值器的推进节奏跟随即可，不必每帧都跟随文本更新。
     const raf = requestAnimationFrame(() => {
       if (scrollRef.current && !userScrolledUpRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -149,7 +169,9 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, fontSize }: Th
 
   const previewText = useMemo(() => {
     if (!content || content.length === 0) return ''
-    const firstLine = content.split('\n').find(l => l.trim().length > 0) || ''
+    // 只扫描开头一段：折叠预览只需要首行，没必要遍历整段思考文本
+    const head = content.slice(0, 400)
+    const firstLine = head.split('\n').find(l => l.trim().length > 0) || ''
     return firstLine.length > 60 ? firstLine.slice(0, 60) + '...' : firstLine
   }, [content])
 
@@ -192,10 +214,7 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, fontSize }: Th
             className="overflow-hidden"
           >
             <div className="relative ml-[14px] mt-0.5 mb-1">
-              <div className={`absolute left-0 top-0 bottom-0 w-[2px] rounded-full ${isStreaming ? 'thinking-border-glow' : 'bg-accent/20'}`} />
-              {isStreaming && (
-                <div className="absolute left-0 top-0 bottom-0 w-[2px] rounded-full thinking-sweep-line" />
-              )}
+              <div className={`absolute left-0 top-0 bottom-0 w-[2px] rounded-full ${isStreaming ? 'bg-accent/40' : 'bg-accent/20'}`} />
               <div className={`relative rounded-xl rounded-tl-none rounded-bl-none ${isStreaming ? 'bg-accent/[0.03]' : 'bg-surface/30'} border ${isStreaming ? 'border-accent/[0.08]' : 'border-border/30'} overflow-hidden`}>
                 <div className={`scroll-shadow-container ${shadowClass}`}>
                   <div
@@ -207,11 +226,14 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, fontSize }: Th
                         style={{ fontSize: `${fontSize - 1}px` }}
                         className={`text-text-muted/80 leading-relaxed whitespace-pre-wrap font-sans ${isStreaming ? 'animate-block-reveal' : ''}`}
                       >
-                        {isStreaming ? renderStreamingTailText(fluidContent, 'think-tail') : fluidContent}
+                        {textChunks.map((chunk, index) => (
+                          <ThinkingTextChunk key={index} text={chunk} />
+                        ))}
+                        {isStreaming && <span className="stream-caret" aria-hidden="true" />}
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 text-text-muted/80 italic text-xs py-1">
-                        <span className="text-shimmer">{t('ai.analyzing', language as Language)}</span>
+                        <span className="animate-pulse">{t('ai.analyzing', language as Language)}</span>
                       </div>
                     )}
                   </div>

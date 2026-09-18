@@ -3,7 +3,7 @@
  *
  * 覆盖 IPC 频道：
  * - app:*          应用就绪 / 版本 / 关闭流程
- * - window:*       窗口控制（最小化 / 最大化 / 新建 / 主题）
+ * - window:*       窗口控制（最小化 / 最大化 / 主题）
  * - i18n:*         语言切换
  * - system:resume  系统从睡眠唤醒
  * - app:error      主进程错误通知
@@ -29,8 +29,11 @@ export function createAppLifecycleApi() {
     maximize: send('window:maximize'),
     close: send('window:close'),
     toggleDevTools: send('window:toggleDevTools'),
-    newWindow: invoke('window:new'),
     getWindowId: invoke<number>('window:getId'),
+    // 当前窗口是否为应用级服务宿主窗口（首个窗口）
+    isPrimaryWindow: invoke<boolean>('window:isPrimary'),
+    // 宿主窗口关闭后，主进程把标记移交给本窗口时通知，用于补启动应用级后台任务
+    onPrimaryChanged: on<void>('window:primary-changed'),
     // 自绘菜单（Windows/Linux）执行原生角色：undo/copy/zoomIn/minimize...
     executeMenuRole: (role: string) => send('menu:execute-role')(role),
     resizeWindow: (width: number, height: number, minWidth?: number, minHeight?: number) =>

@@ -19,6 +19,19 @@ import { logger } from '@toolkit/LogEngine';
 import { toAppError } from '@shared/toolkit/errorCatalog';
 import { isMac } from '@services/keybindingAdapter';
 import { getInteractiveTerminalBackend } from '@intelligence/toolkit/commandExecutor';
+import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter';
+import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol';
+
+/**
+ * 命令摘要。
+ *
+ * 锚点会逐行写入 JSONL，完整命令行（带一长串参数）会把单行撑到几 KB，
+ * 因此在落盘前统一按 120 字符截断。
+ */
+function summarizeCommand(command: string): string {
+  const normalized = command.replace(/\s+/g, ' ').trim();
+  return normalized.length > 120 ? `${normalized.slice(0, 120)}…` : normalized;
+}
 
 // ===== 类型定义 =====
 
@@ -173,12 +186,38 @@ function getOutputBufferConfig() {
 const MAX_COMMAND_OUTPUT_CHARS = 120_000
 const MAX_RAW_SENTINEL_BUFFER_CHARS = 24_000
 
+/**
+ * 命令执行期间 UI 侧输出刷新间隔
+ *
+ * PTY 数据块的粒度只有几十到几百字节（`npm install` 每秒上百块），若逐块刷新，
+ * 每次都要对累积输出做全量字符串处理、再向终端面板与聊天卡片推送一次状态更新。
+ * 统一按固定节拍刷新：AI 拿到的最终输出不受影响（结算时单独读取完整文本），
+ * 展示层则从「每块一次」降到「每个节拍一次」。
+ */
+const PARTIAL_OUTPUT_UI_INTERVAL_MS = 150
+
 function trimRetainedText(value: string, maxChars: number): string {
   if (value.length <= maxChars) {
     return value
   }
 
   return value.slice(value.length - maxChars)
+}
+
+/**
+ * 追加文本并限制保留长度，允许水位短暂高于上限。
+ *
+ * 逐块裁剪意味着长输出期间每个数据块都要把上限长度的字符串复制一遍，输出越猛、
+ * 单价越高（`npm install` 每秒上百块）。这里允许累积到 1.5 倍上限再裁回，
+ * 把均摊成本从「每块一次」降到「每半个上限一次」，保留语义不变：仍然是末尾段。
+ */
+function appendRetained(accumulator: string, chunk: string, maxChars: number): string {
+  const next = accumulator + chunk
+  if (next.length <= maxChars * 1.5) {
+    return next
+  }
+
+  return next.slice(next.length - maxChars)
 }
 
 /**
@@ -238,6 +277,12 @@ class RingBuffer {
 
 /** 剥离 ANSI 转义序列（用于 sentinel 输出提取） */
 function stripAnsi(str: string): string {
+  // 纯文本块并不少见（命令输出的普通日志行），而这些替换的代价与串长成正比。
+  // 没有 ESC 时前四条替换必然无匹配，只剩回车符需要处理。
+  if (str.indexOf('\x1b') === -1) {
+    return str.indexOf('\r') === -1 ? str : str.replace(/\r/g, '')
+  }
+
   return str
     .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
     .replace(/\x1b\][^\x07]*\x07/g, '')
@@ -289,6 +334,25 @@ export class TerminalManagerClass {
   // PTY 状态
   private ptyReady = new Map<string, boolean>();
   private pendingPtyCreation = new Map<string, Promise<boolean>>();
+
+  // 派生状态缓存
+  // getState() 由 notify() 在每次状态变更时调用，终端面板与 TerminalStudio 在渲染中
+  // 也会直接调用它。因此派生结果全部按「来源对象引用」缓存：引用没变就复用上次的结果，
+  // 既省掉 filter/sort/克隆，也让订阅方（React）拿到稳定的引用直接跳过重渲染。
+  private runningCommandMemo: {
+    source: TerminalCommandSession | null;
+    result: RunningCommandInfo | null;
+  } = { source: null, result: null };
+  private commandInfoMemo: {
+    sessions: Array<readonly [string, TerminalCommandSession | null, TerminalCommandSession | null]>;
+    snapshot: Record<string, TerminalCommandInfo>;
+  } | null = null;
+  /** 内容未变时复用的终端列表视图（数组元素引用 + 长度比较即可判定） */
+  private terminalsView: TerminalInstance[] = [];
+  /** 内容未变时复用的整个 state 对象 */
+  private stateView: TerminalManagerState | null = null;
+  /** 最近一次派发给订阅方的 state，用于跳过无实质变化的通知 */
+  private lastNotifiedState: TerminalManagerState | null = null;
 
   // 监听器
   private stateListeners = new Set<StateListener>();
@@ -408,30 +472,109 @@ export class TerminalManagerClass {
     buffer.trimToMaxChars(getOutputBufferConfig().maxTotalChars);
   }
 
+  /**
+   * 推导「当前正在运行的命令」
+   *
+   * 单次遍历取 startedAt 最大的 queued/running 会话（不再 Array.from + filter + sort），
+   * 并且只在命中的会话对象引用发生变化时才重建结果对象 —— 结果引用稳定，
+   * 订阅方拿到的 runningCommand 不会因为一次无关的状态变更而变成新对象。
+   */
   private getDerivedRunningCommand(): RunningCommandInfo | null {
-    const running = Array.from(this.currentCommandSessions.values())
-      .filter(session => session.status === 'queued' || session.status === 'running')
-      .sort((a, b) => b.startedAt - a.startedAt)
+    let winner: TerminalCommandSession | null = null
 
-    if (running.length === 0) return null
-
-    const session = running[0]
-    return {
-      terminalId: session.terminalId,
-      command: session.command,
-      startedAt: session.startedAt,
+    for (const session of this.currentCommandSessions.values()) {
+      if (session.status !== 'queued' && session.status !== 'running') continue
+      // 严格大于：startedAt 相同时保留先插入的会话，与原先稳定排序的结果一致
+      if (!winner || session.startedAt > winner.startedAt) winner = session
     }
+
+    const memo = this.runningCommandMemo
+    if (memo.source === winner) return memo.result
+
+    const result: RunningCommandInfo | null = winner
+      ? {
+          terminalId: winner.terminalId,
+          command: winner.command,
+          startedAt: winner.startedAt,
+        }
+      : null
+
+    this.runningCommandMemo = { source: winner, result }
+    return result
   }
 
+  /**
+   * 每个终端的命令会话快照
+   *
+   * 会话是原地替换（updateCurrentCommandSession 一律返回新对象），所以可以用引用比较
+   * 判断「和上次相比有没有变化」：没有变化时直接复用上次的快照对象，
+   * 省掉每个终端两次 {...session} 克隆，也让 commandInfoByTerminal 的引用保持稳定。
+   */
   private getCommandInfoSnapshot(): Record<string, TerminalCommandInfo> {
+    const terminals = this.state.terminals
+    const memo = this.commandInfoMemo
+
+    if (memo && memo.sessions.length === terminals.length) {
+      let unchanged = true
+      for (let i = 0; i < terminals.length; i++) {
+        const entry = memo.sessions[i]
+        const id = terminals[i].id
+        if (
+          entry[0] !== id
+          || entry[1] !== (this.currentCommandSessions.get(id) || null)
+          || entry[2] !== (this.lastCommandSessions.get(id) || null)
+        ) {
+          unchanged = false
+          break
+        }
+      }
+      if (unchanged) return memo.snapshot
+    }
+
     const snapshot: Record<string, TerminalCommandInfo> = {}
-    for (const terminal of this.state.terminals) {
-      snapshot[terminal.id] = {
-        current: cloneCommandSession(this.currentCommandSessions.get(terminal.id) || null),
-        last: cloneCommandSession(this.lastCommandSessions.get(terminal.id) || null),
+    const sessions: Array<readonly [string, TerminalCommandSession | null, TerminalCommandSession | null]> =
+      new Array(terminals.length)
+
+    for (let i = 0; i < terminals.length; i++) {
+      const id = terminals[i].id
+      const current = this.currentCommandSessions.get(id) || null
+      const last = this.lastCommandSessions.get(id) || null
+      sessions[i] = [id, current, last]
+      snapshot[id] = {
+        current: cloneCommandSession(current),
+        last: cloneCommandSession(last),
       }
     }
+
+    this.commandInfoMemo = { sessions, snapshot }
     return snapshot
+  }
+
+  /**
+   * 终端列表视图
+   *
+   * 终端集合只会在创建/关闭时增删（数组本身原地 push/splice），
+   * 用「长度 + 逐位元素引用」即可判定内容是否变化，未变化时复用同一个数组。
+   * 这样 getState() 的返回对象才有机会整体复用。
+   */
+  private getTerminalsView(): TerminalInstance[] {
+    const source = this.state.terminals
+    const view = this.terminalsView
+
+    if (view.length === source.length) {
+      let same = true
+      for (let i = 0; i < source.length; i++) {
+        if (view[i] !== source[i]) {
+          same = false
+          break
+        }
+      }
+      if (same) return view
+    }
+
+    const next = source.slice()
+    this.terminalsView = next
+    return next
   }
 
   private setCurrentCommandSession(terminalId: string, session: TerminalCommandSession | null): void {
@@ -478,7 +621,9 @@ export class TerminalManagerClass {
 
   subscribe(listener: StateListener): () => void {
     this.stateListeners.add(listener);
-    listener(this.getState());
+    const state = this.getState();
+    this.lastNotifiedState = state;
+    listener(state);
     return () => this.stateListeners.delete(listener);
   }
 
@@ -494,16 +639,42 @@ export class TerminalManagerClass {
 
   private notify() {
     const state = this.getState();
+
+    // 派生结果全部引用稳定：无实质变化时不派发，
+    // 订阅方（React setState）连一次重渲染都不会发起
+    if (this.lastNotifiedState === state) {
+      return;
+    }
+
+    this.lastNotifiedState = state;
     this.stateListeners.forEach((listener) => listener(state));
   }
 
   getState(): TerminalManagerState {
-    return {
-      terminals: [...this.state.terminals],
-      activeId: this.state.activeId,
-      runningCommand: this.getDerivedRunningCommand(),
-      commandInfoByTerminal: this.getCommandInfoSnapshot(),
+    const terminals = this.getTerminalsView();
+    const activeId = this.state.activeId;
+    const runningCommand = this.getDerivedRunningCommand();
+    const commandInfoByTerminal = this.getCommandInfoSnapshot();
+
+    const previous = this.stateView;
+    if (
+      previous
+      && previous.terminals === terminals
+      && previous.activeId === activeId
+      && previous.runningCommand === runningCommand
+      && previous.commandInfoByTerminal === commandInfoByTerminal
+    ) {
+      return previous;
+    }
+
+    const next: TerminalManagerState = {
+      terminals,
+      activeId,
+      runningCommand,
+      commandInfoByTerminal,
     };
+    this.stateView = next;
+    return next;
   }
 
   getTerminalCommandState(terminalId: string): TerminalCommandInfo {
@@ -1251,6 +1422,12 @@ export class TerminalManagerClass {
 
     const commandSessionId = crypto.randomUUID()
     const startedAt = Date.now()
+
+    perfTrace.anchor('terminal-command', 'begin', {
+      command: summarizeCommand(command),
+      cwd: cwd ?? null,
+    })
+
     const initialSession: TerminalCommandSession = {
       commandSessionId,
       terminalId: termId,
@@ -1308,6 +1485,25 @@ export class TerminalManagerClass {
         }
       }
 
+      /** UI 侧刷新定时器：把逐块刷新合并为按节拍刷新 */
+      let uiFlushTimer: ReturnType<typeof setTimeout> | null = null
+
+      const clearUiFlush = () => {
+        if (uiFlushTimer) {
+          clearTimeout(uiFlushTimer)
+          uiFlushTimer = null
+        }
+      }
+
+      const scheduleUiFlush = () => {
+        if (uiFlushTimer || settled) return
+        uiFlushTimer = setTimeout(() => {
+          uiFlushTimer = null
+          if (settled) return
+          updatePartialOutput(trimRetainedText(getVisibleOutput(), MAX_COMMAND_OUTPUT_CHARS))
+        }, PARTIAL_OUTPUT_UI_INTERVAL_MS)
+      }
+
       const settle = (
         reason: TerminalCommandTerminationReason,
         override?: Partial<Pick<CommandResult, 'finalStatus' | 'exitCode' | 'signal' | 'timedOut' | 'output' | 'partialOutput' | 'sentinelMatched'>>,
@@ -1317,6 +1513,7 @@ export class TerminalManagerClass {
         unsubRaw()
         if (timer) clearTimeout(timer)
         clearIdleTimer()
+        clearUiFlush()
         this.activeExecutions.delete(termId)
 
         const partialOutput = trimRetainedText(
@@ -1358,6 +1555,14 @@ export class TerminalManagerClass {
           sentinelMatched: result.sentinelMatched,
           captureStartSeq: this.currentCommandSessions.get(termId)?.captureStartSeq,
           captureEndSeq: result.sentinelMatched ? this.currentCommandSessions.get(termId)?.captureEndSeq : this.currentCommandSessions.get(termId)?.captureEndSeq,
+        })
+
+        perfTrace.anchor('terminal-command', 'end', {
+          command: summarizeCommand(command),
+          ms: result.durationMs,
+          status: finalStatus,
+          exitCode,
+          reason,
         })
 
         resolve(result)
@@ -1410,8 +1615,9 @@ export class TerminalManagerClass {
 
       const unsubRaw = this.onRawData((event) => {
         if (event.id !== termId || settled) return
-        rawAccumulator = trimRetainedText(rawAccumulator + event.data, MAX_RAW_SENTINEL_BUFFER_CHARS)
-        textAccumulator = trimRetainedText(textAccumulator + stripAnsi(event.data), MAX_COMMAND_OUTPUT_CHARS)
+        perfTrace.bump(PERF_TRACE_COUNTERS.terminalChunks)
+        rawAccumulator = appendRetained(rawAccumulator, event.data, MAX_RAW_SENTINEL_BUFFER_CHARS)
+        textAccumulator = appendRetained(textAccumulator, stripAnsi(event.data), MAX_COMMAND_OUTPUT_CHARS)
 
         if (textAtStart === -1 && rawAccumulator.includes(`${OSC}${START_PAYLOAD}${BEL}`)) {
           textAtStart = textAccumulator.length
@@ -1422,8 +1628,8 @@ export class TerminalManagerClass {
           }))
         }
 
-        const visibleOutput = trimRetainedText(getVisibleOutput(), MAX_COMMAND_OUTPUT_CHARS)
-        updatePartialOutput(visibleOutput)
+        // 逐块只登记一次待刷新，实际处理与推送由节拍器合并执行
+        scheduleUiFlush()
 
         // 在原始数据中检测 OSC end sentinel：ESC]9001;ADNIFY_CMD_END_..._N BEL
         const endIdx = rawAccumulator.indexOf(RAW_END_MARKER)
@@ -1438,11 +1644,13 @@ export class TerminalManagerClass {
               captureEndSeq: event.seq,
               sentinelMatched: true,
             }))
+            // 结算路径不受 UI 节流影响：现场读取完整输出，保证交给 AI 的内容不缺失
+            const finalVisibleOutput = trimRetainedText(getVisibleOutput(), MAX_COMMAND_OUTPUT_CHARS)
             settle('sentinel_matched', {
               finalStatus: exitCode === 0 ? 'completed' : 'failed',
               exitCode,
-              output: visibleOutput,
-              partialOutput: visibleOutput,
+              output: finalVisibleOutput,
+              partialOutput: finalVisibleOutput,
               sentinelMatched: true,
             })
             return

@@ -27,6 +27,7 @@ export {
   selectIsOnBranch,
   selectContextStats,
   selectInputPrompt,
+  selectChatDraft,
   selectCurrentSessionId,
   selectCompressionStats,
   selectHandoffState,

@@ -9,12 +9,20 @@ interface LeakTagPattern {
   name: string
   openPattern: RegExp
   closePattern: RegExp
+  /** 完整闭合的标签块 */
+  blockPattern: RegExp
+  /** 只有开标签、始终没有等到闭合的残留 */
+  danglingPattern: RegExp
 }
 
 const LEAK_TAG_PATTERNS: LeakTagPattern[] = LEAK_MARKUP_TAGS.map(name => ({
   name,
   openPattern: new RegExp(`<${name}(?:\\s[^>]*)?>`, 'i'),
   closePattern: new RegExp(`</${name}>`, 'i'),
+  // 预编译而非在使用处构造：本函数在流式期间每个内容块都会执行，循环内
+  // new RegExp 既重复付出编译成本，也让每次调用产生一批一次性对象。
+  blockPattern: new RegExp(`<${name}(?:\\s[^>]*)?>[\\s\\S]*?</${name}>`, 'gi'),
+  danglingPattern: new RegExp(`<${name}(?:\\s[^>]*)?>[\\s\\S]*$`, 'gi'),
 }))
 
 export interface ToolLeakSanitizationResult {
@@ -91,12 +99,19 @@ export function filterToolCallLeakChunk(chunk: string, buffered = ''): ToolLeakS
 export function stripToolCallLeaks(text: string): string {
   if (!text) return ''
 
+  // 泄漏标记必然以 '<' 起头。这个函数在流式期间每个内容块都会被调用一次，
+  // 正文里连 '<' 都没有时不该为四个标签各跑两轮 [\s\S]* 全量正则。
+  if (text.indexOf('<') === -1) return text.trim()
+
   let sanitized = text
 
   for (const spec of LEAK_TAG_PATTERNS) {
+    // 标签名是裸字符串搜索能快速排除的：只有真正出现该标签时才进入正则替换
+    if (!sanitized.includes(`<${spec.name}`)) continue
+
     sanitized = sanitized
-      .replace(new RegExp(`<${spec.name}(?:\\s[^>]*)?>[\\s\\S]*?</${spec.name}>`, 'gi'), '')
-      .replace(new RegExp(`<${spec.name}(?:\\s[^>]*)?>[\\s\\S]*$`, 'gi'), '')
+      .replace(spec.blockPattern, '')
+      .replace(spec.danglingPattern, '')
   }
 
   return sanitized.trim()

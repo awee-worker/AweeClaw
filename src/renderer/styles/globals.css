@@ -222,6 +222,21 @@ textarea,
   -webkit-app-region: no-drag;
 }
 
+/* 设置项定位高亮：外部入口跳转到设置页时，短暂标出目标设置项 */
+@keyframes settings-anchor-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgb(var(--accent) / 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgb(var(--accent) / 0.18);
+  }
+}
+
+.settings-anchor-highlight {
+  animation: settings-anchor-pulse 1.2s ease-in-out 2;
+}
+
 .monaco-editor {
   font-family: 'JetBrains Mono', 'JetBrainsMono', 'Fira Code', 'FiraCode-Retina', 'Consolas', 'Monaco', 'Hannotate SC', monospace, -apple-system !important;
 }
@@ -259,21 +274,6 @@ textarea,
 
 
 /* Animations */
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-.animate-shimmer {
-  animation: shimmer 8s linear infinite;
-  background-size: 200% 100%;
-}
-
 @keyframes scale-in {
   from {
     opacity: 0;
@@ -325,92 +325,6 @@ textarea,
   animation: tool-card-appear 0.15s ease-out;
 }
 
-/* Text Shimmer/Sweep Effect for running tool cards
- * 设计原则：
- * 1. 使用 linear 而非 ease-in-out，让亮带匀速移动，避免两端停留导致闪烁
- * 2. 文字基色保持 text-secondary（中等亮度），亮带扫过时变亮，两端不变暗
- * 3. background-size 设为 400%，让亮带在元素内停留更久，减少暗-亮-暗的突变
- */
-@keyframes text-shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-.text-shimmer {
-  background: linear-gradient(90deg,
-      rgb(var(--text-secondary)) 0%,
-      rgb(var(--text-secondary)) 35%,
-      rgb(var(--accent) / 0.9) 47%,
-      rgb(var(--text-primary)) 50%,
-      rgb(var(--accent) / 0.9) 53%,
-      rgb(var(--text-secondary)) 65%,
-      rgb(var(--text-secondary)) 100%);
-  background-size: 400% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: text-shimmer 2s linear infinite;
-}
-
-.tool-text-shimmer {
-  background: linear-gradient(90deg,
-      rgb(var(--text-secondary)) 0%,
-      rgb(var(--text-secondary)) 35%,
-      rgb(var(--accent) / 0.9) 47%,
-      rgb(var(--text-primary)) 50%,
-      rgb(var(--accent) / 0.9) 53%,
-      rgb(var(--text-secondary)) 65%,
-      rgb(var(--text-secondary)) 100%);
-  background-size: 400% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: text-shimmer 3.5s linear infinite;
-}
-
-.tool-card-sweep {
-  animation: shimmer 14s linear infinite;
-  background-size: 240% 100%;
-  opacity: 0.55;
-}
-
-/* Button Sweep Effect */
-@keyframes btn-sweep {
-  0% {
-    transform: translateX(-100%);
-  }
-
-  100% {
-    transform: translateX(200%);
-  }
-}
-
-.btn-sweep {
-  position: relative;
-  overflow: hidden;
-}
-
-.btn-sweep::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-  transform: translateX(-100%) skewX(-15deg);
-  pointer-events: none;
-}
-
-.btn-sweep:hover::after {
-  animation: btn-sweep 1.2s ease-in-out infinite;
-}
-
 /* Scroll shadow for thinking block */
 .scroll-shadow-container {
   position: relative;
@@ -447,27 +361,51 @@ textarea,
   opacity: 1;
 }
 
-/* Ink Blur Fade-In Animation - Smooth Character Fade */
-@keyframes ink-fade-in {
-  0% {
-    opacity: 0;
-    filter: blur(4px);
-  }
-  100% {
-    opacity: 1;
-    filter: blur(0);
-  }
-}
-
-/* Apply ink effect to streaming content */
-.streaming-ink-effect {
-  text-shadow: 0 0 1px rgba(var(--text-primary) / 0.1);
-}
-
+/* 流式正文的绘制约定
+ *
+ * 这里原先挂着两条与流式粒度绑定的效果，成本都会按正文长度放大：
+ *
+ *   1. 整段正文的 `text-shadow: 0 0 1px`。text-shadow 会让文本离开字形缓存路径，
+ *      改成「先栅格化字形再整体模糊」。流式期间每推进一次就用新的文本切片重写
+ *      正文节点，整篇回复被反复全量重绘并全量模糊；而 1px 的阴影在视觉上几乎
+ *      不可见，代价却与正文长度成正比。
+ *   2. 尾部逐字 span 的淡入动画。字符是 `display: inline`，行内元素无法参与合成，
+ *      opacity 动画只能回退到渲染主线程逐帧重绘；动画又是 both 填充，字符在结束后
+ *      仍保留被动画过的绘制状态。尾部窗口每次推进都要重建这批节点，
+ *      相当于持续在主线程上重绘一段浮动文本。
+ *
+ * 两者都去掉：文字统一走最普通的纯色渲染路径。流式推进本身已经提供了
+ * 「正在输出」的观感，不需要再叠加绘制效果。 */
 .inline-stream-char {
   display: inline;
-  animation: ink-fade-in 0.5s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
-  will-change: opacity, filter;
+}
+
+/* 流式尾部光标
+ *
+ * 流式反馈从「逐字淡入」收敛成单个光标：光标是脱离文本流的独立小元素，尺寸固定、
+ * 不参与文字排版，opacity 动画由合成器处理，成本与文本长度无关；逐字淡入则要求每个
+ * 字符都是独立节点，而行内元素无法参与合成，两者不是一个量级。 */
+.stream-caret {
+  display: inline-block;
+  width: 2px;
+  height: 0.9em;
+  margin-left: 3px;
+  vertical-align: -0.05em;
+  border-radius: 1px;
+  background: rgb(var(--accent) / 0.85);
+  animation: stream-caret-blink 1s steps(1, end) infinite;
+}
+
+@keyframes stream-caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0.2;
+  }
 }
 
 /* Reveal in Explorer - File highlight flash */
@@ -492,13 +430,25 @@ textarea,
   animation: reveal-highlight 2s ease-out forwards;
 }
 
-/* --- Streaming block-reveal animation --- */
+/* --- Streaming block-reveal animation ---
+ *
+ * 只使用 opacity + transform：两者均为合成属性，动画不进入绘制阶段。
+ * 历史实现包含 filter: blur(4px) -> blur(0)，配合 fill-mode: both 会让动画结束后
+ * 元素永久保留 filter 计算样式，从而独立成为带滤波的渲染表面；一段长回复往往有
+ * 几十个块级元素（p / li / h1-h3 / pre / blockquote / table），每个都占据一张
+ * 表面，叠加流式期间 className 反复切换导致的动画重启，是会话区最重的渲染开销。
+ *
+ * fill-mode 取 backwards 而非 both：both 会把 100% 的 `translateY(0)` 留在元素上，
+ * 而「非 none 的 transform」本身就会让元素保留一张合成层 —— 同样的几十个块级元素
+ * 于是各自占一层，合成与显存开销常驻。backwards 只在动画开始前填 0% 值，结束后
+ * 交还给静态样式（transform: none），动画仍在合成器上跑，层却在结束即释放。
+ * 末帧本就是 opacity 1 / translateY(0)，与静态样式一致，因此没有视觉差异。 */
 @keyframes block-reveal {
-  0% { opacity: 0; filter: blur(4px); transform: translateY(2px); }
-  100% { opacity: 1; filter: blur(0); transform: translateY(0); }
+  0% { opacity: 0; transform: translateY(2px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 .animate-block-reveal {
-  animation: block-reveal 0.28s ease-out both;
+  animation: block-reveal 0.24s ease-out backwards;
 }
 
 /* --- Context-aware Wait Indicator --- */
@@ -528,36 +478,6 @@ textarea,
 }
 
 /* --- Thinking Block Styles --- */
-@keyframes thinking-border-pulse {
-  0%, 100% {
-    background: linear-gradient(180deg, rgb(var(--accent) / 0.6), rgb(var(--accent) / 0.15), rgb(var(--accent) / 0.6));
-    background-size: 100% 200%;
-    background-position: 0% 0%;
-  }
-  50% {
-    background: linear-gradient(180deg, rgb(var(--accent) / 0.6), rgb(var(--accent) / 0.15), rgb(var(--accent) / 0.6));
-    background-size: 100% 200%;
-    background-position: 0% 100%;
-  }
-}
-
-.thinking-border-glow {
-  animation: thinking-border-pulse 3s ease-in-out infinite;
-  box-shadow: 0 0 6px rgb(var(--accent) / 0.15);
-}
-
-@keyframes thinking-sweep {
-  0% { top: 0%; opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  100% { top: 100%; opacity: 0; }
-}
-
-.thinking-sweep-line {
-  background: linear-gradient(180deg, transparent, rgb(var(--accent) / 0.8), transparent);
-  height: 30%;
-  animation: thinking-sweep 2.5s ease-in-out infinite;
-}
 
 @keyframes thinking-dot-pulse {
   0%, 100% { transform: scale(1); opacity: 0.6; }
@@ -634,26 +554,15 @@ textarea,
 /* 骨架屏专用动画                                */
 /* ============================================ */
 
-/* 流光扫过效果：模拟内容正在加载 */
-@keyframes skeleton-shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-/* 骨架块基础样式：线性渐变 + 流光动画 */
+/* 骨架块基础样式：静态底色
+ *
+ * 块内原先挂着一条逐块位移的流光。一屏骨架屏通常铺着二十个以上的块，等于同时让
+ * 二十多条位移动画占用合成器；而「正在加载」所需的信息量，静态底色已经给足。
+ * 块逐个渐入（skeleton-fade-in）保留，出现节奏不变。 */
 .skeleton-block {
-  background: linear-gradient(
-    90deg,
-    rgb(var(--surface-active) / 0.3) 25%,
-    rgb(var(--surface-active) / 0.5) 37%,
-    rgb(var(--surface-active) / 0.3) 63%
-  );
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+  position: relative;
+  overflow: hidden;
+  background: rgb(var(--surface-active) / 0.3);
   border-radius: 0.25rem;
 }
 
@@ -671,6 +580,19 @@ textarea,
 
 .skeleton-fade-in {
   animation: skeleton-fade-in 0.4s ease-out both;
+}
+
+/* ============================================ */
+/* 弹窗装饰光晕                                   */
+/* ============================================ */
+
+/* 原实现是在大尺寸圆形上叠加 blur(100px) / blur(80px)：模糊半径越大，
+ * 参与卷积的像素范围越广，弹窗首帧要付出一次相当昂贵的光栅化。
+ * 这里视觉目标只是两块边缘柔和的色团，而径向渐变本身就是软过渡，
+ * 改用渐变后省去全部模糊计算，外观基本一致。 */
+.modal-orb-glow {
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgb(var(--accent) / 0.05), transparent 70%);
 }
 
 /* ============================================ */
@@ -727,4 +649,70 @@ textarea,
 /* 暗色主题下的 HTML 预览 */
 [data-theme='dark'] .html-preview-container iframe {
   /* iframe 内部有自己的背景色处理 */
+}
+
+
+/* ============================================ */
+/* 渲染预算：按运行状态收敛动效                    */
+/* ============================================ */
+
+/* 三个开关由 renderBudget 服务写在 <html> 上：
+ *   data-agent-busy     — Agent 正在执行
+ *   data-window-hidden  — 窗口不可见
+ *   data-perf-low       — 实测掉帧
+ *
+ * 收敛对象是「装饰性循环动画」。取舍标准是成本，不是好看程度：
+ *   - 停在 overflow:hidden + 圆角容器里的位移动画，每帧都要按圆角重新裁剪图层；
+ *   - 用 background-position 或 SVG stroke-dashoffset 驱动的属于绘制级动画，
+ *     在渲染主线程上每帧重新栅格化，比合成级动画贵一个量级；
+ *   - 小尺寸的纯 opacity/scale 脉冲不产生裁剪，成本可以忽略，因此保留下来，
+ *     否则界面在执行期间会失去「还在跑」的反馈。
+ * 这里只改 animation 相关声明，不碰布局与配色，收敛前后视觉结构保持一致。 */
+
+/* 窗口不可见 — 整页挂起。
+ * animation-play-state 只改合成器的时间轴状态，不触发样式重算与重排，
+ * 是冻结动画最廉价的手段。后台跑长任务时这部分开销完全是浪费。 */
+html[data-window-hidden='1'] *,
+html[data-window-hidden='1'] *::before,
+html[data-window-hidden='1'] *::after {
+  animation-play-state: paused !important;
+}
+
+/* Agent 执行中 — 停掉绘制级动画。
+ * 执行期间屏幕上已有流式文字在动，这些效果的信息增量接近于零，却让合成器
+ * 每帧都有活干，渲染进程回不到空闲帧。扫光类效果已从样式层整体移除，
+ * 这里只剩 SVG 描边流动这一类每帧都要重新栅格化的动画。 */
+html[data-agent-busy='1'] .ant-flow-edge {
+  animation: none !important;
+}
+
+/* 实测掉帧 — 小尺寸脉冲也一并退到静态。
+ * spinner 不动：它是用户判断「还在跑」的唯一依据，停掉会被读成卡死。 */
+html[data-perf-low='1'] .thinking-indicator-icon,
+html[data-perf-low='1'] .stream-caret,
+html[data-perf-low='1'] .animate-breathe,
+html[data-perf-low='1'] .animate-pulse,
+html[data-perf-low='1'] .wait-dot,
+html[data-perf-low='1'] .ant-flow-edge {
+  animation: none !important;
+}
+
+/* 执行期间进度条不做过渡。
+ * 上下文占用随流式输出持续增长，宽度每变一次就要重排一次容器；过渡会把
+ * 一次跳变摊成 500ms 的逐帧重排，而执行期间宽度几乎一直在变。 */
+html[data-agent-busy='1'] .meter-fill,
+html[data-perf-low='1'] .meter-fill {
+  transition: none !important;
+}
+
+/* 系统级无障碍偏好：跟随用户设置，与业务开关无关 */
+@media (prefers-reduced-motion: reduce) {
+  .thinking-indicator-icon,
+  .stream-caret,
+  .animate-breathe,
+  .animate-pulse,
+  .wait-dot,
+  .ant-flow-edge {
+    animation: none !important;
+  }
 }

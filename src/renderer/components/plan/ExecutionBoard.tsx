@@ -559,7 +559,7 @@ export const ExecutionBoard = memo(function ExecutionBoard({ planId }: TaskBoard
     return (
         <div className="h-full flex flex-col bg-background">
             {/* 头部 */}
-            <div className="flex-shrink-0 p-4 border-b border-border bg-surface/30 backdrop-blur-sm">
+            <div className="flex-shrink-0 p-4 border-b border-border bg-surface/30">
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-lg font-semibold text-text-primary">{plan.name}</h1>

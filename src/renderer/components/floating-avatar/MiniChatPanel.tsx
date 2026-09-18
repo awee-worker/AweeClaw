@@ -444,15 +444,43 @@ function MiniChatPanelImpl({
   // --------------------------------------------
   // 主窗口对话快照 → 迷你消息格式（只读，复用 MessageBubble 渲染）
   // --------------------------------------------
+  /** 迷你消息对象缓存：内容未变时复用同一引用，让 MessageBubble 的记忆化真正生效 */
+  const mainMessageCacheRef = useRef(new Map<string, MiniChatMessage>())
+
   const mainMessages = useMemo<MiniChatMessage[]>(() => {
-    if (!mainConversation?.messages?.length) return []
-    return mainConversation.messages.map((m) => ({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      reasoning: m.reasoning,
-      timestamp: m.timestamp,
-    }))
+    const incoming = mainConversation?.messages
+    if (!incoming?.length) {
+      mainMessageCacheRef.current.clear()
+      return []
+    }
+
+    const cache = mainMessageCacheRef.current
+    const alive = new Set<string>()
+    const next = incoming.map((m) => {
+      alive.add(m.id)
+      const cached = cache.get(m.id)
+      // 正文与推理文本都未变时复用旧对象：否则每轮快照都会重建整个列表，
+      // 记忆化失效后整列消息都要重新解析 Markdown。
+      if (cached && cached.content === m.content && cached.reasoning === m.reasoning) {
+        return cached
+      }
+      const fresh: MiniChatMessage = {
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        reasoning: m.reasoning,
+        timestamp: m.timestamp,
+      }
+      cache.set(m.id, fresh)
+      return fresh
+    })
+
+    // 清理已不在列表中的条目，避免长时间运行后缓存无限增长
+    for (const key of cache.keys()) {
+      if (!alive.has(key)) cache.delete(key)
+    }
+
+    return next
   }, [mainConversation])
 
   // --------------------------------------------
@@ -876,7 +904,13 @@ function MiniChatPanelImpl({
 // 消息气泡子组件（含工具调用状态）
 // ============================================
 
-function MessageBubble({ message, isZh }: { message: MiniChatMessage; isZh: boolean }) {
+/**
+ * 消息气泡
+ *
+ * 迷你面板同步主窗口对话时会整列重渲染，记忆化后只有内容真正变化的消息
+ * （通常是流式中的最后一条）才会重新解析 Markdown。
+ */
+const MessageBubble = memo(function MessageBubble({ message, isZh }: { message: MiniChatMessage; isZh: boolean }) {
   const isUser = message.role === 'user'
   const hasError = !!message.error
   const hasToolCalls = message.toolCalls && message.toolCalls.length > 0
@@ -965,7 +999,7 @@ function MessageBubble({ message, isZh }: { message: MiniChatMessage; isZh: bool
       )}
     </div>
   )
-}
+})
 
 // ============================================
 // 推理内容子组件（思考模型的思考过程）

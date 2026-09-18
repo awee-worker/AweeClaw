@@ -252,7 +252,9 @@ export const DEFAULT_AGENT_CONFIG: AgentRuntimeConfig = {
           reminderMessage:
             '⚠️ Expert Mode Verification Required: You have made write operations but have NOT yet verified the results. ' +
             'You MUST now enter Phase 4 (Verification). Please:\n' +
-            '1. Run linting/type-checking to verify code quality\n' +
+            '1. Verify code quality with the cheapest signal that still proves it: get_lint_errors (LSP diagnostics) first, ' +
+            'then the running dev server / watch task. A full-workspace `tsc --noEmit` costs 20-30s and saturates 2-3 cores — ' +
+            'use it only when the cheap signals cannot answer the question, and then scope it to the touched package or add --incremental.\n' +
             '2. Run existing tests to ensure nothing is broken\n' +
             '3. Review your changes for common issues (missing imports, typos, logic errors)\n' +
             '4. Verify integration with existing code\n' +

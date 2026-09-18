@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { VirtuosoHandle } from 'react-virtuoso'
+import { scheduleFrameTask, cancelFrameTask } from '@intelligence/state/streamFrameScheduler'
 
 /** 距底部小于此值视为已吸底 */
 const BOTTOM_THRESHOLD_PX = 220
@@ -173,7 +174,16 @@ export function useChatScrollController({
     [],
   )
 
-  /** 列表总高度变化时处理 */
+  /** 列表总高度变化时处理
+   *
+   * 流式期间内容每隔几十毫秒增长一次，本回调随之触发。原实现在回调里嵌套了三层
+   * requestAnimationFrame，逐帧重复「读 scrollHeight → 写 scrollTop」；而
+   * stickToBottom 自身内部还各带一帧读写，单次调用即产生近十次强制同步布局。
+   * 按流式期间的触发频率折算，每秒会有上百次布局重算压在渲染进程主线程上。
+   *
+   * 这里收敛为两帧：本帧吸底一次，下一帧复位状态并同步按钮。高度变化本身就由
+   * 内容增长驱动，增长还会再次触发本回调，无需在同一回调内反复吸底。
+   */
   const handleTotalListHeightChanged = useCallback(() => {
     if (!isStreaming) {
       requestAnimationFrame(syncFromScroller)
@@ -193,14 +203,12 @@ export function useChatScrollController({
     requestAnimationFrame(() => {
       stickToBottom()
       requestAnimationFrame(() => {
-        stickToBottom()
-        requestAnimationFrame(() => {
-          isAutoScrollingRef.current = false
-          syncFromScroller()
-        })
+        isAutoScrollingRef.current = false
+        syncFromScroller()
       })
     })
   }, [getMetrics, isStreaming, stickToBottom, syncFromScroller])
+
 
   /** Virtuoso 底部状态变化回调
    *
@@ -316,13 +324,22 @@ export function useChatScrollController({
     }
   }, [getMetrics, isStreaming, scheduleStick, applyBottomState, syncFromScroller])
 
-  // 流式期间定时吸底
+  // 流式期间定期吸底
+  //
+  // 与流式缓冲刷写、插值推进共用同一个帧循环：内容增长与滚动写入落在同一帧里，
+  // 布局只需算一次；吸底内部的 setState 也会和内容更新并进同一次提交，
+  // 而不是各自触发一轮。
   useEffect(() => {
     if (!isStreaming) return
-    const timer = window.setInterval(() => {
+
+    const stickTask = () => {
       if (atBottomRef.current) stickToBottom()
-    }, STICK_INTERVAL_MS)
-    return () => window.clearInterval(timer)
+      // 末尾续期：流式期间保持周期执行，停止后由清理函数取消
+      scheduleFrameTask(stickTask, STICK_INTERVAL_MS)
+    }
+    scheduleFrameTask(stickTask, STICK_INTERVAL_MS)
+
+    return () => cancelFrameTask(stickTask)
   }, [isStreaming, stickToBottom])
 
   // 卸载时清理 rAF

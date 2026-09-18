@@ -13,6 +13,36 @@ import { createIdleHandoffState, createRuntimeThreadState } from '@intelligence/
 import { EventBus } from '../../engine/EventDispatcher'
 import { useStore } from '@store'
 import { logger } from '@shared/toolkit/LogEngine'
+import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter'
+import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
+
+/**
+ * 把流式阶段转移写成一对 end/begin 锚点。
+ *
+ * 成对落盘而不是只记一条「阶段变了」，是为了让时间轴上每个阶段都成为一段
+ * 有明确起止的区间，事后可以直接按阶段聚合计时。只记转移点的话，分析侧
+ * 还得自己把先后两条配成区间，配错一次整段结论就偏了。
+ *
+ * 未开启性能追踪时，这里的全部开销是几次布尔判断（见 perfTraceReporter）。
+ */
+function traceStreamPhaseTransition(
+    previous: StreamState | undefined,
+    next: Partial<StreamState>,
+): void {
+    if (next.phase !== undefined && next.phase !== previous?.phase) {
+        if (previous?.phase) {
+            perfTrace.anchor('stream-phase', 'end', { phase: previous.phase })
+        }
+        perfTrace.anchor('stream-phase', 'begin', { phase: next.phase })
+    }
+
+    if (next.waitPhase !== undefined && next.waitPhase !== previous?.waitPhase) {
+        if (previous?.waitPhase) {
+            perfTrace.anchor('wait-phase', 'end', { phase: previous.waitPhase })
+        }
+        perfTrace.anchor('wait-phase', 'begin', { phase: next.waitPhase })
+    }
+}
 
 export interface ThreadStoreState {
     threads: Record<string, ChatThread>
@@ -364,9 +394,32 @@ export const createThreadSlice: StateCreator<
         const targetId = threadId ?? get().currentThreadId
         if (!targetId) return
 
+        perfTrace.bump(PERF_TRACE_COUNTERS.streamStateCalls)
+
         set(state => {
             const thread = state.threads[targetId]
             if (!thread) return state
+
+            // 无差异时直接返回原 state。
+            // streamProcessor 在流式期间对每个 chunk 都要写一次 streamDetail/waitPhase，
+            // 而这些值在同一阶段内基本不变；若照旧合并出新对象，每次写入都会产生新的
+            // threads 引用，把全部订阅者（每条消息组件都订阅了 streamState）整批唤醒。
+            // 这里只比较本次要写入的键，全部相同即视为无变化。
+            const current = thread.streamState
+            let changed = false
+            for (const key of Object.keys(streamState) as Array<keyof StreamState>) {
+                if (current?.[key] !== streamState[key]) {
+                    changed = true
+                    break
+                }
+            }
+            if (!changed) {
+                perfTrace.bump(PERF_TRACE_COUNTERS.streamStateSkipped)
+                return state
+            }
+
+            perfTrace.bump(PERF_TRACE_COUNTERS.streamStateCommits)
+            traceStreamPhaseTransition(current, streamState)
 
             return {
                 threads: updateThreadEphemeral(state.threads, targetId, {
@@ -380,12 +433,20 @@ export const createThreadSlice: StateCreator<
         const targetId = threadId ?? get().currentThreadId
         if (!targetId) return
 
+        perfTrace.bump(PERF_TRACE_COUNTERS.streamStateCalls)
+
         set(state => {
             const thread = state.threads[targetId]
             if (!thread) return state
 
             // 防止重复设置相同 phase 导致 streamState 引用变化，触发下游 selector 缓存失效和无限重渲染
-            if (thread.streamState?.phase === phase) return state
+            if (thread.streamState?.phase === phase) {
+                perfTrace.bump(PERF_TRACE_COUNTERS.streamStateSkipped)
+                return state
+            }
+
+            perfTrace.bump(PERF_TRACE_COUNTERS.streamStateCommits)
+            traceStreamPhaseTransition(thread.streamState, { phase })
 
             const nextStreamState = phase === 'idle'
                 ? {

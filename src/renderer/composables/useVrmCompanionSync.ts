@@ -51,6 +51,16 @@ export function useVrmCompanionSync(): void {
   /** 好感度是否已对当前这段回复结算过 */
   const affectionSettledRef = useRef(true)
 
+  /**
+   * 伴侣窗口当前是否可见。
+   *
+   * 不可见时下面的文本轮询整个早退：伴侣没开的时候，主窗口没有理由
+   * 为它每 400ms 读一次会话。
+   * 初值取 false（先当作未开启）：主进程在 show/hide 时会广播真实状态，
+   * 挂载瞬间漏判一次只会少发一次「开始说话」，不影响正确性。
+   */
+  const companionVisibleRef = useRef(false)
+
   // --------------------------------------------
   // 语音上下文推送（伴侣窗口内独立语音对话所需的运行时配置）
   // --------------------------------------------
@@ -168,6 +178,33 @@ export function useVrmCompanionSync(): void {
     return off
   }, [])
 
+  // --------------------------------------------
+  // 伴侣窗口可见性
+  //
+  // 可见性只存在于主进程内存，外部无法自行推断：挂载时主动拉一次当前状态，
+  // 之后由主进程在 show/hide 时广播（与顶部栏开关同一套通道）。
+  // --------------------------------------------
+  useEffect(() => {
+    void api.vrmCompanion
+      .getState()
+      .then((res) => {
+        if (res.success && res.data) companionVisibleRef.current = !!res.data.visible
+      })
+      .catch((err) => logger.system.debug('[VrmCompanionSync] Read state failed:', err))
+
+    const off = api.vrmCompanion.onStateChanged((state) => {
+      const visible = !!state.visible
+      // 刚被隐藏：补发一次「停止说话」让伴侣侧把口型复位，
+      // 否则重新显示时角色会停在张嘴的最后一帧
+      if (!visible && companionVisibleRef.current && speakingRef.current) {
+        speakingRef.current = false
+        void api.vrmCompanion.broadcastStopSpeak().catch(() => {})
+      }
+      companionVisibleRef.current = visible
+    })
+    return off
+  }, [])
+
   useEffect(() => {
     /**
      * 取当前会话最后一条 assistant 消息的纯文本。
@@ -200,6 +237,11 @@ export function useVrmCompanionSync(): void {
     }
 
     const timer = window.setInterval(() => {
+      // 伴侣窗口没显示时直接早退：既不读会话也不发 IPC。
+      // 这是「AI 执行期间 CPU 偏高」的一个常驻来源 —— 伴侣压根没开时，
+      // 主窗口仍在每 400ms 读一次会话、把整段回复序列化后发给不存在的窗口。
+      if (!companionVisibleRef.current) return
+
       const text = readLastAssistantText()
       if (!text) return
 

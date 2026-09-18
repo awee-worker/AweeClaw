@@ -52,6 +52,7 @@ import { useFileEventBridge } from './chatPanel/useFileEventBridge'
 import { useTimelineProjection, type RenderableMessageItem } from './chatPanel/useTimelineProjection'
 import { useChatKeyboard } from './chatPanel/useChatKeyboard'
 import { useHumanApprovalWatcher } from './chatPanel/useHumanApprovalWatcher'
+import { CommitProbe } from '@intelligence/diagnostics/CommitProbe'
 
 import { DragOverlay } from './chatPanel/components/DragOverlay'
 import { WorkspaceToggleBar } from './chatPanel/components/WorkspaceToggleBar'
@@ -239,17 +240,16 @@ export default function ChatPanel() {
   } = useAgentActions()
 
   // ===== 输入状态 =====
-  // 用 ref 持久化输入内容，防止组件卸载/重新挂载时丢失
-  const inputRef = useRef('')
-  const [inputState, setInputState] = useState(inputRef.current)
+  // 草稿存在全局 store 而非组件本地 state：
+  // 切到设置、用户中心等全屏页面时 ChatSection 会卸载 ChatPanel，
+  // 本地 state 随之销毁，已输入的内容就丢了；store 能跨组件卸载保留。
+  const input = useAgentStore(state => state.chatDraft)
+  const setChatDraft = useAgentStore(state => state.setChatDraft)
   const [deleteSelectionMode, setDeleteSelectionMode] = useState(false)
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set())
-  const input = inputState
   const setInput = useCallback((value: string | null | undefined) => {
-    const next = value ?? ''
-    inputRef.current = next
-    setInputState(next)
-  }, [])
+    setChatDraft(value ?? '')
+  }, [setChatDraft])
   const inputPromptConsumedRef = useRef(false)
   // 用 ref 保存 setInputPrompt，避免依赖项变化导致 effect 重复触发
   const setInputPromptRef = useRef(setInputPrompt)
@@ -257,14 +257,14 @@ export default function ChatPanel() {
 
   useEffect(() => {
     if (inputPrompt && !inputPromptConsumedRef.current) {
-      setInputState(inputPrompt)
-      inputRef.current = inputPrompt
+      setInput(inputPrompt)
       inputPromptConsumedRef.current = true
       setInputPromptRef.current('')
     } else if (!inputPrompt) {
       inputPromptConsumedRef.current = false
     }
-  }, [inputPrompt])
+  }, [inputPrompt, setInput])
+
 
   // 用 ref 桥接 activeWorkspaceSession，避免 session 对象引用频繁变化导致 effect 重复触发
   const activeWorkspaceSessionRef = useRef(activeWorkspaceSession)
@@ -738,6 +738,33 @@ export default function ChatPanel() {
     addContextItem({ type: 'File', uri: activeFilePath })
   }, [activeFilePath, contextItems, addContextItem])
 
+  /**
+   * 稳定引用的选择/删除回调
+   *
+   * 这两个回调原先写成渲染期箭头函数：每轮渲染都是新引用，直接打穿
+   * ChatMessage 的 memo，使可见消息随每个文本分片整体重渲染。
+   * 改用 useCallback，并把 messageOps 走 ref 读取（它本身已被 memo 化，
+   * 这里是第二道保险），引用就不再随渲染轮次变化。
+   */
+  const handleDeleteRoundForMessage = useCallback(
+    (messageId: string) => {
+      messageOpsRef.current.handleDeleteRound(messageId, setSelectedMessageIds, setDeleteSelectionMode)
+    },
+    [],
+  )
+
+  const handleToggleSelectMessage = useCallback((messageId: string) => {
+    setSelectedMessageIds(prev => {
+      const next = new Set(prev)
+      if (next.has(messageId)) {
+        next.delete(messageId)
+      } else {
+        next.add(messageId)
+      }
+      return next
+    })
+  }, [])
+
   // ===== 渲染时间线条目 =====
   const renderTimelineItem = useCallback(
     (item: ChatTimelineItem<RenderableMessageItem>) => {
@@ -770,22 +797,10 @@ export default function ChatPanel() {
             pendingToolIds={pendingToolIds}
             hasCheckpoint={item.item.hasCheckpoint}
             isWorkspaceEditor={activeScenarioId === 'dev-assistant'}
-            onDeleteRound={(messageId: string) =>
-              messageOps.handleDeleteRound(messageId, setSelectedMessageIds, setDeleteSelectionMode)
-            }
+            onDeleteRound={handleDeleteRoundForMessage}
             selectionMode={deleteSelectionMode}
             isSelected={selectedMessageIds.has(msg.id)}
-            onToggleSelect={(messageId: string) => {
-              setSelectedMessageIds(prev => {
-                const next = new Set(prev)
-                if (next.has(messageId)) {
-                  next.delete(messageId)
-                } else {
-                  next.add(messageId)
-                }
-                return next
-              })
-            }}
+            onToggleSelect={handleToggleSelectMessage}
           />
         </div>
       )
@@ -794,7 +809,9 @@ export default function ChatPanel() {
       approveCurrentTool,
       approveAllTools,
       deleteSelectionMode,
+      handleDeleteRoundForMessage,
       handleShowDiff,
+      handleToggleSelectMessage,
       isChatPrimary,
       language,
       messageOps,
@@ -990,24 +1007,28 @@ export default function ChatPanel() {
                       <ProactiveSuggestionsContainer language={language as Language} />
                     )}
 
-                    <Virtuoso
-                      key={currentThreadId ?? 'no-thread'}
-                      ref={scrollVirtuosoRef}
-                      data={timelineItems}
-                      computeItemKey={(_, item) => item.key}
-                      atBottomStateChange={handleBottomStateChange}
-                      rangeChanged={handleTimelineRangeChanged}
-                      initialTopMostItemIndex={timelineProjection.initialIndexRef.current}
-                      followOutput={followOutput}
-                      itemContent={(_, item) => renderTimelineItem(item)}
-                      className="flex-1 custom-scrollbar w-full h-full"
-                      style={{ minHeight: '100px', overflowX: 'hidden', overflowY: 'auto' }}
-                      overscan={12}
-                      atBottomThreshold={100}
-                      totalListHeightChanged={handleTotalListHeightChanged}
-                      skipAnimationFrameInResizeObserver
-                      components={virtuosoComponents}
-                    />
+                    {/* 提交探针：把整份消息列表的提交耗时单独记账。
+                        Profiler 不产生 DOM 节点，因此不影响 Virtuoso 的 flex 布局。 */}
+                    <CommitProbe scope="messages">
+                      <Virtuoso
+                        key={currentThreadId ?? 'no-thread'}
+                        ref={scrollVirtuosoRef}
+                        data={timelineItems}
+                        computeItemKey={(_, item) => item.key}
+                        atBottomStateChange={handleBottomStateChange}
+                        rangeChanged={handleTimelineRangeChanged}
+                        initialTopMostItemIndex={timelineProjection.initialIndexRef.current}
+                        followOutput={followOutput}
+                        itemContent={(_, item) => renderTimelineItem(item)}
+                        className="flex-1 custom-scrollbar w-full h-full"
+                        style={{ minHeight: '100px', overflowX: 'hidden', overflowY: 'auto' }}
+                        overscan={12}
+                        atBottomThreshold={100}
+                        totalListHeightChanged={handleTotalListHeightChanged}
+                        skipAnimationFrameInResizeObserver
+                        components={virtuosoComponents}
+                      />
+                    </CommitProbe>
 
                   </div>
                 </>

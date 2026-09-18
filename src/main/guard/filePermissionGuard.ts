@@ -35,6 +35,7 @@ import {
 } from './fileSystemObserver'
 import {
   registerWorkspaceHandlers,
+  resolveDialogParent,
   WindowManagerContext,
 } from './workspaceGuard'
 
@@ -157,8 +158,10 @@ export function registerSecureFileHandlers(
   // ========== 文件操作处理器 ==========
 
   // 打开文件（带对话框）
-  ipcMain.handle('file:open', async () => {
-    const mainWindow = getMainWindowFn()
+  ipcMain.handle('file:open', async (event) => {
+    // 父窗口必须取发起窗口：macOS 下对话框以 sheet 形式附着在父窗口上，
+    // 挂到非发起窗口会导致用户看不到选择界面，误以为点击无响应
+    const mainWindow = resolveDialogParent(event, getMainWindowFn)
     if (!mainWindow) return null
 
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -192,8 +195,9 @@ export function registerSecureFileHandlers(
     return null
   })
 
-  ipcMain.handle('file:openKnowledgeFiles', async () => {
-    const mainWindow = getMainWindowFn()
+  ipcMain.handle('file:openKnowledgeFiles', async (event) => {
+    // 同 file:open，父窗口取发起窗口，避免对话框挂到其他窗口上不可见
+    const mainWindow = resolveDialogParent(event, getMainWindowFn)
     if (!mainWindow) return null
 
     const result = await dialog.showOpenDialog(mainWindow, {

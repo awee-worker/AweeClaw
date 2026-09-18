@@ -126,6 +126,14 @@ export interface VoiceChatOptions {
     aiText: string,
     toolCallRecords?: Array<{ id: string; name: string; args: Record<string, unknown>; success: boolean; resultSummary: string }>,
   ) => void
+  /**
+   * TTS 播放电平回调（0~1，约 30Hz），仅拆分式模式在播放期间触发，播放结束回调 0。
+   *
+   * 专供「口型同步」消费：驱动口型的必须是**扬声器里正在响的声音**，
+   * 而不是麦克风采集电平 —— 麦克风只反映用户在说什么，AI 朗读时它接近 0，
+   * 拿它驱动口型只会得到「AI 在说、嘴不动」。
+   */
+  onPlaybackVolume?: (volume: number) => void
   /** 错误回调 */
   onError?: (message: string) => void
   /** 结束对话回调（用户说"结束对话"等指令时触发） */
@@ -142,6 +150,8 @@ const VAD_SILENCE_DELAY = 1500   // 说话结束后等待多久（ms）判定说
 const VAD_MIN_SPEECH_TIME = 300  // 最短说话时间（ms），短于此视为噪音
 const VAD_CHECK_INTERVAL = 100   // VAD 检测间隔（ms）
 const SAMPLE_RATE = 16000        // 采样率
+// TTS 播放电平采样间隔（ms）：≈30fps，足以驱动口型平滑，单次仅 256 个采样点
+const TTS_VOLUME_SAMPLE_INTERVAL_MS = 33
 // 对话历史裁剪：保留 system + 最近 N 条消息
 const MAX_HISTORY_MESSAGES = 30
 
@@ -268,6 +278,56 @@ export function useVoiceChat(options?: VoiceChatOptions) {
   // TTS 播放（拆分式模式）
   // ============================================================
 
+  /**
+   * onPlaybackVolume 的最新引用。
+   *
+   * 采样循环是长生命周期闭包（一次建立、跨多段 TTS 存活），直接读 options
+   * 会捕获首次渲染传进来的回调；用 ref 保证每次都回调到调用方的最新实现。
+   */
+  const onPlaybackVolumeRef = useRef(options?.onPlaybackVolume)
+  onPlaybackVolumeRef.current = options?.onPlaybackVolume
+
+  /** 播放电平采样：analyser（串在 TTS 输出链上）/ 时域缓冲 / 采样定时器 */
+  const ttsAnalyserRef = useRef<AnalyserNode | null>(null)
+  const ttsSampleBufferRef = useRef<Uint8Array<ArrayBuffer> | null>(null)
+  const ttsVolumeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  /** 停止播放电平采样并归零（让口型立即闭合，不留在最后一个开合值） */
+  const stopTtsPlaybackSampling = useCallback(() => {
+    if (ttsVolumeTimerRef.current != null) {
+      clearInterval(ttsVolumeTimerRef.current)
+      ttsVolumeTimerRef.current = null
+    }
+    onPlaybackVolumeRef.current?.(0)
+  }, [])
+
+  /**
+   * 启动播放电平采样（幂等）。
+   *
+   * 采样对象是 TTS 真正输出到扬声器的信号（analyser 串在 source → destination
+   * 之间，透明转发不影响出声），播放结束由循环自行收尾：队列空且当前无在播
+   * buffer 时停止并归零，不依赖调用方记得关。
+   */
+  const startTtsPlaybackSampling = useCallback(() => {
+    if (ttsVolumeTimerRef.current != null) return
+    ttsVolumeTimerRef.current = setInterval(() => {
+      const analyser = ttsAnalyserRef.current
+      const buffer = ttsSampleBufferRef.current
+      if (analyser && buffer) {
+        analyser.getByteTimeDomainData(buffer)
+        let sum = 0
+        for (let i = 0; i < buffer.length; i += 1) {
+          const centered = (buffer[i] - 128) / 128
+          sum += centered * centered
+        }
+        onPlaybackVolumeRef.current?.(Math.sqrt(sum / buffer.length))
+      }
+      if (!isPlayingRef.current && ttsQueueRef.current.length === 0) {
+        stopTtsPlaybackSampling()
+      }
+    }, TTS_VOLUME_SAMPLE_INTERVAL_MS)
+  }, [stopTtsPlaybackSampling])
+
   const playTtsQueue = useCallback(async () => {
     if (isPlayingRef.current) return
     const item = ttsQueueRef.current.shift()
@@ -278,33 +338,61 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       if (!ttsAudioContextRef.current) {
         ttsAudioContextRef.current = new AudioContext({ sampleRate: 24000 })
       }
-      const audioBuffer = await ttsAudioContextRef.current.decodeAudioData(
+      const ctx = ttsAudioContextRef.current
+
+      // 播放电平分析链只建一次并复用：analyser 透明转发（analyser → destination），
+      // 不影响出声；每段 TTS 都新建会持续累积未释放的音频节点
+      if (!ttsAnalyserRef.current) {
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 512
+        analyser.smoothingTimeConstant = 0.6
+        analyser.connect(ctx.destination)
+        ttsAnalyserRef.current = analyser
+        ttsSampleBufferRef.current = new Uint8Array(analyser.frequencyBinCount)
+      }
+
+      const audioBuffer = await ctx.decodeAudioData(
         Uint8Array.from(atob(item.data), c => c.charCodeAt(0)).buffer
       )
-      const source = ttsAudioContextRef.current.createBufferSource()
+      const source = ctx.createBufferSource()
       source.buffer = audioBuffer
-      source.connect(ttsAudioContextRef.current.destination)
+      source.connect(ttsAnalyserRef.current ?? ctx.destination)
       source.onended = () => {
         isPlayingRef.current = false
         // 播放下一个
         if (ttsQueueRef.current.length > 0) {
           playTtsQueue()
+        } else {
+          // 队列已空：立刻收尾归零，不等采样循环下一拍
+          stopTtsPlaybackSampling()
         }
       }
+      startTtsPlaybackSampling()
       source.start()
     } catch {
       isPlayingRef.current = false
+      stopTtsPlaybackSampling()
     }
-  }, [])
+  }, [startTtsPlaybackSampling, stopTtsPlaybackSampling])
 
   const stopTtsPlayback = useCallback(() => {
     ttsQueueRef.current = []
     isPlayingRef.current = false
+    // 先停采样并归零：AudioContext 关掉后 analyser 读不到数据，
+    // 不停就会把口型留在最后一次的开合值上
+    stopTtsPlaybackSampling()
     if (ttsAudioContextRef.current) {
+      try {
+        ttsAnalyserRef.current?.disconnect()
+      } catch {
+        /* 忽略重复断开 */
+      }
       ttsAudioContextRef.current.close()
       ttsAudioContextRef.current = null
     }
-  }, [])
+    ttsAnalyserRef.current = null
+    ttsSampleBufferRef.current = null
+  }, [stopTtsPlaybackSampling])
 
   // ============================================================
   // 即时 TTS 播放（用于工具调用前的语音预告）

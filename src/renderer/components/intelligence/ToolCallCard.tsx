@@ -22,6 +22,8 @@ import { TOOL_LABEL_KEYS } from './toolCallCard/helpers'
 import { getStatusText } from './toolCallCard/statusTextRegistry'
 import { renderToolPreview } from './toolCallCard/previewRegistry'
 import { ToolElapsedTime } from './toolCallCard/ToolElapsedTime'
+import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter'
+import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
 
 interface ToolCallCardProps {
   toolCall: ToolCall
@@ -80,6 +82,15 @@ const ToolCallCard = memo(function ToolCallCard({
   onReject,
   defaultExpanded,
 }: ToolCallCardProps) {
+  /**
+   * 计量卡片的实际重渲染次数。
+   *
+   * 本组件是 memo 组件，因此这个计数只在 props 身份变化时才涨。把它与
+   * 「当前卡片总数」相除，就能回答「一次提交重渲染了几张卡片」：
+   * 比值接近 0 说明记忆化生效，接近 1 说明 ToolCall 对象在无谓地重建。
+   */
+  perfTrace.bump(PERF_TRACE_COUNTERS.toolCardRenders)
+
   const { language, setTerminalVisible, currentTheme, expandToolCallsByDefault } = useStore(
     useShallow((state) => ({
       language: state.language,
@@ -247,11 +258,6 @@ const ToolCallCard = memo(function ToolCallCard({
 
   return (
     <div className={`group my-0.5 relative ${cardStyle}`}>
-      {(isStreaming || isRunning) && (
-        <div className="absolute inset-0 pointer-events-none rounded-lg overflow-hidden">
-          <div className="absolute inset-0 w-[200%] h-full bg-gradient-to-r from-transparent via-accent/10 to-transparent tool-card-sweep" />
-        </div>
-      )}
 
       <div
         className="flex min-h-[32px] items-center gap-2 py-1.5 cursor-pointer select-none"
@@ -271,7 +277,7 @@ const ToolCallCard = memo(function ToolCallCard({
 
         <div className="flex-1 min-w-0 flex items-center justify-between gap-2 overflow-hidden relative z-10">
           <span
-            className={`text-[12px] truncate ${isStreaming || isRunning ? 'text-text-primary tool-text-shimmer' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}
+            className={`text-[12px] truncate ${isStreaming || isRunning ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}
           >
             {statusText || (
               <span className="opacity-50 inline-flex items-center gap-1.5">

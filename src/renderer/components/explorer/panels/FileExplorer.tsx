@@ -262,10 +262,8 @@ export function ExplorerView() {
   }, [workspacePath, refreshFiles, updateGitStatus])
 
   const handleOpenFolder = async () => {
-    const path = await api.file.openFolder()
-    if (path && typeof path === 'string') {
-      await workspaceManager.openFolder(path)
-    }
+    // 选择器同时接受文件夹与 .aweeclaw-workspace 文件（多根）
+    await workspaceManager.openFolderFromDialog()
   }
 
   const handleStartCreate = useCallback((path: string, type: 'file' | 'folder') => {

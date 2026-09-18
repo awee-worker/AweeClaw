@@ -1,7 +1,7 @@
 /**
  * 文件菜单定义
  *
- * 包含：新建窗口、打开文件夹、添加文件夹、保存工作区、保存文件、刷新、最近工作区
+ * 包含：打开文件夹、添加文件夹、保存工作区、保存文件、刷新、最近工作区
  */
 
 import type { BrowserWindow, MenuItemConstructorOptions } from 'electron'
@@ -50,12 +50,6 @@ export function buildFileMenu(ctx: FileMenuContext): MenuItemConstructorOptions 
       : [{ label: t(lang, 'noRecentWorkspaces'), enabled: false }]
 
   const submenu: MenuItemConstructorOptions[] = [
-    {
-      label: t(lang, 'newWindow'),
-      accelerator: 'CmdOrCtrl+Shift+N',
-      click: createCommandSender(getWin, 'new-window'),
-    },
-    { type: 'separator' },
     {
       label: t(lang, 'openFolder'),
       accelerator: 'CmdOrCtrl+O',

@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import {
   Search, FolderOpen, Settings, Terminal,
   MessageSquare, History, Trash2, RefreshCw, Save,
-  X, Zap, Keyboard, Sparkles, Plus, FolderPlus, PanelRight,
+  X, Zap, Keyboard, Sparkles, FolderPlus, PanelRight,
   Clock, Shield, BookOpen, Layers
 } from 'lucide-react'
 import { useStore, useModeStore } from '@store'
@@ -13,14 +13,15 @@ import { useAgentHistoryActions } from '@hooks/useAgent'
 import {t, type Language} from '@renderer/i18n'
 import { keybindingService, formatShortcut, isMac } from '@services/keybindingAdapter'
 import { aweeclawDir } from '@services/appDirService'
+import { workspaceManager } from '@services/WorkspaceAdapter'
 import { StorageService } from '@shared/toolkit/StorageService'
 import { toast } from '@components/foundation/NotificationProvider'
 import { useElevatedToastLayer } from '@components/foundation/toastLayerStore'
 
 interface HubCommand {
   id: string
-  label: string
-  description?: string
+  labelKey: string
+  descriptionKey?: string
   icon: typeof Search
   category: string
   action: () => void
@@ -36,6 +37,18 @@ interface CommandHubProps {
 
 const RECENT_KEY = 'command_hub_recent'
 
+/** 分组标题到 i18n key 的映射，未收录的分组回退为原文 */
+const CATEGORY_LABEL_KEYS: Record<string, string> = {
+  AI: 'commandHub.category.ai',
+  File: 'commandHub.category.file',
+  Workspace: 'commandHub.category.workspace',
+  Navigation: 'commandHub.category.navigation',
+  View: 'commandHub.category.view',
+  Preferences: 'commandHub.category.preferences',
+  Help: 'commandHub.category.help',
+  Maintenance: 'commandHub.category.maintenance',
+}
+
 function loadRecentCommands(): string[] {
   return StorageService.get<string[]>(RECENT_KEY) || []
 }
@@ -48,10 +61,12 @@ function saveRecentCommand(id: string) {
 
 const HubCommandRow = memo(function HubCommandRow({
   command,
+  language,
   isSelected,
   onSelect,
 }: {
   command: HubCommand
+  language: Language
   isSelected: boolean
   onSelect: () => void
 }) {
@@ -72,9 +87,9 @@ const HubCommandRow = memo(function HubCommandRow({
       </div>
 
       <div className="flex-1 min-w-0 flex flex-col justify-center">
-        <div className={`text-[13px] font-medium transition-colors leading-tight ${isSelected ? 'text-text-primary' : ''}`}>{command.label}</div>
-        {command.description && (
-          <div className={`text-[11px] truncate transition-opacity leading-tight mt-0.5 ${isSelected ? 'text-text-secondary opacity-80' : 'text-text-muted opacity-50'}`}>{command.description}</div>
+        <div className={`text-[13px] font-medium transition-colors leading-tight ${isSelected ? 'text-text-primary' : ''}`}>{t(command.labelKey, language)}</div>
+        {command.descriptionKey && (
+          <div className={`text-[11px] truncate transition-opacity leading-tight mt-0.5 ${isSelected ? 'text-text-secondary opacity-80' : 'text-text-muted opacity-50'}`}>{t(command.descriptionKey, language)}</div>
         )}
       </div>
 
@@ -148,8 +163,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
   const commands: HubCommand[] = [
     {
       id: 'ai-chat',
-      label: 'Ask AI...',
-      description: 'Start a new chat conversation',
+      labelKey: 'commandHub.cmd.ai-chat',
+      descriptionKey: 'commandHub.cmdDesc.ai-chat',
       icon: Sparkles,
       category: 'AI',
       action: () => { setChatVisible(true); setMode('chat'); if (query) setInputPrompt(query) },
@@ -157,8 +172,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'ai-explain',
-      label: 'Explain Current File',
-      description: 'Ask AI to explain the active file',
+      labelKey: 'commandHub.cmd.ai-explain',
+      descriptionKey: 'commandHub.cmdDesc.ai-explain',
       icon: MessageSquare,
       category: 'AI',
       scenarioScope: ['code'],
@@ -167,8 +182,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'ai-refactor',
-      label: 'Refactor File',
-      description: 'Ask AI to suggest refactoring improvements',
+      labelKey: 'commandHub.cmd.ai-refactor',
+      descriptionKey: 'commandHub.cmdDesc.ai-refactor',
       icon: Zap,
       category: 'AI',
       scenarioScope: ['code'],
@@ -177,8 +192,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'ai-fix',
-      label: 'Fix Bugs',
-      description: 'Ask AI to find and fix bugs in current file',
+      labelKey: 'commandHub.cmd.ai-fix',
+      descriptionKey: 'commandHub.cmdDesc.ai-fix',
       icon: Shield,
       category: 'AI',
       scenarioScope: ['code'],
@@ -187,8 +202,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'ai-legal-review',
-      label: 'Legal Document Review',
-      description: 'AI-powered contract and legal document analysis',
+      labelKey: 'commandHub.cmd.ai-legal-review',
+      descriptionKey: 'commandHub.cmdDesc.ai-legal-review',
       icon: BookOpen,
       category: 'AI',
       scenarioScope: ['legal'],
@@ -197,8 +212,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'ai-medical-check',
-      label: 'Medical Safety Check',
-      description: 'Verify medical content accuracy and safety',
+      labelKey: 'commandHub.cmd.ai-medical-check',
+      descriptionKey: 'commandHub.cmdDesc.ai-medical-check',
       icon: Shield,
       category: 'AI',
       scenarioScope: ['medical'],
@@ -207,26 +222,17 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'open-folder',
-      label: 'Open Folder',
-      description: 'Open a workspace folder',
+      labelKey: 'commandHub.cmd.open-folder',
+      descriptionKey: 'commandHub.cmdDesc.open-folder',
       icon: FolderOpen,
       category: 'File',
-      action: () => api.file.openFolder(),
+      action: () => workspaceManager.openFolderFromDialog(),
       shortcut: formatShortcut('Ctrl+O'),
     },
     {
-      id: 'new-window',
-      label: 'New Window',
-      description: 'Open a new application window',
-      icon: Plus,
-      category: 'Window',
-      action: () => api.window.new(),
-      shortcut: formatShortcut('Ctrl+Shift+N'),
-    },
-    {
       id: 'add-folder',
-      label: 'Add Folder to Workspace...',
-      description: 'Add a new root folder to the current workspace',
+      labelKey: 'commandHub.cmd.add-folder',
+      descriptionKey: 'commandHub.cmdDesc.add-folder',
       icon: FolderPlus,
       category: 'Workspace',
       action: async () => {
@@ -241,8 +247,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'save-workspace',
-      label: 'Save Workspace As...',
-      description: 'Save the current multi-root workspace configuration',
+      labelKey: 'commandHub.cmd.save-workspace',
+      descriptionKey: 'commandHub.cmdDesc.save-workspace',
       icon: Save,
       category: 'Workspace',
       action: async () => {
@@ -255,8 +261,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'save-file',
-      label: 'Save File',
-      description: 'Save the current file',
+      labelKey: 'commandHub.cmd.save-file',
+      descriptionKey: 'commandHub.cmdDesc.save-file',
       icon: Save,
       category: 'File',
       action: () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: !isMac, metaKey: isMac })) },
@@ -264,16 +270,16 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'refresh-files',
-      label: 'Refresh File Explorer',
-      description: 'Reload the file tree',
+      labelKey: 'commandHub.cmd.refresh-files',
+      descriptionKey: 'commandHub.cmdDesc.refresh-files',
       icon: RefreshCw,
       category: 'File',
       action: async () => { if (workspacePath) { const files = await api.file.readDir(workspacePath); if (files) useStore.getState().setFiles(files) } },
     },
     {
       id: 'quick-open',
-      label: 'Go to File...',
-      description: 'Search and open files by name',
+      labelKey: 'commandHub.cmd.quick-open',
+      descriptionKey: 'commandHub.cmdDesc.quick-open',
       icon: Search,
       category: 'Navigation',
       action: () => setShowQuickOpen(true),
@@ -281,8 +287,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'toggle-terminal',
-      label: terminalVisible ? 'Hide Terminal' : 'Show Terminal',
-      description: 'Toggle the terminal panel',
+      labelKey: terminalVisible ? 'commandHub.cmd.hide-terminal' : 'commandHub.cmd.show-terminal',
+      descriptionKey: 'commandHub.cmdDesc.toggle-terminal',
       icon: Terminal,
       category: 'View',
       action: () => setTerminalVisible(!terminalVisible),
@@ -290,8 +296,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'toggle-ai-panel',
-      label: chatVisible ? 'Hide AI Panel' : 'Show AI Panel',
-      description: 'Toggle the AI assistant panel',
+      labelKey: chatVisible ? 'commandHub.cmd.hide-ai-panel' : 'commandHub.cmd.show-ai-panel',
+      descriptionKey: 'commandHub.cmdDesc.toggle-ai-panel',
       icon: PanelRight,
       category: 'View',
       action: () => setChatVisible(!chatVisible),
@@ -299,8 +305,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'open-workflow',
-      label: 'Open Workflow',
-      description: 'Multi-agent collaboration workflow',
+      labelKey: 'commandHub.cmd.open-workflow',
+      descriptionKey: 'commandHub.cmdDesc.open-workflow',
       icon: Layers,
       category: 'AI',
       action: () => setShowWorkflow(true),
@@ -308,8 +314,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'settings',
-      label: 'Open Settings',
-      description: 'Configure API keys and preferences',
+      labelKey: 'commandHub.cmd.settings',
+      descriptionKey: 'commandHub.cmdDesc.settings',
       icon: Settings,
       category: 'Preferences',
       action: () => setShowSettingsPage(true),
@@ -317,8 +323,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'keyboard-shortcuts',
-      label: 'Keyboard Shortcuts',
-      description: 'View all keyboard shortcuts',
+      labelKey: 'commandHub.cmd.keyboard-shortcuts',
+      descriptionKey: 'commandHub.cmdDesc.keyboard-shortcuts',
       icon: Keyboard,
       category: 'Help',
       action: () => onShowKeyboardShortcuts(),
@@ -326,24 +332,24 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
     {
       id: 'about',
-      label: 'About AweeClaw',
-      description: 'View application information',
+      labelKey: 'commandHub.cmd.about',
+      descriptionKey: 'commandHub.cmdDesc.about',
       icon: MessageSquare,
       category: 'Help',
       action: () => setShowAbout(true),
     },
     {
       id: 'clear-chat',
-      label: 'Clear Chat History',
-      description: 'Remove all messages from the chat',
+      labelKey: 'commandHub.cmd.clear-chat',
+      descriptionKey: 'commandHub.cmdDesc.clear-chat',
       icon: Trash2,
       category: 'Maintenance',
       action: () => clearMessages(),
     },
     {
       id: 'clear-checkpoints',
-      label: 'Clear All Checkpoints',
-      description: 'Remove all saved checkpoints',
+      labelKey: 'commandHub.cmd.clear-checkpoints',
+      descriptionKey: 'commandHub.cmdDesc.clear-checkpoints',
       icon: History,
       category: 'Maintenance',
       action: () => clearCheckpoints(),
@@ -351,18 +357,24 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
   ]
 
   const FILTERS = [
-    { id: 'all', label: 'All' },
-    { id: 'recent', label: 'Recent', icon: Clock },
-    { id: 'AI', label: 'AI' },
-    { id: 'File', label: 'File' },
-    { id: 'View', label: 'View' },
+    { id: 'all', labelKey: 'commandHub.filter.all' },
+    { id: 'recent', labelKey: 'commandHub.filter.recent', icon: Clock },
+    { id: 'AI', labelKey: 'commandHub.filter.ai' },
+    { id: 'File', labelKey: 'commandHub.filter.file' },
+    { id: 'View', labelKey: 'commandHub.filter.view' },
   ]
 
   const filteredCommands = commands.filter(cmd => {
     if (activeFilter === 'recent') return recentIds.current.includes(cmd.id)
     if (activeFilter !== 'all') return cmd.category === activeFilter
     if (!query) return true
-    const searchStr = `${cmd.label} ${cmd.description || ''} ${cmd.category}`.toLowerCase()
+    // 同时匹配当前语言与英文文案，保证两种语言下都能搜到
+    const searchStr = [
+      t(cmd.labelKey, language),
+      cmd.descriptionKey ? t(cmd.descriptionKey, language) : '',
+      t(cmd.labelKey, 'en'),
+      cmd.category,
+    ].join(' ').toLowerCase()
     return searchStr.includes(query.toLowerCase())
   })
 
@@ -444,7 +456,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
               className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold transition-all ${activeFilter === f.id ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary hover:bg-white/5'}`}
             >
               {f.icon && <f.icon className="w-3 h-3" />}
-              {f.label}
+              {t(f.labelKey, language)}
             </button>
           ))}
         </div>
@@ -459,7 +471,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
           {Object.entries(groupedCommands).map(([category, cmds]) => (
             <div key={category} className="mb-1.5">
               <div className="px-5 py-1 text-[10px] font-black uppercase tracking-[0.15em] text-text-muted/50 sticky top-0 bg-background/95 backdrop-blur-md z-10">
-                {category}
+                {t(CATEGORY_LABEL_KEYS[category] || category, language)}
               </div>
               <div className="space-y-0.5 px-1">
                 {cmds.map((cmd) => {
@@ -470,6 +482,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
                         command={cmd}
                         isSelected={idx === selectedIndex}
                         onSelect={() => executeCommand(cmd)}
+                        language={language}
                       />
                     </div>
                   )
@@ -492,15 +505,15 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
           <div className="flex gap-3">
             <span className="flex items-center gap-1">
               <kbd className="font-sans bg-surface/70 border border-border/40 px-1 py-0.5 rounded min-w-[14px] text-center text-[9px]">↑↓</kbd>
-              <span>navigate</span>
+              <span>{t('navigate', language)}</span>
             </span>
             <span className="flex items-center gap-1">
               <kbd className="font-sans bg-surface/70 border border-border/40 px-1.5 py-0.5 rounded text-[9px]">↵</kbd>
-              <span>run</span>
+              <span>{t('commandHub.footer.run', language)}</span>
             </span>
             <span className="flex items-center gap-1">
               <kbd className="font-sans bg-surface/70 border border-border/40 px-1.5 py-0.5 rounded text-[9px]">esc</kbd>
-              <span>close</span>
+              <span>{t('commandHub.footer.close', language)}</span>
             </span>
           </div>
           <div className="flex items-center gap-1.5 opacity-40">

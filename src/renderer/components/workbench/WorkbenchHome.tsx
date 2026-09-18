@@ -782,14 +782,19 @@ export default function WorkbenchHome() {
   }, [setChatVisible, setShowWelcomePage, setActiveSidePanel, createThread])
 
   const handleOpenFolder = useCallback(async () => {
-    try {
-      const result = await api.file.openFolder()
-      if (result && typeof result === 'string') {
-        await workspaceManager.openFolder(result)
-        setShowWelcomePage(false)
-      }
-    } catch (e) {
-      logger.ui.error('[WorkbenchHome] Failed to open folder:', e)
+    // 选择器同时接受文件夹与 .aweeclaw-workspace 文件（多根）
+    const outcome = await workspaceManager.openFolderFromDialog()
+
+    if (outcome.status === 'opened') {
+      setShowWelcomePage(false)
+    } else if (outcome.status === 'redirected') {
+      // 该工作区已在其他窗口打开：主进程已聚焦那个窗口，这里只做提示
+      toast.info(t('workspace.alreadyOpenElsewhere', language))
+    } else if (outcome.status === 'invalid') {
+      toast.error(t('workspace.invalidTarget', language))
+    } else if (outcome.status === 'missing') {
+      toast.error(t('workspace.folderNotExist', language), getFileName(outcome.path))
+    } else if (outcome.status === 'failed') {
       toast.error(t('workspace.openFolderFailed', language))
     }
   }, [language, setShowWelcomePage])

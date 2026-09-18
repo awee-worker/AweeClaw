@@ -428,14 +428,31 @@
     var BENIGN_ERRORS = [
       'ResizeObserver loop completed with undelivered notifications',
       'ResizeObserver loop limit exceeded',
+      // 编辑器卸载时会取消进行中的语法请求，模型销毁也会打断挂起的读取，
+      // 两者都以 Promise 拒绝的形式冒泡到全局，但并不代表任何真实故障
+      'inmemory://model',
+      'TextModel got disposed before DiffEditorWidget',
     ];
     function isBenignError(msg) {
       if (!msg) return false;
       var m = String(msg);
       return BENIGN_ERRORS.some(function (b) { return m.indexOf(b) !== -1; });
     }
+    // 取消类错误：name 与 message 均为 Canceled（编辑器取消请求时的固定写法）。
+    // 这里只做全等判断，避免把带其他描述的请求中止一并吞掉。
+    function isCanceledReason(reason) {
+      if (!reason) return false;
+      if (String(reason.name || '') === 'Canceled') return true;
+      return String(reason.message || '') === 'Canceled';
+    }
+    // 加载动画移除即表示应用已就绪，此后运行期错误由 AppErrorHandler 统一收口，
+    // 这里退场，避免同一个错误被打印两份
+    function isStartupPhase() {
+      return !!document.getElementById('initial-loader');
+    }
     window.addEventListener('error', function (e) {
       if (isBenignError(e.message)) return;
+      if (!isStartupPhase()) return;
       var statusEl = document.querySelector('#initial-loader .loader-status');
       if (statusEl) {
         statusEl.textContent = 'Error: ' + (e.message || 'Unknown error');
@@ -450,8 +467,11 @@
     });
     window.addEventListener('unhandledrejection', function (e) {
       var reason = e.reason;
+      // 取消类错误在设计上就是预期结果，既不展示也不记录
+      if (isCanceledReason(reason)) return;
       var msg = reason && reason.message ? reason.message : reason;
       if (isBenignError(msg)) return;
+      if (!isStartupPhase()) return;
       var statusEl = document.querySelector('#initial-loader .loader-status');
       if (statusEl) {
         statusEl.textContent = 'Promise Error: ' + (msg || 'Unknown');

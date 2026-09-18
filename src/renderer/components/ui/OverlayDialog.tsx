@@ -64,8 +64,8 @@ export const OverlayDialog: React.FC<ModalProps> = memo(function OverlayDialog({
       >
         {!disableGlassEffect && (
           <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
-            <div className="modal-orb-glow absolute top-[-20%] right-[-10%] w-[50%] h-[50%] bg-accent/5 rounded-full blur-[100px]" />
-            <div className="modal-orb-glow absolute bottom-[-20%] left-[-10%] w-[40%] h-[40%] bg-accent/3 rounded-full blur-[80px]" />
+            <div className="modal-orb-glow absolute top-[-20%] right-[-10%] w-[50%] h-[50%]" />
+            <div className="modal-orb-glow absolute bottom-[-20%] left-[-10%] w-[40%] h-[40%]" />
           </div>
         )}
         {title && (

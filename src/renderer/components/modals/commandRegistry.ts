@@ -22,7 +22,6 @@ import {
   Zap,
   Keyboard,
   Sparkles,
-  Plus,
   FolderPlus,
   PanelRight,
   type LucideIcon,
@@ -123,13 +122,6 @@ const STATIC_COMMANDS: CommandDefinition[] = [
     description: 'Open a workspace folder',
     icon: FolderOpen,
     category: 'File',
-  },
-  {
-    id: 'new-window',
-    label: 'New Window',
-    description: 'Open a new application window',
-    icon: Plus,
-    category: 'Window',
   },
   {
     id: 'add-folder',
@@ -330,7 +322,6 @@ function executeCommand(id: string, ctx: CommandContext): void {
       break
     // 以下命令需要外部 API，由调用方处理
     case 'open-folder':
-    case 'new-window':
     case 'add-folder':
     case 'save-workspace':
     case 'save-file':

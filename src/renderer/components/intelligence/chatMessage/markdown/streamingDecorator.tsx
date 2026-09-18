@@ -5,7 +5,14 @@
 import React from 'react'
 import { stripToolCallLeaks } from '@intelligence/utils/toolCallSanitizer'
 
-const STREAMING_TAIL_LENGTH = 40
+/**
+ * 尾部窗口字符数。
+ *
+ * 窗口内每个字符都是一个独立行内节点，窗口越大，每次推进要更新的节点越多。
+ * 这里保留窗口只是为了给「尾部区域」一个稳定的节点边界，不再承载动画效果，
+ * 因此取一个足够小的值。
+ */
+const STREAMING_TAIL_LENGTH = 12
 
 /** 清理流式内容中的工具调用泄漏 */
 export function cleanStreamingContent(text: string): string {
@@ -13,7 +20,16 @@ export function cleanStreamingContent(text: string): string {
   return stripToolCallLeaks(text)
 }
 
-/** 渲染流式尾部文本，为尾部字符添加逐字动画 */
+/**
+ * 渲染流式尾部文本
+ *
+ * 窗口内的 key 必须取相对序号：尾部窗口随内容增长整体右移，若用字符在全文中的
+ * 绝对下标作 key，每次刷新所有节点的下标都会改变，React 只能把它们全部卸载重建，
+ * 成为流式期间的主要渲染开销；相对序号在窗口内稳定，节点得以复用。
+ *
+ * 节点本身不携带动画：逐字淡入落在 `display: inline` 元素上无法参与合成，
+ * 只能回退到渲染主线程逐帧重绘，成本随窗口大小放大，已从样式层移除。
+ */
 export function renderStreamingTailText(value: string, key: string): React.ReactNode {
   if (!value) return value
 
@@ -26,14 +42,11 @@ export function renderStreamingTailText(value: string, key: string): React.React
   return (
     <React.Fragment key={key}>
       {stableText}
-      {animatedTail.split('').map((char, i) => {
-        const charIndex = value.length - tailLength + i
-        return (
-          <span key={`${key}-${charIndex}`} className="inline-stream-char">
-            {char}
-          </span>
-        )
-      })}
+      {animatedTail.split('').map((char, i) => (
+        <span key={i} className="inline-stream-char">
+          {char}
+        </span>
+      ))}
     </React.Fragment>
   )
 }

@@ -442,8 +442,9 @@ global.window = windowMock as any
     maximize: vi.fn(),
     close: vi.fn(),
     toggleDevTools: vi.fn(),
-    newWindow: vi.fn(),
     getWindowId: vi.fn(() => 1),
+    isPrimaryWindow: vi.fn(() => true),
+    onPrimaryChanged: vi.fn(() => vi.fn()),
     resizeWindow: vi.fn(),
     setTheme: vi.fn(),
     // File dialog operations

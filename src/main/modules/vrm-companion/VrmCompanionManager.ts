@@ -77,6 +77,17 @@ const POINTER_STATE_CHANNEL = 'vrm-companion:pointer-state'
 const POINTER_POLL_INTERVAL_MS = 50
 
 /**
+ * 指针在窗口外时的轮询间隔（ms）。
+ *
+ * 窗外时唯一要做的事是「发现指针移入」，不需要视线跟随的精度；
+ * 降频后空跑成本降到约 1/4（用户大部分时间鼠标并不在伴侣窗口上）。
+ */
+const POINTER_POLL_IDLE_INTERVAL_MS = 200
+
+/** 归一化坐标变化小于该值视为「手没动」，不重复下发（省 IPC 与渲染层命中检测） */
+const POINTER_MOVE_EPSILON = 0.001
+
+/**
  * 窗口可见性变化频道（主进程 → 伴侣窗口自身）。
  *
  * 载荷：{ visible: boolean }
@@ -121,11 +132,20 @@ export class VrmCompanionManager {
   /** 窗口当前是否已被设置为「忽略鼠标事件」，避免重复调用 setIgnoreMouseEvents */
   private mouseIgnored = false
 
-  /** 指针轮询计时器（仅穿透生效期间运行） */
-  private pointerPollTimer: ReturnType<typeof setInterval> | null = null
+  /** 指针轮询调度句柄（递归 setTimeout，间隔随指针是否在窗内自适应） */
+  private pointerPollTimer: ReturnType<typeof setTimeout> | null = null
 
   /** 上一轮轮询时指针是否在窗口内（用于窗口外时停止刷 IPC） */
   private lastPointerInside = false
+
+  /**
+   * 上一轮下发的归一化指针坐标（NaN = 尚未下发过）。
+   *
+   * 用 NaN 作哨兵：窗口重新显示后首次轮询必然通过「坐标已变化」判定，
+   * 不会因初始值恰好落在比较阈值内而被跳过。
+   */
+  private lastPointerX = Number.NaN
+  private lastPointerY = Number.NaN
 
   private constructor() {}
 
@@ -175,7 +195,10 @@ export class VrmCompanionManager {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
-        // 3D 渲染需要持续绘制，禁用后台节流避免隐藏时停止动画
+        // 关闭后台节流：窗口置顶可见时不能被系统当作后台页面降频（否则角色动作会卡）。
+        // 代价是「窗口隐藏后 rAF 也不会自动停」，所以渲染层必须依靠
+        // visibility-changed 显式停掉渲染循环（见 VrmStage 的 active 门控）——
+        // 这也是「关闭伴侣后 CPU 不降」曾经的根本原因。
         backgroundThrottling: false,
         webgl: true,
         // TTS 语音播放无需用户手势（Electron 39 该选项位于 webPreferences 层）
@@ -624,15 +647,35 @@ export class VrmCompanionManager {
 
   private startPointerPoll(): void {
     if (this.pointerPollTimer) return
-    this.pointerPollTimer = setInterval(() => this.pollPointer(), POINTER_POLL_INTERVAL_MS)
+    this.schedulePointerPoll(POINTER_POLL_INTERVAL_MS)
+  }
+
+  /**
+   * 安排下一次指针轮询。
+   *
+   * 用递归 setTimeout 而不是 setInterval：间隔需要随「指针是否在窗内」变化，
+   * setInterval 只能固定频率，窗外时段也得按 20Hz 空跑。
+   */
+  private schedulePointerPoll(delay: number): void {
+    const timer = setTimeout(() => {
+      this.pointerPollTimer = null
+      const next = this.pollPointer()
+      if (next != null) this.schedulePointerPoll(next)
+    }, delay)
+    // 定时器不阻塞进程退出
+    ;(timer as unknown as { unref?: () => void }).unref?.()
+    this.pointerPollTimer = timer
   }
 
   private stopPointerPoll(): void {
     if (this.pointerPollTimer) {
-      clearInterval(this.pointerPollTimer)
+      clearTimeout(this.pointerPollTimer)
       this.pointerPollTimer = null
     }
     this.lastPointerInside = false
+    // 哨兵值：窗口重新显示后首次轮询必然通过「坐标已变化」判定，不会漏发
+    this.lastPointerX = Number.NaN
+    this.lastPointerY = Number.NaN
   }
 
   /**
@@ -642,31 +685,56 @@ export class VrmCompanionManager {
    * 这里强制解除接管 —— 否则窗口会永久挡住桌面点击（用户感知为「鼠标穿透失效」）。
    * 触发场景：渲染层卡顿 / 窗口被拖走 / 系统吞掉了 mouseup。
    */
-  private pollPointer(): void {
+  /**
+   * 轮询鼠标屏幕坐标并推送给渲染层。
+   *
+   * 附带安全兜底：一旦指针已经离开窗口，而渲染层还没上报「不再压住操作栏」，
+   * 这里强制解除接管 —— 否则窗口会永久挡住桌面点击（用户感知为「鼠标穿透失效」）。
+   * 触发场景：渲染层卡顿 / 窗口被拖走 / 系统吞掉了 mouseup。
+   *
+   * @returns 下一次轮询的间隔（ms）；null 表示应当停止轮询
+   */
+  private pollPointer(): number | null {
     const win = this.window
-    if (!win || win.isDestroyed() || !win.isVisible()) {
-      this.stopPointerPoll()
-      return
-    }
+    if (!win || win.isDestroyed() || !win.isVisible()) return null
 
     const cursor = screen.getCursorScreenPoint()
-    const [x, y] = win.getPosition()
-    const [w, h] = win.getSize()
-    const inside = cursor.x >= x && cursor.x < x + w && cursor.y >= y && cursor.y < y + h
+    // 一次 getBounds 取代 getPosition + getSize 两次系统调用：
+    // 本方法以 20Hz 常驻运行，省下的系统调用是稳定的净收益
+    const bounds = win.getBounds()
+    const inside =
+      cursor.x >= bounds.x &&
+      cursor.x < bounds.x + bounds.width &&
+      cursor.y >= bounds.y &&
+      cursor.y < bounds.y + bounds.height
 
     if (!inside && this.pointerOverInteractive) {
       this.setPointerInteractive(false)
     }
 
     // 指针在窗口外时只在「刚离开」的那一次下发，避免空转刷 IPC
-    if (!inside && !this.lastPointerInside) return
-    this.lastPointerInside = inside
+    if (inside || this.lastPointerInside) {
+      this.lastPointerInside = inside
 
-    this.send(POINTER_STATE_CHANNEL, {
-      inside,
-      x: inside ? ((cursor.x - x) / w) * 2 - 1 : 0,
-      y: inside ? ((cursor.y - y) / h) * 2 - 1 : 0,
-    })
+      const nx = inside ? ((cursor.x - bounds.x) / bounds.width) * 2 - 1 : 0
+      const ny = inside ? ((cursor.y - bounds.y) / bounds.height) * 2 - 1 : 0
+
+      // 归一化坐标没变就不下发：渲染层收到后要做一次 elementFromPoint 命中检测，
+      // 手不动时这条 IPC 唯一的效果就是让它白白算一遍
+      const moved =
+        Number.isNaN(this.lastPointerX) ||
+        Math.abs(nx - this.lastPointerX) >= POINTER_MOVE_EPSILON ||
+        Math.abs(ny - this.lastPointerY) >= POINTER_MOVE_EPSILON
+
+      if (moved) {
+        this.lastPointerX = nx
+        this.lastPointerY = ny
+        this.send(POINTER_STATE_CHANNEL, { inside, x: nx, y: ny })
+      }
+    }
+
+    // 窗外时降频：这段时间唯一要做的事是「发现指针移入」
+    return inside ? POINTER_POLL_INTERVAL_MS : POINTER_POLL_IDLE_INTERVAL_MS
   }
 
   /** 设置置顶 */

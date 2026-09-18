@@ -131,8 +131,6 @@ function buildFileMenu(tr: Tr, recentWorkspaces: RecentWorkspaceEntry[]): AppMen
       : [{ kind: 'command', label: tr('menu.noRecentWorkspaces'), commandId: '', disabled: true }]
 
   return [
-    { kind: 'command', label: tr('menu.newWindow'), accelerator: 'Ctrl+Shift+N', commandId: 'new-window' },
-    { kind: 'separator' },
     { kind: 'command', label: tr('menu.openFolder'), accelerator: 'Ctrl+O', commandId: 'open-folder' },
     { kind: 'command', label: tr('menu.addFolderToWorkspace'), accelerator: 'Ctrl+Shift+O', commandId: 'add-folder' },
     { kind: 'command', label: tr('menu.saveWorkspaceAs'), commandId: 'save-workspace' },

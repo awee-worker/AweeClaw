@@ -68,11 +68,11 @@ export function dispatchMenuCommand(
         break
 
       // ===== 文件菜单 =====
-      case 'new-window':
-        api.window.new()
-        break
       case 'open-folder':
-        api.workspace.open()
+        // 与顶部工作区菜单共用同一链路：选择器同时接受文件夹与多根工作区文件
+        void workspaceManager.openFolderFromDialog().catch((err) => {
+          logger.system.error('[MenuBridge] Open folder failed', err)
+        })
         break
       case 'add-folder':
         api.workspace.addFolder()

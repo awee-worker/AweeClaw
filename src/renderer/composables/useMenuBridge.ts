@@ -32,7 +32,6 @@ type MenuCommandId =
   // 应用菜单
   | 'app.about'
   // 文件菜单
-  | 'new-window'
   | 'open-folder'
   | 'add-folder'
   | 'save-workspace'

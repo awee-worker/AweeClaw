@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useCallback, useEffect, useSyncExternalStore, useState } from 'react'
+import { lazy, Suspense, useMemo, useCallback, useEffect, useRef, useSyncExternalStore, useState } from 'react'
 import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send, Lock, GitBranch } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
@@ -175,11 +175,42 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         pendingNewAgentId || settingsIntent?.agentSubTab === 'custom' ? 'custom' : 'agentConfig',
     )
 
+    // 目标设置项锚点：打开意图在挂载后即被清空，故先固化到本地 state 供滚动定位使用
+    const [targetAnchor] = useState<string | null>(settingsIntent?.anchor ?? null)
+    const scrollRegionRef = useRef<HTMLDivElement>(null)
+
     // 消费打开意图：挂载后立即清空，避免影响下次普通打开设置
     useEffect(() => {
         if (settingsIntent) setSettingsIntent(null)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    // 定位到指定设置项：面板经 lazy + Suspense 渲染，目标元素可能晚若干帧出现，故轮询重试
+    useEffect(() => {
+        if (!targetAnchor) return
+        let attempts = 0
+        let highlightTimer: ReturnType<typeof setTimeout> | undefined
+        const timer = setInterval(() => {
+            attempts += 1
+            const target = scrollRegionRef.current?.querySelector<HTMLElement>(
+                `[data-settings-anchor="${targetAnchor}"]`,
+            )
+            if (target) {
+                clearInterval(timer)
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                target.classList.add('settings-anchor-highlight')
+                highlightTimer = setTimeout(() => {
+                    target.classList.remove('settings-anchor-highlight')
+                }, 2400)
+                return
+            }
+            if (attempts >= 30) clearInterval(timer)
+        }, 100)
+        return () => {
+            clearInterval(timer)
+            if (highlightTimer) clearTimeout(highlightTimer)
+        }
+    }, [targetAnchor, state.activeTab])
 
 
 
@@ -606,7 +637,7 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                             </button>
                         )}
                     </div>
-                    <div className="settings-scroll-region flex-1 overflow-y-auto px-8 py-6 custom-scrollbar pb-28">
+                    <div ref={scrollRegionRef} className="settings-scroll-region flex-1 overflow-y-auto px-8 py-6 custom-scrollbar pb-28">
                         <div className="settings-tab-panel space-y-6">
                             <Suspense fallback={<SettingsTabFallback language={language as Language} />}>
                                 {renderActiveTab()}

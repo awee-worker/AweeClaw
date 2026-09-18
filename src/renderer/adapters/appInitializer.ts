@@ -27,7 +27,6 @@ function isZh(): boolean {
 import { restoreWorkspaceState } from './workspaceStateAdapter'
 import { mcpService } from './toolProtocolAdapter'
 import { snippetService } from './snippetAdapter'
-import { workerService } from './workerAdapter'
 import { workspaceStorageRuntime } from './workspaceStorageAdapter'
 import { dreamingScheduler } from '@intelligence/runtime/longTermMemoryService/dreamingScheduler'
 import { runWithAgentStorageWritesSuspended } from '@intelligence/state/intelligenceStorage'
@@ -271,7 +270,20 @@ async function restoreWorkspace(onWorkspaceReady?: () => void): Promise<boolean>
   return true
 }
 
-function scheduleBackgroundInit(): void {
+/**
+ * 应用级后台任务是否已启动
+ *
+ * 这些任务（云会话恢复 / 渠道连接 / 长时记忆梦境调度）在一个应用内只应存在一份：
+ * 多开窗口时若每个窗口都跑一遍，定时器和网络请求会成倍增长（新窗口一开就多出
+ * 一套 5 分钟梦境定时器与一组渠道连接）。因此只由应用级宿主窗口启动，
+ * 宿主窗口关闭后主进程移交标记并通知接管窗口，这里被再次调用时靠该标记保持幂等。
+ */
+let appScopedTasksStarted = false
+
+function startAppScopedBackgroundTasks(): void {
+  if (appScopedTasksStarted) return
+  appScopedTasksStarted = true
+
   const config = getScenarioInitConfig()
 
   scheduleIdleTask(() => {
@@ -284,32 +296,32 @@ function scheduleBackgroundInit(): void {
     }
   })
 
-  if (!config.skipNonEssentialModules) {
-    scheduleIdleTask(() => {
-      try {
-        workerService.init()
-        logger.system.debug('[Init] Worker service initialized')
-      } catch (e) {
-        logger.system.warn('[Init] Worker service init failed:', e)
-      }
-    })
+  if (config.skipNonEssentialModules) return
 
-    // 自动初始化渠道服务，确保飞书等渠道在应用启动时建立连接
-    scheduleIdleTask(() => {
-      api.channel.initialize().then(() => {
-        logger.system.info('[Init] Channel service initialized')
-      }).catch((e) => {
-        logger.system.warn('[Init] Channel service init failed:', e)
-      })
+  // 自动初始化渠道服务，确保飞书等渠道在应用启动时建立连接
+  scheduleIdleTask(() => {
+    api.channel.initialize().then(() => {
+      logger.system.info('[Init] Channel service initialized')
+    }).catch((e) => {
+      logger.system.warn('[Init] Channel service init failed:', e)
     })
+  })
 
-    scheduleIdleTask(() => {
-      try {
-        dreamingScheduler.start()
-      } catch (e) {
-        logger.system.warn('[Init] Dreaming scheduler init failed:', e)
-      }
-    })
+  scheduleIdleTask(() => {
+    try {
+      dreamingScheduler.start()
+    } catch (e) {
+      logger.system.warn('[Init] Dreaming scheduler init failed:', e)
+    }
+  })
+}
+
+function scheduleBackgroundInit(isPrimaryWindow: boolean): void {
+  // Worker 池改为按需创建（workerService.execute 首次调用时自建）：
+  // 此前在启动时无条件预创建，每个窗口都会拉起一组后台线程，
+  // 而空窗口（新建窗口）在用户打开工作区前根本用不到。
+  if (isPrimaryWindow) {
+    startAppScopedBackgroundTasks()
   }
 }
 
@@ -332,6 +344,11 @@ export async function initializeApp(
     updateStatus(isZh() ? '加载配置...' : 'Loading settings...')
     const params = new URLSearchParams(window.location.search)
     const isEmptyWindow = params.get('empty') === '1'
+    // 应用级单例任务（云会话恢复 / 渠道连接 / 记忆调度）只在宿主窗口启动；
+    // 查询失败时按宿主窗口处理，宁可多跑一次也不要让后台服务缺失
+    const isPrimaryWindow = await api.window.isPrimary().catch(() => true)
+    // 宿主窗口关闭后由主进程移交标记，接管窗口据此补启动应用级任务
+    api.window.onPrimaryChanged(() => startAppScopedBackgroundTasks())
     const savedTheme = await loadUserSettings(isEmptyWindow)
 
     if (savedTheme && isThemeName(savedTheme)) {
@@ -376,6 +393,12 @@ export async function initializeApp(
       await restoreWorkspace(onWorkspaceReady)
     }
 
+    // 没有工作区时把欢迎页显式激活为入口页：空窗口（新建窗口 / ?empty=1）不做工作区恢复，
+    // 首次启动未选择目录也走这里。欢迎页上的「打开文件夹 / 最近工作 / 新建任务」承担起始导航。
+    if (!useStore.getState().workspace?.roots?.length) {
+      useStore.getState().setShowWelcomePage(true)
+    }
+
     // 初始化 AgentRuntime（解耦循环依赖）
     updateStatus(isZh() ? '启动智能引擎...' : 'Initializing agent runtime...')
     try {
@@ -385,7 +408,7 @@ export async function initializeApp(
       logger.system.warn('[Init] AgentRuntime initialization failed:', e)
     }
 
-    scheduleBackgroundInit()
+    scheduleBackgroundInit(isPrimaryWindow)
 
     updateStatus(isZh() ? '准备就绪' : 'Ready!')
     startupMetrics.end('init-total')

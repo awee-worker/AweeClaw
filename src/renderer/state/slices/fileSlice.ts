@@ -144,10 +144,14 @@ export interface FileSlice {
   markPptPreviewComplete: (sessionId: string, filePath: string) => void
   restoreOpenFiles: (files: RestoreFileEntry[], activeFilePath?: string | null) => void
   closeFile: (path: string) => void
+  /** 批量关闭：一次状态更新删除多个 Tab（关闭全部/关闭其他/关闭右侧） */
+  closeFiles: (paths: string[]) => void
   setActiveFile: (path: string | null) => void
   updateFileContent: (path: string, content: string) => void
   updateFileDirtyState: (path: string, currentVersionId: number) => void
   markFileSaved: (path: string, versionId?: number) => void
+  /** 批量标记已保存：避免保存多个文件时逐个触发状态更新 */
+  markFilesSaved: (entries: Array<{ path: string; versionId?: number }>) => void
   reloadFileFromDisk: (path: string, content: string) => void
   markFileDeleted: (path: string) => void
   markFileRestored: (path: string) => void
@@ -181,6 +185,33 @@ function upsertOpenFile(openFiles: OpenFile[], nextFile: OpenFile): OpenFile[] {
 /** 对单个文件应用补丁 */
 function patchFile(files: OpenFile[], path: string, patch: Partial<OpenFile>): OpenFile[] {
   return files.map((f) => (f.path === path ? { ...f, ...patch } : f))
+}
+
+/**
+ * 从已打开列表中移除一组文件
+ *
+ * 关闭多个 Tab 时只允许产生一次状态更新：逐个 closeFile 会让订阅 openFiles 的
+ * 组件树渲染 N 次，同时活跃文件被反复重算，Monaco 也要跟着反复切换 model，
+ * Tab 一多就会出现「点关闭全部要等几秒」。
+ *
+ * 活跃文件只在「被关闭的文件包含当前活跃文件」时才重选，否则保持原值不动。
+ */
+function removeOpenFiles(
+  files: OpenFile[],
+  paths: Set<string>,
+  activePath: string | null,
+): Pick<FileSlice, 'openFiles' | 'activeFilePath'> {
+  if (paths.size === 0) return { openFiles: files, activeFilePath: activePath }
+
+  const openFiles = files.filter((f) => !paths.has(f.path))
+  if (openFiles.length === files.length) return { openFiles: files, activeFilePath: activePath }
+
+  const activeFilePath =
+    activePath && paths.has(activePath)
+      ? openFiles[openFiles.length - 1]?.path || null
+      : activePath
+
+  return { openFiles, activeFilePath }
 }
 
 /** LRU 淘汰：卸载最久未访问的非脏文件内容
@@ -445,14 +476,10 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
     }),
 
   closeFile: (path) =>
-    set((state) => {
-      const newOpenFiles = state.openFiles.filter((f) => f.path !== path)
-      const newActivePath =
-        state.activeFilePath === path
-          ? newOpenFiles[newOpenFiles.length - 1]?.path || null
-          : state.activeFilePath
-      return { openFiles: newOpenFiles, activeFilePath: newActivePath }
-    }),
+    set((state) => removeOpenFiles(state.openFiles, new Set([path]), state.activeFilePath)),
+
+  closeFiles: (paths) =>
+    set((state) => removeOpenFiles(state.openFiles, new Set(paths), state.activeFilePath)),
 
   setActiveFile: (path) =>
     set((state) => {
@@ -487,6 +514,18 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
           : f,
       ),
     })),
+
+  markFilesSaved: (entries) =>
+    set((state) => {
+      if (entries.length === 0) return {}
+      const savedAt = new Map(entries.map((e) => [e.path, e.versionId]))
+      return {
+        openFiles: state.openFiles.map((f) => {
+          if (!savedAt.has(f.path)) return f
+          return { ...f, isDirty: false, savedVersionId: savedAt.get(f.path) ?? f.savedVersionId }
+        }),
+      }
+    }),
 
   reloadFileFromDisk: (path, content) =>
     set((state) => ({

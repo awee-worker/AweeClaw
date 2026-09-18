@@ -32,10 +32,19 @@ function runUnloadPhases(): void {
 }
 
 /** 应用关闭请求时执行的异步清理阶段，返回整体成功状态 */
-async function runShutdownPhases(requestId: string): Promise<boolean> {
-  const agentResult = await runPhase(() => agentHarness.shutdown('app_shutdown'))
-  if (!agentResult.ok) {
-    /* 忽略 agent 关闭失败，继续后续阶段 */
+async function runShutdownPhases(
+  requestId: string,
+  reason: 'window-close' | 'app-quit',
+): Promise<boolean> {
+  // 只有应用整体退出才停机 Agent 运行时。
+  // 单个窗口关闭（多开场景下尤其常见）若也走应用级停机，一是会波及仍在运行的
+  // 其他窗口，二是停机自带 10s 超时，会把关窗流程拖到主进程等待超时为止，
+  // 用户感知为「关个窗口卡住不动」。
+  if (reason === 'app-quit') {
+    const agentResult = await runPhase(() => agentHarness.shutdown('app_shutdown'))
+    if (!agentResult.ok) {
+      /* 忽略 agent 关闭失败，继续后续阶段 */
+    }
   }
 
   const persistResult = await runPhase(() => persistAllRuntimeState())
@@ -76,8 +85,8 @@ export function useAppShutdownState(): void {
       runUnloadPhases()
     }
 
-    const unsubscribeShutdown = api.app.onShutdownRequested(async ({ requestId }) => {
-      await runShutdownPhases(requestId)
+    const unsubscribeShutdown = api.app.onShutdownRequested(async ({ requestId, reason }) => {
+      await runShutdownPhases(requestId, reason)
     })
 
     window.addEventListener('beforeunload', handleUnload)

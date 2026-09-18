@@ -193,14 +193,18 @@ function AssistantMessageViewBase({
 
     const threadId = state.currentThreadId
     const threadStreamState = threadId ? state.threads[threadId]?.streamState : undefined
-    const liveMessage = threadId
-      ? state.threads[threadId]?.messages.find(msg => msg.id === message.id && msg.role === 'assistant')
-      : undefined
     const isActiveAssistant =
       Boolean(message.isStreaming) &&
       !!threadId &&
       threadStreamState?.assistantId === message.id &&
       ACTIVE_STREAM_PHASES.has(threadStreamState?.phase ?? 'idle')
+
+    // 只有正在流式输出的那条消息才需要从 store 取实时 parts，其余消息直接用自身 props。
+    // 不做这层收窄的话，每条消息组件都会在每次 store 更新时遍历整个消息数组做一次 find，
+    // 流式期间每秒数十次更新就会退化成「消息数²」级别的扫描。
+    const liveMessage = isActiveAssistant
+      ? state.threads[threadId!]?.messages.find(msg => msg.id === message.id && msg.role === 'assistant')
+      : undefined
 
     return {
       isStreaming: isActiveAssistant,
@@ -224,13 +228,20 @@ function AssistantMessageViewBase({
     const history = state.fileChangeHistory || EMPTY_HISTORY
     const todos = thread?.todos || EMPTY_TODOS
 
-    // 判断当前消息是否为线程中最后一条助手消息
+    // 判断当前消息是否为线程中最后一条助手消息。
+    // 末条通常就是助手消息，先走 O(1) 快路径；否则才从尾部回扫（跳过已知的末条）。
+    // 该选择器会随每次 store 更新对全部消息组件各执行一次，回扫代价会被消息数放大。
     let lastAssistant = false
-    if (thread) {
-      for (let i = thread.messages.length - 1; i >= 0; i--) {
-        if (thread.messages[i].role === 'assistant') {
-          lastAssistant = thread.messages[i].id === message.id
-          break
+    if (thread && thread.messages.length > 0) {
+      const tail = thread.messages[thread.messages.length - 1]
+      if (tail.role === 'assistant') {
+        lastAssistant = tail.id === message.id
+      } else {
+        for (let i = thread.messages.length - 2; i >= 0; i--) {
+          if (thread.messages[i].role === 'assistant') {
+            lastAssistant = thread.messages[i].id === message.id
+            break
+          }
         }
       }
     }

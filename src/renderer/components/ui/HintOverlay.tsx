@@ -62,7 +62,8 @@ export function HintOverlay({ content, children, side = 'top', delay = 300, clas
   return (
     <div ref={anchorRef} onMouseEnter={show} onMouseLeave={hide} onMouseDown={hide} className={`relative inline-block ${className}`}>
       {children}
-      {createPortal(tip, document.body)}
+      {/* 未显示时不创建 portal：标签栏等场景会同时挂载大量实例，空 portal 也有调和开销 */}
+      {tip && createPortal(tip, document.body)}
     </div>
   )
 }

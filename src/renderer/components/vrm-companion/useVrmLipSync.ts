@@ -28,6 +28,12 @@ export interface VrmLipSyncOptions {
   gain?: number
 }
 
+/** 无音频输入超过该时长（ms）即视为停顿，口型目标归零 */
+const SILENCE_MS = 180
+
+/** 闭合判定阈值：低于此值直接钉到 0 并停止平滑循环 */
+const IDLE_EPSILON = 0.002
+
 export interface VrmLipSyncController {
   /** 当前嘴部开合值（0~1）。渲染循环逐帧读取此 ref，避免触发 React 重渲染 */
   mouthOpenRef: React.MutableRefObject<number>
@@ -58,12 +64,65 @@ export function useVrmLipSync(options: VrmLipSyncOptions = {}): VrmLipSyncContro
   /** 最近一次收到音频输入的时间戳（用于衰减判断） */
   const lastInputAtRef = useRef(0)
 
+  /**
+   * 平滑循环的 rAF 句柄（null = 当前空闲未运行）。
+   *
+   * 该循环按需启停而不是常驻：待机时目标与当前值长期都是 0，
+   * 常驻就是一个永不停止的 60fps 空转。
+   */
+  const smoothRafRef = useRef<number | null>(null)
+  /** 平滑循环上一帧的时间戳（用于计算衰减步长） */
+  const smoothLastTimeRef = useRef(0)
+
   /** WebAudio 资源（挂载 audio 元素时创建） */
   const audioCtxRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null)
   const dataBufferRef = useRef<Uint8Array<ArrayBuffer> | null>(null)
   const rafRef = useRef<number | null>(null)
+
+  /**
+   * 按需启动口型平滑循环。
+   *
+   * 由调用方在「有音量输入」时唤醒（见 pushVolume）；循环内部在
+   * 「目标归零且嘴已闭上」时自行退出并置空句柄，等下一次输入再唤醒。
+   *
+   * 为什么不常驻：纯待机时目标与当前值长期都是 0，常驻就是一个
+   * 永不停止的 60fps 空转（每帧都在算 0 + (0-0)*k），白白占着主线程。
+   */
+  const ensureSmoothLoop = useCallback((): void => {
+    if (smoothRafRef.current != null) return
+    smoothLastTimeRef.current = performance.now()
+
+    const tick = (now: number): void => {
+      const dt = Math.min(0.1, (now - smoothLastTimeRef.current) / 1000)
+      smoothLastTimeRef.current = now
+
+      // 超过 SILENCE_MS 无新音频输入视为停顿时隙，目标归零
+      if (now - lastInputAtRef.current > SILENCE_MS) {
+        targetRef.current = 0
+        isSpeakingRef.current = false
+      }
+
+      const current = mouthOpenRef.current
+      const target = targetRef.current
+      // 张嘴用 smoothing（快），闭嘴用衰减（稍慢，避免机械感）
+      const factor = target > current ? smoothing : Math.min(1, smoothing + decayPerSecond * dt)
+      const next = current + (target - current) * factor
+
+      // 目标为 0 且已闭合 → 收敛完成，停掉循环，不再逐帧空算
+      if (target === 0 && next < IDLE_EPSILON) {
+        mouthOpenRef.current = 0
+        smoothRafRef.current = null
+        return
+      }
+
+      mouthOpenRef.current = next
+      smoothRafRef.current = requestAnimationFrame(tick)
+    }
+
+    smoothRafRef.current = requestAnimationFrame(tick)
+  }, [decayPerSecond, smoothing])
 
   /** 外部推送音量 */
   const pushVolume = useCallback(
@@ -72,8 +131,10 @@ export function useVrmLipSync(options: VrmLipSyncOptions = {}): VrmLipSyncContro
       targetRef.current = Math.min(maxOpen, v * gain)
       lastInputAtRef.current = performance.now()
       isSpeakingRef.current = v > 0.02
+      // 有输入就唤醒平滑循环：闭嘴的衰减推进同样需要它
+      ensureSmoothLoop()
     },
-    [gain, maxOpen],
+    [ensureSmoothLoop, gain, maxOpen],
   )
 
   /**
@@ -175,40 +236,21 @@ export function useVrmLipSync(options: VrmLipSyncOptions = {}): VrmLipSyncContro
     mouthOpenRef.current = 0
     isSpeakingRef.current = false
     lastInputAtRef.current = 0
+    // 立即闭合：直接停掉平滑循环，不必等它自己收敛到 0
+    if (smoothRafRef.current != null) {
+      cancelAnimationFrame(smoothRafRef.current)
+      smoothRafRef.current = null
+    }
   }, [])
 
-  /**
-   * 全局平滑循环：把 targetRef 平滑逼近到 mouthOpenRef，
-   * 并在长时间无输入时自动衰减到 0（防止「卡住张嘴」）。
-   */
+  // 卸载时彻底释放平滑循环与 WebAudio 资源。
+  // 平滑循环本身是按需启停的（见 ensureSmoothLoop），这里只做兜底清收。
   useEffect(() => {
-    let raf = 0
-    let lastTime = performance.now()
-
-    const tick = (now: number): void => {
-      const dt = Math.min(0.1, (now - lastTime) / 1000)
-      lastTime = now
-
-      const silentMs = now - lastInputAtRef.current
-      // 超过 180ms 无新音频输入视为停顿时隙，目标归零
-      if (silentMs > 180) {
-        targetRef.current = 0
-        isSpeakingRef.current = false
-      }
-
-      const current = mouthOpenRef.current
-      const target = targetRef.current
-      // 张嘴用 smoothing（快），闭嘴用衰减（稍慢，避免机械感）
-      const factor = target > current ? smoothing : Math.min(1, smoothing + decayPerSecond * dt)
-      mouthOpenRef.current = current + (target - current) * factor
-
-      raf = requestAnimationFrame(tick)
-    }
-
-    raf = requestAnimationFrame(tick)
-
     return () => {
-      cancelAnimationFrame(raf)
+      if (smoothRafRef.current != null) {
+        cancelAnimationFrame(smoothRafRef.current)
+        smoothRafRef.current = null
+      }
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
       try {
         sourceRef.current?.disconnect()
@@ -219,7 +261,7 @@ export function useVrmLipSync(options: VrmLipSyncOptions = {}): VrmLipSyncContro
       }
       audioCtxRef.current = null
     }
-  }, [smoothing, decayPerSecond])
+  }, [])
 
   return { mouthOpenRef, attachAudioElement, pushVolume, reset, isSpeakingRef }
 }

@@ -14,7 +14,19 @@ import { logger } from '@toolkit/LogEngine'
 import type { WorkerRequest, WorkerResponse, WorkerMessageType } from '../workers/backgroundCompute'
 import { useStore } from '@store'
 
-const POOL_SIZE = Math.max(1, (navigator.hardwareConcurrency || 4) - 1)
+/**
+ * Worker 池规模上限。
+ *
+ * 池规模按 CPU 核数推导（留 1 核给主线程），但必须封顶：
+ * 24 核机器会一次性起 23 个 module worker —— 每个都是独立线程 + 独立 JS 堆，
+ * 而实际并发任务量（diff / 文本搜索）远达不到这个量级，
+ * 代价（线程调度、内存、启动耗时）全部由用户承担，收益为零。
+ * 4 路并行已足够覆盖本调度器的使用场景。
+ */
+const MAX_POOL_SIZE = 4
+
+/** 实际池规模：按核数推导后收敛到上限 */
+const POOL_SIZE = Math.min(MAX_POOL_SIZE, Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
 
 type ScenarioPriority = 'critical' | 'high' | 'normal' | 'low' | 'background'
 

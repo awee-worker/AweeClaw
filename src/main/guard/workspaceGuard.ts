@@ -367,6 +367,35 @@ async function parseWorkspaceConfig(configPath: string): Promise<string[] | null
 }
 
 /* ------------------------------------------------------------------ */
+/* 对话框父窗口解析                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 解析文件对话框的父窗口
+ *
+ * 必须优先取调用方窗口（event.sender 对应的窗口）：macOS 上 showOpenDialog 会以
+ * sheet 形式附着在父窗口上，若父窗口取的是「最后一个活跃窗口」而非发起窗口，
+ * 对话框会挂到另一个可能处于后台或被遮挡的窗口上，用户看不到任何界面，
+ * 表现为「点击打开文件夹没有反应、选不了文件夹」。
+ */
+export function resolveDialogParent(
+  event: Electron.IpcMainInvokeEvent,
+  getMainWindowFn: () => BrowserWindow | null,
+): BrowserWindow | null {
+  const senderWindow = BrowserWindow.fromWebContents(event.sender)
+  if (senderWindow && !senderWindow.isDestroyed()) {
+    return senderWindow
+  }
+
+  const mainWindow = getMainWindowFn()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return mainWindow
+  }
+
+  return null
+}
+
+/* ------------------------------------------------------------------ */
 /* IPC Handler 注册入口                                                */
 /* ------------------------------------------------------------------ */
 
@@ -384,55 +413,29 @@ export function registerWorkspaceHandlers(
   _getWorkspaceSessionFn: (event?: Electron.IpcMainInvokeEvent) => { roots: string[] } | null,
   windowManager?: WindowManagerContext,
 ): void {
-  /* -------- 文件夹打开 -------- */
+  /* -------- 打开工作区（文件夹 / 工作区文件） -------- */
 
-  ipcMain.handle('file:openFolder', async (event) => {
-    const mainWindow = getMainWindowFn()
-    if (!mainWindow) return null
+  /**
+   * 统一的工作区选择入口
+   *
+   * 同时服务 `file:openFolder` 与 `workspace:open`：对话框既接受普通目录（单根），
+   * 也接受 .aweeclaw-workspace 文件（多根）。两个 IPC 通道共用同一份实现，
+   * 避免两条链路在重定向、标记写入、最近列表上行为分叉。
+   *
+   * @param event IPC 调用事件，用于解析对话框父窗口与文件监听器归属
+   * @returns 工作区会话；已在其他窗口打开时返回 redirected；目标非法时返回 invalid
+   */
+  const openWorkspaceDialog = async (
+    event: Electron.IpcMainInvokeEvent,
+  ): Promise<
+    StoredWorkspaceSession | { redirected: true; roots: string[] } | { invalid: true } | null
+  > => {
+    const currentWindow = resolveDialogParent(event, getMainWindowFn)
+    if (!currentWindow) return null
 
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory'],
-    })
-
-    if (result.canceled || !result.filePaths[0]) {
-      return null
-    }
-
-    const folderPath = normalizeWorkspacePath(result.filePaths[0])
-
-    // 检查是否已有窗口打开该项目
-    if (redirectToExistingWindow(windowManager, [folderPath], mainWindow)) {
-      return { redirected: true, path: folderPath }
-    }
-
-    // 记录当前窗口的工作区
-    if (windowManager?.setWindowWorkspace) {
-      windowManager.setWindowWorkspace(event.sender.id, [folderPath])
-    }
-
-    const workspaceId = await ensureWorkspaceMarker(folderPath)
-    securityManager.setWorkspacePath(folderPath)
-
-    store.set('lastWorkspacePath', folderPath)
-    store.set('lastWorkspaceSession', { configPath: null, roots: [folderPath], workspaceId })
-    addRecentWorkspace(store, folderPath)
-    await restartWindowFileWatcher(event.sender, [folderPath])
-
-    return folderPath
-  })
-
-  /* -------- 工作区打开（多根支持） -------- */
-
-  ipcMain.handle('workspace:open', async (event) => {
-    const mainWindow = getMainWindowFn()
-    if (!mainWindow) return null
-
-    const result = await dialog.showOpenDialog(mainWindow, {
+    const result = await dialog.showOpenDialog(currentWindow, {
       properties: ['openFile', 'openDirectory'],
-      filters: [
-        { name: `${BRAND.name} Workspace`, extensions: [BRAND.workspaceExt] },
-        { name: 'All Files', extensions: ['*'] },
-      ],
+      filters: [{ name: `${BRAND.name} Workspace`, extensions: [BRAND.workspaceExt] }],
     })
 
     if (result.canceled || !result.filePaths[0]) {
@@ -440,30 +443,43 @@ export function registerWorkspaceHandlers(
     }
 
     const targetPath = result.filePaths[0]
+    const isConfigFile = targetPath.endsWith(`.${BRAND.workspaceExt}`)
     let roots: string[] = []
 
-    if (targetPath.endsWith(`.${BRAND.workspaceExt}`)) {
+    if (isConfigFile) {
       const parsed = await parseWorkspaceConfig(targetPath)
-      if (!parsed) return null
+      if (!parsed || parsed.length === 0) {
+        logger.system.warn('[workspaceGuard] 工作区文件不可用', { path: targetPath })
+        return { invalid: true }
+      }
       roots = parsed
     } else {
+      // 目录之外的目标不是有效的工作区根，直接拒绝而不是把它当成根目录继续处理
+      const stats = await fsPromises.stat(targetPath).catch(() => null)
+      if (!stats?.isDirectory()) {
+        logger.system.warn('[workspaceGuard] 打开目标既非文件夹也非工作区文件', {
+          path: targetPath,
+        })
+        return { invalid: true }
+      }
       roots = [normalizeWorkspacePath(targetPath)]
     }
 
     // 检查是否已有窗口打开该项目
-    if (redirectToExistingWindow(windowManager, roots, mainWindow)) {
+    if (redirectToExistingWindow(windowManager, roots, currentWindow)) {
       return { redirected: true, roots }
     }
 
+    // 记录当前窗口的工作区；键必须用窗口 ID，与 findWindowByWorkspace 的查找口径保持一致
     if (windowManager?.setWindowWorkspace) {
-      windowManager.setWindowWorkspace(event.sender.id, roots)
+      windowManager.setWindowWorkspace(currentWindow.id, roots)
     }
 
     const workspaceId = roots[0] ? await ensureWorkspaceMarker(roots[0]) : null
     securityManager.setWorkspacePath(roots[0] || null)
 
     const session: StoredWorkspaceSession = {
-      configPath: targetPath.endsWith(`.${BRAND.workspaceExt}`) ? targetPath : null,
+      configPath: isConfigFile ? targetPath : null,
       roots,
       workspaceId: workspaceId || undefined,
     }
@@ -473,16 +489,26 @@ export function registerWorkspaceHandlers(
     roots.forEach((r) => addRecentWorkspace(store, r))
     await restartWindowFileWatcher(event.sender, roots)
 
+    logger.system.info('[workspaceGuard] 工作区已打开', {
+      configPath: session.configPath,
+      roots,
+    })
+
     return session
-  })
+  }
+
+  ipcMain.handle('file:openFolder', (event) => openWorkspaceDialog(event))
+
+  ipcMain.handle('workspace:open', (event) => openWorkspaceDialog(event))
+
 
   /* -------- 添加文件夹到工作区 -------- */
 
-  ipcMain.handle('workspace:addFolder', async () => {
-    const mainWindow = getMainWindowFn()
-    if (!mainWindow) return null
+  ipcMain.handle('workspace:addFolder', async (event) => {
+    const currentWindow = resolveDialogParent(event, getMainWindowFn)
+    if (!currentWindow) return null
 
-    const result = await dialog.showOpenDialog(mainWindow, {
+    const result = await dialog.showOpenDialog(currentWindow, {
       properties: ['openDirectory'],
     })
 
@@ -494,15 +520,15 @@ export function registerWorkspaceHandlers(
 
   /* -------- 保存工作区 -------- */
 
-  ipcMain.handle('workspace:save', async (_, configPath: string, roots: string[]) => {
+  ipcMain.handle('workspace:save', async (event, configPath: string, roots: string[]) => {
     if (!configPath || !roots) return false
 
     let targetPath = configPath
     if (!targetPath) {
-      const mainWindow = getMainWindowFn()
-      if (!mainWindow) return false
+      const currentWindow = resolveDialogParent(event, getMainWindowFn)
+      if (!currentWindow) return false
 
-      const result = await dialog.showSaveDialog(mainWindow, {
+      const result = await dialog.showSaveDialog(currentWindow, {
         filters: [{ name: `${BRAND.name} Workspace`, extensions: [BRAND.workspaceExt] }],
       })
       if (result.canceled || !result.filePath) return false
@@ -662,11 +688,11 @@ export function registerWorkspaceHandlers(
 
   /* -------- 对话框 -------- */
 
-  ipcMain.handle('dialog:selectFolder', async () => {
-    const mainWindow = getMainWindowFn()
-    if (!mainWindow) return null
+  ipcMain.handle('dialog:selectFolder', async (event) => {
+    const currentWindow = resolveDialogParent(event, getMainWindowFn)
+    if (!currentWindow) return null
 
-    const result = await dialog.showOpenDialog(mainWindow, {
+    const result = await dialog.showOpenDialog(currentWindow, {
       properties: ['openDirectory'],
     })
 
@@ -678,16 +704,16 @@ export function registerWorkspaceHandlers(
 
   ipcMain.handle(
     'dialog:selectForImport',
-    async (_event, options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean }) => {
-      const mainWindow = getMainWindowFn()
-      if (!mainWindow) return []
+    async (event, options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean }) => {
+      const currentWindow = resolveDialogParent(event, getMainWindowFn)
+      if (!currentWindow) return []
 
       const properties: Electron.OpenDialogOptions['properties'] = []
       if (options.allowFiles !== false) properties.push('openFile')
       if (options.allowDirs) properties.push('openDirectory')
       if (options.multiSelection) properties.push('multiSelections')
 
-      const result = await dialog.showOpenDialog(mainWindow, {
+      const result = await dialog.showOpenDialog(currentWindow, {
         title: options.title || 'Import',
         properties,
       })
@@ -701,11 +727,11 @@ export function registerWorkspaceHandlers(
 
   ipcMain.handle(
     'dialog:selectForExport',
-    async (_event, options: { title?: string; defaultPath?: string }) => {
-      const mainWindow = getMainWindowFn()
-      if (!mainWindow) return null
+    async (event, options: { title?: string; defaultPath?: string }) => {
+      const currentWindow = resolveDialogParent(event, getMainWindowFn)
+      if (!currentWindow) return null
 
-      const result = await dialog.showOpenDialog(mainWindow, {
+      const result = await dialog.showOpenDialog(currentWindow, {
         title: options.title || 'Export',
         defaultPath: options.defaultPath,
         properties: ['openDirectory', 'createDirectory'],

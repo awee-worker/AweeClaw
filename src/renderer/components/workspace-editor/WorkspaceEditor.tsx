@@ -234,7 +234,7 @@ export default function Editor() {
   const ooEditSession = isOoEditTab && activeFile?.ooEdit ? activeFile.ooEdit : null
 
   /** 启动 ONLYOFFICE 在线编辑会话：主进程上传本地文件 → 打开编辑 Tab（成功后关闭本地 file Tab，只保留 oo-edit Tab） */
-  const handleOnlyOfficeEdit = async (filePath: string) => {
+  const handleOnlyOfficeEdit = useCallback(async (filePath: string) => {
     try {
       const st = useStore.getState()
       // 同源文件的 oo-edit Tab 已存在 → 不重复建会话，只激活它并移除本地 file Tab
@@ -260,9 +260,17 @@ export default function Editor() {
     } catch (err) {
       toast.error(`启动 ONLYOFFICE 编辑失败：${(err as Error)?.message || '未知错误'}`)
     }
-  }
+  }, [closeFile])
 
-
+  /**
+   * Tab 栏回调保持引用稳定
+   *
+   * EditorTabs 是 memo 组件，内联箭头函数会让每次父组件重渲染都重建整个标签栏；
+   * 流式编辑期间父组件重渲染频繁，Tab 一多就会明显卡顿。
+   */
+  const handleTabContextMenu = useCallback((e: React.MouseEvent, path: string) => {
+    setTabContextMenu({ x: e.clientX, y: e.clientY, filePath: path })
+  }, [])
 
   useComposerInlineDiff(isPreviewDocument ? null : activeFilePath, editorRef.current, monacoRef.current)
 
@@ -275,6 +283,12 @@ export default function Editor() {
     () => (activeFile && activeFile.content != null) ? getFileInfo(activeFile.path, activeFile.content) : null,
     [activeFile?.path, activeFile?.content]
   )
+
+  /** 视图模式切换（markdown / html），与 Tab 栏共用稳定引用 */
+  const handleViewModeChange = useCallback((mode: 'edit' | 'preview' | 'split') => {
+    if (activeFileType === 'markdown') setMarkdownMode(mode)
+    else if (activeFileType === 'html') setHtmlMode(mode)
+  }, [activeFileType])
 
   const editorFontSize = getEditorConfig().fontSize
   const editorFontFamily = getEditorConfig().fontFamily
@@ -613,7 +627,7 @@ export default function Editor() {
         activeFilePath={activeFilePath}
         onSelectFile={setActiveFile}
         onCloseFile={closeFileWithConfirm}
-        onContextMenu={(e: React.MouseEvent, path: string) => setTabContextMenu({ x: e.clientX, y: e.clientY, filePath: path })}
+        onContextMenu={handleTabContextMenu}
         lintErrorCount={errorCount}
         lintWarningCount={warningCount}
         isLinting={isLinting}
@@ -622,10 +636,7 @@ export default function Editor() {
         activeFileKind={activeFile?.kind}
         activeFileType={activeFileType}
         viewMode={activeFileType === 'markdown' ? markdownMode : activeFileType === 'html' ? htmlMode : undefined}
-        onViewModeChange={(mode: 'edit' | 'preview' | 'split') => {
-          if (activeFileType === 'markdown') setMarkdownMode(mode)
-          else if (activeFileType === 'html') setHtmlMode(mode)
-        }}
+        onViewModeChange={handleViewModeChange}
       />
 
       {activeFile && !isPreviewDocument && !isPptPreviewTab && !isOoEditTab && (

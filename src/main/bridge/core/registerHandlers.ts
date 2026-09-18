@@ -122,6 +122,8 @@ export interface IPCContext {
   findWindowByWorkspace?: (roots: string[]) => BrowserWindow | null
   setWindowWorkspace?: (windowId: number, roots: string[]) => void
   getWindowWorkspace?: (windowId: number) => string[] | null
+  // 是否应用级服务宿主窗口（首个窗口），供渲染进程去重单例后台任务
+  isPrimaryWindow?: (windowId: number) => boolean
 }
 
 /**
@@ -158,7 +160,7 @@ export function registerAllHandlers(context: IPCContext) {
   const { getMainWindow, createWindow, resolveStore, preferencesStore, workspaceMetaStore, bootstrapStore } = context
 
   // 窗口控制
-  registerOnce('window', () => registerWindowHandlers(createWindow))
+  registerOnce('window', () => registerWindowHandlers(createWindow, context.isPrimaryWindow))
 
   // 文件操作（安全版）
   registerOnce('secure-file', () => registerSecureFileHandlers(getMainWindow, workspaceMetaStore, (event) => {

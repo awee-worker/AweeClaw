@@ -3,10 +3,22 @@
  * 在等待响应或流式输出时显示当前状态（连接中、思考中、工具执行中等）
  */
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { Loader2 } from 'lucide-react'
 import { useStore } from '@store'
 import { playNotificationSound } from '@utils/notificationSound'
 import { t } from '@renderer/i18n'
 import type { StreamingPhaseProps } from '../types'
+
+/**
+ * 等待转圈：等待提示必须无条件可见。
+ *
+ * 之前用呼吸点 + 小圆点表示「正在等待」，两者的可见度都来自 CSS 动画的关键帧
+ * （opacity 0.3~1）。渲染预算服务在实测掉帧时会把它们置为 `animation: none`，
+ * 系统开启「减弱动态效果」时同理；动画一旦停住，2px 的半透明小点就退成静态
+ * 像素，长等待时界面看起来像卡死。spinner 不在收敛名单里，是唯一在各状态下
+ * 都保持转动的信号，因此等待态统一由它承载。
+ */
+const SLOW_RESPONSE_SECONDS = 12
 
 function StreamingPhaseIndicatorBase({
   mode,
@@ -107,19 +119,26 @@ function StreamingPhaseIndicatorBase({
     : ''
 
   if (mode === 'waiting') {
+    const isSlowResponse = !isRetrying && elapsed >= SLOW_RESPONSE_SECONDS
     return (
-      <div className="flex items-center gap-2.5 py-2 px-1">
-        <div className="relative flex items-center justify-center w-5 h-5">
-          <span className={`absolute w-3 h-3 rounded-full ${isRetrying ? 'bg-amber-500/20 animate-breathe' : 'bg-accent/20 animate-breathe'}`} />
-          <span className={`w-1.5 h-1.5 rounded-full ${isRetrying ? 'bg-amber-500/80' : 'bg-accent/80'}`} />
-        </div>
-        <span className={`text-[12px] font-medium ${isRetrying ? 'text-amber-400/90' : 'text-text-muted/80'}`}>
-          {label}{elapsedText}
-        </span>
-        <div className="flex items-center gap-0.5 ml-0.5">
-          <span className={`wait-dot w-0.5 h-0.5 rounded-full ${isRetrying ? 'bg-amber-500/60' : 'bg-accent/60'}`} />
-          <span className={`wait-dot w-0.5 h-0.5 rounded-full ${isRetrying ? 'bg-amber-500/60' : 'bg-accent/60'}`} />
-          <span className={`wait-dot w-0.5 h-0.5 rounded-full ${isRetrying ? 'bg-amber-500/60' : 'bg-accent/60'}`} />
+      <div
+        className={`inline-flex items-start gap-2.5 py-2.5 pl-2.5 pr-3.5 rounded-xl border ${
+          isRetrying ? 'border-amber-500/30 bg-amber-500/[0.06]' : 'border-border/50 bg-surface/50'
+        }`}
+      >
+        <Loader2
+          aria-hidden="true"
+          className={`w-3.5 h-3.5 mt-[3px] shrink-0 animate-spin ${isRetrying ? 'text-amber-400/90' : 'text-accent/80'}`}
+        />
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className={`text-[12.5px] font-medium leading-tight ${isRetrying ? 'text-amber-400/90' : 'text-text-secondary'}`}>
+            {label}{elapsedText}
+          </span>
+          {isSlowResponse && (
+            <span className="text-[11px] leading-tight text-text-muted/80">
+              {t('waitPhase.slow', language as any)}
+            </span>
+          )}
         </div>
       </div>
     )

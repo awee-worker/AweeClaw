@@ -196,7 +196,7 @@ function StreamingHeader({
     <div className="flex items-center justify-between px-4 py-2">
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <Loader2 className="w-3.5 h-3.5 text-accent animate-spin flex-shrink-0" />
-        <span className="text-[12px] font-medium tool-text-shimmer truncate">{statusLabel}</span>
+        <span className="text-[12px] font-medium truncate">{statusLabel}</span>
         {activeScenarioId && (
           <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent/5 text-accent text-[10px] font-medium flex-shrink-0">
             <Zap className="w-2.5 h-2.5" />

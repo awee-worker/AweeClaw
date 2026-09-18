@@ -22,7 +22,10 @@ const ZOOM_STEP = 0.5
 // 标记是否已注册基础窗口控制
 let basicHandlersRegistered = false
 
-export function registerWindowHandlers(createWindow: (isEmpty?: boolean) => BrowserWindow) {
+export function registerWindowHandlers(
+  createWindow: (isEmpty?: boolean) => BrowserWindow,
+  isPrimaryWindow?: (windowId: number) => boolean,
+) {
   // 基础窗口控制（只注册一次）
   if (!basicHandlersRegistered) {
     basicHandlersRegistered = true
@@ -111,6 +114,8 @@ export function registerWindowHandlers(createWindow: (isEmpty?: boolean) => Brow
       return BrowserWindow.fromWebContents(event.sender)?.id
     })
 
+
+
     // 调整窗口大小
     ipcMain.handle('window:resize', (event, width: number, height: number, minWidth?: number, minHeight?: number) => {
       const win = BrowserWindow.fromWebContents(event.sender)
@@ -134,5 +139,18 @@ export function registerWindowHandlers(createWindow: (isEmpty?: boolean) => Brow
   } catch (e) { logger.system.debug('Failed to remove window:new handler:', e) }
   ipcMain.handle('window:new', () => {
     createWindow(true)
+  })
+
+  // 当前窗口是否应用级服务宿主窗口（首个窗口）
+  // 渲染进程用它避免每个窗口都重复启动渠道连接 / 记忆调度 / 云会话恢复等单例任务，
+  // 否则多开窗口会让定时器与后台负载成倍增长。
+  // 与 window:new 一样按调用方重注册，保证拿到的是最新的宿主判定函数。
+  try {
+    ipcMain.removeHandler('window:isPrimary')
+  } catch (e) { logger.system.debug('Failed to remove window:isPrimary handler:', e) }
+  ipcMain.handle('window:isPrimary', (event) => {
+    if (!isPrimaryWindow) return true
+    const win = BrowserWindow.fromWebContents(event.sender)
+    return !!win && !win.isDestroyed() && isPrimaryWindow(win.id)
   })
 }

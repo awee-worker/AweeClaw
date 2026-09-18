@@ -20,6 +20,7 @@ import { useAgentHistoryActions } from '@hooks/useAgent'
 import { t } from '@renderer/i18n'
 import { keybindingService, formatShortcut, isMac } from '@services/keybindingAdapter'
 import { aweeclawDir } from '@services/appDirService'
+import { workspaceManager } from '@services/WorkspaceAdapter'
 import { toast } from '@components/foundation/NotificationProvider'
 import { useElevatedToastLayer } from '@components/foundation/toastLayerStore'
 import {
@@ -191,7 +192,6 @@ export default function CommandPalette({
   const shortcuts = useMemo(
     () => ({
       'open-folder': formatShortcut('Ctrl+O'),
-      'new-window': formatShortcut('Ctrl+Shift+N'),
       'save-file': formatShortcut('Ctrl+S'),
       'quick-open': formatShortcut('Ctrl+P'),
       'toggle-terminal': formatShortcut('Ctrl+`'),
@@ -452,10 +452,8 @@ function wrapCommandAction(
   return async () => {
     switch (id) {
       case 'open-folder':
-        await api.file.openFolder()
-        return
-      case 'new-window':
-        await api.window.new()
+        // 选择器同时接受文件夹与多根工作区文件
+        await workspaceManager.openFolderFromDialog()
         return
       case 'add-folder': {
         const folderPath = await api.workspace.addFolder()

@@ -46,6 +46,18 @@ const windows = new Map<number, BrowserWindow>()
 const windowWorkspaces = new Map<number, string[]>()
 let lastActiveWindow: BrowserWindow | null = null
 
+/**
+ * 首个窗口 ID（应用级服务的宿主窗口）
+ *
+ * 应用启动时创建的第一个窗口标记为 primary；新建窗口（window:new）只会成为
+ * 普通窗口。渲染进程通过 window:isPrimary 查询该标记，用于避免每个窗口都启动
+ * 一遍只应存在一份的应用级后台任务（渠道连接、长时记忆调度、云会话恢复等），
+ * 否则多开窗口会让定时器与后台负载成倍增长。
+ *
+ * 首个窗口关闭后，标记移交给剩余窗口中最早创建的一个，保证应用级任务不断档。
+ */
+let primaryWindowId: number | null = null
+
 /** 已授权关闭的窗口集合（无需再次拦截） */
 const authorizedCloseWindows = new Set<number>()
 
@@ -134,6 +146,20 @@ export function getWindowWorkspace(id: number): string[] | null {
   return windowWorkspaces.get(id) || null
 }
 
+/** 获取应用级服务宿主窗口 ID（首个窗口，可能为 null） */
+export function getPrimaryWindowId(): number | null {
+  return primaryWindowId
+}
+
+/**
+ * 判断指定窗口是否为应用级服务宿主窗口
+ *
+ * 渲染进程据此决定是否启动「只应存在一份」的后台任务。
+ */
+export function isPrimaryWindow(id: number): boolean {
+  return primaryWindowId === id
+}
+
 /** 获取所有窗口数量 */
 export function getWindowCount(): number {
   return windows.size
@@ -167,6 +193,23 @@ function isLocalDevServerUrl(url: string): boolean {
 // 关闭界面配色
 // ==========================================
 
+/** 读取关闭界面配色的超时预算：渲染进程无响应时不能拖死整个退出流程 */
+const SHUTDOWN_SNAPSHOT_TIMEOUT_MS = 1500
+
+/** 渲染进程回传的配色快照（字段缺失时回退到默认配色） */
+interface ShutdownPresentationSnapshot {
+  language?: string
+  themeType?: string
+  background?: string
+  surface?: string
+  border?: string
+  text?: string
+  muted?: string
+  accent?: string
+  success?: string
+  warning?: string
+}
+
 /**
  * 从渲染进程读取实时主题配色，失败时回退到 Store 配置。
  * 公开导出以便 appBootstrap 在 before-quit 流程中复用，避免重复实现。
@@ -178,7 +221,10 @@ export async function getShutdownPresentation(win?: BrowserWindow | null): Promi
   }
 
   try {
-    const snapshot = await win.webContents.executeJavaScript(`(() => {
+    // 渲染进程正忙或已无响应时 executeJavaScript 会一直挂起；退出流程若阻塞在这里，
+    // 遮罩界面会永久停留、应用再也关不掉，只能杀进程，因此必须加超时兜底。
+    const snapshot = (await withTimeout(
+      win.webContents.executeJavaScript(`(() => {
       const root = document.documentElement
       const styles = getComputedStyle(root)
       const store = window.__AWEECLAW_STORE__?.getState?.()
@@ -200,7 +246,13 @@ export async function getShutdownPresentation(win?: BrowserWindow | null): Promi
         success: asRgb(styles.getPropertyValue('--status-success'), '${fallback.success}'),
         warning: asRgb(styles.getPropertyValue('--status-warning'), '${fallback.warning}'),
       }
-    })()`, true)
+    })()`),
+      SHUTDOWN_SNAPSHOT_TIMEOUT_MS,
+      'getShutdownPresentation snapshot',
+    )) as ShutdownPresentationSnapshot | void
+
+    // 超时未取到快照时直接使用默认配色，不能让退出流程继续阻塞
+    if (!snapshot) return fallback
 
     return {
       language: snapshot?.language === 'en' ? 'en' : fallback.language,
@@ -285,6 +337,8 @@ export function createWindow(isEmpty = false, deferLoad = false): BrowserWindow 
   const windowId = win.id
   windows.set(windowId, win)
   lastActiveWindow = win
+  // 首个窗口承担应用级后台任务；后续新建窗口不重复承担
+  if (primaryWindowId === null) primaryWindowId = windowId
 
   win.on('focus', () => {
     lastActiveWindow = win
@@ -297,9 +351,20 @@ export function createWindow(isEmpty = false, deferLoad = false): BrowserWindow 
   return win
 }
 
+/**
+ * CSP 响应头拦截是否已注册
+ *
+ * CSP 作用于 session 而非单个窗口，且 Electron 的 onHeadersReceived 是「追加监听器」
+ * 语义：每创建一个窗口就会多挂一份。多份监听器会对同一个请求重复回调，请求处理开销
+ * 随窗口数线性增长，同时后一份回调会覆盖前一份写入的响应头。因此用模块级标志保证
+ * 整个 session 只注册一次。
+ */
+let cspRegistered = false
+
 /** 在生产模式下注册 CSP 头，限制远程资源加载范围 */
 function registerCsp(win: BrowserWindow): void {
-  if (!app.isPackaged) return
+  if (!app.isPackaged || cspRegistered) return
+  cspRegistered = true
 
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -373,6 +438,21 @@ function registerWindowLifecycle(win: BrowserWindow): void {
 
     windows.delete(windowId)
     windowWorkspaces.delete(windowId)
+
+    // 应用级任务宿主窗口被关闭：移交给剩余窗口中最早创建的一个，
+    // 避免渠道连接 / 记忆调度等后台服务随首个窗口一起消失；
+    // 同时通知接管窗口补启动这些任务（渲染进程侧为幂等，重复通知无副作用）
+    if (primaryWindowId === windowId) {
+      primaryWindowId = windows.keys().next().value ?? null
+      if (primaryWindowId !== null) {
+        logger.system.info(`[Window] Primary window moved to ${primaryWindowId}`)
+        const next = windows.get(primaryWindowId)
+        if (next && !next.isDestroyed() && !next.webContents.isDestroyed()) {
+          next.webContents.send('window:primary-changed')
+        }
+      }
+    }
+
     logger.system.info(`[Window] ${windowId} closed. Remaining: ${windows.size}`)
 
     if (lastActiveWindow === win) {
@@ -393,34 +473,82 @@ function registerWindowLifecycle(win: BrowserWindow): void {
   registerWindowDiagnostics(win)
 }
 
-/** 处理窗口关闭流程：拦截 → 保存 → 清理 → 真正关闭 */
+/**
+ * 普通窗口关闭时分配给渲染进程的保存预算
+ *
+ * 关闭单个窗口是高频操作，渲染进程即使无响应也只能短等；应用整体退出的
+ * 长超时（requestRendererShutdown 默认 8s）只适用于「最后一个窗口」场景。
+ */
+const WINDOW_CLOSE_SAVE_TIMEOUT_MS = 2500
+
+/** 正在执行关闭流程的窗口，用于拦截重复或并发的关闭请求 */
+const closingWindows = new Set<number>()
+
+/**
+ * 处理窗口关闭流程：拦截 → 保存 → 清理 → 真正关闭
+ *
+ * 核心约束是「窗口一定会被关闭」：close 事件已在上面被 preventDefault 拦截，
+ * 一旦流程中途抛错而缺少兜底，窗口就会彻底关不掉；同时保存遮罩窗口是窗口级单例、
+ * 且 alwaysOnTop + closable:false，会残留在最上层挡住整个界面，
+ * 表现出来就是「点关闭没反应、最后连应用都退不掉，只能杀进程」。
+ * 因此这里用 try/catch/finally 收口，在 finally 中无条件授权关闭并销毁遮罩。
+ */
 async function handleWindowCloseFlow(win: BrowserWindow, windowId: number): Promise<void> {
+  // 用户以为没反应而重复点击时 close 事件会再次触发，并发跑同一套流程会让
+  // 单例遮罩窗口的状态错乱，重复进入直接忽略。
+  if (closingWindows.has(windowId)) return
+  closingWindows.add(windowId)
+
   const isLastWindowQuit = process.platform !== 'darwin' && windows.size === 1
   const shutdownReason: ShutdownReason = isLastWindowQuit ? 'app-quit' : 'window-close'
+  let saveSucceeded = true
+  let showedOverlay = false
 
-  const presentation = await getShutdownPresentation(win)
-  await shutdownWindowController.show(shutdownReason, presentation, win)
+  try {
+    if (isLastWindowQuit) {
+      // 应用整体退出：展示保存进度界面，并按应用级预算等待清理
+      const presentation = await getShutdownPresentation(win)
+      await shutdownWindowController.show(shutdownReason, presentation, win)
+      showedOverlay = true
 
-  const success = await requestRendererShutdown(win, shutdownReason)
-  await shutdownWindowController.update(shutdownReason, success ? 'done' : 'error')
+      saveSucceeded = await requestRendererShutdown(win, shutdownReason)
+      await shutdownWindowController.update(shutdownReason, saveSucceeded ? 'done' : 'error')
 
-  // 最后一个窗口关闭时同步执行全局清理
-  if (isLastWindowQuit) {
-    quitStateController.markAppQuitting()
-    await withTimeout(performGlobalCleanup(), 5000, 'performGlobalCleanup total')
-  }
+      quitStateController.markAppQuitting()
+      await withTimeout(performGlobalCleanup(), 5000, 'performGlobalCleanup total')
+    } else {
+      // 关闭普通窗口（含新建窗口）：静默保存即可，不弹保存遮罩、也不套用
+      // 应用级退出的长超时，否则每关一个窗口都要空等数秒，看起来像卡死。
+      saveSucceeded = await requestRendererShutdown(
+        win,
+        shutdownReason,
+        WINDOW_CLOSE_SAVE_TIMEOUT_MS,
+      )
+    }
+  } catch (error) {
+    logger.system.warn(`[Window] ${windowId} close flow failed, forcing window close`, { error })
+  } finally {
+    closingWindows.delete(windowId)
 
-  if (win.isDestroyed()) return
+    // 无论保存成功与否都要放行关闭，否则用户永远关不掉这个窗口
+    if (!win.isDestroyed()) {
+      authorizedCloseWindows.add(windowId)
+      win.close()
+    }
 
-  authorizedCloseWindows.add(windowId)
-  win.close()
-  await sleep(success ? 700 : 1100)
-  await shutdownWindowController.close()
+    // 只有展示过遮罩才需要等待收尾动画
+    if (showedOverlay) {
+      await sleep(saveSucceeded ? 700 : 1100)
+    }
 
-  if (isLastWindowQuit) {
-    quitStateController.markCleanupDone()
-    logger.system.info('[Window] Last window close cleanup done, finalizing app quit')
-    app.quit()
+    // 遮罩窗口是窗口级单例，必须无条件销毁，避免残留置顶遮挡界面
+    await shutdownWindowController.close()
+
+    if (isLastWindowQuit) {
+      quitStateController.markCleanupDone()
+      logger.system.info('[Window] Last window close cleanup done, finalizing app quit')
+      app.quit()
+    }
   }
 }
 

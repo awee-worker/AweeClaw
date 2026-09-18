@@ -5,7 +5,7 @@
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, Plus, FolderOpen, History, Folder, Monitor, LayoutGrid, PanelLeft } from 'lucide-react'
+import { ChevronDown, FolderPlus, FolderOpen, History, Folder, PanelLeft } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@store'
 import { workspaceManager, WorkspaceOpenError } from '@services/WorkspaceAdapter'
@@ -137,34 +137,35 @@ export default function ProjectSelector() {
                                 }}
                             />
                             <MenuItem
-                                icon={Monitor}
-                                label={t('workspace.newWindow', language)}
-                                description={t('workspace.newWindowDesc', language)}
-                                onClick={() => handleAction(() => api.window.new())}
-                            />
-                            <MenuItem
                                 icon={FolderOpen}
                                 label={t('workspace.openFolder', language)}
+                                description={t('workspace.openFolderDesc', language)}
                                 onClick={() => handleAction(async () => {
-                                    const result = await api.file.openFolder()
-                                    if (result && typeof result === 'string') await workspaceManager.openFolder(result)
+                                    // 选择器同时接受文件夹与 .aweeclaw-workspace 文件（多根）
+                                    const outcome = await workspaceManager.openFolderFromDialog()
+                                    if (outcome.status === 'redirected') {
+                                        // 该工作区已在其他窗口打开：主进程已聚焦那个窗口，这里只做提示
+                                        toast.info(t('workspace.alreadyOpenElsewhere', language))
+                                    } else if (outcome.status === 'invalid') {
+                                        toast.error(t('workspace.invalidTarget', language))
+                                    } else if (outcome.status === 'missing') {
+                                        toast.error(t('workspace.folderNotExist', language), getFileName(outcome.path))
+                                    } else if (outcome.status === 'failed') {
+                                        toast.error(t('workspace.openFolderFailed', language))
+                                    }
                                 })}
                             />
                             <MenuItem
-                                icon={LayoutGrid}
-                                label={t('workspace.openWorkspace', language)}
-                                onClick={() => handleAction(async () => {
-                                    const result = await api.workspace.open()
-                                    if (result && !('redirected' in result)) await workspaceManager.switchTo(result)
-                                })}
-                            />
-                            <MenuItem
-                                icon={Plus}
+                                icon={FolderPlus}
                                 label={t('workspace.addFolder', language)}
-                                onClick={() => handleAction(async () => {
-                                    const path = await api.workspace.addFolder()
-                                    if (path) await workspaceManager.addFolder(path)
-                                })}
+                                description={t('workspace.addFolderDesc', language)}
+                                onClick={() => {
+                                    setIsOpen(false)
+                                    const store = useStore.getState()
+                                    // 授权入口统一收敛到设置页的「工作区外允许访问的目录」
+                                    store.setSettingsIntent({ tab: 'security', anchor: 'allowedExternalDirectories' })
+                                    store.setShowSettingsPage(true)
+                                }}
                             />
                         </div>
 
@@ -174,7 +175,7 @@ export default function ProjectSelector() {
                                 <div className="h-px bg-border my-1.5 mx-2" />
                                 <div className="px-3 py-1.5 flex items-center gap-2">
                                     <History className="w-3 h-3 text-accent" />
-                                    <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Recent</span>
+                                    <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">{t('workspace.recent', language)}</span>
                                 </div>
                                 <div className="space-y-0.5 max-h-[200px] overflow-y-auto custom-scrollbar">
                                     {recentWorkspaces

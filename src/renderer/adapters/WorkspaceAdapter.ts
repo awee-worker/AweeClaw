@@ -19,6 +19,15 @@ export class WorkspaceOpenError extends Error {
   }
 }
 
+/** 打开工作区选择器后的结果，供 UI 层决定提示文案 */
+export type OpenFolderOutcome =
+  | { status: 'opened' }
+  | { status: 'cancelled' }
+  | { status: 'redirected' }
+  | { status: 'invalid' }
+  | { status: 'missing'; path: string }
+  | { status: 'failed' }
+
 function normalizeWorkspaceRoots(roots: string[]): string[] {
   return roots.map(root => root.toLowerCase().replace(/\\/g, '/')).sort()
 }
@@ -111,24 +120,95 @@ class WorkspaceManager {
     }
   }
 
-  async openFolder(folderPath: string): Promise<boolean> {
-    const normalizedPath = normalizeFolderPath(folderPath)
-    const exists = await api.workspace.exists(normalizedPath)
-    if (!exists) {
-      await api.workspace.removeFromRecent(normalizedPath)
-      throw new WorkspaceOpenError('missing-workspace', `Folder does not exist: ${normalizedPath}`, normalizedPath)
+  /**
+   * 打开工作区
+   *
+   * 入参兼容两种形态：字符串（已知目录路径，如最近列表、默认工作区）与主进程
+   * 选择器返回的会话（含 configPath 与可能的多根 roots）。
+   *
+   * 打开前逐根校验目录是否存在：失效的根目录先从最近列表中剔除再抛错，
+   * 避免多根工作区因单个根目录被删除就永远打不开、也无法自我修复。
+   *
+   * @param target 目录路径或工作区会话
+   * @returns 切换成功返回 true
+   */
+  async openFolder(target: string | WorkspaceConfig): Promise<boolean> {
+    const workspace: WorkspaceConfig =
+      typeof target === 'string'
+        ? { configPath: null, roots: [normalizeFolderPath(target)] }
+        : target
+
+    if (workspace.roots.length === 0) {
+      throw new WorkspaceOpenError('missing-workspace', 'Workspace has no roots', '')
     }
 
-    const switched = await this.switchTo({
-      configPath: null,
-      roots: [normalizedPath],
-    })
+    const missingRoots = await this.findMissingRoots(workspace.roots)
+    if (missingRoots.length > 0) {
+      await this.dropFromRecent(missingRoots)
+      throw new WorkspaceOpenError(
+        'missing-workspace',
+        `Folder does not exist: ${missingRoots.join(', ')}`,
+        missingRoots[0] ?? ''
+      )
+    }
 
+    const switched = await this.switchTo(workspace)
     if (!switched) {
-      throw new WorkspaceOpenError('switch-failed', `Failed to open workspace: ${normalizedPath}`, normalizedPath)
+      throw new WorkspaceOpenError(
+        'switch-failed',
+        `Failed to open workspace: ${workspace.roots[0] ?? ''}`,
+        workspace.roots[0] ?? ''
+      )
     }
 
     return true
+  }
+
+  /**
+   * 打开工作区选择器并切换到所选工作区
+   *
+   * 把「弹窗 → 判重定向 → 打开 → 归类失败原因」收敛到一处：UI 入口只按返回状态
+   * 提示文案，不再各自 try/catch，避免漏处理导致的静默失败。
+   *
+   * @returns 打开结果状态
+   */
+  async openFolderFromDialog(): Promise<OpenFolderOutcome> {
+    let picked: Awaited<ReturnType<typeof api.file.openFolder>>
+    try {
+      picked = await api.file.openFolder()
+    } catch (err) {
+      logger.system.error('[WorkspaceManager] Open folder dialog failed', err)
+      return { status: 'failed' }
+    }
+
+    if (!picked) return { status: 'cancelled' }
+    if ('redirected' in picked) return { status: 'redirected' }
+    if ('invalid' in picked) return { status: 'invalid' }
+
+    try {
+      await this.openFolder(picked)
+      return { status: 'opened' }
+    } catch (err) {
+      if (err instanceof WorkspaceOpenError && err.code === 'missing-workspace') {
+        return { status: 'missing', path: err.path }
+      }
+      logger.system.error('[WorkspaceManager] Open folder failed', err)
+      return { status: 'failed' }
+    }
+  }
+
+  /** 返回 roots 中不存在或不是目录的部分 */
+  private async findMissingRoots(roots: string[]): Promise<string[]> {
+    const checked = await Promise.all(
+      roots.map(async (root) => ((await api.workspace.exists(root)) ? null : root))
+    )
+
+    return checked.filter((root): root is string => root !== null)
+  }
+
+  /** 将失效路径从最近工作区列表中剔除 */
+  private async dropFromRecent(paths: string[]): Promise<void> {
+    await Promise.all(paths.map((p) => api.workspace.removeFromRecent(p)))
   }
 
   async closeWorkspace(): Promise<void> {

@@ -2,12 +2,12 @@
  * 编辑器标签栏组件
  * [AweeClaw] 增强功能：场景标签指示、文件类型图标、拖拽排序视觉反馈
  */
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import { X, AlertCircle, AlertTriangle, RefreshCw, FileX, FileDiff, Globe, Eye, Edit, Columns, PenLine } from 'lucide-react'
 import { getFileName, normalizePath } from '@shared/toolkit/pathHelper'
 import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
-import { t } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'
 import { HintOverlay } from '../ui/HintOverlay'
 import { isPptPreviewPath } from '@shared/protocols/pptPreviewProtocol'
@@ -56,6 +56,89 @@ function isOnlyOfficeEntryPath(filePath: string): boolean {
   return ONLYOFFICE_ENTRY_EXTENSIONS.has(ext)
 }
 
+/** 单个标签页的展示数据（在父组件统一解算，子组件只负责渲染） */
+interface EditorTabItemProps {
+  filePath: string
+  fileName: string
+  isActive: boolean
+  isDirty: boolean
+  isDeleted: boolean
+  isDiff: boolean
+  isPreview: boolean
+  isOoEdit: boolean
+  language: Language
+  onSelectFile: (path: string) => void
+  onCloseFile: (path: string) => void
+  onContextMenu: (e: React.MouseEvent, filePath: string) => void
+}
+
+/**
+ * 单个标签页
+ *
+ * 单独 memo 化：编辑内容、脏标记、开关文件都只影响对应的那一个 Tab，
+ * 否则每次 openFiles 变化都会让整条标签栏的 DOM 全部重建，Tab 一多就卡。
+ */
+const EditorTabItem = memo(function EditorTabItem({
+  filePath,
+  fileName,
+  isActive,
+  isDirty,
+  isDeleted,
+  isDiff,
+  isPreview,
+  isOoEdit,
+  language,
+  onSelectFile,
+  onCloseFile,
+  onContextMenu,
+}: EditorTabItemProps) {
+  return (
+    <HintOverlay content={filePath} side="top" delay={400} className="flex-shrink-0 h-full">
+      <div
+        data-file-path={filePath}
+        className={`
+          group relative flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] cursor-pointer transition-colors duration-150 rounded-md flex-shrink-0
+          ${isActive
+            ? 'bg-surface-hover text-text-primary'
+            : 'bg-transparent text-text-muted hover:bg-surface-hover/50 hover:text-text-primary'}
+          ${isDeleted ? 'opacity-60' : ''}
+        `}
+        onClick={() => onSelectFile(filePath)}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          onContextMenu(e, filePath)
+        }}
+      >
+        {/* 已删除文件图标 */}
+        {isDeleted && (
+          <span title={t('editor.fileDeleted', language)}>
+            <FileX className="w-3.5 h-3.5 text-status-error flex-shrink-0" />
+          </span>
+        )}
+
+        {isDiff && <FileDiff className="w-3.5 h-3.5 text-accent flex-shrink-0" />}
+        {isPreview && <Globe className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />}
+        {isOoEdit && <PenLine className="w-3.5 h-3.5 text-accent flex-shrink-0" />}
+
+        <span className={`text-[13px] truncate flex-1 ${isDeleted ? 'line-through text-text-muted' : ''}`}>{fileName}</span>
+
+        <div
+          className="flex items-center justify-center w-5 h-5 rounded-lg hover:bg-surface-hover transition-colors"
+          onClick={(e) => {
+            e.stopPropagation()
+            onCloseFile(filePath)
+          }}
+        >
+          {isDirty ? (
+            <div className="w-2 h-2 rounded-full bg-accent group-hover:hidden" />
+          ) : null}
+          <X className={`w-3.5 h-3.5 ${isDirty ? 'hidden group-hover:block' : 'opacity-0 group-hover:opacity-100'} transition-opacity`} />
+        </div>
+      </div>
+    </HintOverlay>
+  )
+})
+
 export const EditorTabs = memo(function EditorTabs({
   activeFilePath,
   onSelectFile,
@@ -75,6 +158,9 @@ export const EditorTabs = memo(function EditorTabs({
   const openFiles = useStore(state => state.openFiles)
   const language = useStore(state => state.language)
   const plans = useAgentStore(state => state.plans)
+
+  // 计划 id → 名称索引：避免每个 Tab 都对 plans 做一次线性查找（Tab 多时是 O(Tab × Plan)）
+  const planNameById = useMemo(() => new Map(plans.map((p) => [p.id, p.name])), [plans])
 
   // Tab 滚动容器 ref：当打开的文件较多时，保证当前激活 Tab 自动滚动到可见区域
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -122,12 +208,9 @@ export const EditorTabs = memo(function EditorTabs({
           let fileName = getTabDisplayName(file.path)
 
           // 如果是计划文件，尝试显示计划名称
-          if (isPlanJsonFile(file.path)) {
-            const planId = fileName.replace('.json', '')
-            const plan = plans.find(p => p.id === planId)
-            if (plan) {
-              fileName = plan.name
-            }
+          if (file.path.endsWith('.json') && isPlanJsonFile(file.path)) {
+            const planName = planNameById.get(fileName.replace('.json', ''))
+            if (planName) fileName = planName
           }
 
           const isDiff = file.path.startsWith('diff://')
@@ -153,51 +236,21 @@ export const EditorTabs = memo(function EditorTabs({
           }
 
           return (
-            <HintOverlay key={file.path} content={file.path} side="top" delay={400} className="flex-shrink-0 h-full">
-            <div
-              data-file-path={file.path}
-              className={`
-                group relative flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] cursor-pointer transition-colors duration-150 rounded-md flex-shrink-0
-                ${isActive
-                  ? 'bg-surface-hover text-text-primary'
-                  : 'bg-transparent text-text-muted hover:bg-surface-hover/50 hover:text-text-primary'}
-                ${file.isDeleted ? 'opacity-60' : ''}
-              `}
-              onClick={() => onSelectFile(file.path)}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                onContextMenu(e, file.path)
-              }}
-
-            >
-
-              {/* 已删除文件图标 */}
-              {file.isDeleted && (
-                <span title={t('editor.fileDeleted', language)}>
-                  <FileX className="w-3.5 h-3.5 text-status-error flex-shrink-0" />
-                </span>
-              )}
-
-              {isDiff && <FileDiff className="w-3.5 h-3.5 text-accent flex-shrink-0" />}
-              {isPreview && <Globe className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />}
-              {isOoEdit && <PenLine className="w-3.5 h-3.5 text-accent flex-shrink-0" />}
-
-              <span className={`text-[13px] truncate flex-1 ${file.isDeleted ? 'line-through text-text-muted' : ''}`}>{fileName}</span>
-
-              <div
-                className="flex items-center justify-center w-5 h-5 rounded-lg hover:bg-surface-hover transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onCloseFile(file.path)
-                }}
-              >
-                {file.isDirty ? (
-                  <div className="w-2 h-2 rounded-full bg-accent group-hover:hidden" />
-                ) : null}
-                <X className={`w-3.5 h-3.5 ${file.isDirty ? 'hidden group-hover:block' : 'opacity-0 group-hover:opacity-100'} transition-opacity`} />
-              </div>
-            </div>
-            </HintOverlay>
+            <EditorTabItem
+              key={file.path}
+              filePath={file.path}
+              fileName={fileName}
+              isActive={isActive}
+              isDirty={file.isDirty}
+              isDeleted={Boolean(file.isDeleted)}
+              isDiff={isDiff}
+              isPreview={isPreview}
+              isOoEdit={isOoEdit}
+              language={language}
+              onSelectFile={onSelectFile}
+              onCloseFile={onCloseFile}
+              onContextMenu={onContextMenu}
+            />
           )
         })}
       </div>

@@ -11,7 +11,6 @@
 import { create } from 'zustand'
 import { logger } from '@toolkit/LogEngine'
 import {
-    buildPersistedAgentSessionState,
     flushScheduledPersistedAgentSessionState,
     schedulePersistedAgentSessionState,
 } from './intelligenceStorage'
@@ -71,12 +70,20 @@ export interface ContextTransitionState extends ContextIndicatorTransition {
 // UI 相关状态（全局，非线程相关）
 interface UIState {
     inputPrompt: string
+    /**
+     * 聊天输入框草稿（全局唯一）
+     * 草稿不能只放在 ChatPanel 的本地 state：切到设置、用户中心等全屏页面时
+     * ChatSection 会卸载 ChatPanel，本地 state 随之丢失，用户输入的内容就没了。
+     * 放在 store 中可以跨组件卸载保留，返回聊天界面后内容仍在。
+     */
+    chatDraft: string
     currentSessionId: string | null
     contextTransition: ContextTransitionState
     // 代码审查状态
     codeReviewSession: import('../types/codeAudit').CodeReviewSession | null
     reviewProgress: { current: number; total: number; currentFile: string } | null
     setInputPrompt: (prompt: string) => void
+    setChatDraft: (value: string) => void
     setCurrentSessionId: (id: string | null) => void
     setContextTransition: (transition: ContextTransitionState) => void
     clearContextTransition: () => void
@@ -247,14 +254,21 @@ export const useAgentStore = create<AgentStore>()(
                 messageSlice._doAppendToAssistant(messageId, content, threadId)
             })
 
+            // 推理增量走同一条缓冲，合并后一次写入推理分段与消息推理文本
+            streamingBuffer.setReasoningFlushCallback((messageId, partId, content, threadId) => {
+                messageSlice._doUpdateReasoningPart(messageId, partId, content, true, threadId)
+            })
+
             // UI 状态（全局）
             const uiState: UIState = {
                 inputPrompt: '',
+                chatDraft: '',
                 currentSessionId: null,
                 contextTransition: { status: 'idle' },
                 codeReviewSession: null,
                 reviewProgress: null,
                 setInputPrompt: (prompt) => set({ inputPrompt: prompt }),
+                setChatDraft: (value) => set({ chatDraft: value }),
                 setCurrentSessionId: (id) => set({ currentSessionId: id }),
                 setContextTransition: (transition) => set({ contextTransition: transition }),
                 clearContextTransition: () => set({ contextTransition: { status: 'idle' } }),
@@ -528,12 +542,29 @@ let lastStreamStateThreadId: string | null = null
 let lastStreamState: StreamState = DEFAULT_STREAM_STATE
 let lastStreamStateRef: StreamState = DEFAULT_STREAM_STATE
 
+/** 流式进行中的持久化间隔：此时内容仍在变化，落盘价值低而整篇序列化开销高 */
+const STREAMING_PERSIST_DEBOUNCE_MS = 1200
+
+/** 是否存在正在流式输出的线程 */
+function hasStreamingThread(): boolean {
+    const threads = useAgentStore.getState().threads
+    for (const threadId of Object.keys(threads)) {
+        const phase = threads[threadId]?.streamState?.phase
+        if (phase && phase !== 'idle') return true
+    }
+    return false
+}
+
 function scheduleAgentSessionPersistence(): void {
-    schedulePersistedAgentSessionState(() => buildPersistedAgentSessionState(useAgentStore.getState()))
+    // 会话快照需要整体序列化，开销随会话规模增长。流式期间 setState 极为频繁，
+    // 固定短间隔会造成持续的整篇序列化；流式期间改用更长间隔，
+    // 流式结束、切换工作区、应用退出等关键节点仍会立即落盘。
+    const delayMs = hasStreamingThread() ? STREAMING_PERSIST_DEBOUNCE_MS : undefined
+    schedulePersistedAgentSessionState(() => useAgentStore.getState(), delayMs)
 }
 
 export function flushAgentSessionPersistence(): void {
-    flushScheduledPersistedAgentSessionState(() => buildPersistedAgentSessionState(useAgentStore.getState()))
+    flushScheduledPersistedAgentSessionState(() => useAgentStore.getState())
 }
 
 // ===== 当前线程缓存：避免 thread 对象重建导致下游 selector 缓存失效 =====
@@ -736,6 +767,7 @@ export const selectContextStats = (state: AgentStore): ContextStats | null => {
     return thread?.contextStats ?? null
 }
 export const selectInputPrompt = (state: AgentStore) => state.inputPrompt
+export const selectChatDraft = (state: AgentStore) => state.chatDraft
 export const selectCurrentSessionId = (state: AgentStore) => state.currentSessionId
 
 export const selectCompressionStats = (state: AgentStore): CompressionStats | null => {

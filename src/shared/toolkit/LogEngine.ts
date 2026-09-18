@@ -4,8 +4,13 @@
  * 核心机制：
  * - 输出槽策略模式：将日志输出抽象为独立 Sink（ConsoleSink / FileSink），支持热插拔与自定义扩展
  * - 环形缓冲区存储：固定容量缓冲区，O(1) 入队与淘汰，避免数组 shift() 的 O(n) 开销
- * - 微任务批量刷新：利用 queueMicrotask 合并文件写入请求，减少 I/O 次数
+ * - 定时批量刷新：固定间隔合并写入请求，配合异步落盘，避免阻塞事件循环
  * - 双通道着色：主进程使用 ANSI 转义序列，渲染进程使用 CSS 样式字符串
+ *
+ * 落盘策略（性能约束）：
+ * 日志写入发生在与业务共享的事件循环上，任何同步文件操作都会直接表现为界面卡顿。
+ * 因此 FileSink 只使用异步 I/O，并把「目录检查」「文件大小检查」这类系统调用
+ * 降频到只在必要时执行；队列积压时按等级丢弃低价值日志，保证主流程不被日志拖垮。
  */
 
 /* ------------------------------------------------------------------ */
@@ -355,79 +360,147 @@ class ConsoleSink implements LogSink {
   }
 }
 
-/** 文件输出槽 — 负责将日志持久化到磁盘，支持轮转与微任务批量写入 */
+/** 文件输出槽 — 负责将日志持久化到磁盘，支持轮转与定时批量写入 */
 class FileSink implements LogSink {
+  /** 单次落盘的最大条数，避免一次拼接出超大字符串 */
+  private static readonly MAX_BATCH_SIZE = 500
+  /** 批量落盘间隔（毫秒）—— 合并高频日志，降低系统调用次数 */
+  private static readonly FLUSH_INTERVAL_MS = 120
+  /** 待写入队列上限 —— 超出后丢弃低等级日志，防止内存膨胀与 IO 追不上 */
+  private static readonly MAX_PENDING = 4000
+  /** 队列溢出时可丢弃的日志等级（warn/error 始终保留） */
+  private static readonly DROPPABLE_LEVELS: ReadonlySet<LogLevel> = new Set<LogLevel>(['debug', 'info'])
+  /** 单条日志附加数据的最大序列化长度，避免超大对象拖慢落盘 */
+  private static readonly MAX_DATA_CHARS = 2000
+
   private pending: LogEntry[] = []
+  private flushTimer: ReturnType<typeof setTimeout> | null = null
   private flushing = false
-  private fsModule: typeof import('fs') | null = null
+  private fsModule: typeof import('fs/promises') | null = null
   private pathModule: typeof import('path') | null = null
+  /** 已确认存在的日志目录，避免每轮落盘都做目录系统调用 */
+  private ensuredDir: string | null = null
+  /** 当前日志文件的近似字节数，用于轮转判断（避免每轮 stat） */
+  private approxBytes = 0
+  /** 因队列溢出被丢弃的条数，在下一次成功落盘时写审计行 */
+  private droppedCount = 0
 
   constructor(
     private config: { logFilePath?: string; maxFileSize: number; maxFiles: number },
   ) {}
 
   write(entry: LogEntry): void {
-    this.pending.push(entry)
-    // 利用微任务合并同一 tick 内的多次写入请求
-    if (!this.flushing) {
-      this.flushing = true
-      queueMicrotask(() => this.flush())
+    // 背压保护：队列积压时丢弃低等级日志，优先保证主流程不被日志拖慢
+    if (this.pending.length >= FileSink.MAX_PENDING && FileSink.DROPPABLE_LEVELS.has(entry.level)) {
+      this.droppedCount += 1
+      return
     }
+    this.pending.push(entry)
+    this.scheduleFlush()
   }
 
-  /** 批量刷新待写入日志到文件 */
+  /** 释放定时器（关闭文件日志时调用） */
+  dispose(): void {
+    if (this.flushTimer !== null) {
+      clearTimeout(this.flushTimer)
+      this.flushTimer = null
+    }
+    this.pending.length = 0
+  }
+
+  /**
+   * 安排一次批量落盘
+   *
+   * 用定时器而非微任务合并：微任务会在同一轮事件循环内立即执行，
+   * 高频日志下等于每条日志都触发一次文件系统调用，并可能形成
+   * 「flush → 仍有积压 → 再 flush」的微任务链，饿死其它事件（表现为进程卡死）。
+   */
+  private scheduleFlush(): void {
+    if (this.flushTimer !== null) return
+    const timer = setTimeout(() => {
+      this.flushTimer = null
+      void this.flush()
+    }, FileSink.FLUSH_INTERVAL_MS)
+    // 定时器不阻塞进程退出（Node 环境）
+    ;(timer as unknown as { unref?: () => void }).unref?.()
+    this.flushTimer = timer
+  }
+
+  /** 批量落盘待写入日志（全异步 I/O，不阻塞事件循环） */
   private async flush(): Promise<void> {
-    if (this.pending.length === 0) {
-      this.flushing = false
+    if (this.flushing || this.pending.length === 0) return
+    const logPath = this.config.logFilePath
+    if (!logPath) {
+      this.pending.length = 0
       return
     }
 
+    this.flushing = true
     try {
       if (!this.fsModule) {
-        this.fsModule = await import('fs')
+        this.fsModule = await import('fs/promises')
         this.pathModule = await import('path')
       }
       const fs = this.fsModule
       const path = this.pathModule!
-      const logPath = this.config.logFilePath
-      if (!logPath) {
-        this.flushing = false
-        return
+
+      await this.ensureDir(path.dirname(logPath), fs)
+
+      // 轮转判断走近似字节数，只有首次落盘才做一次 stat
+      if (this.approxBytes === 0) {
+        this.approxBytes = await this.measureSize(logPath, fs)
+      }
+      if (this.approxBytes >= this.config.maxFileSize) {
+        await this.rotate(logPath, fs, path)
+        this.approxBytes = 0
       }
 
-      const logDir = path.dirname(logPath)
-      if (!fs.existsSync(logDir)) {
-        fs.mkdirSync(logDir, { recursive: true })
-      }
+      const batch = this.pending.splice(0, FileSink.MAX_BATCH_SIZE)
+      const overflowNote = this.takeOverflowNote()
+      const lines = batch.map((e) => this.serialize(e))
+      if (overflowNote) lines.unshift(overflowNote)
+      const payload = lines.join('\n') + '\n'
 
-      // 检查文件大小，触发轮转
-      if (fs.existsSync(logPath)) {
-        const stat = fs.statSync(logPath)
-        if (stat.size >= this.config.maxFileSize) {
-          await this.rotate(logPath, fs, path)
-        }
-      }
-
-      // 取出当前批次并格式化
-      const batch = this.pending.splice(0, 200)
-      const lines = batch.map((e) => this.serialize(e)).join('\n') + '\n'
-      fs.appendFileSync(logPath, lines, 'utf-8')
+      await fs.appendFile(logPath, payload, 'utf-8')
+      // 用字符数近似字节数，仅用于轮转阈值判断，误差可接受
+      this.approxBytes += payload.length
     } catch (err) {
       console.error('[LogEngine] 文件写入失败:', err)
     } finally {
-      // 如果仍有待写入项，继续下一轮刷新
+      this.flushing = false
+      // 仍有积压则安排下一轮，把事件循环让回给业务代码
       if (this.pending.length > 0) {
-        queueMicrotask(() => this.flush())
-      } else {
-        this.flushing = false
+        this.scheduleFlush()
       }
+    }
+  }
+
+  /** 确保日志目录存在（仅首次执行系统调用，后续走缓存） */
+  private async ensureDir(dir: string, fs: typeof import('fs/promises')): Promise<void> {
+    if (this.ensuredDir === dir) return
+    try {
+      // recursive 模式下目录已存在不会报错，省掉一次 existsSync
+      await fs.mkdir(dir, { recursive: true })
+      this.ensuredDir = dir
+    } catch (err) {
+      console.error('[LogEngine] 日志目录创建失败:', err)
+    }
+  }
+
+  /** 读取日志文件大小（文件不存在视为 0） */
+  private async measureSize(logPath: string, fs: typeof import('fs/promises')): Promise<number> {
+    try {
+      const stat = await fs.stat(logPath)
+      return stat.size
+    } catch {
+      return 0
     }
   }
 
   /** 日志文件轮转 — 删除最旧文件并依次重命名 */
   private async rotate(
     logPath: string,
-    fs: typeof import('fs'),
+    fs: typeof import('fs/promises'),
     path: typeof import('path'),
   ): Promise<void> {
     const dir = path.dirname(logPath)
@@ -435,23 +508,42 @@ class FileSink implements LogSink {
     const base = path.basename(logPath, ext)
 
     // 删除最旧的轮转文件
-    const oldest = path.join(dir, `${base}.${this.config.maxFiles}${ext}`)
-    if (fs.existsSync(oldest)) {
-      fs.unlinkSync(oldest)
-    }
+    await this.removeIfExists(path.join(dir, `${base}.${this.config.maxFiles}${ext}`), fs)
 
     // 从旧到新依次重命名
     for (let i = this.config.maxFiles - 1; i >= 1; i--) {
       const src = path.join(dir, `${base}.${i}${ext}`)
       const dst = path.join(dir, `${base}.${i + 1}${ext}`)
-      if (fs.existsSync(src)) {
-        fs.renameSync(src, dst)
+      try {
+        await fs.rename(src, dst)
+      } catch {
+        // 该轮转文件不存在，跳过
       }
     }
 
     // 当前文件重命名为 .1
-    const next = path.join(dir, `${base}.1${ext}`)
-    fs.renameSync(logPath, next)
+    try {
+      await fs.rename(logPath, path.join(dir, `${base}.1${ext}`))
+    } catch {
+      // 当前日志文件不存在，无需轮转
+    }
+  }
+
+  /** 删除文件（不存在时静默跳过） */
+  private async removeIfExists(target: string, fs: typeof import('fs/promises')): Promise<void> {
+    try {
+      await fs.unlink(target)
+    } catch {
+      // 目标文件不存在
+    }
+  }
+
+  /** 生成队列溢出审计行（无丢弃时返回 null） */
+  private takeOverflowNote(): string | null {
+    if (this.droppedCount === 0) return null
+    const count = this.droppedCount
+    this.droppedCount = 0
+    return `${new Date().toISOString()} [M] [System] [WARN] 日志队列溢出，已丢弃 ${count} 条低等级日志`
   }
 
   /** 将日志条目序列化为单行文本 */
@@ -459,10 +551,24 @@ class FileSink implements LogSink {
     const ts = entry.timestamp.toISOString()
     const src = entry.source === 'main' ? 'M' : 'R'
     const dur = entry.duration !== undefined ? ` (${entry.duration}ms)` : ''
-    const payload = entry.data ? ` ${JSON.stringify(entry.data)}` : ''
+    let payload = ''
+    if (entry.data) {
+      let text: string
+      try {
+        text = JSON.stringify(entry.data) ?? ''
+      } catch {
+        text = '[unserializable data]'
+      }
+      if (text.length > FileSink.MAX_DATA_CHARS) {
+        const omitted = text.length - FileSink.MAX_DATA_CHARS
+        text = `${text.slice(0, FileSink.MAX_DATA_CHARS)}…(truncated ${omitted} chars)`
+      }
+      if (text) payload = ` ${text}`
+    }
     return `${ts} [${src}] [${entry.category}] [${entry.level.toUpperCase()}] ${entry.message}${dur}${payload}`
   }
 }
+
 
 /* ------------------------------------------------------------------ */
 /* 计时器记录                                                         */
@@ -600,6 +706,8 @@ class LogEngineCore {
   enableFileLogging(logFilePath: string): void {
     this.config.fileLogging = true
     this.config.logFilePath = logFilePath
+    // 重复启用时释放上一个输出槽，避免残留定时器与队列
+    this.fileSink?.dispose()
     this.fileSink = new FileSink({
       logFilePath,
       maxFileSize: this.config.maxFileSize,

@@ -26,7 +26,7 @@ function ChatContextStats({ stats, language, compact = false }: ChatContextStats
           <Database className="w-3 h-3" />
           <div className="w-12 h-1 bg-text-primary/10 rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all duration-500 ${usagePercent > 0.95
+              className={`meter-fill h-full rounded-full transition-[width] duration-500 ${usagePercent > 0.95
                 ? 'bg-status-error shadow-[0_0_5px_rgba(var(--status-error),0.5)]'
                 : usagePercent > 0.8
                   ? 'bg-status-warning'
@@ -73,7 +73,7 @@ function ChatContextStats({ stats, language, compact = false }: ChatContextStats
         </span>
         <div className="w-16 h-1 bg-text-primary/10 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all duration-500 shadow-[0_0_5px_rgba(var(--accent),0.5)] ${usagePercent > 0.95
+            className={`meter-fill h-full rounded-full transition-[width] duration-500 shadow-[0_0_5px_rgba(var(--accent),0.5)] ${usagePercent > 0.95
               ? 'bg-status-error'
               : usagePercent > 0.8
                 ? 'bg-status-warning'

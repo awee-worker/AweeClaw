@@ -357,10 +357,8 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
   }
 
   const handleOpenFolder = async () => {
-    const result = await api.file.openFolder()
-    if (result && typeof result === 'string') {
-      await workspaceManager.openFolder(result)
-    }
+    // 选择器同时接受文件夹与 .aweeclaw-workspace 文件（多根）
+    await workspaceManager.openFolderFromDialog()
   }
 
   const variants: Variants = {

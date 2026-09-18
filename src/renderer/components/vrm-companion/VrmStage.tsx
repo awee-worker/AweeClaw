@@ -31,6 +31,15 @@ export interface VrmStageProps {
   scale: number
   /** 口型开合值（0~1），由 useVrmLipSync 提供，渲染循环逐帧读取 */
   mouthOpenRef: React.MutableRefObject<number>
+  /**
+   * 窗口是否可见（激活态）。false 时彻底停止渲染循环。
+   *
+   * 必须由上层显式传入，不能依赖页面可见性判断：伴侣窗口为了「可见时不被系统降频」
+   * 关掉了 backgroundThrottling，隐藏后页面仍被判为可见、rAF 仍按 60fps 回调 ——
+   * 不主动停就会出现「窗口都关了、CPU 还在满速烧」。
+   * 缺省 true（兼容 vrm-test 等调试页）。
+   */
+  active?: boolean
   /** 待机动作：呼吸 / 身体摇摆 / 手臂摆动 / 眨眼 */
   idleEnabled?: boolean
   /** 视线跟随鼠标（驱动 VRM lookAt：眼睛 + 头部朝向） */
@@ -184,6 +193,34 @@ const _tmpNdc = new THREE.Vector2()
 /** 悬停检测间隔（ms）。射线检测要遍历整棵角色树，节流后开销可忽略 */
 const HOVER_CHECK_INTERVAL = 110
 
+/**
+ * 悬停复用的坐标容差。
+ *
+ * 穿透模式下指针位置由主进程 20Hz 轮询下发，用户不动鼠标时数值逐轮完全相同 ——
+ * 此时递归射线检测的结果必然与上一轮一致，直接复用即可省掉这次遍历。
+ */
+const HOVER_PROBE_EPSILON = 0.002
+
+/**
+ * 默认帧间隔（ms）。
+ *
+ * 除「用户直接交互（拖拽环绕）」外一律按 ~30fps 渲染：待机动画最慢的基准周期
+ * 约 6 秒、口型是慢速开合、动作切换由权重过渡补平，30fps 采样后肉眼无感，
+ * 但渲染与 SpringBone 物理开销相对 60fps 直接减半。
+ */
+const IDLE_FRAME_INTERVAL_MS = 33
+
+/**
+ * 拖拽结束后的全速渲染时长（ms）。
+ *
+ * OrbitControls 松手后还有阻尼惯性滑行，这段时间相机仍在变化，
+ * 既需要逐帧推进控制器，也需要全速绘制，否则会看到一顿一顿的滑行。
+ */
+const DRAG_FULL_RATE_TAIL_MS = 600
+
+/** 口型写入的最小变化量：低于此值不重复写 expressionManager */
+const MOUTH_WRITE_EPSILON = 0.005
+
 /** 自动隐藏的淡入/淡出时长（ms），与 super-ai-browser 观感对齐 */
 const AUTO_HIDE_FADE_MS = 300
 
@@ -280,6 +317,7 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
     modelUrl,
     scale,
     mouthOpenRef,
+    active = true,
     idleEnabled = true,
     lookAtEnabled = true,
     pointerRef,
@@ -336,6 +374,25 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
   const hoverSinceRef = useRef(0)
   /** 是否正在拖拽旋转视角（拖拽期间不自动隐藏，否则一抓就淡出、转不动） */
   const orbitDraggingRef = useRef(false)
+  /** 阻尼惯性滑行的全速渲染截止时刻（拖拽结束时刷新） */
+  const dragTailUntilRef = useRef(0)
+  /**
+   * 窗口可见性（渲染循环据此启停）。
+   *
+   * 走 ref 而不是直接读 props：渲染循环是长期存活的闭包，
+   * 且可见性变化由独立 effect 处理（启停循环），不需要重新绑定循环。
+   */
+  const activeRef = useRef(active)
+  /** 渲染循环启停句柄（场景初始化 effect 内赋值，可见性 effect 调用） */
+  const loopControlRef = useRef<{ start: () => void; stop: () => void } | null>(null)
+  /** 上次实际渲染的时刻（帧节流用） */
+  const lastFrameAtRef = useRef(0)
+  /** 上次悬停探测用的指针坐标（复用判定用） */
+  const lastProbeRef = useRef({ x: 0, y: 0 })
+  /** 上次悬停探测的命中结果（坐标未变时复用，跳过射线检测） */
+  const lastHitRef = useRef(false)
+  /** 上次写入 expressionManager 的口型值（值未变则不重复写） */
+  const lastMouthWrittenRef = useRef(0)
   /**
    * 取景刷新函数（在场景初始化 effect 内赋值）。
    *
@@ -426,14 +483,22 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
     const container = containerRef.current
     if (!container) return
 
+    // 可见性以 ref 形式供渲染循环读取（循环是长期存活的闭包，
+    // 后续变化由下方 active effect 驱动启停，无需重新绑定）
+    activeRef.current = active
+
     // 渲染器：alpha 让透明窗口背景透出
     const renderer = new THREE.WebGLRenderer({
       alpha: true,
       antialias: true,
-      powerPreference: 'high-performance',
+      // 桌面伴侣是常驻的小窗口：用 high-performance 会让系统为它长期挂在独显上，
+      // 是「开着伴侣就费电、占用高」的一项稳定来源，默认策略已足够
+      powerPreference: 'default',
     })
     renderer.setClearColor(0x00000000, 0)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    // 上限 1.5：Retina 下 2 倍意味着 4 倍像素量，而画面只有一个半身角色，
+    // 收益远小于每帧的光栅化开销
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
     renderer.setSize(container.clientWidth || 320, container.clientHeight || 480, false)
     renderer.domElement.style.width = '100%'
     renderer.domElement.style.height = '100%'
@@ -487,8 +552,10 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
       }
     }
     /** 拖拽结束：解除旋转标记 */
+    /** 拖拽结束：解除旋转标记，并让阻尼惯性滑行段保持全速渲染 */
     const handleControlsEnd = (): void => {
       orbitDraggingRef.current = false
+      dragTailUntilRef.current = performance.now() + DRAG_FULL_RATE_TAIL_MS
     }
     controls.addEventListener('start', handleControlsStart)
     controls.addEventListener('end', handleControlsEnd)
@@ -544,16 +611,64 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
     // --------------------------------------------
     const clock = new THREE.Clock()
     let rafId = 0
+    /** 渲染循环是否在跑（窗口隐藏时置 false 并取消 rAF，可见时重启） */
+    let running = false
     /** 眨眼状态机 */
     let nextBlinkAt = performance.now() + 2000 + Math.random() * 3000
     let blinkUntil = 0
 
+    /**
+     * 启动渲染循环。
+     *
+     * 启动前先丢弃累积时间：THREE.Clock 会把两次 getDelta 之间的真实耗时
+     * 一次性返回，不丢弃则恢复瞬间动画会跳过一大段。
+     */
+    const startLoop = (): void => {
+      if (running) return
+      running = true
+      lastFrameAtRef.current = performance.now()
+      clock.getDelta()
+      rafId = requestAnimationFrame(animate)
+    }
+
+    /** 停止渲染循环（窗口隐藏 / 组件卸载）：彻底取消 rAF，不留空转 */
+    const stopLoop = (): void => {
+      if (!running) return
+      running = false
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+
+    loopControlRef.current = { start: startLoop, stop: stopLoop }
+
+    /**
+     * 当前是否处于「用户直接交互」中（环绕拖拽 / 松手后的阻尼滑行）。
+     *
+     * 只有这一种情况需要满帧渲染：相机每帧都在动，用户一眼就能看出卡顿。
+     * 其余状态（待机 / 说话 / 一次性动作）一律走 IDLE_FRAME_INTERVAL_MS：
+     * 口型开合与动作淡入淡出在 30fps 下肉眼无差，但渲染与 SpringBone
+     * 物理开销直接减半 —— 口型一活跃就拉满 60fps，正是「伴侣一说话
+     * CPU 就上去」的主要来源。
+     */
+    const needsInteractiveRate = (now: number): boolean => {
+      if (orbitDraggingRef.current) return true
+      // 松手后的阻尼滑行段：相机仍在变化，降频会看成一顿一顿
+      return now < dragTailUntilRef.current
+    }
+
     const animate = (): void => {
+      if (!running) return
       rafId = requestAnimationFrame(animate)
 
-      const delta = clock.getDelta()
-      const vrm = vrmRef.current
       const now = performance.now()
+      // 帧节流：跳过的帧完全不进入下面的渲染与物理计算
+      if (!needsInteractiveRate(now) && now - lastFrameAtRef.current < IDLE_FRAME_INTERVAL_MS) return
+      lastFrameAtRef.current = now
+
+      // 钳制 delta 上限：循环被暂停（窗口隐藏）后恢复时 THREE.Clock 会一次性返回
+      // 整段经过时间，不钳制会让动作与 SpringBone 瞬间跳变
+      const delta = Math.min(clock.getDelta(), 0.5)
+      const vrm = vrmRef.current
       if (vrm) {
         const humanoid = vrm.humanoid
         const head = humanoid?.getNormalizedBoneNode('head')
@@ -629,8 +744,13 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
             }
           }
 
-          const mouth = mouthOpenRef.current
-          expressions.setValue('aa', Math.max(0, Math.min(1, mouth)))
+          // 口型值没有明显变化就不重复写：setValue 会走一遍 expressionManager
+          // 的赋值链路，而待机时该值长期恒为 0，逐帧写入是纯浪费
+          const mouth = Math.max(0, Math.min(1, mouthOpenRef.current))
+          if (Math.abs(mouth - lastMouthWrittenRef.current) > MOUTH_WRITE_EPSILON) {
+            expressions.setValue('aa', mouth)
+            lastMouthWrittenRef.current = mouth
+          }
 
           // --------------------------------------------
           // 3b. 情绪表情覆盖（AI 指令 / 交互触发）
@@ -676,11 +796,30 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
           const pointerInside = pointerInsideRef?.current !== false
           const raw =
             pointerInside && pointerRef ? pointerRef.current : { x: 0, y: 0 }
-          _tmpNdc.set(raw.x, -raw.y)
-          raycasterRef.current.setFromCamera(_tmpNdc, camera)
-          // 指针在窗口外时跳过射线检测（intersectObject 开销不低，且结果必然无效）
-          const hit =
-            pointerInside && raycasterRef.current.intersectObject(vrm.scene, true).length > 0
+
+          // 指针位置与「在窗内」状态都没变、相机也稳定时，命中结果必然与上一轮一致。
+          // 穿透模式下指针由主进程 20Hz 下发，用户不动鼠标时数值逐轮完全相同，
+          // 而递归射线检测要遍历角色整棵树 —— 这是待机态最重的一项开销，直接复用。
+          const probe = lastProbeRef.current
+          const cameraSettled =
+            !orbitDraggingRef.current && now >= dragTailUntilRef.current
+          const sameProbe =
+            cameraSettled &&
+            pointerInside === pointerInsideSeenRef.current &&
+            Math.abs(raw.x - probe.x) < HOVER_PROBE_EPSILON &&
+            Math.abs(raw.y - probe.y) < HOVER_PROBE_EPSILON
+
+          if (!sameProbe) {
+            probe.x = raw.x
+            probe.y = raw.y
+            _tmpNdc.set(raw.x, -raw.y)
+            raycasterRef.current.setFromCamera(_tmpNdc, camera)
+            // 指针在窗口外时跳过射线检测（intersectObject 开销不低，且结果必然无效）
+            lastHitRef.current =
+              pointerInside && raycasterRef.current.intersectObject(vrm.scene, true).length > 0
+          }
+
+          const hit = lastHitRef.current
           // 拖拽旋转期间不隐藏：否则刚抓住角色就淡出 + 穿透，视角根本转不动
           const hovering = hit && !orbitDraggingRef.current
 
@@ -726,13 +865,19 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
 
       }
 
-      // 环绕阻尼：松手后继续惯性滑行，必须逐帧推进（无拖拽时开销极小）
-      controls.update()
+      // 环绕阻尼：仅在有「进行中的旋转」时推进。
+      // 静止待机时 OrbitControls.update 依旧会走一遍矩阵与球面坐标计算，
+      // 且它在阻尼收敛后不会自行停止被调用 —— 不门控就是每秒 60 次空算。
+      if (orbitDraggingRef.current || now < dragTailUntilRef.current) {
+        controls.update()
+      }
 
       renderer.render(scene, camera)
     }
 
-    rafId = requestAnimationFrame(animate)
+    // 循环由可见性状态驱动启停（见下方 active effect）：
+    // 不在这里无条件启动，否则「窗口创建后立刻被隐藏」会先空跑一轮
+    if (activeRef.current) startLoop()
 
     // --------------------------------------------
     // 尺寸自适应
@@ -753,7 +898,8 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
     // 清理
     // --------------------------------------------
     return () => {
-      cancelAnimationFrame(rafId)
+      loopControlRef.current = null
+      stopLoop()
       resizeObserver.disconnect()
 
       // 画布可能停在「自动隐藏」的透明态：恢复不透明度并复位穿透状态，
@@ -801,6 +947,22 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
     // mouthOpenRef 为 ref，不参与依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // --------------------------------------------
+  // 窗口可见性 → 渲染循环启停
+  //
+  // 为什么必须显式停：伴侣窗口为「可见时不被系统降频」关闭了 backgroundThrottling，
+  // 窗口隐藏后页面仍被判为可见、rAF 仍会按显示刷新率回调，
+  // 不主动取消就是「窗口都关了、CPU 与 GPU 还在满速跑」——
+  // 这正是此前「关闭桌面伴侣后占用不降」的根因。
+  // --------------------------------------------
+  useEffect(() => {
+    const wasActive = activeRef.current
+    activeRef.current = active
+    if (active === wasActive) return
+    if (active) loopControlRef.current?.start()
+    else loopControlRef.current?.stop()
+  }, [active])
 
   // --------------------------------------------
   // 开关同步（渲染循环逐帧读取 ref，无需重跑场景初始化）

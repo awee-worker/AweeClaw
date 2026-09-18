@@ -73,7 +73,7 @@ export const MemoryApprovalInline: React.FC<MemoryApprovalInlineProps> = ({
                     {/* 状态文案必须完整可读：它与右侧摘要同处一行，
                         若允许收缩会被摘要挤成"已存入记..."。这里固定不收缩、
                         不换行，把可压缩的额度全部让给摘要。 */}
-                    <span className={`text-[12px] shrink-0 whitespace-nowrap ${isRunning ? 'text-text-primary tool-text-shimmer' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}>
+                    <span className={`text-[12px] shrink-0 whitespace-nowrap ${isRunning ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}>
                         {statusText}
                     </span>
                     {!isExpanded && (

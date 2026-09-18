@@ -363,6 +363,13 @@ export interface WorkspaceConfig {
   workspaceId?: string
 }
 
+/** 工作区选择器的返回结果 */
+export type WorkspaceOpenResult =
+  | WorkspaceConfig
+  | { redirected: true; roots: string[] }
+  | { invalid: true }
+  | null
+
 export interface RemoteShellEntry {
   name: string
   path: string
@@ -1602,10 +1609,13 @@ export interface ElectronAPI {
   maximize: () => void
   close: () => void
   toggleDevTools: () => void
-  newWindow: () => void
   /** 自绘菜单（Windows/Linux）执行原生角色：undo/copy/zoomIn/minimize... */
   executeMenuRole: (role: string) => void
   getWindowId: () => Promise<number>
+  /** 当前窗口是否为应用级服务宿主窗口（首个窗口），用于避免多窗口重复启动单例后台任务 */
+  isPrimaryWindow: () => Promise<boolean>
+  /** 宿主窗口关闭后，标记移交给本窗口时的通知，返回取消监听函数 */
+  onPrimaryChanged: (callback: () => void) => () => void
   resizeWindow: (width: number, height: number, minWidth?: number, minHeight?: number) => Promise<void>
   setTheme: (theme: 'light' | 'dark' | 'system', bgColor?: string) => Promise<boolean>
   setLanguage?: (language: Language) => void,
@@ -1618,14 +1628,20 @@ export interface ElectronAPI {
   extractKnowledgeXlsxText: (filePath: string) => Promise<string | null>
   extractKnowledgePptText: (filePath: string) => Promise<string | null>
   extractKnowledgePdfText: (filePath: string) => Promise<string | null>
-  openFolder: () => Promise<string | null>
+  /**
+   * 打开工作区选择器：可选中文件夹（单根），也可选中 .aweeclaw-workspace 文件（多根）
+   *
+   * 返回工作区会话；若目标已在其他窗口打开，主进程会聚焦那个窗口并返回 redirected；
+   * 目标非法（普通文件、损坏的工作区文件）时返回 invalid
+   */
+  openFolder: () => Promise<WorkspaceOpenResult>
   selectFolder: () => Promise<string | null>
   selectForImport: (options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean }) => Promise<string[]>
   selectForExport: (options: { title?: string; defaultPath?: string }) => Promise<string | null>
   importIntoWorkspace: (sourcePaths: string[], targetDir: string) => Promise<{ success: boolean; error?: string; results?: Array<{ source: string; target: string; success: boolean; error?: string }> }>
   exportFromWorkspace: (sourcePath: string, targetDir: string) => Promise<{ success: boolean; error?: string; target?: string }>
   shareItem: (filePaths: string[]) => Promise<{ success: boolean; error?: string }>
-  openWorkspace: () => Promise<WorkspaceConfig | null>
+  openWorkspace: () => Promise<WorkspaceOpenResult>
   addFolderToWorkspace: () => Promise<string | null>
   saveWorkspace: (configPath: string, roots: string[]) => Promise<boolean>
   restoreWorkspace: () => Promise<WorkspaceConfig | null>
@@ -3723,7 +3739,70 @@ export interface ElectronAPI {
     onDownloadProgress: (callback: (progress: unknown) => void) => () => void
   }
 
+  /**
+   * 性能追踪
+   *
+   * 把 CPU 飙高从一条总曲线还原成可归因的时间轴：主进程按秒采各进程占用，
+   * 渲染层按秒上报堆占用、长任务与关键链路计数，两侧写入同一个 JSONL，
+   * 时间戳同源因此可直接对齐。
+   *
+   * 默认关闭。渲染层另有 window.__perfTrace 快捷入口，需要在 DevTools
+   * 控制台触发时不必绕到这里。
+   */
+  perfTrace: {
+    /** 开始追踪，省略 options 时写入当前工作区下的 tmp-diag */
+    start: (options?: {
+      dir?: string
+      /** 采样与上报间隔（毫秒），默认 1000 */
+      intervalMs?: number
+    }) => Promise<{
+      success: boolean
+      data?: PerfTraceStatusPayload
+      error?: string
+    }>
+    /** 停止追踪并收尾落盘 */
+    stop: () => Promise<{
+      success: boolean
+      data?: PerfTraceStatusPayload
+      error?: string
+    }>
+    /** 查询运行状态 */
+    status: () => Promise<{
+      success: boolean
+      data?: PerfTraceStatusPayload
+      error?: string
+    }>
+    /**
+     * 上报一条记录（锚点或渲染层采样）。
+     *
+     * 单向通道、无返回值：调用点位于同步热路径，等回执会把测量本身变成延迟源。
+     */
+    report: (payload: unknown) => void
+    /**
+     * 订阅主进程的跟随启停信号。
+     *
+     * 主进程开始采样时会向所有渲染窗口广播，渲染层据此打开本地上报开关。
+     * 单向通道、无取消订阅：每个窗口装一次即长期有效，窗口销毁时订阅随之失效。
+     */
+    onAutoStart: (handler: (payload?: { intervalMs?: number }) => void) => void
+    onAutoStop: (handler: () => void) => void
+  }
+}
 
+/** 性能追踪运行状态 */
+interface PerfTraceStatusPayload {
+  running: boolean
+  /** 当前写入的 JSONL 绝对路径，未运行时为 null */
+  filePath: string | null
+  startedAt: number | null
+  /** 当前采样间隔（毫秒）：跟随开启上报的窗口需按同一节奏采集 */
+  intervalMs: number
+  /** 本次会话已写入的记录条数 */
+  recordCount: number
+  /** 因窗口限流被丢弃的记录条数 */
+  droppedCount: number
+  /** 最近一次写入失败原因（无则空串） */
+  lastError: string
 }
 
 /**

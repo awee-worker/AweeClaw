@@ -483,6 +483,16 @@ export class VrmIdleController {
     return this.vrmaClips.length
   }
 
+  /**
+   * 是否有一次性动作（.vrma）正在播放。
+   *
+   * 供渲染循环判断帧率：动作播放期间需要全速渲染（动作幅度大、起手/收尾有淡入淡出），
+   * 纯程序化待机时则可以降频。
+   */
+  get isActionPlaying(): boolean {
+    return this.vrmaPlaying
+  }
+
   /** 可用动作清单（下标 + 名称），供 AI 指令按名选片 */
   get actions(): Array<{ index: number; name: string }> {
     return this.vrmaNames.map((name, index) => ({ index, name }))

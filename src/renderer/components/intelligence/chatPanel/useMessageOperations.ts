@@ -2,7 +2,7 @@
  * 消息操作 Hook
  * 封装消息发送、编辑、重新生成、删除、恢复检查点等操作
  */
-import { useCallback } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { t, type Language } from '@renderer/i18n'
 import { composerService } from '@intelligence/runtime/composerEngine'
 import { getFileName } from '@shared/toolkit/pathHelper'
@@ -63,6 +63,17 @@ export function useMessageOperations({
 }: UseMessageOperationsParams) {
   const toast = useToast()
 
+  /**
+   * 最新消息列表的引用桥。
+   *
+   * 下面几个回调原先把 messages 写进依赖数组：流式期间消息数组每个分片都在变，
+   * 于是这些回调跟着重建，一路打穿上层 ChatMessage / AssistantMessageView 的
+   * memo，让整条可见消息树陪着每个文本分片重渲染。改为调用时读 ref，回调引用
+   * 得以稳定，而读到的始终是最新列表（比闭包快照更准）。
+   */
+  const messagesRef = useRef<ChatMessageType[]>(messages)
+  messagesRef.current = messages
+
   /** 提交消息 */
   const handleSubmit = useCallback(
     async (input: string, isStreaming: boolean) => {
@@ -119,6 +130,7 @@ export function useMessageOperations({
   /** 重新生成 */
   const handleRegenerate = useCallback(
     async (messageId: string) => {
+      const messages = messagesRef.current
       const msgIndex = messages.findIndex((m: ChatMessageType) => m.id === messageId)
       if (msgIndex <= 0) return
 
@@ -140,12 +152,13 @@ export function useMessageOperations({
 
       await sendMessage(userMsg.content)
     },
-    [messages, deleteMessagesAfter, clearMessages, sendMessage],
+    [deleteMessagesAfter, clearMessages, sendMessage],
   )
 
   /** 删除一轮对话 */
   const handleDeleteRound = useCallback(
     (messageId: string, setSelectedMessageIds: (ids: Set<string>) => void, setDeleteSelectionMode: (mode: boolean) => void) => {
+      const messages = messagesRef.current
       const msgIndex = messages.findIndex((m: ChatMessageType) => m.id === messageId)
       if (msgIndex === -1) return
 
@@ -168,7 +181,7 @@ export function useMessageOperations({
       setSelectedMessageIds(idsToSelect)
       setDeleteSelectionMode(true)
     },
-    [messages],
+    [],
   )
 
   /** 确认删除选中消息 */
@@ -200,7 +213,7 @@ export function useMessageOperations({
         return
       }
 
-      const userMessage = messages.find(m => m.id === messageId)
+      const userMessage = messagesRef.current.find(m => m.id === messageId)
       const userContent =
         userMessage && isUserMessage(userMessage)
           ? typeof userMessage.content === 'string'
@@ -237,7 +250,7 @@ export function useMessageOperations({
         toast.error(`Restore failed: ${result.errors[0]}`)
       }
     },
-    [getCheckpointForMessage, restoreToCheckpoint, toast, language, messages, addContextItem, setInput, attachmentManager],
+    [getCheckpointForMessage, restoreToCheckpoint, toast, language, addContextItem, setInput, attachmentManager],
   )
 
   /** 接受单个文件变更 */
@@ -282,16 +295,34 @@ export function useMessageOperations({
     toast.success('All changes accepted')
   }, [acceptAllChanges, toast])
 
-  return {
-    handleSubmit,
-    handleEditMessage,
-    handleRegenerate,
-    handleDeleteRound,
-    handleConfirmDeleteSelection,
-    handleRestore,
-    handleAcceptFile,
-    handleRejectFile,
-    handleUndoAll,
-    handleKeepAll,
-  }
+  /**
+   * 返回值整体 memo 化：调用方把它当依赖使用（renderTimelineItem 等），
+   * 对象引用每轮更换会让这些 useCallback 一并失效。
+   */
+  return useMemo(
+    () => ({
+      handleSubmit,
+      handleEditMessage,
+      handleRegenerate,
+      handleDeleteRound,
+      handleConfirmDeleteSelection,
+      handleRestore,
+      handleAcceptFile,
+      handleRejectFile,
+      handleUndoAll,
+      handleKeepAll,
+    }),
+    [
+      handleSubmit,
+      handleEditMessage,
+      handleRegenerate,
+      handleDeleteRound,
+      handleConfirmDeleteSelection,
+      handleRestore,
+      handleAcceptFile,
+      handleRejectFile,
+      handleUndoAll,
+      handleKeepAll,
+    ],
+  )
 }

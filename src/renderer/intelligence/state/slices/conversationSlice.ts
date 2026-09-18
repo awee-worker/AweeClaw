@@ -59,6 +59,8 @@ export interface MessageActions {
     // Reasoning 操作
     addReasoningPart: (messageId: string, targetThreadId?: string) => string
     updateReasoningPart: (messageId: string, partId: string, content: string, isStreaming?: boolean, targetThreadId?: string) => void
+    /** 内部方法：实际执行推理增量写入（由 StreamThrottleBuffer 按节拍调用） */
+    _doUpdateReasoningPart: (messageId: string, partId: string, content: string, isStreaming?: boolean, targetThreadId?: string) => void
     finalizeReasoningPart: (messageId: string, partId: string, targetThreadId?: string) => void
 
     // Search 操作
@@ -252,7 +254,16 @@ export const createMessageSlice: StateCreator<
                         ...thread,
                         messages: [...thread.messages, userMessage, assistantMessage],
                         lastModified: Date.now(),
-                        streamState: { ...thread.streamState, phase: 'streaming' },
+                        // 发送即进入等待态：assistantId 让新建的助手气泡立刻被认领为流式消息，
+                        // waitPhase 与计时起点则保证「准备上下文」这段最长、最无反馈的空窗期
+                        // 从第一帧就有明确文案，而不是等主循环启动后才开始提示。
+                        streamState: {
+                            ...thread.streamState,
+                            phase: 'streaming',
+                            assistantId: assistantMessage.id,
+                            waitPhase: 'building_context',
+                            streamStartTime: Date.now(),
+                        },
                         contextItems: [], // 同时清理上下文
                         ...(autoTitle ? { title: autoTitle } : {}),
                     },
@@ -940,28 +951,60 @@ export const createMessageSlice: StateCreator<
         return partId
     },
 
-    // 更新推理部分
-    updateReasoningPart: (messageId, partId, content, isStreaming = true) => {
-        const threadId = get().currentThreadId
+    /**
+     * 更新推理部分
+     *
+     * 推理增量按 token 到达，直接写入会让每次到达都重建消息数组并触发订阅方重渲染。
+     * 这里先进入节流缓冲合并，实际写入交给 _doUpdateReasoningPart。
+     */
+    updateReasoningPart: (messageId, partId, content, isStreaming = true, targetThreadId) => {
+        streamingBuffer.appendReasoning(messageId, partId, content, targetThreadId)
+        // 显式传入非流式状态时立即落盘，避免状态先于内容写入
+        if (!isStreaming) streamingBuffer.flushNow()
+    },
+
+    /**
+     * 内部方法：实际执行推理增量写入（由 StreamThrottleBuffer 调用）
+     *
+     * 推理文本在消息上有两份载体：part.content（渲染思考块）与 message.reasoning
+     * （浮窗、消息适配器等只读 message 的消费方）。两者必须在同一次 set 内推进，
+     * 分开写会让同一批增量触发两轮消息数组重建。
+     */
+    _doUpdateReasoningPart: (messageId, partId, content, isStreaming = true, targetThreadId) => {
+        const threadId = targetThreadId || get().currentThreadId
         if (!threadId) return
 
         set(state => {
             const thread = state.threads[threadId]
             if (!thread) return state
 
+            let updated = false
             const messages = thread.messages.map(msg => {
-                if (msg.id === messageId && msg.role === 'assistant') {
-                    const assistantMsg = msg as AssistantMessage
-                    const newParts = assistantMsg.parts.map(part => {
-                        if (part.type === 'reasoning' && part.id === partId) {
-                            return { ...part, content: part.content + content, isStreaming }
-                        }
-                        return part
-                    })
-                    return { ...assistantMsg, parts: newParts }
+                if (msg.id !== messageId || msg.role !== 'assistant') return msg
+
+                const assistantMsg = msg as AssistantMessage
+                let fullReasoning: string | undefined
+                const newParts = assistantMsg.parts.map(part => {
+                    if (part.type === 'reasoning' && part.id === partId) {
+                        const nextContent = part.content + content
+                        fullReasoning = nextContent
+                        return { ...part, content: nextContent, isStreaming }
+                    }
+                    return part
+                })
+
+                if (fullReasoning === undefined) return msg
+                updated = true
+
+                return {
+                    ...assistantMsg,
+                    parts: newParts,
+                    reasoning: fullReasoning,
                 }
-                return msg
             })
+
+            // 目标 part 不存在（可能已被清理）时返回原状态，避免无谓重渲染
+            if (!updated) return state
 
             return {
                 threadMessageVersions: bumpThreadMessageVersion(state.threadMessageVersions, threadId),
@@ -975,6 +1018,10 @@ export const createMessageSlice: StateCreator<
 
     // 完成推理部分
     finalizeReasoningPart: (messageId, partId, targetThreadId) => {
+        // 先把缓冲里的推理增量落盘，否则收尾状态会先于内容写入，
+        // 渲染层拿到 isStreaming=false 却缺少尾部文本，表现为内容缺一段。
+        streamingBuffer.flushNow()
+
         const threadId = targetThreadId || get().currentThreadId
         if (!threadId) return
 

@@ -82,6 +82,7 @@ import { createLocalVoiceApi } from './preload/api/localVoice'
 import { createCapabilityGuardApi } from './preload/api/capabilityGuard'
 import { createCharacterCardApi } from './preload/api/characterCard'
 import { createEmotionApi } from './preload/api/emotion'
+import { createPerfTraceApi } from './preload/api/perfTrace'
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
  *
@@ -136,4 +137,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     localVoice: createLocalVoiceApi(),
     // 套餐能力一致性收敛（渲染层提供授权快照，主进程落地关闭）
     capabilityGuard: createCapabilityGuardApi(),
+    perfTrace: createPerfTraceApi(),
   })

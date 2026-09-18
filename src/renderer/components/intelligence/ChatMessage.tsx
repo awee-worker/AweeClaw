@@ -58,6 +58,17 @@ function ChatMessageBase({
   })))
   const fontSize = editorConfig.chatFontSize ?? editorConfig.fontSize
 
+  /**
+   * 重新生成的稳定包装
+   *
+   * 原来直接在 JSX 里写 `() => onRegenerate(message.id)`：每轮渲染都会新建
+   * 函数，打穿 AssistantMessageView（memo）的浅比较，使其随着父级任一次
+   * 渲染一并重渲染。
+   */
+  const handleRegenerate = React.useCallback(() => {
+    onRegenerate?.(message.id)
+  }, [onRegenerate, message.id])
+
   if (!isUserMessage(message) && !isAssistantMessage(message)) {
     return null
   }
@@ -97,7 +108,7 @@ function ChatMessageBase({
                   onApproveTool={onApproveTool}
                   onRejectTool={onRejectTool}
                   onOpenDiff={onOpenDiff}
-                  onRegenerate={onRegenerate ? () => onRegenerate(message.id) : undefined}
+                  onRegenerate={onRegenerate ? handleRegenerate : undefined}
                   hasCheckpoint={hasCheckpoint}
                   isWorkspaceEditor={isWorkspaceEditor}
                   onDeleteRound={onDeleteRound}
@@ -138,7 +149,7 @@ function ChatMessageBase({
             onApproveTool={onApproveTool}
             onRejectTool={onRejectTool}
             onOpenDiff={onOpenDiff}
-            onRegenerate={onRegenerate ? () => onRegenerate(message.id) : undefined}
+            onRegenerate={onRegenerate ? handleRegenerate : undefined}
             hasCheckpoint={hasCheckpoint}
             isWorkspaceEditor={isWorkspaceEditor}
             onDeleteRound={onDeleteRound}

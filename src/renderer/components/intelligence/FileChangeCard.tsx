@@ -118,7 +118,6 @@ function detectNewFile(toolName: string, oldContent: string, newContent: string)
 /** 卡片视觉配置 */
 interface CardVisual {
   containerClass: string
-  showSweep: boolean
 }
 
 /** 根据状态构建卡片视觉配置 */
@@ -129,15 +128,15 @@ function buildCardVisual(
   isRunning: boolean,
 ): CardVisual {
   if (isAwaitingApproval) {
-    return { containerClass: 'border-l-2 border-status-warning bg-status-warning/5', showSweep: false }
+    return { containerClass: 'border-l-2 border-status-warning bg-status-warning/5' }
   }
   if (isError) {
-    return { containerClass: 'bg-status-error/5', showSweep: false }
+    return { containerClass: 'bg-status-error/5' }
   }
   if (isStreaming || isRunning) {
-    return { containerClass: 'bg-accent/5', showSweep: true }
+    return { containerClass: 'bg-accent/5' }
   }
-  return { containerClass: 'hover:bg-text-primary/[0.02] transition-colors rounded-lg', showSweep: false }
+  return { containerClass: 'hover:bg-text-primary/[0.02] transition-colors rounded-lg' }
 }
 
 /** 状态图标 */
@@ -468,9 +467,7 @@ function FileChangeCard({
         {isNewFile ? 'Create ' : 'Update '}
       </span>
       <span
-        className={`${isNewFile ? 'text-status-success' : 'text-text-primary'} ${
-          isActive ? 'tool-text-shimmer text-[12px] font-medium' : 'font-medium text-[12px]'
-        } hover:underline hover:text-accent cursor-pointer transition-colors break-all`}
+        className={`${isNewFile ? 'text-status-success' : 'text-text-primary'} font-medium text-[12px] hover:underline hover:text-accent cursor-pointer transition-colors break-all`}
         onClick={handleFileClick}
         title={filePath}
       >
@@ -478,7 +475,7 @@ function FileChangeCard({
       </span>
     </div>
   ) : isActive ? (
-    <span className="font-medium text-[12px] italic tool-text-shimmer">editing...</span>
+    <span className="font-medium text-[12px] italic">editing...</span>
   ) : (
     <span className="font-medium text-[12px] text-text-primary opacity-50">&lt;empty path&gt;</span>
   )
@@ -538,11 +535,6 @@ function FileChangeCard({
 
   return (
     <div className={`group my-0.5 relative ${visual.containerClass} overflow-hidden`}>
-      {visual.showSweep && (
-        <div className="absolute inset-0 pointer-events-none rounded-lg overflow-hidden">
-          <div className="absolute inset-0 w-[200%] h-full bg-gradient-to-r from-transparent via-accent/10 to-transparent tool-card-sweep" />
-        </div>
-      )}
 
       <CardHeader
         isExpanded={isExpanded}

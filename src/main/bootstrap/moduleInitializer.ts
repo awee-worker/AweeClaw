@@ -27,6 +27,7 @@ import {
   findWindowByWorkspace,
   setWindowWorkspace,
   getWindowWorkspace,
+  isPrimaryWindow,
 } from './windowManager'
 import { setIpcModuleForWindow } from './windowManager'
 import { setIpcModule as setIpcModuleForCleanup } from './globalCleanup'
@@ -61,6 +62,7 @@ import { initializeEmotionModule } from '../modules/emotion'
 import { SettingsDb } from '../modules/settings-db/SettingsDb'
 import { initCapabilityGuardModule } from '../modules/capability-guard'
 import { registerVideoTranscodeIpc } from '../modules/video-transcode/VideoTranscodeIpc'
+import { initPerfTraceModule } from '../modules/perf-trace'
 
 export type Language = 'zh' | 'en'
 
@@ -157,6 +159,7 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
     findWindowByWorkspace,
     setWindowWorkspace,
     getWindowWorkspace,
+    isPrimaryWindow,
   })
 
   // ==========================================
@@ -237,6 +240,9 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   // 默认策略 off：此时 run_command 完全走宿主终端路径，行为与改造前一致。
   // 刻意不在启动时探测后端（docker 探测要 spawn 进程），改为首次执行时惰性探测。
   await safeInit('SandboxModule', initSandboxModule)
+  // 初始化性能追踪模块（进程级 CPU 归因 + 渲染层采样，统一落盘成 JSONL）
+  // 默认不自动开启：常驻采集对绝大多数会话都是无谓开销，需要时由渲染层显式启动
+  await safeInit('PerfTrace', initPerfTraceModule)
 
   // 初始化群组记忆模块（P1-3 群聊长期记忆）
   // 默认关闭：需要在设置中显式开启

@@ -271,6 +271,17 @@ export function useAgentChangeState() {
 /* 视图状态 Hook                                                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 空工具调用数组的共享引用。
+ *
+ * 没有待批准工具时必须复用它，而不是每次返回新的 `[]`：这个数组会经
+ * `pendingApprovalToolCalls → pendingToolIds → ToolCallGroup` 一路透传，
+ * 而 ToolCallGroup 是靠 props 浅比较挡重渲染的 —— 新数组引用会把整组
+ * 工具卡片一路打穿。流式期间 streamState 每帧都在变，`[]` 也就每帧重建，
+ * 于是文本推进时工具卡片跟着每秒重渲染几十次（实测 20~32 次/秒）。
+ */
+const EMPTY_TOOL_CALLS: ToolCall[] = []
+
 export function useAgentViewState() {
   const {
     messages,
@@ -307,7 +318,7 @@ export function useAgentViewState() {
     if (streamState.phase === 'tool_pending' && streamState.pendingApprovalToolCalls) {
       return streamState.pendingApprovalToolCalls
     }
-    return []
+    return EMPTY_TOOL_CALLS
   }, [streamState])
 
   return {

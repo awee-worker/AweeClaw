@@ -14,6 +14,8 @@ import * as Diff from 'diff'
 import { CodeSkeleton } from '../ui/ProgressIndicator'
 import { logger } from '@shared/toolkit/LogEngine'
 import { getExtension } from '@shared/toolkit/pathHelper'
+import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter'
+import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
 
 /** diff 行类型 */
 export interface DiffLine {
@@ -39,8 +41,70 @@ type ScheduledFrame =
   | { kind: 'raf'; id: number }
   | { kind: 'timeout'; id: ReturnType<typeof setTimeout> }
 
-/** diff 计算的最大文件尺寸（字符数） */
-const MAX_FILE_SIZE_FOR_DIFF = 50000
+/**
+ * 单边内容允许进入行级 diff 的最大字符数。
+ *
+ * 行级 diff 走 Myers 算法，成本随行数呈超线性增长：实测同样规模的两份源码，
+ * 5 千字符约 11ms，1.3 万字符约 71ms，5 万字符已经超过 1 秒。这个计算发生在
+ * 渲染阶段，一旦越过百毫秒就是卡顿。
+ *
+ * 这里按**单边**设限而非合计：两边各 5 万字符时合计仍可能落在旧阈值之内，
+ * 会照跑满一秒。超限后不再尝试精确 diff，改为行数近似统计，并提示到编辑器中查看。
+ */
+const MAX_DIFF_SIDE_CHARS = 8000
+
+/** 行级 diff 结果缓存容量 */
+const LINE_DIFF_CACHE_MAX = 16
+
+/**
+ * 行级 diff 结果缓存
+ *
+ * 同一份改动会被两处消费：「统计徽章」需要增删行数，「并排预览」需要逐行明细，
+ * 两者原本各跑一次 Myers diff，等于把同一份成本翻倍。缓存让第二次直接命中。
+ *
+ * key 用内容本身而不是哈希：V8 会为字符串缓存哈希值，比较先命中哈希再退化到
+ * 逐字符，而进入缓存的长度已被 MAX_DIFF_SIDE_CHARS 封顶，持有成本可控。
+ */
+const lineDiffCache = new Map<string, Diff.Change[]>()
+
+/** 判断内容规模是否适合做精确行级 diff */
+function isDiffableSize(oldContent: string, newContent: string): boolean {
+  return oldContent.length <= MAX_DIFF_SIDE_CHARS && newContent.length <= MAX_DIFF_SIDE_CHARS
+}
+
+/**
+ * 计算行级 diff（带缓存）
+ *
+ * 调用方共享同一份结果，避免「统计」与「明细」重复计算。
+ */
+function computeLineDiff(oldContent: string, newContent: string): Diff.Change[] {
+  const key = `${oldContent}\u0000${newContent}`
+  const cached = lineDiffCache.get(key)
+  if (cached !== undefined) {
+    perfTrace.bump(PERF_TRACE_COUNTERS.diffCacheHits)
+    // 命中后调整顺序，使淘汰接近 LRU
+    lineDiffCache.delete(key)
+    lineDiffCache.set(key, cached)
+    return cached
+  }
+
+  const tracking = perfTrace.isEnabled()
+  const startedAt = tracking ? performance.now() : 0
+  const changes = Diff.diffLines(oldContent, newContent)
+
+  if (tracking) {
+    perfTrace.bump(PERF_TRACE_COUNTERS.diffLinesCalls)
+    perfTrace.bump(PERF_TRACE_COUNTERS.diffLinesMs, performance.now() - startedAt)
+  }
+
+  if (lineDiffCache.size >= LINE_DIFF_CACHE_MAX) {
+    const oldest = lineDiffCache.keys().next().value
+    if (oldest !== undefined) lineDiffCache.delete(oldest)
+  }
+  lineDiffCache.set(key, changes)
+
+  return changes
+}
 
 /** 调度下一帧，优先 rAF，回退 timeout */
 function scheduleNextFrame(callback: () => void): ScheduledFrame {
@@ -94,7 +158,7 @@ function buildStreamingDiff(newContent: string, maxLines = 100): DiffLine[] {
 
 /** 完整 diff：基于行级 diff 计算带行号的变更序列 */
 function buildFullDiff(oldContent: string, newContent: string): DiffLine[] {
-  const changes = Diff.diffLines(oldContent, newContent)
+  const changes = computeLineDiff(oldContent, newContent)
   const result: DiffLine[] = []
   let oldLineNum = 1
   let newLineNum = 1
@@ -188,8 +252,9 @@ function useAsyncDiff(
       }
     }
 
-    // 完整模式：超大文件直接报错
-    if (oldContent.length + newContent.length > MAX_FILE_SIZE_FOR_DIFF * 2) {
+    // 完整模式：超出单边上限直接报错，不进入 diff 计算
+    if (!isDiffableSize(oldContent, newContent)) {
+      perfTrace.bump(PERF_TRACE_COUNTERS.diffSkippedTooLarge)
       setError('File too large for inline diff. Open in editor to view changes.')
       setIsLoading(false)
       return
@@ -200,9 +265,6 @@ function useAsyncDiff(
 
     const timerId = setTimeout(() => {
       try {
-        if (oldContent.length + newContent.length > MAX_FILE_SIZE_FOR_DIFF * 2) {
-          throw new Error('File too large')
-        }
         setDiffLines(buildFullDiff(oldContent, newContent))
       } catch (err) {
         logger.ui.error('Diff calculation failed:', err)
@@ -443,11 +505,12 @@ export default function InlineDiffPreview({
 
 /** 完整 diff 统计：返回新增/删除行数 */
 export function getDiffStats(oldContent: string, newContent: string): { added: number; removed: number } {
-  if (oldContent.length + newContent.length > MAX_FILE_SIZE_FOR_DIFF * 2) {
-    return { added: 0, removed: 0 }
+  // 超出单边上限时不跑精确 diff：这一步发生在渲染阶段，代价必须是可预期的常数级
+  if (!isDiffableSize(oldContent, newContent)) {
+    return getApproxLineDeltaStats(oldContent, newContent)
   }
   try {
-    const changes = Diff.diffLines(oldContent, newContent)
+    const changes = computeLineDiff(oldContent, newContent)
     let added = 0
     let removed = 0
     for (const change of changes) {

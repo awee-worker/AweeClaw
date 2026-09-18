@@ -48,6 +48,17 @@ import {
 import type { GitExecOptions, GitExecResponse } from '../modules/git-credential/types'
 
 
+/**
+ * 终端输出聚合节拍（ms）。
+ *
+ * 与 LLM 流式事件保持同一节奏：足够实时（人眼对 30ms 无感），
+ * 又能把「每秒上百次小 chunk」压成每秒约 33 次 IPC。
+ */
+const TERMINAL_DATA_FLUSH_DELAY_MS = 30
+
+/** 单批聚合的数据量上限（字符）：超过立即刷出，避免单条 IPC 过大或大输出被延迟 */
+const TERMINAL_DATA_FLUSH_CHARS = 32 * 1024
+
 interface SecureShellRequest {
   command: string
   args?: string[]
@@ -1013,18 +1024,54 @@ export function registerSecureTerminalHandlers(
       occurredAt: Date.now(),
     })
 
+    /**
+     * 输出聚合缓冲。
+     *
+     * PTY 的 onData 回调粒度很小（几十到几百字节），`npm install` 这类命令
+     * 每秒能触发上百次 —— 逐次 IPC 会让主进程与渲染进程都忙于
+     * 序列化 / 结构化克隆 / 订阅者分发，是 AI 执行命令期间的主要 CPU 开销之一。
+     * 这里按固定节拍合并成一批发送（与 LLM 流式事件保持同一节奏）。
+     */
+    let pendingText = ''
+    let pendingTimer: ReturnType<typeof setTimeout> | null = null
+
+    const flushTerminalData = (): void => {
+      if (pendingTimer) {
+        clearTimeout(pendingTimer)
+        pendingTimer = null
+      }
+      if (pendingText.length === 0) return
+      const text = pendingText
+      pendingText = ''
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('terminal:data', { id, data: text, ...nextMeta() })
+      }
+    }
+
+    const queueTerminalData = (text: string): void => {
+      pendingText += text
+      // 单批过大立即刷出：既限制单条 IPC 的体积，也保证大输出不会被积压
+      if (pendingText.length >= TERMINAL_DATA_FLUSH_CHARS) {
+        flushTerminalData()
+        return
+      }
+      // 固定节拍（throttle）而非重新计时：输出持续不断时也要按节奏下发
+      if (pendingTimer) return
+      pendingTimer = setTimeout(flushTerminalData, TERMINAL_DATA_FLUSH_DELAY_MS)
+    }
+
     terminalProcess.onData((data: string | Buffer) => {
       const text = typeof data === 'string' ? data : ptyUtf8.write(data)
       if (text.length === 0) {
         return
       }
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('terminal:data', { id, data: text, ...nextMeta() })
-      }
+      queueTerminalData(text)
     })
 
     terminalProcess.on('error', (err: any) => {
       logger.security.error(`[Terminal] PTY Error (id: ${id}):`, err)
+      // 出错也先把已收到的输出刷出去，避免最后一段丢失
+      flushTerminalData()
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('terminal:error', {
           id,
@@ -1039,6 +1086,8 @@ export function registerSecureTerminalHandlers(
     terminalProcess.onExit(({ exitCode, signal }: { exitCode: number; signal?: number }) => {
       logger.security.info(`[Terminal] Terminal ${id} exited with code ${exitCode}, signal ${signal}`)
       terminals.delete(id)
+      // 先把聚合缓冲里的输出刷出去，保证渲染层看到的顺序是「输出 → 退出」
+      flushTerminalData()
       const tail = ptyUtf8.end()
       if (mainWindow && !mainWindow.isDestroyed()) {
         if (tail.length > 0) {

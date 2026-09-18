@@ -280,7 +280,7 @@ const renderEditFile: PreviewRenderer = (ctx) => {
             <TextWithFileLinks text={filePath.split('/').pop() || filePath} />
           </span>
         ) : (isStreaming || isRunning) ? (
-          <span className="font-medium tool-text-shimmer italic">editing...</span>
+            <span className="font-medium italic">editing...</span>
         ) : (
           <span className="font-medium text-text-primary opacity-50">&lt;empty path&gt;</span>
         )}

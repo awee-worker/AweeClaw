@@ -39,6 +39,7 @@ import {
   authorizeWindowClose,
   setQuitStateController,
   getShutdownPresentation,
+  isPrimaryWindow,
   type QuitStateController,
 } from './bootstrap/windowManager'
 import { requestRendererShutdown } from './bootstrap/shutdownCoordinator'
@@ -184,7 +185,7 @@ app.whenReady().then(async () => {
 
   // 5. 先注册窗口与更新 IPC，避免渲染进程加载时 handler 未就绪
   const { registerWindowHandlers } = await import('./bridge/window/windowLifecycle')
-  registerWindowHandlers(createWindow)
+  registerWindowHandlers(createWindow, isPrimaryWindow)
   const { registerUpdaterHandlers } = await import('./bridge/window/updateManager')
   registerUpdaterHandlers()
 

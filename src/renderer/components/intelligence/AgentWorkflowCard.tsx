@@ -119,7 +119,7 @@ function AgentChip({ agent, expanded, onToggle }: { agent: AgentWorkflowNode; ex
               {agent.progress != null && agent.progress > 0 && agent.status === 'working' && (
                 <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500"
+                    className="meter-fill h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-[width] duration-500"
                     style={{ width: `${agent.progress}%` }}
                   />
                 </div>
@@ -210,7 +210,7 @@ export const AgentWorkflowCard = memo(function AgentWorkflowCard({ part }: { par
   }
 
   return (
-    <div className="my-2 rounded-xl border border-border/50 bg-surface/80 backdrop-blur-sm overflow-hidden">
+    <div className="my-2 rounded-xl border border-border/50 bg-surface overflow-hidden">
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2">
         <BrainCircuit className={`w-4 h-4 ${
           isExecuting ? 'text-blue-400' :

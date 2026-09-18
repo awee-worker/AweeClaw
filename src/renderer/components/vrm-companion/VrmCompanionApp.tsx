@@ -227,6 +227,8 @@ export function VrmCompanionApp({ onReady }: VrmCompanionAppProps) {
       // 用户说「结束对话」等指令：直接收尾，不弹错误提示（这是正常流程）
       stopVoiceRef.current()
     },
+    // 口型跟「朗读出来的声音」走：TTS 播放电平，而不是麦克风采集电平
+    onPlaybackVolume: (volume) => lipSync.pushVolume(volume),
     onError: showVoiceError,
   })
 
@@ -314,17 +316,19 @@ export function VrmCompanionApp({ onReady }: VrmCompanionAppProps) {
   }, [voiceChat.aiText])
 
   /**
-   * 实时口型：语音对话期间用本窗口 TTS 的真实音量驱动；
-   * 非说话态把音量归零（闭口），否则会保持说完话时的开合值。
+   * 口型的「闭口」路径。
+   *
+   * 说话期间的开合由 TTS 播放电平驱动（见 onPlaybackVolume），这里只负责
+   * 非说话态归零，否则会停在说完话时的开合值上。
+   *
+   * 不能再用 voiceChat.volume：那是麦克风采集电平（只反映用户在说什么），
+   * AI 朗读时它接近 0，拿它当口型实参就是「AI 在说、嘴不动」。
    */
   useEffect(() => {
     if (!voiceActive) return
-    if (voiceChat.state === 'speaking') {
-      lipSync.pushVolume(voiceChat.volume)
-      return
-    }
+    if (voiceChat.state === 'speaking') return
     lipSync.pushVolume(0)
-  }, [lipSync, voiceActive, voiceChat.state, voiceChat.volume])
+  }, [lipSync, voiceActive, voiceChat.state])
 
   // --------------------------------------------
   // 拖拽
@@ -934,6 +938,9 @@ export function VrmCompanionApp({ onReady }: VrmCompanionAppProps) {
           ref={stageRef}
           modelUrl={currentModelUrl}
           scale={scale}
+          // 窗口隐藏时彻底停掉渲染循环：伴侣窗口关闭 backgroundThrottling 后
+          // 隐藏不会自动停 rAF，不显式停就是「关了窗口 CPU 还在满速跑」
+          active={bridge.windowVisible}
           mouthOpenRef={lipSync.mouthOpenRef}
           idleEnabled={config?.idleAnimation ?? true}
           lookAtEnabled={config?.lookAtCursor ?? true}

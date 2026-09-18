@@ -336,23 +336,28 @@ class LintService {
 				}
 			}
 
-			// 强制刷新时，主动确保 LSP 已启动并等待一次诊断。
-			// 如果仍然没有结果，再继续走 CLI 回退，避免打包环境中“已安装但返回空”的假阴性。
-			if (forceRefresh) {
-				try {
-					const serverReady = await ensureServerForFile(filePath)
-					if (serverReady) {
-						await waitForDiagnostics(filePath)
-						const refreshedErrors = getLspDiagnosticsForFile(filePath)
-						if (refreshedErrors !== null) {
-							return { errors: refreshedErrors }
-						}
+			// 主动向常驻语言服务要一次诊断（不再限于强制刷新）。
+			//
+			// 写文件后的诊断是异步推送的：紧接着发生的 lint 调用往往还没在诊断
+			// store 里看到结果。若此时直接走 CLI 回退，就会为一次检查拉起
+			// `npm exec tsc --noEmit` 全量编译（实测单次就要 20-30s、占满 2-3 个
+			// 核，是整个会话里最大的单项 CPU 开销）；而语言服务是常驻且增量更新的，
+			// 要一次诊断只需毫秒级。因此先问 LSP，确实拿不到再考虑 CLI。
+			// waitForDiagnostics 在语言服务侧有 3 秒超时，最坏情况也只是多等一次超时。
+			try {
+				const serverReady = await ensureServerForFile(filePath)
+				if (serverReady) {
+					await waitForDiagnostics(filePath)
+					const refreshedErrors = getLspDiagnosticsForFile(filePath)
+					if (refreshedErrors !== null) {
+						return { errors: refreshedErrors }
 					}
-				} catch (error) {
-					logger.agent.warn('[Lint] Failed to refresh diagnostics via LSP, falling back if available:', error)
 				}
+			} catch (error) {
+				logger.agent.warn('[Lint] Failed to refresh diagnostics via LSP, falling back if available:', error)
 			}
 		}
+
 
 		// 3. 该语言没有 LSP 服务器定义 → 尝试 CLI 回退
 		if (languageId === 'plaintext') {

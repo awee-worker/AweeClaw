@@ -30,6 +30,7 @@ export function resetWorkspaceRuntimeState(): void {
       branches: {},
       activeBranchId: {},
       inputPrompt: '',
+      chatDraft: '',
       currentSessionId: null,
     })
     markAgentStorageSnapshotAsCurrent(null)

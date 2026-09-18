@@ -2053,6 +2053,11 @@ The tool returns the full skill content which you MUST follow as project-specifi
 - BEFORE marking a task \`completed\`, you MUST first mark it \`verifying\` and run an objective verification step (lint / typecheck / build / test / dry-run — whatever validates the work).
 - Transition flow: \`in_progress\` → \`verifying\` (run verification) → \`completed\` (passed). If verification fails, fix and re-verify.
 - NEVER skip straight to \`completed\` based on self-assessment. The gate requires an objective signal.
+- **Choose the cheapest signal that still proves the change.** The gate needs an objective signal, not an expensive one — a full-workspace \`tsc --noEmit\` costs 20-30s and saturates 2-3 cores, and repeating it after every small edit is by far the largest CPU consumer in a session:
+  - First choice: the built-in \`get_lint_errors\` tool — language-server diagnostics, milliseconds, no subprocess.
+  - Second: the output of a dev server / watch task that is already running.
+  - Only when neither can answer the question, run a CLI check — and scope it: the touched package, or \`--incremental\` reusing the existing tsbuildinfo, never the whole monorepo by default.
+  - Never re-run the same full check twice in a row without an intervening edit.
 
 ## Format:
 - Each call replaces the ENTIRE list

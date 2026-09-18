@@ -398,8 +398,11 @@ function createGroupedAPI() {
       maximize: () => raw.maximize(),
       close: () => raw.close(),
       toggleDevTools: () => raw.toggleDevTools(),
-      new: () => raw.newWindow(),
       getId: () => raw.getWindowId(),
+      // 当前窗口是否为应用级服务宿主窗口（首个窗口）
+      isPrimary: () => raw.isPrimaryWindow(),
+      // 宿主窗口关闭后标记移交给本窗口的通知
+      onPrimaryChanged: (callback: () => void) => raw.onPrimaryChanged(callback),
       resize: (width: number, height: number, minWidth?: number, minHeight?: number) =>
         raw.resizeWindow(width, height, minWidth, minHeight),
       setTheme: (theme: 'light' | 'dark' | 'system', bgColor?: string) => raw.setTheme(theme, bgColor),

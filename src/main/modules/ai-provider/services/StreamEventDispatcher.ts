@@ -16,9 +16,56 @@ const IMMEDIATE_EVENT_TYPES = new Set(['error', 'done', 'tool-call-start', 'tool
 /** 批量发送的延迟时间（毫秒） */
 const BATCH_FLUSH_DELAY_MS = 30
 
+/**
+ * 单次批量发送的事件条数上限，超过则立即刷出。
+ *
+ * 上限刻意压得比「避免缓冲膨胀」所需要的低得多。原先取 200，但它防住的并不是
+ * 膨胀，而是把失效模式放大了：节拍一旦被推迟（定时器被更长的任务挡在后面），
+ * 缓冲就趁机攒到 200 条，紧接着一次 flush 在同一个同步块里做完
+ * `events.map(serialize)` 与 `webContents.send` —— 停顿造出大批次，大批次又造出
+ * 更大的停顿，两者互相喂养。条数上限越低，这个正反馈越容易被断开。
+ */
+const MAX_BUFFER_EVENTS = 24
+
+/**
+ * 单次批量发送的累计字符预算。
+ *
+ * 只限条数约束不住单次序列化的体积：24 条文本增量若各含 4KB 内容，一次 flush
+ * 仍要处理近 100KB。而决定这次同步阻塞多久的正是体积，因此再设一道按字符计的
+ * 闸门，让每批的工作量有上界。
+ */
+const MAX_BUFFER_CHARS = 8 * 1024
+
+/**
+ * 估算事件在 IPC 上的字符体积
+ *
+ * 只需要相对准确：这里的用途是「要不要提前刷出」的闸门，不是精确字节数，
+ * 因此固定开销按常量计，可变部分按字符串长度计。
+ */
+function estimateEventChars(event: StreamEvent): number {
+  switch (event.type) {
+    case 'text':
+    case 'reasoning':
+      return event.content.length
+    case 'tool-call-delta':
+      return (event.argumentsDelta?.length ?? 0) + 32
+    case 'source':
+      return 128
+    default:
+      return 32
+  }
+}
+
+/** 单个请求的待发送缓冲 */
+interface BufferedEvents {
+  events: StreamEvent[]
+  /** 已缓冲事件的字符体积估算值，用于按体积触发刷出 */
+  chars: number
+}
+
 /** 流式事件分发器 */
 export class StreamEventDispatcher {
-  private readonly eventBuffer = new Map<string, StreamEvent[]>()
+  private readonly eventBuffer = new Map<string, BufferedEvents>()
   private readonly flushTimers = new Map<string, NodeJS.Timeout>()
 
   constructor(private readonly window: BrowserWindow) {}
@@ -51,44 +98,62 @@ export class StreamEventDispatcher {
     }
   }
 
-  /** 将事件加入缓冲区并设置刷新定时器 */
+  /** 将事件加入缓冲区并按固定节拍发送 */
   private bufferEvent(requestId: string, event: StreamEvent): void {
     let buffer = this.eventBuffer.get(requestId)
     if (!buffer) {
-      buffer = []
+      buffer = { events: [], chars: 0 }
       this.eventBuffer.set(requestId, buffer)
     }
-    buffer.push(event)
+    buffer.events.push(event)
+    buffer.chars += estimateEventChars(event)
 
-    const existingTimer = this.flushTimers.get(requestId)
-    if (existingTimer) clearTimeout(existingTimer)
+    // 两道闸门任一触发就立即刷出：条数约束每批的调度开销，字符数约束单次
+    // 序列化的体积，后者才是这次同步阻塞时长的决定因素
+    if (buffer.events.length >= MAX_BUFFER_EVENTS || buffer.chars >= MAX_BUFFER_CHARS) {
+      this.flushBuffered(requestId)
+      return
+    }
 
-    const timer = setTimeout(() => this.flushBuffered(requestId), BATCH_FLUSH_DELAY_MS)
+    // 固定节拍（throttle）而非重新计时（debounce）：
+    // 流式事件间隔常小于批量延迟，如果每次到达都重置定时器，
+    // 定时器将永远不触发，事件会在缓冲区里一直累积，
+    // 既看不到实时输出，又会在某个时刻整体冲击渲染进程。
+    if (this.flushTimers.has(requestId)) return
+
+    const timer = setTimeout(() => {
+      this.flushTimers.delete(requestId)
+      this.flushBuffered(requestId)
+    }, BATCH_FLUSH_DELAY_MS)
     this.flushTimers.set(requestId, timer)
   }
 
   /** 刷新缓冲区，批量发送所有事件 */
   private flushBuffered(requestId: string): void {
-    const events = this.eventBuffer.get(requestId)
-    if (!events || events.length === 0) return
+    const timer = this.flushTimers.get(requestId)
+    if (timer) {
+      clearTimeout(timer)
+      this.flushTimers.delete(requestId)
+    }
+
+    const buffered = this.eventBuffer.get(requestId)
+    if (!buffered || buffered.events.length === 0) return
 
     if (this.window.isDestroyed()) {
       this.eventBuffer.delete(requestId)
-      this.flushTimers.delete(requestId)
       return
     }
 
     try {
       this.window.webContents.send('llm:stream:' + requestId, {
         type: 'batch',
-        events: events.map((e) => this.serialize(e)),
+        events: buffered.events.map((e) => this.serialize(e)),
       })
     } catch (error) {
       logger.llm.error('[StreamEventDispatcher] 批量发送失败:', error)
     }
 
     this.eventBuffer.delete(requestId)
-    this.flushTimers.delete(requestId)
   }
 
   /** 立即发送单个事件 */

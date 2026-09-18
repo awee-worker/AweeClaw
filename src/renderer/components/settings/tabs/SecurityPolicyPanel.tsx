@@ -238,7 +238,10 @@ export function SecurityPolicyPanel({
             )}
 
             {/* 工作区外允许访问的目录 */}
-            <section className="space-y-4 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
+            <section
+                data-settings-anchor="allowedExternalDirectories"
+                className="space-y-4 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm"
+            >
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <div className="p-1.5 bg-emerald-500/10 rounded-md text-emerald-400">
