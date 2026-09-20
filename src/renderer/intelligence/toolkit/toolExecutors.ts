@@ -1618,6 +1618,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
         }
 
+        // 落盘前确认目标是否已存在：产物标识据此区分「新建」与「编辑」，
+        // 只看内容是否为空会把项目里原有的空文件误判成新建。
+        const fileExisted = await api.file.exists(path)
         const originalContent = await api.file.read(path) || ''
         // 备份原文件到 .history（仅路径操作，不传内容给 AI，零 Token 消耗）
         if (originalContent) await backupFile(path)
@@ -1669,7 +1672,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             filePath: path,
             workspacePath: ctx.workspacePath || '',
             content,
-            action: originalContent ? 'edit' : 'create',
+            action: fileExisted ? 'edit' : 'create',
         })
         return {
             success: true,

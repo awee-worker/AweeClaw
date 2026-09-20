@@ -2,7 +2,7 @@
  * 产物记录 Hook
  *
  * 把 AI 执行任务时产出的文件沉淀到「产物」列表，供工作区的产物栏集中查看：
- *  - file:written —— 文本文件写入完成（新建 / 编辑 / 覆盖），事件自带 action 时按其标记
+ *  - file:written —— 文本文件写入完成（新建 / 编辑 / 覆盖），产物标识以事件携带的 action 为准
  *  - file:writing —— 图片、音视频类生成工具只发该事件，按媒体扩展名收录
  *
  * 与「实时预览文件」开关无关：预览关闭时依然记录，保证产物栏始终与任务产出同步。
@@ -10,7 +10,6 @@
 import { useEffect } from 'react'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
 import { useStore } from '@store'
-import { normalizePath } from '@shared/toolkit/pathHelper'
 
 /** 媒体产物扩展名（与 FilePreviewPanel 的分类保持一致） */
 const MEDIA_EXTENSIONS = [
@@ -28,16 +27,14 @@ export function useArtifactRecorder(workspacePath: string | null) {
   useEffect(() => {
     const record = (filePath: string, action: 'create' | 'edit', pathWorkspace?: string) => {
       if (!filePath) return
-      const store = useStore.getState()
-      const target = normalizePath(filePath)
-      const known = store.artifacts.some(item => normalizePath(item.path) === target)
 
-      store.recordArtifact({
+      useStore.getState().recordArtifact({
         path: filePath,
         workspacePath: pathWorkspace || workspacePath || '',
-        // 首次出现即视作新建；已在列表中则沿用事件给出的操作类型，
-        // 最终标识由 store 合并（新建过就不会因后续编辑退回「编辑」）
-        action: known ? action : 'create',
+        // 产物标识直接采用写入事件给出的 action：写入通道在落盘前已经确认过目标文件是否存在，
+        // 因此项目里原有的文件被编辑得到 edit，只有真正新建的文件才是 create。
+        // 不能再按「是否已出现在产物列表」二次改写，否则老文件首次被 AI 编辑会被误标成新建。
+        action,
       })
     }
 
