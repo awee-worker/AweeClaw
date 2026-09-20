@@ -4,7 +4,7 @@
 
 import { api } from '../../../adapters/electronBridge'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FolderOpen, Plus, RefreshCw, FolderPlus, GitBranch, FilePlus, ExternalLink, Crosshair, Terminal, Clipboard, Download, Eye, EyeOff } from 'lucide-react'
+import { FolderOpen, Plus, RefreshCw, FolderPlus, FilePlus, ExternalLink, Crosshair, Terminal, Clipboard, Download, Eye, EyeOff } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import {t, type Language} from '@renderer/i18n'
@@ -42,9 +42,7 @@ export function ExplorerView() {
     files,
     setFiles,
     language,
-    gitStatus,
     setGitStatus,
-    isGitRepo,
     setIsGitRepo,
     expandFolder,
     activeFilePath,
@@ -57,8 +55,8 @@ export function ExplorerView() {
     setArtifactCollapsed,
   } = useStore(useShallow(s => ({
     workspacePath: s.workspacePath, workspace: s.workspace, files: s.files, setFiles: s.setFiles,
-    language: s.language, gitStatus: s.gitStatus,
-    setGitStatus: s.setGitStatus, isGitRepo: s.isGitRepo, setIsGitRepo: s.setIsGitRepo,
+    language: s.language,
+    setGitStatus: s.setGitStatus, setIsGitRepo: s.setIsGitRepo,
     expandFolder: s.expandFolder, activeFilePath: s.activeFilePath,
     activeScenarioId: s.activeScenarioId,
     showWorkspaceSystemDir: s.showWorkspaceSystemDir, setShowWorkspaceSystemDir: s.setShowWorkspaceSystemDir,
@@ -553,29 +551,6 @@ export function ExplorerView() {
           </div>
         )}
       </div>
-
-      {isGitRepo && gitStatus && (
-        <div className="px-3 py-2 border-t border-border bg-background-secondary/95 backdrop-blur-md">
-          <div className="flex items-center gap-2 text-xs text-text-secondary">
-            <GitBranch className="w-3.5 h-3.5 text-accent opacity-80" />
-            <span className="font-medium">{gitStatus.branch}</span>
-            {(gitStatus.ahead > 0 || gitStatus.behind > 0) && (
-              <span className="flex items-center gap-1 text-[11px] font-bold text-accent bg-accent/10 px-2 py-0.5 rounded-full border border-accent/20">
-                {gitStatus.ahead > 0 && `↑${gitStatus.ahead}`}
-                {gitStatus.behind > 0 && `↓${gitStatus.behind}`}
-              </span>
-            )}
-            <HintOverlay content={t('git.refreshStatus', language) || 'Refresh Git Status'}>
-              <button
-                onClick={updateGitStatus}
-                className="ml-auto p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
-              >
-                <RefreshCw className="w-3 h-3" />
-              </button>
-            </HintOverlay>
-          </div>
-        </div>
-      )}
 
       {rootContextMenu && (
         <FloatingMenu x={rootContextMenu.x} y={rootContextMenu.y} items={rootMenuItems} onClose={() => setRootContextMenu(null)} />

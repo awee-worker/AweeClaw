@@ -5,7 +5,6 @@ import { BRAND } from '@shared/brand'
 import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
 import { formatTokenCount } from '@utils/formatter'
 import {
-  GitBranch,
   AlertCircle,
   XCircle,
   Database,
@@ -187,8 +186,6 @@ export default function WorkspaceStatusBar() {
     setShowSettingsPage,
     language,
     cursorPosition,
-    isGitRepo,
-    gitStatus,
     activeDockTab,
     dockPanelVisible,
   } = useStore(useShallow(s => ({
@@ -197,8 +194,6 @@ export default function WorkspaceStatusBar() {
     setShowSettingsPage: s.setShowSettingsPage,
     language: s.language,
     cursorPosition: s.cursorPosition,
-    isGitRepo: s.isGitRepo,
-    gitStatus: s.gitStatus,
     activeDockTab: s.activeDockTab,
     dockPanelVisible: s.dockPanelVisible,
   })))
@@ -366,15 +361,6 @@ export default function WorkspaceStatusBar() {
         }
       `}</style>
       <div className="flex items-center gap-3">
-        {isGitRepo && gitStatus && (
-          <button className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-white/5 text-text-muted hover:text-text-primary transition-colors group">
-            <div className="flex items-center justify-center w-4 h-4 transition-colors">
-              <GitBranch className="w-3 h-3 text-text-muted group-hover:text-text-primary transition-colors" />
-            </div>
-            <span className="font-medium tracking-wide group-hover:text-text-primary">{gitStatus.branch}</span>
-          </button>
-        )}
-
         {showEditor && (
           <button
             onClick={handleDiagnosticsClick}

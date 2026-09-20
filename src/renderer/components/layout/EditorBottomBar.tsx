@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { GitBranch, AlertCircle, XCircle, Terminal, Bug } from 'lucide-react'
+import { AlertCircle, XCircle, Terminal, Bug } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useDiagnosticsStore, getFileStats } from '@services/diagnosticRepository'
@@ -8,8 +8,6 @@ import { BRAND } from '@shared/brand'
 export default function EditorBottomBar() {
   const {
     language,
-    isGitRepo,
-    gitStatus,
     activeFilePath,
     cursorPosition,
     openDockPanel,
@@ -17,8 +15,6 @@ export default function EditorBottomBar() {
     activeDockTab,
   } = useStore(useShallow(s => ({
     language: s.language,
-    isGitRepo: s.isGitRepo,
-    gitStatus: s.gitStatus,
     activeFilePath: s.activeFilePath,
     cursorPosition: s.cursorPosition,
     openDockPanel: s.openDockPanel,
@@ -57,13 +53,6 @@ export default function EditorBottomBar() {
       `}</style>
 
       <div className="flex items-center gap-2">
-        {isGitRepo && gitStatus && (
-          <button className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-md hover:bg-white/5 text-text-muted hover:text-text-primary transition-colors group">
-            <GitBranch className="w-3 h-3 text-text-muted group-hover:text-text-primary transition-colors" />
-            <span className="font-medium tracking-wide group-hover:text-text-primary">{gitStatus.branch}</span>
-          </button>
-        )}
-
         <button
           onClick={() => openDockPanel('problems')}
           className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-md hover:bg-white/5 transition-colors text-text-muted group hover:text-text-primary"
