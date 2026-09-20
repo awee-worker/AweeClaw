@@ -3,7 +3,7 @@
  */
 
 import { logger } from '@toolkit/LogEngine'
-import type { ChatMessage, MessageContent, TodoItem } from '@intelligence/providerTypes'
+import type { ChatMessage, MessageContent, TodoItem, MountedTaskInfo } from '@intelligence/providerTypes'
 import type { LLMMessage } from '@intelligence/providerTypes'
 import type { CompressionLevel } from '../context/compressionUtils'
 import type { StructuredSummary } from '../context/contextTypes'
@@ -16,8 +16,16 @@ export interface RuntimeStateContext {
   todos?: TodoItem[]
   pendingObjective?: string
   pendingSteps?: string[]
-  /** 会话结构化摘要：压缩/交接后保留的长期上下文，防止裁剪后 AI“失忆” */
+  /** 会话结构化摘要：压缩（L2+）后保留的长期上下文，防止裁剪后 AI“失忆” */
   contextSummary?: StructuredSummary | null
+  /**
+   * 已挂载且已续跑的任务执行情况
+   *
+   * 会话被手动停止时附着的挂载只是一枚「书签」，只有用户点过「继续执行任务」
+   * （`resumedAt` 被写入）才需要把执行情况带进上下文，否则用户在该会话里问
+   * 无关问题时会被无关的任务快照干扰。
+   */
+  mountedTask?: MountedTaskInfo
 }
 
 export interface MessageAssemblyResult {
@@ -190,6 +198,22 @@ export class MessageAssembler {
       const objective = runtimeState.pendingObjective?.trim() || 'None'
       const steps = runtimeState.pendingSteps?.slice(0, 8).map(step => `- ${step}`).join('\n') || '- None'
       sections.push(`## Runtime Task State\n\n**Pending Objective**: ${objective}\n\n**Pending Steps**:\n${steps}`)
+    }
+
+    // 挂载任务的续跑上下文：只在用户点过「继续执行任务」后注入，
+    // 带上停止时整理的执行情况，避免模型重新做已完成的工作。
+    const mounted = runtimeState.mountedTask
+    if (mounted?.resumedAt) {
+      const mountedLines = ['## Resumed Task (mounted when the session was stopped)']
+      mountedLines.push(mounted.summary.trim())
+      if (mounted.pendingSteps.length > 0) {
+        mountedLines.push(
+          '\nContinue from here: finish the remaining steps and do not redo completed work.',
+        )
+      } else {
+        mountedLines.push('\nIf nothing is left, verify the result and wrap up.')
+      }
+      sections.push(mountedLines.join('\n'))
     }
 
     if (runtimeState.todos && runtimeState.todos.length > 0) {

@@ -244,6 +244,7 @@ function resolveRuntimeState(threadId?: string): RuntimeStateContext | undefined
     pendingObjective: thread.pendingObjective,
     pendingSteps: thread.pendingSteps,
     contextSummary: thread.contextSummary,
+    mountedTask: thread.mountedTask,
   }
 }
 
@@ -255,7 +256,8 @@ function hasRuntimeState(state?: RuntimeStateContext): boolean {
       (state.todos && state.todos.length > 0) ||
       state.pendingObjective ||
       (state.pendingSteps && state.pendingSteps.length > 0) ||
-      state.contextSummary,
+      state.contextSummary ||
+      state.mountedTask,
   )
 }
 

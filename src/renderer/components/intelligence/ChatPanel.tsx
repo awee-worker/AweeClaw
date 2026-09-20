@@ -65,7 +65,10 @@ import { ChatInputWrapper } from './chatPanel/components/ChatInputWrapper'
 import { MessageIndexBar, type MessageIndexItem } from './chatPanel/components/MessageIndexBar'
 import { PredictionBubble } from './chatPanel/components/PredictionBubble'
 import PendingChangesBar from './PendingChangesBar'
+import { MountedTaskBar } from './MountedTaskBar'
+import { MountedTaskPromptCard } from './chatPanel/components/MountedTaskPromptCard'
 import { HumanApprovalCard } from './HumanApprovalCard'
+import { settleMountedTaskResume } from '@intelligence/runtime/mountedTaskService'
 import { playPendingReviewSound } from '@renderer/utils/sound'
 import { ProactiveSuggestionsContainer } from './proactive/ProactiveSuggestionsContainer'
 import { useProactiveInvoker } from './proactive/useProactiveInvoker'
@@ -215,17 +218,31 @@ export default function ChatPanel() {
   // ⚠️ 优先使用闭包中的 currentThreadId（来自 useAgentViewState，响应式更新），
   //   若闭包值过期（如组件未及时重渲染），回退到 store 中的实时值。
   //   Agent.abort 内部还有全量中止兜底，即使 threadId 不匹配也能停止 AI。
+  // 停止会话后等待用户决断的挂载询问。记录 threadId 而不是布尔值：用户可能
+  // 停完就切到别的会话，回到原会话时这个询问还应该在。
+  const [mountPromptThreadId, setMountPromptThreadId] = useState<string | null>(null)
+
   const handleAbort = useCallback(() => {
     // 实时读取 store 中的 currentThreadId，防止闭包值过期
     const freshThreadId = useAgentStore.getState().currentThreadId
     const effectiveThreadId = freshThreadId || currentThreadId
-    logger.system.info(
-      '[ChatPanel] handleAbort called, closureThreadId:', currentThreadId,
-      'freshThreadId:', freshThreadId,
-      'effectiveThreadId:', effectiveThreadId,
-    )
     abort(effectiveThreadId ?? undefined)
+
+    // 停止后在会话内征询是否挂载任务：挂载把当前进度固化成会话状态，之后可从
+    // 历史会话一键续跑，不用靠翻聊天记录自己回忆「做到哪了」。
+    // 空会话没有可整理的内容，直接用卡片问一遍只会白占位置。
+    const stoppedThread = effectiveThreadId
+      ? useAgentStore.getState().threads[effectiveThreadId]
+      : undefined
+    if (effectiveThreadId && (stoppedThread?.messages?.length ?? 0) > 0) {
+      setMountPromptThreadId(effectiveThreadId)
+    }
   }, [abort, currentThreadId])
+
+  // 会话重新跑起来（用户又发了消息）时收起挂载询问，避免旧提示压在输入框上
+  useEffect(() => {
+    if (isStreaming && mountPromptThreadId) setMountPromptThreadId(null)
+  }, [isStreaming, mountPromptThreadId])
   const {
     clearMessages,
     deleteMessagesAfter,
@@ -697,6 +714,12 @@ export default function ChatPanel() {
         if (!event.planTaskId) {
           playNotificationSound('success')
         }
+
+        // 挂载任务的续跑轮结束 → 收尾：正常跑完自动卸下挂载（避免续跑上下文长期占
+        // token、任务栏一直压在输入框上方）；中途暂停或报错则保留，用户可以再续跑。
+        if (event.threadId && !event.planTaskId) {
+          settleMountedTaskResume(event.threadId, event.reason)
+        }
       }
 
       if (event.reason === 'complete' || event.reason === 'tool_requested_stop' || event.reason === 'waiting_for_user') {
@@ -1088,6 +1111,21 @@ export default function ChatPanel() {
                   sceneContext={perceptionSceneContext}
                 />
                 <PendingChangesBar pendingChanges={pendingChanges} />
+
+                {/* 挂载任务：「是否挂载」询问卡片与已挂载的续跑入口都内嵌在会话
+                    底部，和输入框同处一个操作区，不再用弹窗遮挡会话内容。
+                    AnimatePresence 让卡片收起时滑走而不是瞬间消失。 */}
+                <AnimatePresence>
+                  {mountPromptThreadId && mountPromptThreadId === currentThreadId && (
+                    <MountedTaskPromptCard
+                      key="mounted-task-prompt"
+                      threadId={mountPromptThreadId}
+                      onResolved={() => setMountPromptThreadId(null)}
+                    />
+                  )}
+                </AnimatePresence>
+                <MountedTaskBar />
+
                 <ChatInputWrapper
                   input={input}
                   setInput={setInput}

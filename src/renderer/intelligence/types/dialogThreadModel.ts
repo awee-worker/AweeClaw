@@ -91,6 +91,31 @@ export interface HandoffResumeMeta {
   createdAt: number
 }
 
+/**
+ * 挂载任务 — 会话被手动停止时，把「当前任务执行到哪一步」附着在会话上
+ *
+ * 用途：
+ * - 历史会话带挂载标识，用户重新打开后可一键「继续执行任务」
+ * - `summary` 是挂载时整理出的执行情况，续跑时静默注入给 AI，
+ *   让 AI 知道之前做到哪、还剩什么，而不是从头开始
+ * - `resumedAt` 记录最近一次续跑时间；续跑正常结束后挂载会被清除，
+ *   任务再次被停止时用户可重新挂载（执行情况随之刷新）
+ */
+export interface MountedTaskInfo {
+  /** 挂载时间 */
+  mountedAt: number
+  /** 任务目标（一句话，用于界面展示） */
+  objective: string
+  /** 尚未完成的步骤（用于界面展示） */
+  pendingSteps: string[]
+  /** 整理出的完整任务执行情况（续跑时静默交给 AI） */
+  summary: string
+  /** 执行情况的生成方式：llm=模型整理，rule_based=规则兜底 */
+  source: 'llm' | 'rule_based'
+  /** 最近一次「继续执行任务」的时间；未续跑过则为 undefined */
+  resumedAt?: number
+}
+
 /** Complete persisted thread record plus thread-scoped ephemeral preview state. */
 export interface ChatThread {
   id: string
@@ -127,6 +152,16 @@ export interface ChatThread {
   handoffResume?: HandoffResumeMeta
   pendingObjective?: string
   pendingSteps?: string[]
+  /** 挂载任务（会话被手动停止时附着，支持一键续跑） */
+  mountedTask?: MountedTaskInfo
+  /**
+   * Runtime-only：挂载任务正在续跑
+   *
+   * 续跑期间底部任务栏会收起（进度已经在时间线里逐条展开），因此这个标记必须跟着
+   * 真实运行状态走：派发续跑时置位，本轮 `loop:end` 复位。只存在内存里，不参与持久化
+   * —— 否则异常退出后残留的标记会让后续无关问答也被当成续跑。
+   */
+  mountedTaskResuming?: boolean
 
   // ===== Thread Ownership Metadata (Phase 3.1) =====
   /** Thread mode: chat/plan */
@@ -156,6 +191,8 @@ export interface PersistedChatThread {
   handoffResume?: HandoffResumeMeta
   pendingObjective?: string
   pendingSteps?: string[]
+  /** 挂载任务（会话被手动停止时附着，支持一键续跑） */
+  mountedTask?: MountedTaskInfo
   mode?: import('@protocols/workModeProtocol').WorkMode
   origin?: 'user' | 'plan-task'
   planId?: string
@@ -202,6 +239,7 @@ export function toPersistedChatThread(thread: ChatThread): PersistedChatThread {
     handoffResume: thread.handoffResume,
     pendingObjective: thread.pendingObjective,
     pendingSteps: thread.pendingSteps,
+    mountedTask: thread.mountedTask,
     mode: thread.mode,
     origin: thread.origin,
     planId: thread.planId,

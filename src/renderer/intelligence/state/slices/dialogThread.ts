@@ -3,7 +3,7 @@
  */
 
 import type { StateCreator } from 'zustand'
-import type { ChatThread, StreamState, CompressionPhase, TodoItem, ContextStats, ThreadHandoffState } from '@intelligence/providerTypes'
+import type { ChatThread, StreamState, CompressionPhase, TodoItem, ContextStats, ThreadHandoffState, MountedTaskInfo } from '@intelligence/providerTypes'
 import type { CompressionStats } from '../../engine/providerTypes'
 import type { StructuredSummary } from '../../capabilities/context/providerTypes'
 import type { BranchSlice } from './conversationBranch'
@@ -91,6 +91,23 @@ export interface ThreadActions {
     setExecutionMeta: (meta: import('../../providerTypes').ThreadExecutionMeta | null, threadId?: string) => void
     updateExecutionMeta: (meta: Partial<import('../../providerTypes').ThreadExecutionMeta>, threadId?: string) => void
     clearExecutionMeta: (threadId?: string) => void
+
+    /**
+     * 挂载/更新会话上的任务
+     *
+     * 传 null 表示取消挂载（清除挂载标识与执行情况）。
+     * 挂载记录会随线程元数据持久化，历史会话据此显示挂载标识。
+     */
+    setMountedTask: (task: MountedTaskInfo | null, threadId?: string) => void
+    /** 记录一次「继续执行任务」的时间，供界面展示续跑状态 */
+    markMountedTaskResumed: (threadId?: string) => void
+    /**
+     * 复位/置位「续跑进行中」标记（仅内存）
+     *
+     * 续跑期间底部任务栏收起，本轮 `loop:end` 时复位。不写盘：异常退出后残留的
+     * 标记会让后续无关问答也被误判成续跑，从而把任务栏一直藏着。
+     */
+    setMountedTaskResuming: (resuming: boolean, threadId?: string) => void
 }
 
 export type ThreadSlice = ThreadStoreState & ThreadActions
@@ -680,6 +697,56 @@ export const createThreadSlice: StateCreator<
                     requestId: undefined,
                     assistantId: undefined,
                 },
+            }),
+        }))
+    },
+
+    setMountedTask: (task, threadId) => {
+        const targetId = threadId ?? get().currentThreadId
+        if (!targetId) return
+
+        const thread = get().threads[targetId]
+        if (!thread) return
+
+        // 挂载属于用户可见的持久状态，必须走 updateThread（刷新 lastModified 并落盘），
+        // 不能用 updateThreadEphemeral —— 后者不会把线程标记为待持久化。
+        // 同时清掉续跑标记：挂载都没了，标记留着只会让后续问答被误判成续跑。
+        set(state => ({
+            threads: updateThread(state.threads, targetId, {
+                mountedTask: task ?? undefined,
+                mountedTaskResuming: undefined,
+            }),
+        }))
+    },
+
+    markMountedTaskResumed: (threadId) => {
+        const targetId = threadId ?? get().currentThreadId
+        if (!targetId) return
+
+        const task = get().threads[targetId]?.mountedTask
+        if (!task) return
+
+        set(state => ({
+            threads: updateThread(state.threads, targetId, {
+                mountedTask: { ...task, resumedAt: Date.now() },
+                // 续跑消息已派发：界面据此收起任务栏。该字段不参与持久化
+                mountedTaskResuming: true,
+            }),
+        }))
+    },
+
+    setMountedTaskResuming: (resuming, threadId) => {
+        const targetId = threadId ?? get().currentThreadId
+        if (!targetId) return
+
+        // 每轮 loop:end 都会调用，已是目标状态时直接返回，不为无变化刷新线程对象
+        const thread = get().threads[targetId]
+        if (!thread || (thread.mountedTaskResuming === true) === resuming) return
+
+        // 纯运行时状态：不写盘、不刷新 lastModified，避免把界面收起动作变成一次落盘
+        set(state => ({
+            threads: updateThreadEphemeral(state.threads, targetId, {
+                mountedTaskResuming: resuming ? true : undefined,
             }),
         }))
     },

@@ -1,6 +1,7 @@
 import {
   fromPersistedChatThread,
   type ChatThread,
+  type MountedTaskInfo,
   type PersistedChatThread,
 } from '@intelligence/providerTypes'
 
@@ -84,6 +85,34 @@ export function isPlainRecord(value: unknown): value is Record<string, unknown> 
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
+/**
+ * 规范化挂载任务
+ *
+ * `summary` 是续跑时注入给模型的执行情况，缺了它挂载就失去意义；
+ * 其余字段缺失时降级为默认值即可，没必要因为一个字段不合法就丢掉整个挂载。
+ */
+export function normalizeMountedTask(value: unknown): MountedTaskInfo | undefined {
+  if (!isPlainRecord(value)) return undefined
+
+  const summary = typeof value.summary === 'string' ? value.summary.trim() : ''
+  if (!summary) return undefined
+
+  const pendingSteps = Array.isArray(value.pendingSteps)
+    ? value.pendingSteps.filter((step): step is string => typeof step === 'string')
+    : []
+
+  const resumedAt = typeof value.resumedAt === 'number' ? value.resumedAt : undefined
+
+  return {
+    mountedAt: typeof value.mountedAt === 'number' ? value.mountedAt : Date.now(),
+    objective: typeof value.objective === 'string' ? value.objective : '',
+    pendingSteps,
+    summary,
+    source: value.source === 'llm' ? 'llm' : 'rule_based',
+    resumedAt,
+  }
+}
+
 export function normalizeSessionExtraState(value?: Record<string, unknown> | null): SessionExtraState {
   const rawBranches = isPlainRecord(value?.branches) ? value.branches : {}
   const rawActiveBranchId = isPlainRecord(value?.activeBranchId) ? value.activeBranchId : {}
@@ -146,6 +175,7 @@ export function normalizePersistedChatThread(thread: PersistedChatThread): Persi
   return {
     ...thread,
     title: typeof thread.title === 'string' ? thread.title : undefined,
+    mountedTask: normalizeMountedTask(thread.mountedTask),
     messages,
     contextItems: Array.isArray(thread.contextItems) ? thread.contextItems : [],
     messageCheckpoints: Array.isArray(thread.messageCheckpoints) ? thread.messageCheckpoints : [],
@@ -205,6 +235,7 @@ export function normalizeLegacyThreadRecord(threadId: string, value: unknown): C
       : undefined,
     pendingObjective: typeof value.pendingObjective === 'string' ? value.pendingObjective : undefined,
     pendingSteps: Array.isArray(value.pendingSteps) ? value.pendingSteps.filter((step): step is string => typeof step === 'string') : undefined,
+    mountedTask: normalizeMountedTask(value.mountedTask),
     mode: value.mode as PersistedChatThread['mode'],
     origin: value.origin === 'plan-task' ? 'plan-task' : value.origin === 'user' ? 'user' : undefined,
     planId: typeof value.planId === 'string' ? value.planId : undefined,

@@ -32,8 +32,11 @@ import { getFriendlyToolName } from '@intelligence/display/toolFriendlyName'
 import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter'
 import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
 
-/** 工具状态分组 */
-type ToolGroupStatus = 'pending' | 'awaiting' | 'success' | 'error'
+import {
+  buildStatusBreakdown,
+  countToolStatuses,
+  type ToolGroupStatus,
+} from './toolGroupStats'
 
 /** 工具分组信息 */
 interface ToolGroup {
@@ -50,6 +53,14 @@ const GROUP_VISUALS: Record<ToolGroupStatus, { label: string; icon: LucideIcon; 
   awaiting: { label: '待批准', icon: AlertTriangle, color: 'text-status-warning' },
   error: { label: '失败', icon: XCircle, color: 'text-status-error' },
   success: { label: '已完成', icon: CheckCircle2, color: 'text-status-success' },
+}
+
+/** 组头状态明细使用的显示名（与分组视觉配置同源，避免两处文案分叉） */
+const GROUP_STATUS_LABELS: Record<ToolGroupStatus, string> = {
+  pending: GROUP_VISUALS.pending.label,
+  awaiting: GROUP_VISUALS.awaiting.label,
+  error: GROUP_VISUALS.error.label,
+  success: GROUP_VISUALS.success.label,
 }
 
 /** 工具调用卡片渲染选项 */
@@ -340,6 +351,10 @@ function ToolCallGroup({
         const Icon = group.icon
         const isPendingGroup = group.status === 'pending'
         const showHeader = group.tools.length > 1
+        // 组状态取最高优先级，但组头必须反映组内真实构成：批量执行时
+        // 一个失败 + 三个完成若只写「失败 (4)」，会被误读成整批都失败。
+        const statusBreakdown = buildStatusBreakdown(countToolStatuses(group.tools), GROUP_STATUS_LABELS)
+        const headerText = statusBreakdown ?? `${group.label} (${group.tools.length})`
 
         return (
           <div
@@ -369,7 +384,7 @@ function ToolCallGroup({
                   }`}
                   style={{ height: 28 }}
                   aria-expanded={!isCollapsed}
-                  aria-label={`${group.label} (${group.tools.length})`}
+                  aria-label={headerText}
                   title={
                     hasApproval
                       ? '当前有工具等待批准，无法折叠'
@@ -388,9 +403,10 @@ function ToolCallGroup({
                     aria-hidden
                   />
                   <span>
-                    {group.label} ({group.tools.length})
-                    {/* P1-C 组级进度：进行中组显示已完成/总数，替代逐卡闪烁 */}
-                    {isPendingGroup && totalCount > 1 && (
+                    {headerText}
+                    {/* P1-C 组级进度：进行中组显示已完成/总数，替代逐卡闪烁。
+                        已有状态明细时不再重复显示进度（明细本身已给出分段数量）。 */}
+                    {isPendingGroup && totalCount > 1 && !statusBreakdown && (
                       <span className="text-text-muted/70 font-normal ml-1">
                         · {doneCount}/{totalCount}
                       </span>

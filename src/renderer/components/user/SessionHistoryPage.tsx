@@ -20,15 +20,17 @@ import {
   Square,
   Loader2,
   ArrowLeft,
+  PackageOpen,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { useAgentActions, useAllThreads } from '@hooks/useAgent'
 import { getThreadDisplayTitle } from '@intelligence/providerTypes'
-import type { ChatThread } from '@intelligence/providerTypes'
+import type { ChatThread, MountedTaskInfo } from '@intelligence/providerTypes'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { api } from '@renderer/adapters/electronBridge'
+import { normalizeMountedTask } from '@renderer/adapters/sessionStorageAdapter'
 import { logger } from '@toolkit/LogEngine'
 import { t, type Language } from '@renderer/i18n'
 
@@ -40,6 +42,8 @@ interface ThreadSummaryItem {
   messageCount: number
   /** 来源标记：db=数据库查询，cache=内存缓存降级 */
   source: 'db' | 'cache'
+  /** 会话上挂载的任务（会话被停止时附着），有值则列表显示挂载标识 */
+  mountedTask?: MountedTaskInfo
 }
 
 interface SessionHistoryPageProps {
@@ -78,6 +82,7 @@ async function fetchThreadSummariesFromDb(userId?: string | null): Promise<Threa
     lastModified: s.lastModified,
     messageCount: s.messageCount,
     source: 'db' as const,
+    mountedTask: normalizeMountedTask(s.mountedTask),
   }))
 }
 
@@ -89,6 +94,7 @@ function getThreadSummariesFromCache(allThreads: ChatThread[]): ThreadSummaryIte
     lastModified: t.lastModified,
     messageCount: t.messageCount ?? t.messages.length ?? 0,
     source: 'cache' as const,
+    mountedTask: t.mountedTask,
   }))
 }
 
@@ -408,6 +414,17 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
                           {isCurrent && (
                             <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-accent/10 text-accent text-[10px] font-medium">
                               {t('user.current', language as Language)}
+                            </span>
+                          )}
+                          {thread.mountedTask && (
+                            <span
+                              className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-accent/10 text-accent text-[10px] font-medium"
+                              title={t('mt.badge', language as Language)}
+                            >
+                              <PackageOpen className="w-3 h-3" />
+                              {thread.mountedTask.pendingSteps.length > 0
+                                ? t('mt.barPending', language as Language, { count: thread.mountedTask.pendingSteps.length })
+                                : t('mt.badge', language as Language)}
                             </span>
                           )}
                         </div>

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Settings, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, MessageSquarePlus, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle, Blocks } from 'lucide-react'
+import { Settings, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, MessageSquarePlus, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle, Blocks, PackageOpen } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -390,7 +390,17 @@ function ThreadListItem({
     >
       <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-50" strokeWidth={1.5} />
       <div className="flex-1 min-w-0 group-hover:pr-5 transition-all">
-        <div className="text-[13px] font-medium truncate leading-snug" title={title}>{title}</div>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className="text-[13px] font-medium truncate leading-snug" title={title}>{title}</div>
+          {thread.mountedTask && (
+            <span
+              className="shrink-0 flex items-center text-accent opacity-80"
+              title={t('mt.badge', language as Language)}
+            >
+              <PackageOpen className="w-3 h-3" strokeWidth={1.5} />
+            </span>
+          )}
+        </div>
       </div>
       <div className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
         <button
@@ -1186,13 +1196,16 @@ export default function NavigationRail() {
                 >
                   <button
                     onClick={() => switchThread(thread.id)}
-                    className={`w-[30px] h-[30px] rounded-md flex items-center justify-center transition-all ${
+                    className={`relative w-[30px] h-[30px] rounded-md flex items-center justify-center transition-all ${
                       threadHighlightEnabled && currentThreadId === thread.id
                         ? 'bg-accent/10 text-accent'
                         : 'text-text-muted hover:text-text-primary hover:bg-surface-hover/50'
                     }`}
                   >
                     <MessageSquare className="w-3.5 h-3.5 opacity-50" strokeWidth={1.5} />
+                    {thread.mountedTask && (
+                      <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent" />
+                    )}
                   </button>
                 </HintOverlay>
               ))}

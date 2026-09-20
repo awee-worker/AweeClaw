@@ -192,6 +192,7 @@ export type {
   PendingToolApproval,
   StreamState,
   HandoffResumeMeta,
+  MountedTaskInfo,
   ChatThread,
   PersistedChatThread,
 } from './types/dialogThreadModel'

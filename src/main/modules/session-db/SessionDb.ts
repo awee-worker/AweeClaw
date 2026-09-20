@@ -40,6 +40,7 @@ export interface ThreadMetaRow {
   handoff_resume: string | null  // JSON
   pending_objective: string | null
   pending_steps: string | null  // JSON
+  mount_task: string | null     // JSON — 挂载任务（会话停止时整理的任务执行情况）
   mode: string | null
   origin: string | null
   plan_id: string | null
@@ -168,6 +169,7 @@ export class SessionDb {
         handoff_resume      TEXT,
         pending_objective   TEXT,
         pending_steps       TEXT,
+        mount_task          TEXT,
         mode                TEXT,
         origin              TEXT,
         plan_id             TEXT,
@@ -223,6 +225,21 @@ export class SessionDb {
         }
       }
       this.db.prepare("INSERT OR REPLACE INTO schema_version (key, value) VALUES ('version', '2')").run()
+    }
+
+    // 迁移：v2 → v3：添加 mount_task 列（挂载任务）
+    // 老库的 schema_version 仍是 2，必须补列，否则 upsertThreadMeta 会因未知列报错。
+    if (version < 3) {
+      try {
+        this.db.exec('ALTER TABLE thread_meta ADD COLUMN mount_task TEXT')
+        logger.session.info('[SessionDb] Migrated schema to v3: added mount_task column')
+      } catch (err: any) {
+        // 列已存在则忽略
+        if (!err?.message?.includes('duplicate column')) {
+          logger.session.warn('[SessionDb] Migration v3 failed:', err)
+        }
+      }
+      this.db.prepare("INSERT OR REPLACE INTO schema_version (key, value) VALUES ('version', '3')").run()
     }
 
     // user_id 索引（迁移后创建，确保列已存在）
@@ -337,22 +354,30 @@ export class SessionDb {
    * 获取所有线程摘要
    * @param userId 用户 ID。传入字符串时按该用户过滤；传入 null 时返回 user_id IS NULL 的线程；不传时返回所有线程
    */
-  getAllThreadSummaries(userId?: string | null): Array<{ id: string; title: string | null; lastModified: number; messageCount: number; userId: string | null }> {
+  getAllThreadSummaries(userId?: string | null): Array<{
+    id: string
+    title: string | null
+    lastModified: number
+    messageCount: number
+    userId: string | null
+    /** 挂载任务（仅摘要需要判断是否挂载，故返回完整记录供界面展示） */
+    mountedTask: any | null
+  }> {
     let rows: any[]
     if (userId === undefined) {
       // 不传：返回所有线程
       rows = this.db.prepare(
-        'SELECT thread_id, title, last_modified, message_count, user_id FROM thread_meta ORDER BY last_modified DESC'
+        'SELECT thread_id, title, last_modified, message_count, user_id, mount_task FROM thread_meta ORDER BY last_modified DESC'
       ).all() as any[]
     } else if (userId === null) {
       // null：返回未登录用户的线程
       rows = this.db.prepare(
-        'SELECT thread_id, title, last_modified, message_count, user_id FROM thread_meta WHERE user_id IS NULL ORDER BY last_modified DESC'
+        'SELECT thread_id, title, last_modified, message_count, user_id, mount_task FROM thread_meta WHERE user_id IS NULL ORDER BY last_modified DESC'
       ).all() as any[]
     } else {
       // 字符串：返回指定用户的线程
       rows = this.db.prepare(
-        'SELECT thread_id, title, last_modified, message_count, user_id FROM thread_meta WHERE user_id = ? ORDER BY last_modified DESC'
+        'SELECT thread_id, title, last_modified, message_count, user_id, mount_task FROM thread_meta WHERE user_id = ? ORDER BY last_modified DESC'
       ).all(userId) as any[]
     }
 
@@ -368,13 +393,20 @@ export class SessionDb {
       }
     }
 
-    return rows.map(row => ({
-      id: row.thread_id,
-      title: row.title,
-      lastModified: row.last_modified,
-      messageCount: row.message_count,
-      userId: row.user_id,
-    }))
+    return rows.map(row => {
+      let mountedTask: any = null
+      if (row.mount_task) {
+        try { mountedTask = JSON.parse(row.mount_task) } catch { /* 脏数据忽略，界面按未挂载处理 */ }
+      }
+      return {
+        id: row.thread_id,
+        title: row.title,
+        lastModified: row.last_modified,
+        messageCount: row.message_count,
+        userId: row.user_id,
+        mountedTask,
+      }
+    })
   }
 
   /** 获取单个线程元数据 */
@@ -474,6 +506,7 @@ export class SessionDb {
       handoff_resume: data.handoffResume ? JSON.stringify(data.handoffResume) : null,
       pending_objective: data.pendingObjective ?? null,
       pending_steps: data.pendingSteps ? JSON.stringify(data.pendingSteps) : null,
+      mount_task: data.mountedTask ? JSON.stringify(data.mountedTask) : null,
       mode: data.mode ?? null,
       origin: data.origin ?? null,
       plan_id: data.planId ?? null,
@@ -488,7 +521,7 @@ export class SessionDb {
           user_id = ?,
           context_items = ?, message_checkpoints = ?, context_summary = ?,
           todos = ?, handoff_context = ?, handoff_resume = ?,
-          pending_objective = ?, pending_steps = ?, mode = ?,
+          pending_objective = ?, pending_steps = ?, mount_task = ?, mode = ?,
           origin = ?, plan_id = ?, task_id = ?, extra = ?,
           updated_at_db = ?
         WHERE thread_id = ?
@@ -497,7 +530,7 @@ export class SessionDb {
         fields.user_id,
         fields.context_items, fields.message_checkpoints, fields.context_summary,
         fields.todos, fields.handoff_context, fields.handoff_resume,
-        fields.pending_objective, fields.pending_steps, fields.mode,
+        fields.pending_objective, fields.pending_steps, fields.mount_task, fields.mode,
         fields.origin, fields.plan_id, fields.task_id, fields.extra,
         now, threadId,
       )
@@ -508,16 +541,16 @@ export class SessionDb {
           user_id,
           context_items, message_checkpoints, context_summary,
           todos, handoff_context, handoff_resume,
-          pending_objective, pending_steps, mode,
+          pending_objective, pending_steps, mount_task, mode,
           origin, plan_id, task_id, extra,
           created_at_db, updated_at_db
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         threadId, fields.title, fields.created_at, fields.last_modified, fields.message_count,
         fields.user_id,
         fields.context_items, fields.message_checkpoints, fields.context_summary,
         fields.todos, fields.handoff_context, fields.handoff_resume,
-        fields.pending_objective, fields.pending_steps, fields.mode,
+        fields.pending_objective, fields.pending_steps, fields.mount_task, fields.mode,
         fields.origin, fields.plan_id, fields.task_id, fields.extra,
         now, now,
       )
@@ -594,6 +627,11 @@ export class SessionDb {
       try { pendingSteps = JSON.parse(row.pending_steps) } catch { /* ignore */ }
     }
 
+    let mountedTask: any = undefined
+    if (row.mount_task) {
+      try { mountedTask = JSON.parse(row.mount_task) } catch { /* ignore */ }
+    }
+
     let extra: Record<string, any> = {}
     try { extra = JSON.parse(row.extra) } catch { /* ignore */ }
 
@@ -612,6 +650,7 @@ export class SessionDb {
       handoffResume,
       pendingObjective: row.pending_objective ?? undefined,
       pendingSteps,
+      mountedTask,
       mode: row.mode ?? undefined,
       origin: row.origin ?? undefined,
       planId: row.plan_id ?? undefined,
