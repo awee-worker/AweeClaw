@@ -90,6 +90,24 @@ class PluginUiRegistryImpl {
   }> | null = null
 
   /**
+   * 插件工作台卡片元数据缓存（按场景模式分桶，引用稳定，供 useSyncExternalStore 使用）
+   *
+   * CardLibrary 通过 useSyncExternalStore 订阅 getAllWidgetCards()：
+   * 若每次调用都返回新数组，引用比对必然不等，会被判定为快照变化而无限重渲染。
+   * 与上述缓存同理，仅在 discovered 变化（invalidateCache）时重建。
+   */
+  private widgetCardsCache = new Map<
+    string,
+    Array<{
+      pluginKey: string
+      cardId: string
+      label: string
+      labelZh: string
+      icon: string
+    }>
+  >()
+
+  /**
    * 初始化：从主进程拉取所有已安装插件的 UI 贡献声明
    *
    * 只拉取元数据（contributes），不加载 ui.js（懒加载）。
@@ -256,6 +274,7 @@ class PluginUiRegistryImpl {
     this.sidebarItemsCache = null
     this.topActionsCache = null
     this.settingsTabsCache = null
+    this.widgetCardsCache.clear()
   }
 
   /**
@@ -676,6 +695,10 @@ class PluginUiRegistryImpl {
     labelZh: string
     icon: string
   }> {
+    const cacheKey = mode ?? ''
+    const cached = this.widgetCardsCache.get(cacheKey)
+    if (cached) return cached
+
     const result: Array<{
       pluginKey: string
       cardId: string
@@ -703,6 +726,7 @@ class PluginUiRegistryImpl {
       }
     }
 
+    this.widgetCardsCache.set(cacheKey, result)
     return result
   }
 
