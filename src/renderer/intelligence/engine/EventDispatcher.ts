@@ -87,7 +87,8 @@ export type IntelligenceEvent =
   // 文件实时预览
   | { type: 'file:writing'; filePath: string; workspacePath: string }
   | { type: 'file:stream_content'; filePath: string; workspacePath: string; content: string; toolCallId: string; isComplete: boolean }
-  | { type: 'file:written'; filePath: string; workspacePath: string; content: string }
+  // action 标识本次落盘是新建还是覆盖已有文件，供产物面板区分展示
+  | { type: 'file:written'; filePath: string; workspacePath: string; content: string; action?: 'create' | 'edit' }
 
 /** 事件类型字面量 */
 export type IntelligenceEventType = IntelligenceEvent['type']

@@ -147,6 +147,7 @@ const defaultAgentConfig: AgentConfig = {
   expandThinkingByDefault: AGENT_DEFAULTS.expandThinkingByDefault,
   expandToolCallsByDefault: AGENT_DEFAULTS.expandToolCallsByDefault,
   expandContextByDefault: AGENT_DEFAULTS.expandContextByDefault,
+  liveFilePreview: AGENT_DEFAULTS.liveFilePreview,
   keepRecentTurns: AGENT_DEFAULTS.keepRecentTurns,
   deepCompressionTurns: AGENT_DEFAULTS.deepCompressionTurns,
   maxImportantOldTurns: AGENT_DEFAULTS.maxImportantOldTurns,

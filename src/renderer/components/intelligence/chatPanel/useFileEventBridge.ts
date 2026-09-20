@@ -32,12 +32,36 @@ function isVideoFile(filePath: string): boolean {
   return VIDEO_EXTENSIONS.includes(ext)
 }
 
+/**
+ * 二进制文档扩展名（与 FilePreviewPanel 的类型分派保持一致）
+ *
+ * 这些类型没有可读的文本内容，直接交给预览组件自行加载，
+ * 否则读取文本会返回空值而被静默跳过，表现为「实时预览没反应」。
+ */
+const BINARY_DOC_EXTENSIONS = ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'glb', 'gltf']
+
+/** 判断文件是否为二进制文档（需要预览组件直接加载） */
+function isBinaryDocFile(filePath: string): boolean {
+  const ext = filePath.split('.').pop()?.toLowerCase() || ''
+  return BINARY_DOC_EXTENSIONS.includes(ext)
+}
+
 interface UseFileEventBridgeParams {
   workspacePath: string | null
   activeFilePath: string | null
   openFile: (path: string, content: string, oldContent?: string) => void
   setActiveFile: (path: string) => void
   teamModeEnabled: boolean
+}
+
+/**
+ * 是否需要在 AI 产出文件时自动打开编辑器预览
+ *
+ * 每次事件触发时实时读取，保证开关切换立即生效且不触发 effect 重订阅。
+ * 关闭后不再打开/刷新标签页，也不会去读文件内容，产物改由「产物」面板按需查看。
+ */
+function isLiveFilePreviewEnabled(): boolean {
+  return useStore.getState().agentConfig?.liveFilePreview !== false
 }
 
 export function useFileEventBridge({
@@ -51,6 +75,7 @@ export function useFileEventBridge({
     const unsubWriting = EventBus.on('file:writing', async event => {
       if (!event.filePath) return
       if (teamModeEnabled) return
+      if (!isLiveFilePreviewEnabled()) return
       const fullPath = event.filePath
       if (activeFilePath === fullPath) return
 
@@ -70,6 +95,14 @@ export function useFileEventBridge({
         return
       }
 
+      // 文档 / 二进制类型（Word、Excel、PPT、PDF、3D 模型等）：
+      // 同样使用绝对路径直接打开预览面板，内容由对应预览组件自行加载
+      if (isBinaryDocFile(fullPath)) {
+        openFile(fullPath, '')
+        setActiveFile(fullPath)
+        return
+      }
+
       // 文本文件：需要 workspacePath 才能判断文件位置
       if (!workspacePath) return
       const content = await api.file.read(fullPath)
@@ -82,6 +115,7 @@ export function useFileEventBridge({
     const unsubStreamContent = EventBus.on('file:stream_content', async event => {
       if (!event.filePath || !workspacePath) return
       if (teamModeEnabled) return
+      if (!isLiveFilePreviewEnabled()) return
       const fullPath = event.filePath
       const { openFiles } = useStore.getState()
       const isOpen = openFiles.some(f => f.path === fullPath)
@@ -104,6 +138,7 @@ export function useFileEventBridge({
     const unsubWritten = EventBus.on('file:written', async event => {
       if (!event.filePath || !workspacePath) return
       if (teamModeEnabled) return
+      if (!isLiveFilePreviewEnabled()) return
       const fullPath = event.filePath
       openFile(fullPath, event.content)
       setActiveFile(fullPath)

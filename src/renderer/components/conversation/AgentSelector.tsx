@@ -3,10 +3,18 @@
  * 显示当前激活的智能体，支持切换或新建
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Bot, Plus, ChevronDown, Settings2, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { Bot, Plus, ChevronDown, Settings2, X, Eye, EyeOff } from 'lucide-react'
 import { useStore } from '@store'
 import { t, type Language } from '@renderer/i18n'
-import { AgentIcon } from '@components/ui'
+import { AgentIcon, ToggleSwitch } from '@components/ui'
+
+/** 弹窗宽度，与内部列表布局保持一致 */
+const POPUP_WIDTH = 256
+/** 弹窗与触发按钮之间的间距 */
+const POPUP_GAP = 8
+/** 弹窗距视口边缘的最小留白 */
+const VIEWPORT_MARGIN = 8
 
 interface AgentSelectorProps {
   language: Language
@@ -27,19 +35,50 @@ export default function AgentSelector({ language, onOpenSettings, onNewAgentCrea
 
   const activeProfile = profiles.find(p => p.id === activeId && p.enabled)
   const [isOpen, setIsOpen] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
+  // 弹窗挂载到 body 并用 fixed 定位：输入区嵌在多层容器内，就地渲染会被同区域的浮动按钮压住
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+  const [popupPos, setPopupPos] = useState<{ left: number; bottom: number } | null>(null)
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsOpen(false)
-      }
+      const target = e.target as Node
+      if (triggerRef.current?.contains(target)) return
+      if (popupRef.current?.contains(target)) return
+      setIsOpen(false)
     }
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside)
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [isOpen])
+
+  // 弹窗位置跟随触发按钮：窗口尺寸变化或任意容器滚动时同步刷新
+  const updatePopupPosition = useCallback(() => {
+    const trigger = triggerRef.current
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    const maxLeft = Math.max(VIEWPORT_MARGIN, window.innerWidth - POPUP_WIDTH - VIEWPORT_MARGIN)
+    setPopupPos({
+      left: Math.min(Math.max(VIEWPORT_MARGIN, rect.left), maxLeft),
+      bottom: window.innerHeight - rect.top + POPUP_GAP,
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!isOpen) {
+      setPopupPos(null)
+      return
+    }
+    updatePopupPosition()
+    const handleReposition = () => updatePopupPosition()
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+    return () => {
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [isOpen, updatePopupPosition])
 
   const handleSelect = useCallback((id: string) => {
     if (disabled) return
@@ -60,11 +99,24 @@ export default function AgentSelector({ language, onOpenSettings, onNewAgentCrea
     onEditAgent?.(activeProfile.id)
   }, [disabled, activeProfile, onEditAgent, setIsOpen])
 
+  // AI 产出文件时是否实时打开编辑器预览（默认开启）
+  const livePreview = agentConfig?.liveFilePreview !== false
+  const livePreviewTip = isZh
+    ? `实时预览：${livePreview ? '已开启' : '已关闭'}`
+    : `Live preview: ${livePreview ? 'on' : 'off'}`
+
+  const handleToggleLivePreview = useCallback((enabled: boolean) => {
+    if (!agentConfig) return
+    set('agentConfig', { ...agentConfig, liveFilePreview: enabled })
+    // 立即落盘，下次启动仍保持用户选择
+    void useStore.getState().save()
+  }, [agentConfig, set])
+
   const enabledProfiles = profiles.filter(p => p.enabled)
 
   return (
     <>
-      <div ref={dropdownRef} className={`relative ${className}`}>
+      <div ref={triggerRef} className={`relative ${className}`}>
         <button
           onClick={() => !disabled && setIsOpen(!isOpen)}
           disabled={disabled}
@@ -92,11 +144,23 @@ export default function AgentSelector({ language, onOpenSettings, onNewAgentCrea
               <span>{isZh ? '智能体' : 'Agent'}</span>
             </>
           )}
+          {/* 实时预览状态：收起状态下无需展开弹窗即可判断 */}
+          <span
+            title={livePreviewTip}
+            aria-label={livePreviewTip}
+            className={`flex-shrink-0 ${livePreview ? 'text-accent' : 'text-text-muted/50'}`}
+          >
+            {livePreview ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+          </span>
           <ChevronDown className={`w-2.5 h-2.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
-        {isOpen && (
-          <div className="absolute bottom-full left-0 mb-2 w-64 bg-surface border border-border rounded-xl shadow-2xl z-50 py-1 animate-scale-in">
+        {isOpen && popupPos && createPortal(
+          <div
+            ref={popupRef}
+            style={{ left: popupPos.left, bottom: popupPos.bottom, width: POPUP_WIDTH }}
+            className="fixed z-[9999] bg-surface border border-border rounded-xl shadow-2xl py-1 animate-scale-in"
+          >
             {/* 已创建的智能体列表 */}
             {enabledProfiles.length > 0 ? (
               <>
@@ -119,11 +183,11 @@ export default function AgentSelector({ language, onOpenSettings, onNewAgentCrea
                   >
                     <AgentIcon icon={profile.icon} size={16} />
                     <div className="flex-1 min-w-0">
-                      <div className={`text-xs font-medium truncate ${
+                      <span className={`block text-xs font-medium truncate ${
                         activeId === profile.id ? 'text-accent' : 'text-text-primary'
                       }`}>
                         {profile.name}
-                      </div>
+                      </span>
                       {profile.description && (
                         <div className="text-[11px] text-text-muted truncate">
                           {profile.description}
@@ -173,7 +237,28 @@ export default function AgentSelector({ language, onOpenSettings, onNewAgentCrea
                 <Settings2 className="w-3.5 h-3.5" />
               </button>
             </div>
-          </div>
+
+            {/* 实时预览开关：AI 产出文件时是否自动在编辑器中打开 */}
+            <div className="border-t border-border/30 mt-1 pt-1">
+              <div className="flex items-center gap-2.5 px-3 py-2">
+                <span className={`flex-shrink-0 ${livePreview ? 'text-accent' : 'text-text-muted'}`}>
+                  {livePreview ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                </span>
+                <div className="flex-1 min-w-0 text-xs text-text-primary">
+                  {isZh ? '实时预览文件' : 'Live File Preview'}
+                </div>
+                <ToggleSwitch
+                  switchSize="sm"
+                  className="flex-shrink-0"
+                  checked={livePreview}
+                  disabled={!agentConfig}
+                  onChange={e => handleToggleLivePreview(e.target.checked)}
+                  aria-label={isZh ? '实时预览文件' : 'Live File Preview'}
+                />
+              </div>
+            </div>
+          </div>,
+          document.body
         )}
       </div>
 

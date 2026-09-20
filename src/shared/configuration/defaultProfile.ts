@@ -178,6 +178,9 @@ export const AGENT_DEFAULTS = {
   expandToolCallsByDefault: false,
   expandContextByDefault: true,
 
+  // AI 产出文件时是否实时打开编辑器预览
+  liveFilePreview: true,
+
   // 上下文压缩
   keepRecentTurns: 8,
   deepCompressionTurns: 3,

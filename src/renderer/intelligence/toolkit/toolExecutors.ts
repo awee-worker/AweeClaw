@@ -19,7 +19,7 @@ import {
     type PlanTaskArg,
     type PlanEdgeArg,
 } from './planBuilder'
-import { validatePath, isSensitivePath, platform, getDirname, getFileName, normalizePath, resolveToolPathInput } from '@shared/toolkit/pathHelper'
+import { validatePath, isSensitivePath, platform, getDirname, getFileName, extractExtension, normalizePath, resolveToolPathInput } from '@shared/toolkit/pathHelper'
 import { pathToLspUri } from '@shared/toolkit/uriHelper'
 import { waitForDiagnostics, isLanguageSupported, getLanguageId, didOpenDocument } from '@services/languageServerAdapter'
 import { checkAutomationTaskQuota } from '@services/quotaUsage'
@@ -50,6 +50,7 @@ import {
 } from './commandExecutor'
 import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
+import { notifyWorkspaceTreeChange } from './workspaceTreeNotifier'
 import { terminalManager } from '@services/TerminalAdapter'
 import { isDangerousCommand, matchDangerousCommand } from '@shared/configuration/dangerousCommands'
 import { tryRunCommandInSandbox } from './sandboxCommandRoute'
@@ -343,58 +344,40 @@ function notifyComposerChange(opts: {
     })
 }
 
-function dispatchWorkspaceFilesChanged(opts: {
-    workspacePath: string
-    targetPath: string
-    changeType: 'create' | 'modify' | 'delete'
-    isDirectory?: boolean
-}): void {
-    const parentPath = getDirname(opts.targetPath)
-    const affectedPaths = new Set<string>()
+/**
+ * 判断 create_file_or_folder 的目标路径是否应按目录处理
+ *
+ * 工具用尾斜杠区分文件与目录，但模型创建目录时常常漏掉它
+ * （例如把「新建 reports 目录」写成 path="reports"，甚至补一个空串 content），
+ * 结果落下一个无扩展名的空文件。这里补一层兜底：给出了实际内容的一律按
+ * 文件处理，内容为空（未提供或空串）且末段没有扩展名的只可能是目录 ——
+ * 无扩展名的空文件没有任何用途，而目录名恰好长这样。
+ */
+function shouldTreatAsDirectory(targetPath: string, args: Record<string, unknown>): boolean {
+    if (targetPath.endsWith('/') || targetPath.endsWith('\\')) return true
 
-    if (parentPath) {
-        affectedPaths.add(parentPath)
-    }
+    const content = args.content
+    if (typeof content === 'string' && content.trim() !== '') return false
+    if (content !== undefined && content !== null && typeof content !== 'string') return false
 
-    if (opts.isDirectory && opts.changeType === 'create') {
-        affectedPaths.add(opts.targetPath)
-    }
-
-    if (opts.workspacePath && parentPath === opts.workspacePath) {
-        affectedPaths.add(opts.workspacePath)
-    }
-
-    window.dispatchEvent(new CustomEvent('workspace:files-changed', {
-        detail: {
-            affectedPaths: Array.from(affectedPaths),
-            deletedPaths: opts.changeType === 'delete' ? [opts.targetPath] : [],
-            refreshRoot: Boolean(opts.workspacePath && parentPath === opts.workspacePath),
-        },
-    }))
+    return !extractExtension(targetPath)
 }
 
-function notifyWorkspaceTreeChange(opts: {
-    workspacePath: string
-    targetPath: string
-    changeType: 'create' | 'modify' | 'delete'
-    isDirectory?: boolean
-}): void {
-    if (typeof window === 'undefined' || !opts.targetPath) return
-
-    // Windows 文件系统存在写入后延迟可见的问题：
-    // writeFileSync 返回后，readdir 可能暂时读不到新文件，
-    // 导致工作区目录刷新后仍看不到刚写入的文件。
-    // 解决方案：Windows 上延迟派发事件给文件系统 flush 时间，
-    // 并在更长延迟后二次刷新作为兜底，确保文件最终可见。
-    if (platform.isWindows) {
-        // 首次刷新：等待 150ms 让文件系统完成 flush
-        setTimeout(() => dispatchWorkspaceFilesChanged(opts), 150)
-        // 二次兜底刷新：600ms 后再刷一次，覆盖 flush 较慢的情况
-        setTimeout(() => dispatchWorkspaceFilesChanged(opts), 600)
-        return
-    }
-
-    dispatchWorkspaceFilesChanged(opts)
+/**
+ * 检测「把目录当成文件写」的误用
+ *
+ * write_file 只负责写文件。模型偶尔拿它来「创建文件夹」：path 不带尾斜杠、
+ * 没有扩展名、content 为空，落盘后就是一个无后缀的空文件。这类调用返回
+ * 引导性错误，让模型改用 create_file_or_folder 并以 "/" 结尾。
+ *
+ * 目标已存在、路径带扩展名、或给了实际内容时一律放行，不影响正常写入。
+ */
+async function detectDirectoryMisuse(targetPath: string, content: unknown): Promise<string | null> {
+    if (targetPath.endsWith('/') || targetPath.endsWith('\\')) return null
+    if (extractExtension(targetPath)) return null
+    if (typeof content !== 'string' || content.trim() !== '') return null
+    if (await api.file.exists(targetPath)) return null
+    return `"${targetPath}" has no extension and no content, which can only produce an empty file without a suffix. If you meant to create a directory, call create_file_or_folder with path "${targetPath}/". If you really need an empty file, give it a name that has an extension.`
 }
 
 interface DirTreeNode {
@@ -1404,7 +1387,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             )
 
             // 发送文件编写完成事件
-            EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content: newContent })
+            EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content: newContent, action: 'edit' })
 
             return {
                 success: true,
@@ -1510,7 +1493,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             )
 
             // 发送文件编写完成事件
-            EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content: newContent })
+            EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content: newContent, action: 'edit' })
 
             return {
                 success: true,
@@ -1601,7 +1584,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             )
 
             // 发送文件编写完成事件
-            EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content: newContent })
+            EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content: newContent, action: 'edit' })
 
             return {
                 success: true,
@@ -1614,6 +1597,14 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
     async write_file(args, ctx) {
         const path = resolvePath(args.path, ctx.workspacePath)
         const content = args.content as string
+
+        // 目录被当成文件写入的兜底：无扩展名 + 空内容 + 目标不存在时，
+        // 落盘只会得到一个没用处的无后缀空文件，多半是模型想建目录。
+        // 直接拒绝并给出正确写法，避免污染工作区。
+        const directoryMisuse = await detectDirectoryMisuse(path, content)
+        if (directoryMisuse) {
+            return { success: false, result: '', error: directoryMisuse }
+        }
 
         // 发送文件正在编写事件，触发自动打开预览
         EventBus.emit({ type: 'file:writing', filePath: path, workspacePath: ctx.workspacePath || '' })
@@ -1673,7 +1664,13 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         })
 
         // 发送文件编写完成事件
-        EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content })
+        EventBus.emit({
+            type: 'file:written',
+            filePath: path,
+            workspacePath: ctx.workspacePath || '',
+            content,
+            action: originalContent ? 'edit' : 'create',
+        })
         return {
             success: true,
             // 附加策略层软提示（如建议局部修改优先用 edit_file），帮助模型后续选择更合适的工具
@@ -1689,7 +1686,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
     async create_file_or_folder(args, ctx) {
         const path = resolvePath(args.path, ctx.workspacePath)
-        const isFolder = path.endsWith('/') || path.endsWith('\\')
+        const isFolder = shouldTreatAsDirectory(path, args)
 
         // 发送文件正在编写事件（仅文件），触发自动打开预览
         if (!isFolder) {
@@ -1713,7 +1710,14 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 const reason = await checkWriteFailureReason(path)
                 return { success: false, result: '', error: `Failed to create directory "${path}". ${reason}` }
             }
-            return { success: true, result: 'Folder created' }
+            // 由兜底规则判定出的目录要说明原因，避免模型误以为自己建的是文件
+            const inferred = !path.endsWith('/') && !path.endsWith('\\')
+            return {
+                success: true,
+                result: inferred
+                    ? `Folder created: ${path} (no file extension and no content, so it was created as a directory)`
+                    : `Folder created: ${path}`,
+            }
         }
 
         const parentConflict = await checkParentPathNotFile(path)
@@ -1750,7 +1754,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         if (!guardedWrite.success) return guardedWrite.result
 
         // 发送文件编写完成事件
-        EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content })
+        EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content, action: 'create' })
 
         return {
             success: true,

@@ -33,6 +33,11 @@ export function getActiveListenerCount(): number {
 
 // ===== Stream Processor =====
 
+/** AI 产出文件时是否实时预览；每次读取，保证开关切换后立即生效 */
+function isLiveFilePreviewEnabled(): boolean {
+  return useStore.getState().agentConfig?.liveFilePreview !== false
+}
+
 export interface StreamProcessor {
   wait: () => Promise<LLMCallResult>
   cleanup: () => void
@@ -144,6 +149,8 @@ export function createStreamProcessor(
   }
 
   const synchronizeEditPreviewStream = async (toolId: string, toolName: string, partialArgs?: Record<string, unknown>) => {
+    // 「实时预览文件」关闭时整条预览链路短路：不再解析参数、读文件、推送编辑器更新
+    if (!isLiveFilePreviewEnabled()) return
     await streamingEditPreviewCoordinator.sync(
       toolId,
       toolName,
@@ -219,6 +226,7 @@ export function createStreamProcessor(
 
   const synchronizeFilePreviewStream = (toolId: string, toolName: string, argsString: string) => {
     if (!STREAMABLE_FILE_TOOLS.has(toolName)) return
+    if (!isLiveFilePreviewEnabled()) return
 
     const workspacePath = useStore.getState().workspacePath
     const partialArgs = parsePartialJsonArgs(argsString)
@@ -264,6 +272,7 @@ export function createStreamProcessor(
 
   const completeFilePreviewStream = (toolId: string, toolName: string, finalArgs: Record<string, unknown>) => {
     if (!STREAMABLE_FILE_TOOLS.has(toolName)) return
+    if (!isLiveFilePreviewEnabled()) return
 
     const workspacePath = useStore.getState().workspacePath
     const path = typeof finalArgs.path === 'string' ? finalArgs.path : ''

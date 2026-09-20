@@ -13,8 +13,9 @@ import pLimit from 'p-limit'
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { toolManager } from '../toolkit/providers'
+import { notifyWorkspaceTreeChange } from '../toolkit/workspaceTreeNotifier'
 import { getToolApprovalType, isFileEditTool, needsFileSnapshot, isWriteTool } from '@configuration/toolDefinitions'
-import { pathStartsWith, joinPath } from '@shared/toolkit/pathHelper'
+import { pathStartsWith, joinPath, normalizePath } from '@shared/toolkit/pathHelper'
 import { isDangerousCommand } from '@shared/configuration/dangerousCommands'
 import { useStore } from '@store'
 import { EventBus } from './EventDispatcher'
@@ -328,6 +329,101 @@ function extractMediaPathFromResult(content: string): string | null {
   return null
 }
 
+/**
+ * 文档类产出扩展名
+ *
+ * MCP 文档工具（Word / Excel / PPT / PDF 生成等）在自己的进程里写文件，
+ * 不经过内置写入通道，需要按扩展名从工具参数与结果文本里还原产出路径。
+ */
+const DOCUMENT_EXT_PATTERN = 'docx|doc|xlsx|xls|pptx|ppt|pdf|rtf|odt|ods|odp|csv|md|txt|html|zip'
+
+/** MCP 工具参数中可能承载产出文件路径的字段名 */
+const PRODUCED_PATH_ARG_KEYS = [
+  'filename', 'file_path', 'filepath', 'output_path', 'output_file',
+  'document_path', 'output_filename', 'target_path', 'path',
+]
+
+/** 是否为 MCP 工具（命名格式 mcp_<serverId>__<toolName>） */
+function isMcpTool(toolName: string): boolean {
+  return toolName.startsWith('mcp_')
+}
+
+/** 把候选路径展开成可校验的绝对路径（相对路径按工作区解析） */
+function expandPathCandidates(candidate: string, workspacePath: string | null): string[] {
+  const isAbsolute = candidate.startsWith('/')
+    || /^[a-zA-Z]:[\\/]/.test(candidate)
+    || candidate.startsWith('\\\\')
+  if (isAbsolute) return [candidate]
+  return workspacePath ? [joinPath(workspacePath, candidate)] : []
+}
+
+/**
+ * 解析 MCP 工具落盘的产出文件
+ *
+ * MCP 工具在独立进程里写文件，既不会发 file:written，也不会触发工作区刷新，
+ * 表现为「AI 生成的文件不出现在文件树和产物栏」。这里按两类线索还原产出路径：
+ *   1. 工具参数中显式给出的文件名 / 输出路径（MCP 文档工具的主要线索）
+ *   2. 结果文本中的绝对路径（Unix 或 Windows 盘符风格）
+ * 只认可磁盘上真实存在的文件，避免把普通字符串参数误判为产物。
+ */
+async function resolveProducedFilePath(
+  content: string,
+  args: Record<string, unknown> | undefined,
+  workspacePath: string | null,
+): Promise<string | null> {
+  const docExtRegex = new RegExp(`\\.(${DOCUMENT_EXT_PATTERN})$`, 'i')
+  const candidates: string[] = []
+
+  const collectFromObject = (source: Record<string, unknown>) => {
+    for (const key of PRODUCED_PATH_ARG_KEYS) {
+      const value = source[key]
+      if (typeof value === 'string' && docExtRegex.test(value.trim())) {
+        candidates.push(value.trim())
+      }
+    }
+  }
+
+  if (args) collectFromObject(args)
+
+  // MCP 结果常是 JSON 文本（可能多行拼接），逐行与整体各解析一次
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('{')) continue
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (parsed && typeof parsed === 'object') collectFromObject(parsed as Record<string, unknown>)
+    } catch {
+      // 该行不是完整 JSON，交给下面的正则兜底
+    }
+  }
+  try {
+    const parsed = JSON.parse(content)
+    if (parsed && typeof parsed === 'object') collectFromObject(parsed as Record<string, unknown>)
+  } catch {
+    // 整体不是 JSON
+  }
+
+  // 结果文本兜底：匹配绝对路径风格的文档路径
+  const absPathRegex = new RegExp(
+    `(?:^|[\\s'"(\`])((?:/|[A-Za-z]:[\\\\/])[^\\s"'\`<>]+\\.(?:${DOCUMENT_EXT_PATTERN}))`,
+    'gi',
+  )
+  for (const match of content.matchAll(absPathRegex)) {
+    if (match[1]) candidates.push(match[1])
+  }
+
+  for (const candidate of candidates) {
+    for (const resolved of expandPathCandidates(candidate, workspacePath)) {
+      try {
+        if (await api.file.exists(resolved)) return resolved
+      } catch {
+        // 路径非法或不可访问，继续尝试下一个候选
+      }
+    }
+  }
+
+  return null
+}
 
 /**
  * 审批判定所需的最小工具信息（结构化类型，兼容 ToolCall / CollectedToolCall 等）
@@ -642,6 +738,39 @@ async function invokeToolInvocation(
             })
           } else {
             logger.agent.warn(`[Tools] ${toolCall.name} auto-preview: failed to extract media path from result (length=${content.length})`)
+          }
+        }
+
+        // MCP 工具（Word / Excel 生成等）在自己的进程里写文件，不经过内置写入通道，
+        // 因此既不会记录产物，也不会刷新工作区文件树。这里补上这条链路。
+        if (isMcpTool(toolCall.name)) {
+          const producedPath = await resolveProducedFilePath(
+            content,
+            toolCall.arguments as Record<string, unknown> | undefined,
+            workspacePath,
+          )
+          if (producedPath) {
+            logger.agent.info(`[Tools] ${toolCall.name} produced file: ${producedPath}`)
+            const artifactStore = useStore.getState()
+            const known = artifactStore.artifacts.some(
+              item => normalizePath(item.path) === normalizePath(producedPath),
+            )
+            artifactStore.recordArtifact({
+              path: producedPath,
+              workspacePath: context.workspacePath || '',
+              action: known ? 'edit' : 'create',
+            })
+            // 与内置写入保持一致：先发预览事件（是否打开受「实时预览」开关控制），再刷新文件树
+            EventBus.emit({
+              type: 'file:writing',
+              filePath: producedPath,
+              workspacePath: context.workspacePath || '',
+            })
+            notifyWorkspaceTreeChange({
+              workspacePath: context.workspacePath || '',
+              targetPath: producedPath,
+              changeType: known ? 'modify' : 'create',
+            })
           }
         }
       } else {

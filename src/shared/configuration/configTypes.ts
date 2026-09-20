@@ -100,6 +100,13 @@ export interface AgentConfig {
     requireConsensus: boolean
     maxAgents: number
   }
+  /**
+   * AI 执行任务产出文件时是否实时在编辑器中打开预览
+   *
+   * 关闭后不再自动打开/刷新编辑器标签页，产物仍会记录到「产物」面板，
+   * 用户按需点击查看，可显著降低持续写文件时的渲染开销。
+   */
+  liveFilePreview?: boolean
   /** 当前激活的自定义智能体 ID */
   activeCustomAgentId?: string
   /** 自定义 Agent 角色配置 */

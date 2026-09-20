@@ -17,3 +17,13 @@ export { createAuthSlice, type AuthSlice, type CloudUser, type CloudQuota } from
 export { createAgentWorkspaceSlice, type AgentWorkspaceSlice, type AgentWorkspaceSession, type WorkspaceAgent, type AgentToolCall, type AgentProgressEvent, type TeamChatMessage } from './agentWorkspaceSlice'
 export { createExecutionSessionSlice, type ExecutionSessionSlice, type ExecutionSession, type ExecutionSessionKind, type ExecutionSessionStatus, type CreateSessionInput, MAX_CONCURRENT_SESSIONS } from './executionSessionSlice'
 export { createEnvInstallSlice, type EnvInstallSlice, type EnvInstallStage, type EnvInstallProgressItem } from './envInstallSlice'
+export {
+  createArtifactSlice,
+  type ArtifactSlice,
+  type ArtifactEntry,
+  type RecordArtifactInput,
+  ARTIFACT_RATIO_DEFAULT,
+  ARTIFACT_RATIO_MIN,
+  ARTIFACT_RATIO_MAX,
+  clampArtifactRatio,
+} from './artifactSlice'

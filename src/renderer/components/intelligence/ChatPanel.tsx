@@ -49,6 +49,7 @@ import { useMentionController } from './chatPanel/useMentionController'
 import { useSlashCommandController } from './chatPanel/useSlashCommandController'
 import { useMessageOperations } from './chatPanel/useMessageOperations'
 import { useFileEventBridge } from './chatPanel/useFileEventBridge'
+import { useArtifactRecorder } from './chatPanel/useArtifactRecorder'
 import { useTimelineProjection, type RenderableMessageItem } from './chatPanel/useTimelineProjection'
 import { useChatKeyboard } from './chatPanel/useChatKeyboard'
 import { useHumanApprovalWatcher } from './chatPanel/useHumanApprovalWatcher'
@@ -380,6 +381,9 @@ export default function ChatPanel() {
     setActiveFile,
     teamModeEnabled,
   })
+
+  // 记录 AI 产出文件到「产物」栏（与实时预览开关无关，始终采集）
+  useArtifactRecorder(workspacePath)
 
   // Graph Runtime 阶段四：HITL 人工审批监听
   const { awaitingApproval, resume: resumeHumanApproval, isResuming: isHumanApprovalResuming } =

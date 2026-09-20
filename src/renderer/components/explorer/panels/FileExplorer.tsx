@@ -3,7 +3,7 @@
  */
 
 import { api } from '../../../adapters/electronBridge'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { FolderOpen, Plus, RefreshCw, FolderPlus, GitBranch, FilePlus, ExternalLink, Crosshair, Terminal, Clipboard, Download, Eye, EyeOff } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -20,6 +20,7 @@ import { VirtualFileTree } from '@components/file-tree/VirtualTreeRenderer'
 import { terminalManager } from '@services/TerminalAdapter'
 import { explorerClipboardService, type ExplorerClipboardItem } from '@services/clipboardService'
 import { formatShortcut } from '@services/keybindingAdapter'
+import { ArtifactPanel } from './ArtifactPanel'
 
 export interface TreeRefreshOptions {
   resetTree?: boolean
@@ -50,6 +51,10 @@ export function ExplorerView() {
     activeScenarioId,
     showWorkspaceSystemDir,
     setShowWorkspaceSystemDir,
+    artifactRatio,
+    artifactCollapsed,
+    setArtifactRatio,
+    setArtifactCollapsed,
   } = useStore(useShallow(s => ({
     workspacePath: s.workspacePath, workspace: s.workspace, files: s.files, setFiles: s.setFiles,
     language: s.language, gitStatus: s.gitStatus,
@@ -57,6 +62,8 @@ export function ExplorerView() {
     expandFolder: s.expandFolder, activeFilePath: s.activeFilePath,
     activeScenarioId: s.activeScenarioId,
     showWorkspaceSystemDir: s.showWorkspaceSystemDir, setShowWorkspaceSystemDir: s.setShowWorkspaceSystemDir,
+    artifactRatio: s.artifactRatio, artifactCollapsed: s.artifactCollapsed,
+    setArtifactRatio: s.setArtifactRatio, setArtifactCollapsed: s.setArtifactCollapsed,
   })))
   const setTerminalVisible = useStore(state => state.setTerminalVisible)
 
@@ -71,6 +78,52 @@ export function ExplorerView() {
   const [clipboardItem, setClipboardItem] = useState<ExplorerClipboardItem | null>(
     () => explorerClipboardService.getState().entry
   )
+
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [isResizingArtifacts, setIsResizingArtifacts] = useState(false)
+
+  // 拖动分割线调整产物栏高度：用指针位置相对内容区底部的比例换算
+  useEffect(() => {
+    if (!isResizingArtifacts) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const rect = bodyRef.current?.getBoundingClientRect()
+      if (!rect || rect.height <= 0) return
+      setArtifactRatio((rect.bottom - e.clientY) / rect.height)
+    }
+
+    const stopResizing = () => setIsResizingArtifacts(false)
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', stopResizing)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', stopResizing)
+    }
+  }, [isResizingArtifacts, setArtifactRatio])
+
+  // 产物栏显隐跟随产物：当前工作区有产物自动展开，产物清空后自动收起。
+  // 只订阅「是否有产物」这个布尔值，产物落盘引起的列表更新不会带来额外渲染。
+  const hasArtifacts = useStore(state => {
+    if (state.artifacts.length === 0) return false
+    const ws = state.workspacePath
+    if (!ws) return true
+    return state.artifacts.some(item => pathStartsWith(item.path, ws))
+  })
+
+  // 记录上一次判定依据：产物有无未变化时保持现状，不覆盖用户手动折叠 / 展开的选择
+  const artifactPresenceRef = useRef<{ workspacePath: string | null; hasArtifacts: boolean } | null>(null)
+
+  useEffect(() => {
+    const previous = artifactPresenceRef.current
+    artifactPresenceRef.current = { workspacePath, hasArtifacts }
+
+    const workspaceChanged = !previous || previous.workspacePath !== workspacePath
+    // 切换工作区或产物有无发生翻转时重新判定；其余情况交给用户自己控制
+    if (!workspaceChanged && previous.hasArtifacts === hasArtifacts) return
+
+    setArtifactCollapsed(!hasArtifacts)
+  }, [hasArtifacts, workspacePath, setArtifactCollapsed])
 
   // Reveal active file in explorer
   const handleRevealActiveFile = useCallback(() => {
@@ -442,8 +495,8 @@ export function ExplorerView() {
           </HintOverlay>
         </div>
       </div>
-
-      <div className="flex-1 overflow-hidden flex flex-col" onContextMenu={handleRootContextMenu}>
+      <div ref={bodyRef} className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col" onContextMenu={handleRootContextMenu}>
         {workspace && workspace.roots.length > 0 && files.length > 0 ? (
           <VirtualFileTree
             items={files}
@@ -474,6 +527,29 @@ export function ExplorerView() {
               <Plus className="w-4 h-4" />
               {t('openFolder', language)}
             </ActionButton>
+          </div>
+        )}
+        </div>
+
+        {/* 产物栏：展示 AI 执行任务产出的文件，拖动上方分割线可调整高度 */}
+        {workspace && workspace.roots.length > 0 && (
+          <div
+            className="relative min-h-0 flex-shrink-0"
+            style={{ flex: artifactCollapsed ? '0 0 30px' : `0 0 ${(artifactRatio * 100).toFixed(4)}%` }}
+          >
+            <div
+              className="absolute -top-0.5 left-0 right-0 h-1 z-30 cursor-row-resize hover:bg-accent/40 active:bg-accent/60 transition-colors"
+              onMouseDown={e => {
+                e.preventDefault()
+                // 从折叠状态直接拖开时自动展开，避免拖了没反应
+                if (artifactCollapsed) setArtifactCollapsed(false)
+                setIsResizingArtifacts(true)
+              }}
+            />
+            <ArtifactPanel
+              collapsed={artifactCollapsed}
+              onToggleCollapse={() => setArtifactCollapsed(!artifactCollapsed)}
+            />
           </div>
         )}
       </div>
