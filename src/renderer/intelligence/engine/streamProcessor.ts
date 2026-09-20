@@ -64,6 +64,9 @@ export function createStreamProcessor(
   let usage: TokenUsage | undefined
   let error: string | undefined
   let retryable: boolean | undefined
+  // 结束原因：length 表示模型被输出上限截断（思考吃满额度时正文会为空），
+  // 上层据此区分「正常收尾」与「思考/输出被截断」，避免把截断误判成任务完成
+  let finishReason: string | undefined
   let isCleanedUp = false
   let filteredToolMarkupBuffer = ''
   let pendingToolCallAvailableCount = 0
@@ -634,9 +637,16 @@ export function createStreamProcessor(
     doResolve({ content, toolCalls, sources, usage, error: errorMsg, retryable, errorCode, errorSuggestion })
   }
 
-  const resolveWithSuccess = (result: { reasoning?: string; usage?: unknown }) => {
+  const resolveWithSuccess = (result: {
+    reasoning?: string
+    usage?: unknown
+    metadata?: { finishReason?: string }
+  }) => {
     if (result?.usage) {
       usage = result.usage as TokenUsage
+    }
+    if (result?.metadata?.finishReason) {
+      finishReason = result.metadata.finishReason
     }
     if (typeof result?.reasoning === 'string' && result.reasoning.length >= reasoning.length) {
       const missingReasoning = result.reasoning.slice(reasoning.length)
@@ -652,7 +662,7 @@ export function createStreamProcessor(
 
     const resolveWhenReady = () => {
       completeReasoningPhase()
-      doResolve({ content, reasoning, toolCalls, sources, usage, error })
+      doResolve({ content, reasoning, toolCalls, sources, usage, error, finishReason })
     }
 
     if (pendingToolCallAvailableCount > 0) {

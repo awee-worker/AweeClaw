@@ -83,6 +83,13 @@ export interface LLMResult {
     cacheWriteTokens?: number
     reasoningTokens?: number
   }
+  metadata?: {
+    id?: string
+    modelId?: string
+    timestamp?: number
+    /** 流结束原因：length 表示被输出上限截断（思考吃满额度时正文会为空） */
+    finishReason?: string
+  }
 }
 
 type MessageContentPart =

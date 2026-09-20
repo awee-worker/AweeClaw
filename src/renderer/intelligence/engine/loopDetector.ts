@@ -22,7 +22,7 @@ import { estimateMessagesTokens } from '../capabilities/context/ContextCompresso
 import { lintService } from '../runtime/codeAnalysisService'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
-import { isSceneToolsIntentFromMessages } from '@intelligence/utils/sceneToolsIntent'
+import { resolveSceneToolsIntentFromMessages } from '../decision/intentResolvers'
 import { resolveRelativeChangePath, isFileWriteToolResult } from '@intelligence/utils/fileMutationHelper'
 import { isCodeFile } from '@intelligence/toolkit/fileReadPolicies'
 import { composerService } from '@intelligence/runtime/composerEngine'
@@ -512,7 +512,7 @@ export async function executeAgentCycle(
     isChannel: context.isChannel,
     // 场景工具按需暴露：仅当用户最新消息带有明确的场景数据记录/查询/管理意图时
     // 才对 LLM 可见；执行任务/开发时 AI 任务跟踪应使用系统内置 todo_write 等（致命问题 #4）
-    sceneToolsEnabled: isSceneToolsIntentFromMessages(llmMessages),
+    sceneToolsEnabled: resolveSceneToolsIntentFromMessages(llmMessages).value,
     externalAgentEnabled: isExternalAgentToolsExposed(),
     ...agentToolFields,
   })
@@ -1074,27 +1074,65 @@ export async function executeAgentCycle(
         continue
       }
 
-      // 细化结束状态：无工具调用但也没有任何可见输出 → 判为"异常中断"而非"正常完成"。
-      // 否则流被异常截断（完全无输出，或内容被过滤后为空）会被误判为任务已完成，
-      // 用户看到 AI 无提示停下，且断点续接逻辑认为已正常结束而不予续接。
-      const hasVisibleOutput = Boolean(
-        (result.content && result.content.trim()) || (result.reasoning && result.reasoning.trim()),
-      )
-      if (!hasVisibleOutput) {
+      // 完成判定只认「正文输出」：推理（reasoning）属于过程，不能当作"任务已完成"的依据。
+      // 否则模型把输出额度全花在思考上（正文为空、finishReason=length）时会被判为正常完成，
+      // 主循环直接收尾 —— 用户看到的就是"AI 思考几十秒后自行结束会话"。
+      //
+      // 三种收尾形态分别处理：
+      // 1) 有正文 → 正常完成（下方逻辑）
+      // 2) 只思考、无正文 → 判为未完成，说明原因并自动续接（限次）
+      // 3) 完全无输出（流被截断/内容被过滤）→ 沿用原有「执行中断」提示
+      const hasTextOutput = Boolean(result.content && result.content.trim())
+      const hasReasoningOutput = Boolean(result.reasoning && result.reasoning.trim())
+      if (!hasTextOutput) {
         const { language } = useStore.getState()
-        logger.agent.warn('[Loop] Ended with no tool calls and no visible output → treating as interrupted')
-        threadStore.addSystemAlertPart(assistantId, {
-          alertType: 'warning',
-          title: getLocalizedText(language, '执行中断', 'Execution Interrupted'),
-          message: getLocalizedText(language, 'AI 在未产生任何输出时中断了本次执行。', 'The AI stopped without producing any output.'),
-          suggestion: getLocalizedText(language, '可直接点击继续，或重新发送以续接任务。', 'Click Continue, or resend to resume the task.'),
-          action: { label: getLocalizedText(language, '继续', 'Continue'), actionType: 'continue' },
+        // length：思考吃满了输出额度，正文没有空间产出（配置上体现为
+        // 思考预算 ≥ 最大输出 tokens），这是最容易表现为"思考到一半就断"的形态
+        const truncated = result.finishReason === 'length'
+        logger.agent.warn('[Loop] Ended with no tool calls and no text output → treating as incomplete', {
+          reason: truncated ? 'output-limit-reached' : (hasReasoningOutput ? 'reasoning-only' : 'no-output'),
+          finishReason: result.finishReason,
+          reasoningLength: result.reasoning?.length ?? 0,
         })
+
+        threadStore.addSystemAlertPart(assistantId, hasReasoningOutput
+          ? {
+              alertType: 'warning',
+              title: truncated
+                ? getLocalizedText(language, '思考已达到输出上限', 'Thinking Hit the Output Limit')
+                : getLocalizedText(language, '思考后未产出结果', 'No Result After Thinking'),
+              message: truncated
+                ? getLocalizedText(
+                    language,
+                    '本轮思考占满了模型的输出额度，正文没有产出，任务尚未完成。',
+                    'This round spent the whole output budget on thinking, so no answer was produced and the task is unfinished.',
+                  )
+                : getLocalizedText(
+                    language,
+                    '模型只给出了思考过程，没有产生结果，任务尚未完成。',
+                    'The model produced reasoning only, without a result; the task is unfinished.',
+                  ),
+              suggestion: truncated
+                ? getLocalizedText(
+                    language,
+                    '建议提高「最大输出 tokens」或降低思考预算后点击继续。',
+                    'Raise the max output tokens (or lower the thinking budget), then click Continue.',
+                  )
+                : getLocalizedText(language, '可直接点击继续，或重新发送以续接任务。', 'Click Continue, or resend to resume the task.'),
+              action: { label: getLocalizedText(language, '继续', 'Continue'), actionType: 'continue' },
+            }
+          : {
+              alertType: 'warning',
+              title: getLocalizedText(language, '执行中断', 'Execution Interrupted'),
+              message: getLocalizedText(language, 'AI 在未产生任何输出时中断了本次执行。', 'The AI stopped without producing any output.'),
+              suggestion: getLocalizedText(language, '可直接点击继续，或重新发送以续接任务。', 'Click Continue, or resend to resume the task.'),
+              action: { label: getLocalizedText(language, '继续', 'Continue'), actionType: 'continue' },
+            })
         threadStore.updateExecutionMeta({ loopState: 'aborted' })
         EventBus.emit({ type: 'loop:end', reason: 'interrupted', threadId, assistantId, requestId, planTaskId: context.planTaskId })
 
-        // 异常中断非用户意愿 → 自动续接（内部限次），避免用户看到 AI 无提示停下
-        scheduleAutoResume(threadId, 'interrupted')
+        // 非用户意愿的收尾 → 自动续接（内部限次），避免用户看到 AI 无提示停下
+        scheduleAutoResume(threadId, truncated ? 'output-limit' : 'interrupted')
         break
       }
 

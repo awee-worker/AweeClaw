@@ -16,7 +16,8 @@ import { toolManager } from '../toolkit/providers'
 import { notifyWorkspaceTreeChange } from '../toolkit/workspaceTreeNotifier'
 import { getToolApprovalType, isFileEditTool, needsFileSnapshot, isWriteTool } from '@configuration/toolDefinitions'
 import { pathStartsWith, joinPath, normalizePath } from '@shared/toolkit/pathHelper'
-import { isDangerousCommand } from '@shared/configuration/dangerousCommands'
+import { needsCommandApproval } from '@intelligence/decision/commandRisk'
+import { buildApprovalEntry, recordApproval } from '@intelligence/decision/approvalLedger'
 import { useStore } from '@store'
 import { EventBus } from './EventDispatcher'
 import { truncateToolResult } from '@utils/partialJson'
@@ -458,11 +459,13 @@ export function requiresApprovalGate(toolCall: ApprovalGateToolInfo, chatMode?: 
       return false
     }
     if (authMode === 'dangerous-only') {
-      // 危险确认：危险操作（删除文件）+ 危险命令（rm -rf / curl|sh / sudo 等）需审批
+      // 危险确认：危险操作（删除文件）+ 风险命令需审批
+      // 风险命令含两级：命中危险模式（主进程会硬拦截，审批让用户先看见并有机会拒绝）
+      // 与命中灰区规则（未命中危险模式但不可逆，例如 git reset --hard、删除家目录文件）
       if (approvalType === 'dangerous') return true
       if (toolName === 'run_command') {
         const command = toolCall.arguments?.command as string | undefined
-        if (command && isDangerousCommand(command)) return true
+        if (command && needsCommandApproval(command)) return true
       }
       return false
     }
@@ -894,8 +897,14 @@ async function orchestrateToolBatchInternal(
   const pending = new Set(toolCalls.map(tc => tc.id))
 
   // 分离需要审批和不需要审批的工具
-  const approvalRequired = toolCalls.filter(tc => requiresApprovalGate(tc, context.chatMode))
-  const noApprovalRequired = toolCalls.filter(tc => !requiresApprovalGate(tc, context.chatMode))
+  // 单次遍历完成划分：requiresApprovalGate 要读 store 并对命令做模式匹配，
+  // 两次 filter 会让每条工具调用被判定两遍
+  const approvalRequired: ToolCall[] = []
+  const noApprovalRequired: ToolCall[] = []
+  for (const tc of toolCalls) {
+    if (requiresApprovalGate(tc, context.chatMode)) approvalRequired.push(tc)
+    else noApprovalRequired.push(tc)
+  }
 
   // 在执行前保存文件快照
   // 快照仅用于「撤销」，失败不应阻断工具执行本身（否则编排会整体抛出、中断主循环）
@@ -1103,6 +1112,25 @@ async function orchestrateToolBatchInternal(
 
     const approvedTools = groupToolCalls.filter(tc => approvalResults.get(tc.id) !== false)
     const rejectedTools = groupToolCalls.filter(tc => approvalResults.get(tc.id) === false)
+
+    // 审批结论落账：用户每次批准/拒绝都是对判定结果的真实标注，
+    // 是后续校准置信度阈值与灰区规则的唯一事实来源。
+    // 记账属旁路，失败不得影响工具执行本身。
+    try {
+      const authorizationMode = useStore.getState().authorizationMode
+      for (const tc of groupToolCalls) {
+        recordApproval(
+          buildApprovalEntry({
+            toolCall: tc,
+            requestId: effectiveRequestId,
+            decision: approvalResults.get(tc.id) === false ? 'rejected' : 'approved',
+            authorizationMode,
+          }),
+        )
+      }
+    } catch (ledgerError) {
+      logger.agent.warn('[Tools] 审批记账失败，跳过记录:', ledgerError)
+    }
 
     for (const tc of rejectedTools) {
       userRejected = true

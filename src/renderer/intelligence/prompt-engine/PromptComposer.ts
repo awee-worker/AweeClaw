@@ -15,6 +15,7 @@ import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
 import type { SceneModeProfile } from '../capabilities/sceneMode/SceneModeDescriptor'
 import { generateToolsPromptDescriptionFiltered, type ToolCategory } from '@configuration/toolDefinitions'
 import { getToolsForContext } from '@configuration/toolCategoryDefs'
+import { preselectTools } from '../decision/toolPreselector'
 import { DEFAULT_AGENT_CONFIG } from '@configuration/agentProfile'
 import { PERFORMANCE_DEFAULTS } from '@shared/configuration/defaultProfile'
 import { rulesService, type ProjectRules } from '../runtime/ruleEngine'
@@ -49,7 +50,7 @@ import {
   getSceneToolsSnapshot,
   getSceneToolsRecentEvents,
 } from '@/renderer/components/scene-tools/agentBridge'
-import { isSceneToolsIntent } from '@intelligence/utils/sceneToolsIntent'
+import { resolveSceneToolsIntent } from '../decision/intentResolvers'
 
 let projectSummaryCache: { path: string; summary: string; timestamp: number } | null = null
 const SUMMARY_CACHE_TTL = 5 * 60 * 1000
@@ -310,7 +311,7 @@ const FILE_EDIT_PRIORITY = `## File Editing Priority (MANDATORY — NO EXCEPTION
 - **If write_file is rejected**: Do NOT retry write_file. Instead: 1) call read_file(path) to get current content, 2) use edit_file with old_string/new_string or start_line/end_line/content.
 - \`write_file\` on an existing file is ONLY allowed for intentional full-file replacement (the entire file content is being regenerated). NEVER use write_file for partial modification of an existing file.`
 
-function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' | 'executing', isChannel?: boolean, sceneToolsEnabled = false): string {
+function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' | 'executing', isChannel?: boolean, sceneToolsEnabled = false, userMessage?: string): string {
   const excludeCategories: ToolCategory[] = []
   const activeScenario = scenarioRegistry.getActive()
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
@@ -321,7 +322,10 @@ function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' 
   // 套餐工具能力组：系统提示里的工具清单必须与执行层可见工具一致，
   // 否则 AI 会去调用被套餐禁用的工具（可见性才是主闸门）
   const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, scenarioTools, isChannel, sceneToolsEnabled, allowedToolGroups: getAllowedToolGroupsSync(), ...agentFields })
-  const baseTools = generateToolsPromptDescriptionFiltered(excludeCategories, allowedTools)
+  // 按用户意图裁剪工具描述以压缩提示词体积；
+  // 命中开发类意图或无法判定意图时保持全量，避免因漏选工具导致任务失败
+  const preselected = preselectTools({ userMessage: userMessage ?? '', allowedTools })
+  const baseTools = generateToolsPromptDescriptionFiltered(excludeCategories, preselected.tools)
   const { toolGuidelines } = getActiveScenarioIdentity()
 
   return `## Available Tools
@@ -713,7 +717,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     PROFESSIONAL_OBJECTIVITY,
     LANGUAGE_MATCHING,
     identity.securityRules,
-    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled),
+    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery),
     identity.conventions,
     identity.workflow,
     GRAPH_PLAN_GUIDE,
@@ -748,7 +752,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     PROFESSIONAL_OBJECTIVITY,
     LANGUAGE_MATCHING,
     identity.securityRules,
-    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled),
+    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery),
     identity.conventions,
     GRAPH_PLAN_GUIDE,
     identity.outputFormat,
@@ -887,6 +891,10 @@ export async function buildAgentSystemPrompt(
     `[PromptBuilder] Custom agent ${activeAgent ? `"${activeAgent.name}"` : '(none)'} active, systemPrompt ${activeAgent?.systemPrompt?.length ?? 0} chars`,
   )
 
+  // 场景工具意图：下方三处共用同一判定结果。判定出口默认只走规则层（零延迟），
+  // 而 prompt 构建处于对话主链路，此处不引入模型调用
+  const sceneToolsIntent = resolveSceneToolsIntent({ userMessage }).value
+
   const ctx: PromptContext = {
     os: getOS(),
     workspacePath,
@@ -916,9 +924,9 @@ export async function buildAgentSystemPrompt(
     // 场景工具按需暴露（致命问题 #4）：
     // - 仅当用户消息带明确的“场景数据记录/查询/管理”意图时才注入指南与上下文
     // - AI 执行开发/多步任务时任务跟踪应使用系统内置 todo_write / create_task_plan，不触碰场景工具
-    sceneToolsEnabled: isSceneToolsIntent(userMessage),
-    sceneToolsGuide: isSceneToolsIntent(userMessage) ? buildSceneToolsGuideSection(sceneProfile) : null,
-    sceneToolsContext: isSceneToolsIntent(userMessage) ? buildSceneToolsContextSection(sceneProfile) : null,
+    sceneToolsEnabled: sceneToolsIntent,
+    sceneToolsGuide: sceneToolsIntent ? buildSceneToolsGuideSection(sceneProfile) : null,
+    sceneToolsContext: sceneToolsIntent ? buildSceneToolsContextSection(sceneProfile) : null,
     customAgentPrompt: activeAgent?.systemPrompt || null,
   }
 

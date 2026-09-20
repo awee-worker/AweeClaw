@@ -8,7 +8,7 @@ import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { playNotificationSound } from '@utils/notificationSound'
 import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
-import { isSceneToolsIntent } from '@intelligence/utils/sceneToolsIntent'
+import { resolveSceneToolsIntent } from '../decision/intentResolvers'
 import { approvalService, requiresApprovalGate } from '@intelligence/engine/toolOrchestrator'
 import type { LLMConfig, LLMMessage, ToolDefinition, ToolExecutionContext, ToolExecutionResult } from '@intelligence/providerTypes'
 
@@ -399,7 +399,7 @@ export async function runAgentSubLoop(options: SubLoopOptions): Promise<SubLoopR
 
   await ensureToolsInitialized()
   // 每次执行刷新工具加载上下文（智能体可能已切换）
-  refreshToolLoadingContext(isSceneToolsIntent(userMessage))
+  refreshToolLoadingContext(resolveSceneToolsIntent({ userMessage }).value)
 
   const agentTools = toolManager.getAllToolDefinitions()
 

@@ -1,4 +1,5 @@
 import type { LLMConfig } from '@protocols'
+import { logger } from '@shared/toolkit/LogEngine'
 import { resolveHeaderPlaceholders } from '../modelRegistry'
 import { resolveCacheProtocol } from './cacheProtocolSpec'
 
@@ -77,8 +78,25 @@ export function buildGenerationSettings(config: LLMConfig): GenerationSettings {
     protocol !== 'openai-responses' &&
     !isOpenAIReasoningRoute
 
+  const maxOutputTokens = normalizePositiveInteger(config.maxTokens)
+  const thinkingBudget = normalizeNonNegativeInteger(config.thinkingBudget)
+
+  // 思考与正文共享同一个输出上限。当思考预算 ≥ 输出上限时，模型可能把额度全部花在
+  // 思考上，正文拿不到空间，流会以 finishReason=length 结束且正文为空 ——
+  // 这正是「AI 思考几十秒后自动结束会话」的配置诱因。此处只做诊断，
+  // 不擅自放大请求参数（避免超出 Provider 的输出上限导致 400）。
+  if (maxOutputTokens !== undefined && thinkingBudget !== undefined && thinkingBudget >= maxOutputTokens) {
+    logger.llm.warn('[RequestConfig] 思考预算不低于最大输出 tokens，正文可能没有输出空间', {
+      provider: config.provider,
+      model: config.model,
+      maxTokens: maxOutputTokens,
+      thinkingBudget,
+      hint: '调低思考预算或调高最大输出 tokens 可避免思考占满输出额度',
+    })
+  }
+
   return {
-    maxOutputTokens: normalizePositiveInteger(config.maxTokens),
+    maxOutputTokens,
     temperature: supportsOpenAIReasoningExtras ? config.temperature : undefined,
     topP: supportsOpenAIReasoningExtras ? config.topP : undefined,
     topK: normalizeTopK(config.topK),

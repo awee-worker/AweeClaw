@@ -16,6 +16,12 @@ import {
   EMBEDDING_ENDPOINTS,
 } from './providerTypes'
 import { logger } from '@shared/toolkit/LogEngine'
+import {
+  EMBEDDER_META_FILES,
+  EMBEDDER_WEIGHT_FILES,
+  discardInvalidModelCache,
+  resolveModelDir,
+} from '../modules/modelCache'
 import type { LLMConfig } from '@protocols'
 
 /* ------------------------------------------------------------------ */
@@ -386,7 +392,25 @@ class TransformersStrategy implements EmbeddingStrategy {
     try {
       // @ts-ignore
       const { pipeline, env } = await import('@xenova/transformers')
-      if (cacheDir) env.cacheDir = cacheDir
+
+      if (cacheDir) {
+        // 下载中断会把错误页或截断内容写成正式文件，这类残留无法靠重试自愈，
+        // 需在加载前剔除，否则每次重试都会读到同一份坏数据。
+        const { removed, invalidFiles } = discardInvalidModelCache(
+          cacheDir,
+          model,
+          EMBEDDER_WEIGHT_FILES,
+          EMBEDDER_META_FILES,
+        )
+        if (invalidFiles.length > 0) {
+          logger.index.warn(
+            `[EmbeddingService] 发现不完整模型缓存（异常: ${invalidFiles.join(', ')}），` +
+              `${removed ? '已清理，将重新下载' : '清理失败，需手动删除'}: ${resolveModelDir(cacheDir, model)}`,
+          )
+        }
+        env.cacheDir = cacheDir
+      }
+
       env.allowLocalModels = false
       TransformersStrategy.pipeline = await pipeline('feature-extraction', model, { quantized: true })
       logger.index.info('[EmbeddingService] 本地模型加载完成')

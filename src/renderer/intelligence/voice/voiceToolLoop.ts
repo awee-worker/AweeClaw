@@ -27,7 +27,7 @@ import {
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
 import { isExternalAgentToolsExposed } from '@intelligence/toolkit/externalAgentToolsGate'
-import { isSceneToolsIntentFromMessages } from '@intelligence/utils/sceneToolsIntent'
+import { resolveSceneToolsIntentFromMessages } from '../decision/intentResolvers'
 import { useStore } from '@store'
 import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
 import { requiresApprovalGate } from '@intelligence/engine/toolOrchestrator'
@@ -646,7 +646,7 @@ export async function runVoiceToolLoop(options: VoiceToolLoopOptions): Promise<V
   // 确保工具系统已初始化（失败也不阻塞，只是没有工具可用）
   await ensureVoiceToolsInitialized()
   // 每次执行刷新工具加载上下文（智能体可能已切换）
-  refreshVoiceToolLoadingContext(isSceneToolsIntentFromMessages(messages))
+  refreshVoiceToolLoadingContext(resolveSceneToolsIntentFromMessages(messages).value)
 
   // 获取可用工具列表（与普通对话完全相同）
   const tools = toolManager.getAllToolDefinitions()

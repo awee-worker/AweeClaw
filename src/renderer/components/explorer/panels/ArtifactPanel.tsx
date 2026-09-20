@@ -27,7 +27,8 @@ import { getFileType, type FileType } from '@components/workspace-editor/FilePre
 import { getFileName, resolveToRelative, normalizePath, pathStartsWith } from '@shared/toolkit/pathHelper'
 import { t, type Language } from '@renderer/i18n'
 import { toast } from '@components/foundation/NotificationProvider'
-import { HintOverlay } from '../../ui'
+import { HintOverlay, useContextMenu } from '../../ui'
+import { ArtifactContextMenu } from './ArtifactContextMenu'
 
 /** 无需读取文本内容、直接交给预览组件处理的文件类型（与工作区文件树的打开规则一致） */
 const DIRECT_PREVIEW_TYPES: FileType[] = [
@@ -95,6 +96,9 @@ export function ArtifactPanel({ collapsed, onToggleCollapse }: ArtifactPanelProp
     if (!workspacePath) return artifacts
     return artifacts.filter(item => pathStartsWith(item.path, workspacePath))
   }, [artifacts, workspacePath])
+
+  // 产物条目的右键菜单：菜单项与工作区文件树保持一致（见 ArtifactContextMenu）
+  const { menu: contextMenu, show: showContextMenu, hide: hideContextMenu } = useContextMenu<string>()
 
   const handleOpen = useCallback(async (filePath: string) => {
     const type = getFileType(filePath)
@@ -169,7 +173,11 @@ export function ArtifactPanel({ collapsed, onToggleCollapse }: ArtifactPanelProp
                   : item.path
 
                 return (
-                  <div key={item.path} className="group relative">
+                  <div
+                    key={item.path}
+                    className="group relative"
+                    onContextMenu={(e) => showContextMenu(e, item.path)}
+                  >
                     <button
                       onClick={() => void handleOpen(item.path)}
                       className={`w-full flex items-start gap-2 px-3 py-1.5 pr-14 text-left transition-colors ${
@@ -225,6 +233,14 @@ export function ArtifactPanel({ collapsed, onToggleCollapse }: ArtifactPanelProp
             </div>
           )}
         </div>
+      )}
+
+      {contextMenu?.data && (
+        <ArtifactContextMenu
+          path={contextMenu.data}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onClose={hideContextMenu}
+        />
       )}
     </div>
   )

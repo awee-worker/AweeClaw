@@ -38,7 +38,7 @@ import {
 import { toolManager } from '@intelligence/toolkit'
 import { buildAgentSystemPrompt } from '@intelligence/prompt-engine/PromptComposer'
 import { compressImageFromBase64 } from '@intelligence/utils/imageCompressor'
-import { needsVisualAnalysis } from '@intelligence/utils/imageIntentDetector'
+import { resolveVisualAnalysisIntent } from '../intelligence/decision/intentResolvers'
 import { resolveUploadDir } from '@shared/toolkit/pathHelper'
 import type { MainConversationSnapshot, VoiceContextPayload } from '../types/electronBridge'
 import type { LLMConfig, LLMMessage, MessageContentPart } from '@shared/protocols/modelProtocol'
@@ -135,7 +135,7 @@ function genId(prefix: string): string {
  * 将附件 + 文本构建为 LLM 多模态 content
  *
  * 图片处理策略（与普通聊天窗口 useAttachmentManager.buildMessageContent 一致）：
- * - 使用 needsVisualAnalysis(text) 检测用户是否需要视觉分析
+ * - 经决策层出口（resolveVisualAnalysisIntent）检测用户是否需要视觉分析
  * - 需要分析：压缩图片后正常发送 base64（cloudVisionMode 或本地视觉模型）
  * - 不需要分析：标记为 referenceOnly（MessageAdapter 转为文字提示），附带 localPath
  * - 本地直连模式 + 需要分析：标记为 referenceOnly，避免不支持 vision 的模型报 400 错误
@@ -153,8 +153,8 @@ function buildMessageContent(
 ): string | MessageContentPart[] {
   if (!attachments || attachments.length === 0) return text
 
-  // 检测用户是否需要视觉分析（与普通聊天窗口一致）
-  const userWantsAnalysis = needsVisualAnalysis(text.trim())
+  // 检测用户是否需要视觉分析（与普通聊天窗口一致，统一走决策层出口）
+  const userWantsAnalysis = resolveVisualAnalysisIntent({ userMessage: text.trim() }).value
 
   const parts: MessageContentPart[] = []
   if (text.trim()) parts.push({ type: 'text', text })

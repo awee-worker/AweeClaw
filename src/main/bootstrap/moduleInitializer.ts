@@ -803,14 +803,20 @@ function registerRandomTopicDetector(
   }
 }
 
+/** 嵌入模型预热的最长等待时间（首次需下载约 22MB 权重，超时后转后台继续） */
+const EMBEDDER_WARMUP_TIMEOUT_MS = 120_000
+
 /**
  * 预热主动决策引擎的重量级依赖。
  *
  * 在 `proactiveDecisionEngine.start()` 之前调用，确保首次节拍（10s 后）采集信号时
- * LanceDB native 模块已加载完毕，避免事件循环阻塞导致 10 路信号集体超时。
+ * 依赖已就绪，避免事件循环阻塞导致 10 路信号集体超时。
  *
  * 预热内容：
  * 1. PerceptionStore.warmup() — 加载 @lancedb/lancedb native 模块 + 预打开常用表
+ * 2. LocalEmbedder.load() — 加载本地嵌入模型；首次会下载约 22MB 权重，下载进度由
+ *    LocalEmbedder 按秒输出日志。若不预热，下载会落在首次节拍内并被 3s 信号超时打断，
+ *    表现为连续多拍没有行为预测且界面上看不到任何提示。
  *
  * 注意：GitCoModificationAnalyzer 的 git log 预分析不在此处触发，因为工作区路径
  * 在启动时尚未确定。改为在 ImpactAnalysisDetector 首次 detect 时通过非阻塞的
@@ -828,6 +834,33 @@ async function warmupProactiveDependencies(): Promise<void> {
   } catch (err) {
     // 预热失败不阻塞引擎启动，首次节拍会降级返回空信号
     logger.system.warn('[Main] PerceptionStore warmup failed:', errMsg(err))
+  }
+
+  try {
+    const { LocalEmbedder } = await import('../modules/perception/LocalEmbedder')
+    const embedder = LocalEmbedder.getInstance()
+    const info = embedder.getCacheInfo()
+
+    if (info.complete) {
+      await embedder.load()
+      logger.system.info('[Main] LocalEmbedder warmup complete')
+      return
+    }
+
+    logger.system.info(
+      `[Main] Embedding model ${info.present ? 'cache incomplete' : 'not downloaded'}, ` +
+        `downloading ~22MB to ${info.cacheDir}`,
+    )
+
+    // 下载可能持续到分钟级：超时后不再等待，加载在后台继续，避免推迟决策引擎启动。
+    // 后续 embed 调用会复用同一个加载 Promise，不会重复下载。
+    await Promise.race([
+      embedder.load(),
+      new Promise((resolve) => setTimeout(resolve, EMBEDDER_WARMUP_TIMEOUT_MS)),
+    ])
+  } catch (err) {
+    // 模型不可用时行为预测信号降级为空，其余信号不受影响
+    logger.system.warn('[Main] LocalEmbedder warmup failed:', errMsg(err))
   }
 }
 

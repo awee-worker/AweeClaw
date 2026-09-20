@@ -8,7 +8,7 @@ import { localAttachmentsService } from '../../../adapters/localAttachmentsServi
 import { logger } from '@toolkit/LogEngine'
 import { BRAND } from '@shared/brand'
 import { compressImage } from '@intelligence/utils/imageCompressor'
-import { needsVisualAnalysis } from '@intelligence/utils/imageIntentDetector'
+import { resolveVisualAnalysisIntent } from '@intelligence/decision/intentResolvers'
 import { convertUriToPath, resolveUploadDir } from '@shared/toolkit/pathHelper'
 import type { PendingAttachment } from '../../conversation'
 import type { ContextItem } from '@intelligence/providerTypes'
@@ -470,7 +470,7 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
         }
       }
 
-      const userWantsAnalysis = needsVisualAnalysis(text.trim())
+      const userWantsAnalysis = resolveVisualAnalysisIntent({ userMessage: text.trim() }).value
 
       const imageContentParts: Array<{
         type: 'image'

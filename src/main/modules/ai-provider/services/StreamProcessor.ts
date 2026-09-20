@@ -859,6 +859,16 @@ export class StreamingService {
 
     const finishReason = await result.finishReason
 
+    // 被输出上限截断且正文为空 → 思考吃满了输出额度（并未报错，只是没有正文）。
+    // 前端据此判为「未完成」并提示调整「最大输出 tokens / 思考预算」，
+    // 这里补一条 warn，便于在日志里直接定位这类"思考到一半就结束"的会话。
+    if (finishReason === 'length' && !finalText.trim() && finalReasoning.trim()) {
+      logger.llm.warn('[StreamProcessor] 输出被上限截断且正文为空（思考占满输出额度）', {
+        requestId,
+        reasoningLength: finalReasoning.length,
+      })
+    }
+
     if (finishReason === 'tool-calls' && !sawExecutableToolCall) {
       throw new LLMError(
         '模型以工具调用结束但未产生可执行的工具调用',

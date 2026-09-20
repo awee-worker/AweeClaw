@@ -15,7 +15,8 @@
  */
 
 import { logger } from '@toolkit/LogEngine'
-import { isDangerousCommand } from '@shared/configuration/dangerousCommands'
+import { needsCommandApproval } from '@intelligence/decision/commandRisk'
+import { buildApprovalEntry, recordApproval } from '@intelligence/decision/approvalLedger'
 import { getToolApprovalType, isWriteTool } from '@configuration/toolDefinitions'
 import type { ApprovalGateToolInfo } from '@intelligence/engine/toolOrchestrator'
 
@@ -48,6 +49,14 @@ class MiniChatApprovalCoordinator {
   private pendingList: PendingApprovalToolCall[] = []
   /** 状态变更订阅者 */
   private listeners = new Set<PendingApprovalListener>()
+  /**
+   * 最近一次判定使用的授权方式
+   *
+   * 审批结果的解读依赖授权方式（dangerous-only 下被批准才是「认可风险」，
+   * every-step 下批准只是例行确认），而 approve/reject 的入参里没有该信息，
+   * 因此在此留存一份。
+   */
+  private lastAuthorizationMode?: AuthorizationMode
 
   /**
    * 检查工具是否需要审批（store 独立版本）
@@ -68,6 +77,8 @@ class MiniChatApprovalCoordinator {
     // chat 模式（纯对话无工具副作用）始终不审批
     if (chatMode === 'chat') return false
 
+    this.lastAuthorizationMode = authorizationMode
+
     const toolName = toolCall.name
     const approvalType = getToolApprovalType(toolName)
 
@@ -78,11 +89,11 @@ class MiniChatApprovalCoordinator {
         return false
       }
       if (authorizationMode === 'dangerous-only') {
-        // 危险确认：危险操作 + 危险命令需审批
+        // 危险确认：危险操作 + 风险命令需审批（判定与主窗口门禁同源）
         if (approvalType === 'dangerous') return true
         if (toolName === 'run_command') {
           const command = toolCall.arguments?.command as string | undefined
-          if (command && isDangerousCommand(command)) return true
+          if (command && needsCommandApproval(command)) return true
         }
         return false
       }
@@ -142,6 +153,7 @@ class MiniChatApprovalCoordinator {
 
     if (resolve) {
       logger.agent.info(`[MiniApproval] Approved: ${key}`)
+      this.recordDecision(toolCallId, requestId, 'approved')
       resolve(true)
       this.pendingResolves.delete(key)
       this.removeFromPendingList(toolCallId, requestId)
@@ -155,7 +167,10 @@ class MiniChatApprovalCoordinator {
         const entry = this.pendingList.find(
           (e) => e.id === toolCallId || this.keyMatches(e, toolCallId, requestId),
         )
-        if (entry) this.removeFromPendingList(entry.id, entry.requestId)
+        if (entry) {
+          this.recordDecision(entry.id, entry.requestId, 'approved')
+          this.removeFromPendingList(entry.id, entry.requestId)
+        }
       } else {
         logger.agent.warn(`[MiniApproval] approve(${key}): no matching pending request`)
       }
@@ -173,6 +188,7 @@ class MiniChatApprovalCoordinator {
 
     if (resolve) {
       logger.agent.info(`[MiniApproval] Rejected: ${key}`)
+      this.recordDecision(toolCallId, requestId, 'rejected')
       resolve(false)
       this.pendingResolves.delete(key)
       this.removeFromPendingList(toolCallId, requestId)
@@ -185,7 +201,10 @@ class MiniChatApprovalCoordinator {
         const entry = this.pendingList.find(
           (e) => e.id === toolCallId || this.keyMatches(e, toolCallId, requestId),
         )
-        if (entry) this.removeFromPendingList(entry.id, entry.requestId)
+        if (entry) {
+          this.recordDecision(entry.id, entry.requestId, 'rejected')
+          this.removeFromPendingList(entry.id, entry.requestId)
+        }
       } else {
         logger.agent.warn(`[MiniApproval] reject(${key}): no matching pending request`)
       }
@@ -196,6 +215,7 @@ class MiniChatApprovalCoordinator {
   approveAll(): void {
     logger.agent.info(`[MiniApproval] Approve all: ${this.pendingList.length} tools`)
     for (const entry of this.pendingList) {
+      this.recordDecision(entry.id, entry.requestId, 'approved')
       const key = `${entry.requestId}_${entry.id}`
       this.pendingResolves.get(key)?.(true)
       this.pendingResolves.delete(key)
@@ -208,6 +228,7 @@ class MiniChatApprovalCoordinator {
   rejectAll(): void {
     logger.agent.info(`[MiniApproval] Reject all: ${this.pendingList.length} tools`)
     for (const entry of this.pendingList) {
+      this.recordDecision(entry.id, entry.requestId, 'rejected')
       const key = `${entry.requestId}_${entry.id}`
       this.pendingResolves.get(key)?.(false)
       this.pendingResolves.delete(key)
@@ -254,6 +275,36 @@ class MiniChatApprovalCoordinator {
   }
 
   // ===== 内部方法 =====
+
+  /**
+   * 审批结论落账
+   *
+   * 必须在移出待审批列表之前调用——条目移除后就取不到工具名与命令了。
+   * 记账属旁路，异常只记录不抛出，避免影响审批流程本身。
+   */
+  private recordDecision(
+    toolCallId: string,
+    requestId: string,
+    decision: 'approved' | 'rejected',
+  ): void {
+    const entry = this.pendingList.find(
+      (item) => item.id === toolCallId || this.keyMatches(item, toolCallId, requestId),
+    )
+    if (!entry) return
+
+    try {
+      recordApproval(
+        buildApprovalEntry({
+          toolCall: { id: entry.id, name: entry.name, arguments: entry.arguments },
+          requestId: entry.requestId,
+          decision,
+          authorizationMode: this.lastAuthorizationMode,
+        }),
+      )
+    } catch (err) {
+      logger.agent.warn('[MiniApproval] 审批记账失败，跳过记录', err)
+    }
+  }
 
   private removeFromPendingList(toolCallId: string, requestId: string): void {
     this.pendingList = this.pendingList.filter(

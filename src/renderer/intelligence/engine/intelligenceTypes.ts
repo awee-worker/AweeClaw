@@ -46,6 +46,8 @@ export interface LLMCallResult {
   retryable?: boolean
   errorCode?: string
   errorSuggestion?: string
+  /** 流结束原因（stop / length / tool-calls ...）。length 表示被输出上限截断 */
+  finishReason?: string
 }
 
 // ===== 循环检测结果 =====

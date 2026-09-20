@@ -33,7 +33,7 @@ import {
   EmbeddingConfig, ProjectSummary, SymbolInfo, CodeChunk, IndexedChunk,
   DEFAULT_INDEX_CONFIG,
 } from './providerTypes'
-import { getUserConfigDir } from '../modules/configPath'
+import { getEmbedderCacheDir } from '../modules/modelPaths'
 
 // Worker 消息类型
 interface WorkerResultMessage { type: 'result'; chunks: IndexedChunk[]; processed: number; total: number }
@@ -86,7 +86,7 @@ export class CodebaseIndexService {
     this.config = { ...DEFAULT_INDEX_CONFIG, ...config }
     // 注入缓存路径（用于 Worker 中的 Transformers.js）
     if (!this.config.embedding.cacheDir) {
-      this.config.embedding.cacheDir = path.join(getUserConfigDir(), 'models')
+      this.config.embedding.cacheDir = getEmbedderCacheDir()
     }
     this.status.mode = this.config.mode
 

@@ -8,8 +8,19 @@ import type { LLMMessage } from '@intelligence/providerTypes'
 import type { CompressionLevel } from '../context/compressionUtils'
 import type { StructuredSummary } from '../context/contextTypes'
 import { prepareMessages, estimateMessagesTokens } from '../context/ContextCompressor'
+import { pruneHistory, isMainChainPruningEnabled } from '../context/contextPruner'
 import { buildLLMApiMessages } from './MessageAdapter'
 import { countTokens } from '@shared/toolkit/tokenEstimator'
+
+/** 从用户消息内容中抽出纯文本，供历史裁剪的相关性判定使用 */
+function toPlainText(content: MessageContent): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .filter((part) => part && typeof part === 'object' && (part as { type?: string }).type === 'text')
+    .map((part) => (part as { text?: string }).text ?? '')
+    .join(' ')
+}
 
 export interface RuntimeStateContext {
   handoffContext?: string
@@ -140,10 +151,25 @@ export class MessageAssembler {
       compressionLevel
     )
 
-    const lastMsg = compressedMessages[compressedMessages.length - 1]
+    // 历史裁剪（默认关闭）：按与当前请求的相关性筛掉无关回合。
+    // 与上游压缩互补 —— 压缩管「单条消息过长」，裁剪管「回合过多且多数无关」。
+    // 两者作用域不重叠：裁剪只在安全阀全部通过时才真正生效。
+    let history = compressedMessages
+    if (isMainChainPruningEnabled()) {
+      const pruned = pruneHistory(compressedMessages, toPlainText(userMessage.raw))
+      if (!pruned.stats.skipped) {
+        history = pruned.messages
+        stats.removedMessages += pruned.stats.removedMessages
+        logger.agent.info(
+          `[MessageAssembler] 历史裁剪 ${compressedMessages.length} → ${history.length} 条`
+        )
+      }
+    }
+
+    const lastMsg = history[history.length - 1]
     const messagesToConvert = lastMsg?.role === 'user'
-      ? compressedMessages.slice(0, -1)
-      : compressedMessages
+      ? history.slice(0, -1)
+      : history
 
     const llmMessages = buildLLMApiMessages(messagesToConvert, systemPrompt)
     // 摘要仅在确实发生压缩（L2+）时注入，避免低等级/新话题把陈旧摘要混入上下文
@@ -157,7 +183,7 @@ export class MessageAssembler {
       content: userMessage.combined,
     })
 
-    const historyTokens = this.compressor.estimateTokens(compressedMessages)
+    const historyTokens = this.compressor.estimateTokens(history)
     const systemPromptTokens = countTokens(systemPrompt)
     const runtimeTokens = runtimeStateMessage ? countTokens(String(runtimeStateMessage.content || '')) : 0
     const estimatedTokens = historyTokens + systemPromptTokens + runtimeTokens + userMessage.estimatedTokens
