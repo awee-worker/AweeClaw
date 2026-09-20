@@ -173,6 +173,44 @@ describe('助手提问消息在历史转换中不被丢弃', () => {
   })
 })
 
+describe('衔接说明静默注入（不进用户气泡）', () => {
+  it('agentContext 拼进请求，但用户消息对象本身仍是用户输入', async () => {
+    patchGlobals()
+    const { MessageAssembler } = await import('../MessageBuilder')
+    const assembler = new MessageAssembler()
+
+    const history = [
+      USER_REQUEST,
+      ASSISTANT_QUESTION,
+      { id: 'u2', role: 'user', content: '要', timestamp: 3 },
+    ] as unknown as ChatMessage[]
+
+    const notice = '## 上下文衔接（自动附加）\n用户本次回复是对上一条提问的简短确认。'
+    const userContent = assembler.assembleUserMessage('要', '', notice)
+
+    // 原始内容未被改写：气泡/历史里保存的仍是用户输入
+    expect(userContent.raw).toBe('要')
+
+    const assembled = assembler.assemble(history, userContent, 'SYSTEM', 0)
+    const lastMessage = assembled.messages[assembled.messages.length - 1]
+    const sent = Array.isArray(lastMessage.content)
+      ? lastMessage.content.map(part => (part as { text?: string }).text || '').join('')
+      : String(lastMessage.content ?? '')
+
+    // 发给模型的请求里带有说明
+    expect(sent).toContain('上下文衔接（自动附加）')
+  })
+
+  it('无 agentContext 时不产生额外前缀（纯文本请求保持原样）', async () => {
+    patchGlobals()
+    const { MessageAssembler } = await import('../MessageBuilder')
+    const assembler = new MessageAssembler()
+
+    const userContent = assembler.assembleUserMessage('帮我实现登录功能', '')
+    expect(userContent.combined).toBe('帮我实现登录功能')
+  })
+})
+
 describe('消息组装保留上一条助手提问', () => {
   it('history 含当前用户消息时，提问仍在最终消息序列中', async () => {
     patchGlobals()

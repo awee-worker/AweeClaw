@@ -229,6 +229,10 @@ export function VrmCompanionApp({ onReady }: VrmCompanionAppProps) {
     },
     // 口型跟「朗读出来的声音」走：TTS 播放电平，而不是麦克风采集电平
     onPlaybackVolume: (volume) => lipSync.pushVolume(volume),
+    // 字幕跟「正在播的那一句」走：每段音频真正出声时才推文本过来。
+    // 若改用 aiText（LLM 流式增量）做字幕，文字会在声音之前整段显示完，
+    // 而且中途被工具调用拆成多段时，字幕与声音会彻底错位。
+    onSpeakSegment: (text) => setSubtitle(text),
     onError: showVoiceError,
   })
 
@@ -310,10 +314,11 @@ export function VrmCompanionApp({ onReady }: VrmCompanionAppProps) {
     stopVoice()
   }, [bridge.windowVisible, stopVoice, voiceActive])
 
-  /** AI 流式文本 → 字幕气泡 */
-  useEffect(() => {
-    if (voiceChat.aiText) setSubtitle(voiceChat.aiText)
-  }, [voiceChat.aiText])
+  // 字幕的唯一来源是 onSpeakSegment（见 useVrmCompanionVoice 调用处）。
+  //
+  // 这里刻意不再跟随 voiceChat.aiText：那是 LLM 的流式增量，更新远早于 TTS 出声，
+  // 一旦用它驱动字幕，文字会抢在声音前面整段显示完 —— 这正是「字幕与播报不同步」的来源。
+  // 交给 useVoiceChat 在「每段音频真正开始播放」时推送该段文本，错位从根上消失。
 
   /**
    * 口型的「闭口」路径。

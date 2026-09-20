@@ -74,6 +74,9 @@ interface PipelineContext {
   config: ExecutionConfig
   systemPrompt: string
   userMessage: MessageContent
+  /** 静默附加给模型的说明（断点续接/上下文衔接），只拼进请求，不影响用户气泡 */
+  agentContext?: string
+  contextItems: ContextItem[]
   contextItems: ContextItem[]
   messageHistory: ChatMessage[]
   modeDescriptor: ReturnType<typeof modeRegistry.getOrDefault>
@@ -146,6 +149,7 @@ class UserMessageStage implements ExecutionStage {
     ctx.userMessageContent = this.assembler.assembleUserMessage(
       ctx.userMessage,
       ctx.contextResult!.content,
+      ctx.agentContext,
     )
 
     ctx.runtimeState = resolveRuntimeState(ctx.config.threadId)
@@ -292,6 +296,7 @@ export class AgentExecutor {
     messageHistory: ChatMessage[],
     systemPrompt: string,
     config: ExecutionConfig,
+    agentContext?: string,
   ): Promise<ExecutionPreparation> {
     const startedAt = Date.now()
 
@@ -299,6 +304,7 @@ export class AgentExecutor {
       config,
       systemPrompt,
       userMessage,
+      agentContext,
       contextItems,
       messageHistory,
       modeDescriptor: undefined as unknown as PipelineContext['modeDescriptor'],

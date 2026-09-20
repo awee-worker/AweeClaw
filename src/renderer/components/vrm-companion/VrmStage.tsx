@@ -221,6 +221,24 @@ const DRAG_FULL_RATE_TAIL_MS = 600
 /** 口型写入的最小变化量：低于此值不重复写 expressionManager */
 const MOUTH_WRITE_EPSILON = 0.005
 
+/**
+ * 嘴部开合表达式的候选名（按优先级）。
+ *
+ * 名字必须与模型实际的表达式表对得上：VRM 1.0 的预设名是 `aa`，
+ * VRM 0.x 是 `A`，而自制模型常只暴露 `mouth_open` 这类自定义名。
+ * three-vrm 的 setValue 写入不存在的名字是**静默无效**的 ——
+ * 表现就是「AI 明明在说话，嘴一动不动」，且没有任何报错可查。
+ */
+const MOUTH_EXPRESSION_CANDIDATES = [
+  'aa',
+  'A',
+  'mouth_open',
+  'mouthOpen',
+  'jawOpen',
+  'oh',
+  'O',
+] as const
+
 /** 自动隐藏的淡入/淡出时长（ms），与 super-ai-browser 观感对齐 */
 const AUTO_HIDE_FADE_MS = 300
 
@@ -393,6 +411,10 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
   const lastHitRef = useRef(false)
   /** 上次写入 expressionManager 的口型值（值未变则不重复写） */
   const lastMouthWrittenRef = useRef(0)
+  /** 当前模型实际可用的嘴部开合表达式名（解析一次后缓存） */
+  const mouthExpressionNameRef = useRef<string | null>(null)
+  /** 是否已针对「当前这个模型」完成过表达式名解析（换模型后会置回 false） */
+  const mouthExpressionResolvedRef = useRef(false)
   /**
    * 取景刷新函数（在场景初始化 effect 内赋值）。
    *
@@ -430,6 +452,45 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
     if (!mgr) return false
     if (typeof mgr.getExpression === 'function') return !!mgr.getExpression(name)
     return !!mgr.expressionMap?.[name]
+  }
+
+  /**
+   * 解析当前模型实际可用的嘴部开合表达式名（按模型缓存）。
+   *
+   * 表达式表要等模型加载完成才可读，而本函数在渲染循环里逐帧调用，
+   * 因此解析一次就缓存 —— 不能每帧遍历一遍 expressionMap。
+   *
+   * 失败分支要区分两种情形：expressionManager 还不存在（模型尚未就绪）
+   * 就不缓存，留待下一帧重试；已经就绪却匹配不到，才标记「该模型没有可用嘴型」，
+   * 同时只告警一次，避免逐帧刷屏。
+   */
+  const resolveMouthExpressionName = (): string | null => {
+    if (mouthExpressionResolvedRef.current) return mouthExpressionNameRef.current
+
+    const mgr = vrmRef.current?.expressionManager as unknown as
+      | { getExpression?: (n: string) => unknown; expressionMap?: Record<string, unknown> }
+      | undefined
+    if (!mgr) return null
+
+    const available = (name: string): boolean => {
+      if (typeof mgr.getExpression === 'function') return !!mgr.getExpression(name)
+      return !!mgr.expressionMap?.[name]
+    }
+
+    const found = MOUTH_EXPRESSION_CANDIDATES.find((name) => available(name)) ?? null
+    if (!found) {
+      mouthExpressionResolvedRef.current = true
+      logger.system.warn(
+        `[VrmStage] 模型未提供可识别的嘴部表情（已尝试 ${MOUTH_EXPRESSION_CANDIDATES.join(
+          '/',
+        )}），口型同步对该模型不可见`,
+      )
+      return null
+    }
+
+    mouthExpressionNameRef.current = found
+    mouthExpressionResolvedRef.current = true
+    return found
   }
 
   // 对外暴露：动作 / 表情 / 视线 / 视角复位（供控制栏与 AI 指令调用）
@@ -748,8 +809,14 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
           // 的赋值链路，而待机时该值长期恒为 0，逐帧写入是纯浪费
           const mouth = Math.max(0, Math.min(1, mouthOpenRef.current))
           if (Math.abs(mouth - lastMouthWrittenRef.current) > MOUTH_WRITE_EPSILON) {
-            expressions.setValue('aa', mouth)
-            lastMouthWrittenRef.current = mouth
+            // 表达式名按模型解析，不能写死 'aa'：VRM 0.x 的预设名是 'A'，
+            // 自制模型可能只有 mouth_open 之类的自定义名 —— 名字对不上时
+            // setValue 静默无效，表现就是「AI 在说话，嘴一动不动」
+            const mouthName = resolveMouthExpressionName()
+            if (mouthName) {
+              expressions.setValue(mouthName, mouth)
+              lastMouthWrittenRef.current = mouth
+            }
           }
 
           // --------------------------------------------
@@ -1105,6 +1172,13 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
 
         scene.add(vrm.scene)
         vrmRef.current = vrm
+
+        // 换模型：嘴部表达式名必须重新解析（不同 VRM 版本 / 自制模型的命名各不相同），
+        // 同时把「上次写入值」置为不可能值，强制本帧重写一次 —— 否则新模型
+        // 若沿用旧值与旧名，会一直等不到那次写入，嘴全程不动
+        mouthExpressionNameRef.current = null
+        mouthExpressionResolvedRef.current = false
+        lastMouthWrittenRef.current = -1
 
         // 调试钩子：供内部分析脚本 / 自动化探针读取渲染器与材质的真实状态。
         // 生产态同样保留（只读引用，无副作用），用于排查「打包后画面发白」

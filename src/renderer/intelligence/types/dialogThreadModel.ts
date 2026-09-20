@@ -3,7 +3,7 @@
  */
 
 import type { ToolCall, ToolStreamingPreview } from '@intelligence/providerTypes'
-import type { ChatMessage } from './conversationModel'
+import type { ChatMessage, UserMessage } from './conversationModel'
 import { getMessageText } from './conversationModel'
 import type { MessageCheckpoint } from './sessionSnapshot'
 import type { ContextItem } from './contextModel'
@@ -223,13 +223,31 @@ export function createIdleHandoffState(): ThreadHandoffState {
   }
 }
 
+/**
+ * 剥离只在当轮生效的瞬态字段
+ *
+ * agentContext 是「组装当次请求时」才注入给模型的衔接说明，消息进入历史后不再参与
+ * 任何请求；原样落盘只会让这段说明长期留在会话文件里。没有该字段时直接复用原数组，
+ * 避免在高频持久化路径上白白做一次整表拷贝。
+ */
+function stripRuntimeOnlyMessageFields(messages: ChatMessage[]): ChatMessage[] {
+  const needsStrip = messages.some(m => m.role === 'user' && !!(m as UserMessage).agentContext)
+  if (!needsStrip) return messages
+
+  return messages.map(m => {
+    if (m.role !== 'user' || !(m as UserMessage).agentContext) return m
+    const { agentContext: _transient, ...persisted } = m as UserMessage
+    return persisted as ChatMessage
+  })
+}
+
 export function toPersistedChatThread(thread: ChatThread): PersistedChatThread {
   return {
     id: thread.id,
     createdAt: thread.createdAt,
     lastModified: thread.lastModified,
     title: thread.title,
-    messages: thread.messages,
+    messages: stripRuntimeOnlyMessageFields(thread.messages),
     contextItems: thread.contextItems,
     messageCheckpoints: thread.messageCheckpoints ?? [],
     messageCount: thread.messages.length,

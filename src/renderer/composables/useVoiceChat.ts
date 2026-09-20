@@ -134,6 +134,24 @@ export interface VoiceChatOptions {
    * 拿它驱动口型只会得到「AI 在说、嘴不动」。
    */
   onPlaybackVolume?: (volume: number) => void
+  /**
+   * 分句流式 TTS（默认关闭，仅拆分式模式生效）。
+   *
+   * 关闭时：LLM 全部生成完 → 整段合成 → 整段播放。文字早就流式显示完了，
+   * 声音才迟迟开始，字幕与播报天然错位。
+   *
+   * 开启时：LLM 每凑满一句就立刻合成入队，首句出声提前到「第一句生成完」，
+   * 且配合 onSpeakSegment 能让字幕严格跟随当前正在播的那一句。
+   * 代价是 TTS 请求变多（按句计费的服务商成本略升），故默认关闭。
+   */
+  sentenceStreaming?: boolean
+  /**
+   * 即将出声的段落文本（分句流式模式下逐句触发）→ 字幕消费。
+   *
+   * 触发时机是「该段音频真正开始播放」而不是入队，
+   * 否则排队等待的段落会提前显示，字幕又跑到声音前面。
+   */
+  onSpeakSegment?: (text: string) => void
   /** 错误回调 */
   onError?: (message: string) => void
   /** 结束对话回调（用户说"结束对话"等指令时触发） */
@@ -148,6 +166,30 @@ export interface VoiceChatOptions {
 const VAD_THRESHOLD = 0.015      // 说话检测阈值（RMS）
 const VAD_SILENCE_DELAY = 1500   // 说话结束后等待多久（ms）判定说完
 const VAD_MIN_SPEECH_TIME = 300  // 最短说话时间（ms），短于此视为噪音
+
+// 打断判定参数
+//
+// 桌面伴侣的扬声器与麦克风同处一室，AI 朗读的声音会被麦克风回采，
+// 加上键盘敲击、环境噪音，单帧 RMS 超阈就打断必然误触发 ——
+// 表现正是「用户没说话，AI 播报却断了」。因此打断需同时满足：
+// 1) 音量显著高于说话阈值（回采经 echoCancellation 衰减后残余有限）
+// 2) 连续超阈达到 INTERRUPT_HOLD_MS（瞬时毛刺不构成打断）
+// 3) 不在起播静默期内（避开扬声器起振与音频首帧瞬态）
+const INTERRUPT_RMS_FACTOR = 3.5  // 打断阈值 = VAD_THRESHOLD × 该系数
+const INTERRUPT_HOLD_MS = 260     // 需连续超阈多久才认定打断
+const INTERRUPT_GRACE_MS = 420    // 起播后的免打断静默期（ms）
+
+// 口型电平映射：把扬声器信号的 RMS 归一化为「开合度」
+//
+// TTS 语音的 RMS 普遍落在 0.02~0.2，直接透出会让口型长期只张开五分之一，
+// 看起来像「嘴不动」；先减掉底噪门限再拉伸到 0~1，安静段收紧到 0 避免嘴皮微颤。
+const TTS_NOISE_FLOOR = 0.012     // 底噪门限（低于此值视为静音）
+const TTS_LEVEL_SPAN = 0.16       // 满开合对应的 RMS 区间宽度
+
+// 分句流式 TTS 参数
+const SEGMENT_MIN_CHARS = 8       // 单句最短字符数，避免「好的，」这类碎片单独发声
+const SEGMENT_MAX_CHARS = 60      // 无句末标点时的强制切分长度，保证首句不会久等
+const SENTENCE_END_CHARS = '。！？；…!?;\n'
 const VAD_CHECK_INTERVAL = 100   // VAD 检测间隔（ms）
 const SAMPLE_RATE = 16000        // 采样率
 // TTS 播放电平采样间隔（ms）：≈30fps，足以驱动口型平滑，单次仅 256 个采样点
@@ -197,6 +239,45 @@ function getResolvedVoiceConfig(
     userVoiceConfig?.ttsVoice,
     userVoiceConfig?.ttsSpeed,
   )
+}
+
+/**
+ * 从文本流的 from 位置起切出一个可朗读片段。
+ *
+ * 切分点优先取句末标点；若到 SEGMENT_MAX_CHARS 仍等不到句末标点
+ * （英文缩写、长串数字、表格行等），则退到逗号处、再不行硬切 ——
+ * 否则首句会一直卡在缓冲区里不出声，流式合成就失去了意义。
+ *
+ * @returns null 表示当前还没有够长、可切的片段（继续等后续 chunk）
+ */
+function takeSpeakableSegment(
+  buf: string,
+  from: number,
+): { text: string; end: number } | null {
+  if (from >= buf.length) return null
+  const tail = buf.slice(from)
+
+  for (let i = 0; i < tail.length; i += 1) {
+    if (SENTENCE_END_CHARS.includes(tail[i]) && i + 1 >= SEGMENT_MIN_CHARS) {
+      return { text: tail.slice(0, i + 1), end: from + i + 1 }
+    }
+  }
+
+  if (tail.length < SEGMENT_MAX_CHARS) return null
+
+  const lastSoft = Math.max(
+    tail.lastIndexOf('，'),
+    tail.lastIndexOf(','),
+    tail.lastIndexOf('、'),
+  )
+  const cut = lastSoft >= SEGMENT_MIN_CHARS ? lastSoft + 1 : SEGMENT_MAX_CHARS
+  return { text: tail.slice(0, cut), end: from + cut }
+}
+
+/** 收尾切分：把 from 之后的全部剩余文本一次性取走（含无句末标点的尾巴） */
+function takeTailSegment(buf: string, from: number): { text: string; end: number } | null {
+  if (from >= buf.length) return null
+  return { text: buf.slice(from), end: buf.length }
 }
 
 // ============================================
@@ -255,10 +336,39 @@ export function useVoiceChat(options?: VoiceChatOptions) {
 
   // refs - 中断控制
   const abortControllerRef = useRef<AbortController | null>(null)
+  /** 「连续超阈」的起始时刻（0 = 当前未处于超阈状态） */
+  const interruptHoldStartRef = useRef(0)
+  /** 本轮起播时刻：用于起播静默期，避免刚出声就被自身瞬态打断 */
+  const speakingStartAtRef = useRef(0)
+
+  /**
+   * 对话轮次令牌。
+   *
+   * 每轮对话开始时自增，播放完成监视 interval 会记录创建时的令牌并在回调里校验。
+   * 打断后旧 interval 即便漏清也因令牌不匹配而自行作废 ——
+   * 否则它会继续跑，并在新一轮录音期间把 aiText/sttText 清空、把 state 打回 listening，
+   * 表现为「打断后状态乱跳、刚说的话被吞掉」。
+   */
+  const turnIdRef = useRef(0)
+
+  // refs - 分句流式 TTS
+  /** 本轮已累计的可朗读原文（按流式 chunk 原样拼接，游标以此为准） */
+  const speakStreamRef = useRef('')
+  /** 已送入 TTS 的字符位置（游标），下一段从这里开始切 */
+  const speakCursorRef = useRef(0)
+  /**
+   * 合成分句的串行链。
+   *
+   * textToSpeech 是异步的，并发发起会让后一句先生成完 → 入队顺序与文本顺序错乱。
+   * 用一条 promise 链把合成串起来，播放顺序才与说话顺序一致。
+   */
+  const segmentChainRef = useRef<Promise<void>>(Promise.resolve())
+  /** 本轮是否启用分句流式（跟随 options.sentenceStreaming，在 connect 时定格） */
+  const segmentStreamingRef = useRef(false)
 
   // refs - TTS 播放（拆分式模式使用）
   const ttsAudioContextRef = useRef<AudioContext | null>(null)
-  const ttsQueueRef = useRef<{ data: string; contentType: string }[]>([])
+  const ttsQueueRef = useRef<{ data: string; contentType: string; segmentText?: string }[]>([])
   const isPlayingRef = useRef(false)
   /** 正在生成中的 TTS 数量（用于防止 checkPlaybackComplete 在 TTS 生成期间误判为播放完成） */
   const ttsPendingRef = useRef(0)
@@ -287,6 +397,19 @@ export function useVoiceChat(options?: VoiceChatOptions) {
   const onPlaybackVolumeRef = useRef(options?.onPlaybackVolume)
   onPlaybackVolumeRef.current = options?.onPlaybackVolume
 
+  /**
+   * options 的最新引用。
+   *
+   * 播放循环、分句合成链都是长生命周期闭包（一次建立、跨多段 TTS 存活），
+   * 直接读 options 会捕获首次渲染传进来的那份配置。
+   */
+  const optionsRef = useRef(options)
+  optionsRef.current = options
+
+  /** 段落开始出声 → 上层（字幕） */
+  const onSpeakSegmentRef = useRef(options?.onSpeakSegment)
+  onSpeakSegmentRef.current = options?.onSpeakSegment
+
   /** 播放电平采样：analyser（串在 TTS 输出链上）/ 时域缓冲 / 采样定时器 */
   const ttsAnalyserRef = useRef<AnalyserNode | null>(null)
   const ttsSampleBufferRef = useRef<Uint8Array<ArrayBuffer> | null>(null)
@@ -300,6 +423,35 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     }
     onPlaybackVolumeRef.current?.(0)
   }, [])
+
+  /**
+   * 只清播放完成监视 interval，不动待生成计数。
+   *
+   * 与下面的 reclaimPlaybackState 分开是必要的：新轮开始与打断清理都要停掉旧 interval，
+   * 但只有打断/断开才该把 ttsPendingRef 归零 —— 新轮开始时归零会抹掉自己刚发起的合成计数，
+   * 导致这一轮被误判成「播放已完成」而提前收尾。
+   */
+  const clearPlaybackWatch = useCallback(() => {
+    if (playbackCheckRef.current != null) {
+      clearInterval(playbackCheckRef.current)
+      playbackCheckRef.current = null
+    }
+  }, [])
+
+  /**
+   * 打断 / 断开时的播放态回收：停监视 + 清计数 + 作废当前轮次。
+   *
+   * 三者必须成套执行：留下任何一项，上一轮就会在新一轮里继续生效
+   * （旧 interval 到期后清空新一轮的文本、把 state 打回 listening）。
+   */
+  const reclaimPlaybackState = useCallback(() => {
+    clearPlaybackWatch()
+    ttsPendingRef.current = 0
+    turnIdRef.current += 1
+    speakStreamRef.current = ''
+    speakCursorRef.current = 0
+    interruptHoldStartRef.current = 0
+  }, [clearPlaybackWatch])
 
   /**
    * 启动播放电平采样（幂等）。
@@ -320,7 +472,11 @@ export function useVoiceChat(options?: VoiceChatOptions) {
           const centered = (buffer[i] - 128) / 128
           sum += centered * centered
         }
-        onPlaybackVolumeRef.current?.(Math.sqrt(sum / buffer.length))
+        const rms = Math.sqrt(sum / buffer.length)
+        // 归一化为「开合度」再交给口型：原始 RMS 数值偏小，直接透出会长期只张开两成
+        const open =
+          rms <= TTS_NOISE_FLOOR ? 0 : Math.min(1, (rms - TTS_NOISE_FLOOR) / TTS_LEVEL_SPAN)
+        onPlaybackVolumeRef.current?.(open)
       }
       if (!isPlayingRef.current && ttsQueueRef.current.length === 0) {
         stopTtsPlaybackSampling()
@@ -369,6 +525,11 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       }
       startTtsPlaybackSampling()
       source.start()
+      // 起播时刻：打断判定要用它划出静默期，避开扬声器起振与音频首帧瞬态
+      speakingStartAtRef.current = performance.now()
+      // 字幕与声音同步的关键一环：段落文本在「真正出声」这一拍才推给上层。
+      // 若在入队时就推，排队等待的段落会提前显示，字幕又跑到声音前面去。
+      if (item.segmentText) onSpeakSegmentRef.current?.(item.segmentText)
     } catch {
       isPlayingRef.current = false
       stopTtsPlaybackSampling()
@@ -378,6 +539,8 @@ export function useVoiceChat(options?: VoiceChatOptions) {
   const stopTtsPlayback = useCallback(() => {
     ttsQueueRef.current = []
     isPlayingRef.current = false
+    // 队列一清，播放完成监视就失去意义：顺手停掉，避免它稍后仍把状态打回 listening
+    clearPlaybackWatch()
     // 先停采样并归零：AudioContext 关掉后 analyser 读不到数据，
     // 不停就会把口型留在最后一次的开合值上
     stopTtsPlaybackSampling()
@@ -392,7 +555,7 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     }
     ttsAnalyserRef.current = null
     ttsSampleBufferRef.current = null
-  }, [stopTtsPlaybackSampling])
+  }, [clearPlaybackWatch, stopTtsPlaybackSampling])
 
   // ============================================================
   // 即时 TTS 播放（用于工具调用前的语音预告）
@@ -437,6 +600,81 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       ttsPendingRef.current--
     }
   }, [options?.userVoiceConfig, playTtsQueue])
+
+  // ============================================================
+  // 分句流式 TTS（让首句尽快出声，并让字幕与播报同步）
+  // ============================================================
+
+  /**
+   * 把一句可朗读文本合成并入队。
+   *
+   * 计数与状态在**同步阶段**就置好（不是等 await 回来）：播放完成监视是 200ms
+   * 轮询的，若等到合成发起后才计数，它会在「上一段播完、下一段还没入队」的空窗里
+   * 判定本轮结束，把 state 打回 listening、把文本清掉。
+   */
+  const enqueueSegmentTts = useCallback(
+    (speakable: string) => {
+      const text = speakable.trim()
+      if (!text) return
+
+      // 记录发起时的轮次令牌：合成是异步的，回来时轮次若已变（被打断、或新一轮已开始），
+      // 结果必须丢弃 —— 否则被打断的那一句会在合成完成后补响，盖在新一轮的对话上。
+      // 计数同理只在轮次未变时回减：打断已把 ttsPendingRef 归零，这里再减会把它压成负数，
+      // 让后续轮次永远判不出「播放完成」。
+      const turnAtEnqueue = turnIdRef.current
+
+      ttsPendingRef.current += 1
+      setState('speaking')
+      isSpeakingRef.current = true
+
+      segmentChainRef.current = segmentChainRef.current.then(async () => {
+        try {
+          const resolved = getResolvedVoiceConfig(optionsRef.current?.userVoiceConfig)
+          const ttsBlob = await voiceApi.textToSpeech(text, {
+            voice: resolved.voice,
+            speed: resolved.speed,
+            format: 'mp3',
+            forceLocal: voiceModeRef.current === 'split',
+          })
+          const base64 = await blobToBase64(ttsBlob)
+          if (base64 && turnAtEnqueue === turnIdRef.current) {
+            ttsQueueRef.current.push({
+              data: base64,
+              contentType: 'audio/mp3',
+              segmentText: text,
+            })
+            playTtsQueue()
+          }
+        } catch (err) {
+          logger.system.warn('[VoiceChat] Segment TTS failed:', err)
+        } finally {
+          if (turnAtEnqueue === turnIdRef.current) ttsPendingRef.current -= 1
+        }
+      })
+    },
+    [playTtsQueue],
+  )
+
+  /**
+   * 把缓冲区里已成型（或本轮已结束）的文本切句送合成。
+   *
+   * @param final true = 本轮 LLM 输出已结束，剩余全部切走（含无句末标点的尾巴）
+   */
+  const flushSpeakableSegments = useCallback(
+    (final: boolean) => {
+      const buf = speakStreamRef.current
+      for (;;) {
+        const seg = final
+          ? takeTailSegment(buf, speakCursorRef.current)
+          : takeSpeakableSegment(buf, speakCursorRef.current)
+        if (!seg) break
+        speakCursorRef.current = seg.end
+        enqueueSegmentTts(stripNonSpeakableContent(seg.text))
+      }
+    },
+    [enqueueSegmentTts],
+  )
+
 
   // ============================================================
   // 端到端模式：实时音频播放
@@ -489,6 +727,15 @@ export function useVoiceChat(options?: VoiceChatOptions) {
 
   const processAudio = useCallback(async (audioBlob: Blob) => {
     try {
+      // 新一轮开始：作废上一轮的播放监视，并清空分句缓冲
+      clearPlaybackWatch()
+      turnIdRef.current += 1
+      speakStreamRef.current = ''
+      speakCursorRef.current = 0
+      segmentChainRef.current = Promise.resolve()
+      // 上一轮的字幕可能还挂在界面上，先清掉再进入 STT，避免「用户都开口了还显示旧回复」
+      onSpeakSegmentRef.current?.('')
+
       const wavBlob = await convertBlobToWav(audioBlob)
 
       // 阶段 1：STT（voiceApi 自动分流云端/本地）
@@ -640,13 +887,24 @@ export function useVoiceChat(options?: VoiceChatOptions) {
           aiTextRef.current += chunk
           setAiText(aiTextRef.current)
           options?.onAiText?.(chunk)
+          // 分句流式：原文进缓冲、按句切分即刻合成，首句不必等整段生成完
+          if (segmentStreamingRef.current) {
+            speakStreamRef.current += chunk
+            flushSpeakableSegments(false)
+          }
         },
         // 工具调用前的语音预告：立即 TTS 播放 LLM 附带的文字
         // 让用户实时听到 AI 的意图（如"好的，我现在开始为您创建网站"）
         onToolAnnouncement: (text, _toolNames) => {
           // 记录预告文字，用于避免最终 TTS 重复播放
           announcementTextRef.current = text
-          speakTextImmediately(text)
+          if (segmentStreamingRef.current) {
+            // 该 iteration 已结束：把缓冲里的剩余（含无句末标点的尾巴）全部切走播放。
+            // 这段文字在流式过程中已逐句播过，这里只补尾部 —— 再整段播一遍就是重复。
+            flushSpeakableSegments(true)
+          } else {
+            speakTextImmediately(text)
+          }
           // 添加 AI 预告到文本流
           addStreamEntry({ type: 'ai', text })
         },
@@ -682,6 +940,13 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       })
 
       abortControllerRef.current = null
+
+      // 流式收尾：把缓冲区里最后一段（通常是没有句末标点的结尾）切走送合成。
+      // 有工具调用时 onToolAnnouncement 已切过一次，对同一游标是幂等的 no-op。
+      // 被 abort 的轮次不切 —— 那段属于已被打断的回复，播出来就是「打断了还在说」。
+      if (segmentStreamingRef.current && !abortController.signal.aborted) {
+        flushSpeakableSegments(true)
+      }
 
       // ============================================================
       // 最终回复处理
@@ -723,7 +988,12 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       // - 如果最终回复与预告相同 → 跳过（已通过预告播放）
       const speakableFinal = stripNonSpeakableContent(finalResponseText)
       const speakableAnnouncement = stripNonSpeakableContent(announcementTextRef.current)
-      const shouldPlayFinalTts = speakableFinal.trim() && speakableFinal !== speakableAnnouncement
+      // 分句流式模式下，本轮文本在生成过程中已逐句合成播放（含上面补切的尾巴），
+      // 这里若再整段合成播放一遍，就是同一段话读两遍。
+      const shouldPlayFinalTts =
+        !segmentStreamingRef.current &&
+        Boolean(speakableFinal.trim()) &&
+        speakableFinal !== speakableAnnouncement
 
       if (shouldPlayFinalTts) {
         // 需要播放最终 TTS（如"故事已写好，放在了你的根目录下"）
@@ -1092,28 +1362,55 @@ export function useVoiceChat(options?: VoiceChatOptions) {
 
       // AI 说话时也检测用户打断
       if (isSpeakingRef.current) {
-        if (rms > VAD_THRESHOLD * 2) {
-          // 用户打断了 AI
-          stopTtsPlayback()
+        // 起播静默期：扬声器起振与音频首帧瞬态会被麦克风回采成一次高 RMS 尖峰，
+        // 不排除它，每段 TTS 开头都会「自我打断」。
+        const inGracePeriod =
+          speakingStartAtRef.current > 0 &&
+          performance.now() - speakingStartAtRef.current < INTERRUPT_GRACE_MS
 
-          // 端到端模式：发送打断事件
-          if (voiceModeRef.current === 'realtime' && socketRef.current?.connected) {
-            socketRef.current.emit('voice:interrupt', { reason: 'user_interrupt' })
-          }
+        // 打断阈值显著高于说话阈值：回采经 echoCancellation 衰减后残余有限，
+        // 用说话阈值判定会把环境噪音、键盘声一律当成打断。
+        const overInterruptThreshold = rms > VAD_THRESHOLD * INTERRUPT_RMS_FACTOR
 
-          // 拆分式模式：中断当前 LLM 请求
-          if (voiceModeRef.current === 'split' && abortControllerRef.current) {
-            abortControllerRef.current.abort()
-            abortControllerRef.current = null
-          }
-
-          isSpeakingRef.current = false
-          // 开始录音
-          startRecording()
-          vadStateRef.current = 'speaking'
-          speechStartTimeRef.current = now
-          setState('recording')
+        if (inGracePeriod || !overInterruptThreshold) {
+          // 未超阈：清掉累计，下一次必须重新从头计时
+          interruptHoldStartRef.current = 0
+          return
         }
+
+        // 连续超阈计时：瞬时毛刺（咳嗽、敲键）持续时间远短于该阈值，不构成打断
+        if (interruptHoldStartRef.current === 0) {
+          interruptHoldStartRef.current = now
+          return
+        }
+        if (now - interruptHoldStartRef.current < INTERRUPT_HOLD_MS) return
+
+        // 判定为用户打断
+        interruptHoldStartRef.current = 0
+        stopTtsPlayback()
+        // 播放监视、待生成计数、分句游标一并作废：
+        // 漏掉任何一项，上一轮的 interval 会继续跑，把新一轮的文本清空、状态打回 listening
+        reclaimPlaybackState()
+        // 字幕立刻清空，不留在被打断的那一句上
+        onSpeakSegmentRef.current?.('')
+
+        // 端到端模式：发送打断事件
+        if (voiceModeRef.current === 'realtime' && socketRef.current?.connected) {
+          socketRef.current.emit('voice:interrupt', { reason: 'user_interrupt' })
+        }
+
+        // 拆分式模式：中断当前 LLM 请求
+        if (voiceModeRef.current === 'split' && abortControllerRef.current) {
+          abortControllerRef.current.abort()
+          abortControllerRef.current = null
+        }
+
+        isSpeakingRef.current = false
+        // 开始录音
+        startRecording()
+        vadStateRef.current = 'speaking'
+        speechStartTimeRef.current = now
+        setState('recording')
         return
       }
 
@@ -1180,6 +1477,11 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     cloudModeRef.current = mode
     voiceModeRef.current = voiceMode
 
+    // 分句流式只在拆分式模式成立：端到端模式的音频由后端边生成边下发，
+    // 前端拿不到「整段文本 → 分句合成」的介入点。
+    // options.sentenceStreaming 显式开启才生效（默认关闭，按句计费成本更高）。
+    segmentStreamingRef.current = voiceMode === 'split' && options?.sentenceStreaming === true
+
     setState('connecting')
 
     try {
@@ -1229,6 +1531,8 @@ export function useVoiceChat(options?: VoiceChatOptions) {
   const disconnect = useCallback(() => {
     stopVadDetection()
     stopTtsPlayback()
+    // 播放监视 / 待生成计数 / 分句游标一并作废：断开后旧 interval 不该再动新一轮的状态
+    reclaimPlaybackState()
 
     // 中断当前 LLM 请求
     if (abortControllerRef.current) {
@@ -1268,7 +1572,7 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     aiTextRef.current = ''
     sttTextRef.current = ''
     setState('idle')
-  }, [stopVadDetection, stopTtsPlayback])
+  }, [stopVadDetection, stopTtsPlayback, reclaimPlaybackState])
 
   // 手动打断 AI
   const interrupt = useCallback(() => {
@@ -1285,13 +1589,12 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       }
 
       stopTtsPlayback()
+      // 播放监视、待生成计数、分句游标一并作废：漏掉任何一项，旧 interval 都会
+      // 在新一轮里继续清文本、把 state 打回 listening
+      reclaimPlaybackState()
+      // 字幕立刻清空，不留在被打断的那一句上
+      onSpeakSegmentRef.current?.('')
       isSpeakingRef.current = false
-
-      // 清除播放完成检查 interval
-      if (playbackCheckRef.current) {
-        clearInterval(playbackCheckRef.current)
-        playbackCheckRef.current = null
-      }
 
       // 端到端模式：发送打断事件
       if (voiceModeRef.current === 'realtime' && socketRef.current?.connected) {
@@ -1315,7 +1618,7 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       setSttText('')
       setState('listening')
     }
-  }, [stopTtsPlayback, options])
+  }, [stopTtsPlayback, options, reclaimPlaybackState])
 
   // ============================================================
   // 麦克风静音切换

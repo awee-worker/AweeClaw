@@ -24,7 +24,14 @@ export interface VrmLipSyncOptions {
   decayPerSecond?: number
   /** 最大开合上限（防止嘴巴张得过大） */
   maxOpen?: number
-  /** 音量放大系数（TTS 音量普遍偏小，需要增益） */
+  /**
+   * 输入增益。
+   *
+   * 约定：pushVolume 的入参是**已归一化**的 0~1 电平
+   * （useVoiceChat 已按底噪门限 + 区间拉伸做过一次映射，attachAudioElement
+   * 也自行把原始 RMS 放大到 0~1）。故此处默认 1，只保留少量余量，
+   * 再乘一次增益就是二次放大 —— 表现是口型长期顶在上限、张合几乎无变化。
+   */
   gain?: number
 }
 
@@ -51,8 +58,10 @@ export function useVrmLipSync(options: VrmLipSyncOptions = {}): VrmLipSyncContro
   const {
     smoothing = 0.35,
     decayPerSecond = 6,
-    maxOpen = 0.85,
-    gain = 2.2,
+    // 输入已是 0~1 归一化电平，上限不再压到 0.85 —— 留白会让满开合看起来
+    // 仍然张不开嘴（尤其是说话音量本来就偏低的音色）。
+    maxOpen = 1,
+    gain = 1,
   } = options
 
   /** 目标值（由音频分析或外部推送写入） */

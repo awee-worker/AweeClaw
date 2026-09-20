@@ -34,7 +34,7 @@ import { t } from '@renderer/i18n'
 export interface MessageActions {
     // 消息操作（支持可选的 targetThreadId，默认使用 currentThreadId）
     addUserMessage: (content: MessageContent, contextItems?: ContextItem[], targetThreadId?: string) => string
-    prepareExecution: (content: MessageContent, contextItems: ContextItem[], targetThreadId?: string) => { userMessageId: string, assistantId: string, threadId: string }
+    prepareExecution: (content: MessageContent, contextItems: ContextItem[], targetThreadId?: string, agentContext?: string) => { userMessageId: string, assistantId: string, threadId: string }
     addAssistantMessage: (content?: string, targetThreadId?: string) => string
     addAssistantPartsMessage: (
         parts: AssistantPart[],
@@ -209,7 +209,7 @@ export const createMessageSlice: StateCreator<
     },
 
     // 批量初始化执行环境（性能优化：合并渲染与持久化）
-    prepareExecution: (content, contextItems, targetThreadId) => {
+    prepareExecution: (content, contextItems, targetThreadId, agentContext) => {
         let threadId = targetThreadId || get().currentThreadId
 
         if (!threadId || !get().threads[threadId]) {
@@ -222,6 +222,7 @@ export const createMessageSlice: StateCreator<
             content,
             timestamp: Date.now(),
             contextItems: [...(contextItems || [])],
+            ...(agentContext ? { agentContext } : {}),
         }
 
         const assistantMessage: AssistantMessage = {

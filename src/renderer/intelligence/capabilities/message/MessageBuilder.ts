@@ -86,28 +86,39 @@ export class MessageAssembler {
     this.compressor = new MessageCompressor()
   }
 
+  /**
+   * 组装用户消息
+   *
+   * @param rawMessage   用户真正输入的内容（也是气泡与历史里保留的内容）
+   * @param contextContent 引用的上下文（文件/代码库等）
+   * @param agentContext  静默附加给模型的说明（断点续接 / 上下文衔接）。
+   *                      它只在本次请求中前置拼接，不进入消息对象本身，
+   *                      因此不会显示在用户气泡里，也不会随历史逐轮累积。
+   */
   assembleUserMessage(
     rawMessage: MessageContent,
-    contextContent: string
+    contextContent: string,
+    agentContext?: string
   ): UserMessageContent {
-    if (!contextContent) {
-      const estimatedTokens = this.estimateMessageTokens(rawMessage)
-      return {
-        raw: rawMessage,
-        context: '',
-        combined: rawMessage,
-        estimatedTokens,
-      }
+    const prefixParts: Array<{ type: 'text'; text: string }> = []
+
+    if (agentContext) {
+      prefixParts.push({ type: 'text', text: `${agentContext}\n\n` })
+    }
+    if (contextContent) {
+      prefixParts.push({
+        type: 'text',
+        text: `## Referenced Context\n${contextContent}\n\n## User Request\n`,
+      })
     }
 
-    const contextPart = {
-      type: 'text' as const,
-      text: `## Referenced Context\n${contextContent}\n\n## User Request\n`,
-    }
-
-    const combined: MessageContent = typeof rawMessage === 'string'
-      ? [contextPart, { type: 'text' as const, text: rawMessage }]
-      : [contextPart, ...rawMessage]
+    // 无前缀时直接复用入参对象，避免为纯文本请求白造一层数组
+    const combined: MessageContent = prefixParts.length === 0
+      ? rawMessage
+      : [
+          ...prefixParts,
+          ...(typeof rawMessage === 'string' ? [{ type: 'text' as const, text: rawMessage }] : rawMessage),
+        ]
 
     return {
       raw: rawMessage,

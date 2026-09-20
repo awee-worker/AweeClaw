@@ -45,6 +45,13 @@ export interface VrmCompanionVoiceOptions {
    * 不能用麦克风采集电平（那反映的是用户在说什么）。
    */
   onPlaybackVolume?: (volume: number) => void
+  /**
+   * 即将出声的段落文本（分句流式模式下逐句触发）→ 字幕。
+   *
+   * 与 onPlaybackVolume 同源：都在「音频真正开始播放」时触发，
+   * 字幕因此严格跟随当前正在播的那一句，而不是领先于声音的整段文本。
+   */
+  onSpeakSegment?: (text: string) => void
   /** 错误提示 */
   onError?: (message: string) => void
 }
@@ -90,6 +97,9 @@ function buildVoiceChatOptions(
     workspacePath: voiceContext.workspacePath || undefined,
     userVoiceConfig,
     voiceMode: 'split',
+    // 分句流式：伴侣窗口需要字幕与播报同步。
+    // 关闭时 LLM 全部生成完才整段合成，字幕早已显示完、声音才迟迟开始。
+    sentenceStreaming: true,
     ...callbacks,
   }
 }
@@ -102,6 +112,7 @@ export function useVrmCompanionVoice(options: VrmCompanionVoiceOptions) {
     onEndConversation,
     onPlaybackVolume,
     onError,
+    onSpeakSegment,
   } = options
 
   // 用 ref 保存最新回调：避免回调每次渲染变化都重建 useVoiceChat 的 options，
@@ -111,11 +122,13 @@ export function useVrmCompanionVoice(options: VrmCompanionVoiceOptions) {
   const onEndConversationRef = useRef(onEndConversation)
   const onPlaybackVolumeRef = useRef(onPlaybackVolume)
   const onErrorRef = useRef(onError)
+  const onSpeakSegmentRef = useRef(onSpeakSegment)
   onStateChangedRef.current = onStateChanged
   onConversationCompleteRef.current = onConversationComplete
   onEndConversationRef.current = onEndConversation
   onPlaybackVolumeRef.current = onPlaybackVolume
   onErrorRef.current = onError
+  onSpeakSegmentRef.current = onSpeakSegment
 
   const stableCallbacks = useMemo<VoiceChatOptions>(
     () => ({
@@ -130,6 +143,9 @@ export function useVrmCompanionVoice(options: VrmCompanionVoiceOptions) {
       },
       onError: (message) => {
         onErrorRef.current?.(message)
+      },
+      onSpeakSegment: (text) => {
+        onSpeakSegmentRef.current?.(text)
       },
     }),
     [],

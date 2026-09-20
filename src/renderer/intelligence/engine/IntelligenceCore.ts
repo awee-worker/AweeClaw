@@ -151,11 +151,13 @@ export class AgentClass {
     let persistSuspended = false
     let taskRegistered = false
     let harnessSpan: Span | null = null
+    // 本轮需要静默附加给模型的说明（断点续接 / 上下文衔接），不进入用户气泡文本
+    let agentContext: string | undefined
 
     try {
       // 断点续接附加（致命问题 #1）：
       // 上次执行被中断（用户停止/失败/达到工具调用上限）后，若用户再次发送
-      // （尤其是“继续”等短消息），自动在消息前附加续接说明，让 AI 知道要续接什么，
+      // （尤其是“继续”等短消息），自动附加续接说明，让 AI 知道要续接什么，
       // 而不是“从头再来”。若线程已正常完成或消息与上次任务无关则返回 null 不附加。
       if (typeof userMessage === 'string' || Array.isArray(userMessage)) {
         const resumeThread = threadId ? store.threads[threadId] : undefined
@@ -180,9 +182,11 @@ export class AgentClass {
               ? '[Agent] 检测到断点续接请求，已附加续接说明'
               : '[Agent] 检测到对上一轮提问的简短确认，已附加上下文衔接说明',
           )
-          userMessage = typeof userMessage === 'string'
-            ? `${notice}\n\n${userMessage}`
-            : [{ type: 'text', text: notice }, ...userMessage]
+          // 说明只挂到 agentContext，不再拼进用户消息本身：
+          // 拼接会让这段脚手架文案显示在用户气泡里、被截取成会话标题，还会随历史
+          // 逐轮累积。挂到 agentContext 后，气泡与历史始终是用户真正输入的那句话，
+          // 由 AgentExecutor 在组装当次请求时把说明静默注入给模型。
+          agentContext = notice
         }
       }
 
@@ -192,7 +196,7 @@ export class AgentClass {
       suspendAgentStorageWrites()
       persistSuspended = true
       // 1. 【性能关键】批量初始化消息环境（合并用户消息、助手气泡、上下文清理）
-      const { userMessageId, assistantId, threadId: preparedThreadId } = store.prepareExecution(userMessage, contextItems, executionOptions?.threadId)
+      const { userMessageId, assistantId, threadId: preparedThreadId } = store.prepareExecution(userMessage, contextItems, executionOptions?.threadId, agentContext)
 
       threadId = preparedThreadId
       if (!threadId) {
@@ -279,6 +283,12 @@ export class AgentClass {
       // ===== 多 Agent 协作路由 =====
       const complexityResult = taskComplexityDetector.analyze(userQueryText)
 
+      // 多 Agent 路径不走消息组装管线（task 直接作为任务描述交给编排器），
+      // 因此衔接说明需要在此显式拼上，否则「继续」类短消息会丢失续接语义。
+      const multiAgentTask = agentContext
+        ? `${agentContext}\n\n${userQueryText}`
+        : userQueryText
+
       const globalStore = useStore.getState()
       const teamModeEnabled = globalStore.teamModeEnabled
 
@@ -298,7 +308,7 @@ export class AgentClass {
           logger.agent.info('[Agent] Continuing existing multi-agent session')
 
           await continueMultiAgent(
-            userQueryText,
+            multiAgentTask,
             config,
             workspacePath,
             threadId,
@@ -316,7 +326,7 @@ export class AgentClass {
         )
 
         await executeMultiAgent(
-          userQueryText,
+          multiAgentTask,
           config,
           workspacePath,
           threadId,
@@ -367,7 +377,8 @@ export class AgentClass {
         contextItems,
         store.threads[threadId]?.messages || [],
         systemPrompt,
-        executionConfig
+        executionConfig,
+        agentContext
       )
 
       // 7. 开始流式响应
