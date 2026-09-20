@@ -35,7 +35,8 @@ export function useArtifactRecorder(workspacePath: string | null) {
       store.recordArtifact({
         path: filePath,
         workspacePath: pathWorkspace || workspacePath || '',
-        // 首次出现即视作新建；已在列表中则沿用事件给出的操作类型
+        // 首次出现即视作新建；已在列表中则沿用事件给出的操作类型，
+        // 最终标识由 store 合并（新建过就不会因后续编辑退回「编辑」）
         action: known ? action : 'create',
       })
     }

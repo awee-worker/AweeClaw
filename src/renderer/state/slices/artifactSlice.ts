@@ -29,7 +29,7 @@ export interface ArtifactEntry {
   createdAt: number
   /** 最近一次落盘时间 */
   updatedAt: number
-  /** 最近一次操作类型：新建 / 编辑 */
+  /** 操作标识：新建 / 编辑。同一个产物只要被新建过就固定为新建，不因后续编辑降级 */
   action: 'create' | 'edit'
   /** 累计落盘次数 */
   revisions: number
@@ -87,7 +87,9 @@ export const createArtifactSlice: StateCreator<ArtifactSlice, [], [], ArtifactSl
           ...current,
           workspacePath: workspacePath || current.workspacePath,
           updatedAt: now,
-          action,
+          // 标识只升不降：本次任务里新建过的文件，后续再编辑依然是「新建」；
+          // 反过来，原本是编辑的文件被删除后重新创建，则升级为「新建」。
+          action: current.action === 'create' ? 'create' : action,
           revisions: current.revisions + 1,
           isDirectory: isDirectory ?? current.isDirectory,
         }
