@@ -12,6 +12,7 @@ import type {
   CommandRiskMetrics,
   IntentMetrics,
   PruneMetrics,
+  StabilityMetrics,
   TaskCompletionMetrics,
   TokenMetrics,
   ToolSelectionMetrics,
@@ -280,6 +281,80 @@ export function computeCommandRiskMetrics(
     underFlagged,
     failures,
   }
+}
+
+/**
+ * 稳定性指标
+ *
+ * 输入是同一批用例的多轮通过情况：每轮一个布尔数组，true 表示该用例通过。
+ *
+ * 分类口径：
+ * - passAll：本轮全通过，说明这批用例在该轮稳定可用
+ * - passNone：本轮全败，属于真实缺陷信号（随机性不会让全部用例同时失败）
+ * - passSome：部分通过，说明存在随机性，单独看某一轮的失败会误判为缺陷
+ */
+export function computeStabilityMetrics(runResults: boolean[][]): StabilityMetrics {
+  const runs = runResults.length
+  if (runs === 0) {
+    return {
+      runs: 0,
+      totalPerRun: 0,
+      passAll: 0,
+      passSome: 0,
+      passNone: 0,
+      variance: 0,
+      passRates: [],
+    }
+  }
+
+  const totalPerRun = Math.max(...runResults.map((results) => results.length))
+
+  let passAll = 0
+  let passSome = 0
+  let passNone = 0
+  const passRates: number[] = []
+
+  for (const results of runResults) {
+    const passed = results.filter(Boolean).length
+    const rate = results.length > 0 ? passed / results.length : 0
+    passRates.push(round4(rate))
+
+    if (results.length === 0) continue
+    if (passed === results.length) passAll++
+    else if (passed === 0) passNone++
+    else passSome++
+  }
+
+  const mean = passRates.reduce((sum, rate) => sum + rate, 0) / runs
+  const variance = passRates.reduce((sum, rate) => sum + (rate - mean) ** 2, 0) / runs
+
+  return {
+    runs,
+    totalPerRun,
+    passAll,
+    passSome,
+    passNone,
+    variance: round4(variance),
+    passRates,
+  }
+}
+
+/**
+ * 重复执行入口
+ *
+ * 用于区分随机失败与稳定失败：同一用例跑 N 次，统计分布。
+ * 重复执行会成倍放大模型调用成本，因此由调用方决定 N 与启用范围，
+ * 本函数不做默认全量执行。
+ */
+export async function runRepeated<T>(
+  run: (round: number) => Promise<T> | T,
+  times: number,
+): Promise<T[]> {
+  const results: T[] = []
+  for (let round = 0; round < times; round++) {
+    results.push(await run(round))
+  }
+  return results
 }
 
 function round1(value: number): number {

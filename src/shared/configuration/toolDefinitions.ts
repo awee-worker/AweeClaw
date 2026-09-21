@@ -1827,6 +1827,67 @@ Notes:
         },
     },
 
+    open_preview: {
+        name: 'open_preview',
+        displayName: 'Open Preview',
+        description: 'Open a page in AweeClaw\'s built-in browser (a preview tab inside the app). Use it to show the user a page you just built — a local HTML file (or a folder with index.html), or a locally running dev server. NEVER open local files with the system browser (open / start / xdg-open) and never start a throwaway static server (python3 -m http.server) just to look at a page.',
+        detailedDescription: `Open a preview inside AweeClaw's built-in browser.
+
+Two ways to call it — pass exactly one of them:
+- path : local file or folder. Use a workspace-relative path (e.g. "my-site/index.html") or an
+         absolute path. A folder resolves to its index.html. Relative references such as
+         style.css / main.js / images load correctly, because the page is served over a
+         loopback http address scoped to that folder.
+- url  : an http/https address, typically a dev server started with run_command
+         (e.g. http://localhost:5173).
+
+Why this tool instead of the system browser:
+- The system browser is not part of AweeClaw: the user would lose the page when switching apps,
+  and opening local files through it fails on many setups (file: protocol is blocked for the
+  embedded automation stack).
+- Starting a temporary static server (python3 -m http.server / npx serve) only to look at a page
+  leaves a long-running process behind that the user has to stop manually.
+- Opening a page with \`open\` / \`start\` / \`xdg-open\` on a local file is treated as an external
+  browser action; do not use it for previews.
+
+Notes:
+- Call it after the page is written, and before reporting that the task is done, so the user sees
+  the result immediately.
+- Calling it again with the same address reuses the existing preview tab instead of opening a new one.
+- Static pages need nothing else: do NOT start a server for them. Only use \`url\` when the project
+  genuinely requires a dev server (bundlers, HMR, API routes).`,
+        examples: [
+            'open_preview path="guoqing-website/index.html"',
+            'open_preview path="my-site/"  ← opens the folder\'s index.html',
+            'open_preview url="http://localhost:5173"  ← after `npm run dev`',
+        ],
+        criticalRules: [
+            'Use this tool — not the system browser — whenever you show the user a page',
+            'Do NOT run `open` / `start` / `xdg-open` on a local HTML file, and do NOT start a temporary static server for a static page',
+            'Pass exactly one of `path` (local file/folder) or `url` (http/https address)',
+            'Relative paths resolve against the workspace root; a folder resolves to its index.html',
+        ],
+        category: 'interaction',
+        approvalType: 'none',
+        parallel: false,
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            path: {
+                type: 'string',
+                description: 'Local file or folder to preview (workspace-relative or absolute). A folder resolves to its index.html.',
+            },
+            url: {
+                type: 'string',
+                description: 'http/https address to open in the built-in browser (e.g. a local dev server URL).',
+            },
+            title: {
+                type: 'string',
+                description: 'Optional preview tab title; derived from the path/URL when omitted.',
+            },
+        },
+    },
+
     knowledge_search: {
         name: 'knowledge_search',
         displayName: 'Knowledge Search',

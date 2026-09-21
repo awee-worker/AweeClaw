@@ -8,6 +8,7 @@
 import { FileCode, Search, Terminal, Zap, Copy } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
 import type { ToolCall } from '@intelligence/providerTypes'
+import { getFriendlyToolName } from '@intelligence/display/toolFriendlyName'
 import { openUrlInBrowser } from '@utils/browserLauncher'
 import { JsonHighlight } from '@utils/jsonHighlight'
 import { FilePathAnchor as TextWithFileLinks } from '../../foundation/FilePathAnchor'
@@ -282,7 +283,10 @@ const renderEditFile: PreviewRenderer = (ctx) => {
         ) : (isStreaming || isRunning) ? (
             <span className="font-medium italic">editing...</span>
         ) : (
-          <span className="font-medium text-text-primary opacity-50">&lt;empty path&gt;</span>
+          // 参数里没有可识别的路径时退化成工具动作名，避免出现无法判断目标的占位符
+          <span className="font-medium text-text-secondary">
+            {getFriendlyToolName(toolCall.name, language).label}
+          </span>
         )}
         {isStreaming && (
           <span className="text-accent flex items-center gap-1">
@@ -327,7 +331,12 @@ const renderCreateDelete: PreviewRenderer = (ctx) => {
   const path = paths[0] || ''
   const isDelete = effectiveName === 'delete_file_or_folder'
   const isFolder = path.endsWith('/')
-  const displayName = paths.length > 1 ? getPathSummary(paths) : path ? getPathDisplayName(path) : '<no path>'
+  // 无可识别路径时退化成工具动作名，而不是一个看不出目标的占位符
+  const displayName = paths.length > 1
+    ? getPathSummary(paths)
+    : path
+      ? getPathDisplayName(path)
+      : getFriendlyToolName(effectiveName, language).label
   const stringResult = typeof toolCall.result === 'string' ? toolCall.result : ''
 
   return (
@@ -354,14 +363,20 @@ const renderCreateDelete: PreviewRenderer = (ctx) => {
 
 /** 文件读取工具预览 */
 const renderReadFile: PreviewRenderer = (ctx) => {
-  const { args, toolCall, isRunning, isStreaming, language, currentTheme } = ctx
+  const { args, toolCall, isRunning, isStreaming, language, currentTheme, effectiveName } =
+    ctx as PreviewContext & { effectiveName: string }
   const paths = getToolPathList(args)
   const filePath = paths[0] || ''
   const hasResolvedReadTarget = paths.length > 0
   if (!hasResolvedReadTarget && !toolCall.result && !toolCall.richContent?.length && !isRunning && !isStreaming) {
     return null
   }
-  const displayName = paths.length > 1 ? getPathSummary(paths) : filePath ? getPathDisplayName(filePath) : '<no path>'
+  // 无可识别路径时退化成工具动作名，而不是一个看不出目标的占位符
+  const displayName = paths.length > 1
+    ? getPathSummary(paths)
+    : filePath
+      ? getPathDisplayName(filePath)
+      : getFriendlyToolName(effectiveName, language).label
   const theme = themeManager.getThemeById(currentTheme)
   const isDark = theme?.type === 'dark'
   const safeResult = typeof toolCall.result === 'string' ? toolCall.result : ''

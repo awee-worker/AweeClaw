@@ -10,9 +10,11 @@ import type {
   CategoryConfig,
   ForgettingStats,
   MemoryCategory,
+  MemoryContradiction,
   MemoryFeedback,
   MemoryFeedbackType,
   MemoryFilter,
+  MemoryOriginStats,
   MemoryOverview,
   MemoryRelation,
   MemoryRelationType,
@@ -35,6 +37,8 @@ interface MemoryState {
   forgettingStats: ForgettingStats | null
   visualizationData: VisualizationData | null
   timeline: TimelineItem[]
+  originStats: MemoryOriginStats | null
+  contradictions: MemoryContradiction[]
 
   // ============ UI 状态 ============
   viewMode: MemoryViewMode
@@ -85,6 +89,10 @@ interface MemoryState {
   }) => Promise<void>
   fetchTimeline: (options?: { limit?: number; category?: MemoryCategory }) => Promise<void>
 
+  // ============ 来源审计 ============
+  fetchOriginStats: () => Promise<void>
+  fetchContradictions: (entryId?: string) => Promise<void>
+
   // ============ 数据操作 ============
   updateMemory: (
     id: string,
@@ -129,6 +137,9 @@ interface MemoryState {
 
 const defaultFilter: MemoryFilter = {
   enabledOnly: true,
+  // 来源筛选默认不生效：存量记忆没有来源信息，默认过滤会让列表看起来是空的
+  originTrust: 'all',
+  originChannel: 'all',
 }
 
 export const useMemoryStore = create<MemoryState>((set, get) => ({
@@ -141,6 +152,9 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
   forgettingStats: null,
   visualizationData: null,
   timeline: [],
+  originStats: null,
+  contradictions: [],
+
 
   // ============ 初始 UI 状态 ============
   viewMode: '3d',
@@ -205,6 +219,8 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
         dateTo: filter.dateTo ? new Date(filter.dateTo).getTime() : undefined,
         minImportance: filter.minImportance,
         maxImportance: filter.maxImportance,
+        originTrust: filter.originTrust,
+        originChannel: filter.originChannel,
       }
 
       const res = await memoryApi.query.listAdvanced(query)
@@ -250,6 +266,9 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
         loadingDetail: false,
         showDetailPanel: true,
       })
+
+      // 来源审计：一并拉取该条记忆参与的矛盾记录
+      void get().fetchContradictions(id)
     } catch (err) {
       logger.agent.error('fetchMemoryDetail failed', err)
       set({ loadingDetail: false, error: '加载记忆详情失败' })
@@ -301,6 +320,28 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
     }
   },
 
+  // ============ 来源审计 ============
+  fetchOriginStats: async () => {
+    try {
+      const data = await memoryApi.audit.getOriginStats()
+      set({ originStats: data })
+    } catch (err) {
+      logger.agent.error('fetchOriginStats failed', err)
+    }
+  },
+
+  fetchContradictions: async (entryId) => {
+    try {
+      const data = entryId
+        ? await memoryApi.audit.getContradictionsByEntry(entryId)
+        : await memoryApi.audit.getAllContradictions()
+      set({ contradictions: data })
+    } catch (err) {
+      logger.agent.error('fetchContradictions failed', err)
+    }
+  },
+
+
   // ============ 数据操作 ============
   updateMemory: async (id, body) => {
     try {
@@ -337,6 +378,10 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
         })(),
         currentMemory: s.currentMemory?.id === id ? null : s.currentMemory,
         showDetailPanel: s.currentMemory?.id === id ? false : s.showDetailPanel,
+        // 记忆已删除，指向它的矛盾记录同步移除，避免详情面板出现悬空引用
+        contradictions: s.contradictions.filter(
+          (c) => c.entryAId !== id && c.entryBId !== id,
+        ),
       }))
       return true
     } catch (err) {
@@ -520,6 +565,8 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
       forgettingStats: null,
       visualizationData: null,
       timeline: [],
+      originStats: null,
+      contradictions: [],
       filter: { ...defaultFilter },
       page: 1,
       selectedMemoryIds: new Set(),

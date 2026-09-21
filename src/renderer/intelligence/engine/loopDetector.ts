@@ -1313,12 +1313,19 @@ export async function executeAgentCycle(
         const relativePath = resolveRelativeChangePath(meta.filePath, context.workspacePath ?? null, meta.relativePath)
 
         // 判断是否需要用户确认接受/拒绝：
-        // 1. 非代码文件（文档、配置等）→ 自动接受
-        // 2. 新建文件（create）→ 自动接受（仅编辑现有文件需确认）
-        // 3. 授权模式为 'never'（无需确认）→ 自动接受
+        // 1. 手动审批（every-step）→ 一律进入待确认：写入已经在执行阶段放行，AI 继续往下走，
+        //    由输入框上方的变更条决定保留还是撤销（新建文件同样可撤回，撤销即删除）
+        // 2. 自动审批（dangerous-only）→ 只有编辑现有代码文件需要确认，文档与新建文件自动接受
+        // 3. 完全访问（never）→ 自动接受
+        // 4. 授权方式未显式设置（旧版本回退）→ 沿用 autoApprove 时代的规则：界面上展示的
+        //    默认方式是「自动审批」，实际行为要跟它一致
         const isModify = !!meta.oldContent
         const authMode = useStore.getState().authorizationMode
-        const shouldAutoAccept = !isCodeFile(meta.filePath) || !isModify || authMode === 'never'
+        const shouldAutoAccept = authMode === 'never'
+          ? true
+          : authMode === 'every-step'
+            ? false
+            : !isCodeFile(meta.filePath) || !isModify
 
         if (shouldAutoAccept) {
           // 自动接受：记录到 fileChangeHistory（标记为已接受），不进入待确认列表

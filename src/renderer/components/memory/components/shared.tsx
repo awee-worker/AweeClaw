@@ -2,15 +2,18 @@
  * 记忆系统共享 UI 组件
  * 分类徽章、层级徽章、重要性指示器、空状态、加载状态等
  */
-import { ReactNode } from 'react'
+import { ReactNode, useCallback, useState } from 'react'
 import {
   CATEGORY_META,
+  ORIGIN_CHANNEL_META,
+  ORIGIN_TRUST_META,
   TIER_META,
   RELATION_TYPE_META,
   type MemoryCategory,
   type MemoryTier,
   type MemoryRelationType,
 } from '../types'
+import type { TrustChannel, TrustLevel } from '@intelligence/types/trustTypes'
 
 // ============ 分类徽章 ============
 
@@ -82,6 +85,140 @@ export function TierBadge({
     >
       {meta.label}
     </span>
+  )
+}
+
+// ============ 来源徽章 ============
+
+function badgeSizeClass(size: 'xs' | 'sm' | 'md'): string {
+  return size === 'xs'
+    ? 'text-[10px] px-1.5 py-0.5'
+    : size === 'sm'
+      ? 'text-xs px-2 py-0.5'
+      : 'text-sm px-2.5 py-1'
+}
+
+/**
+ * 来源信任徽章
+ *
+ * 存量记忆没有来源记录，显示为「来源未知」而不是空白：
+ * 空白会被读成「没有问题」，而实际上那是「不知道来源」，两者需要区分。
+ */
+export function OriginTrustBadge({
+  trust,
+  size = 'sm',
+}: {
+  trust?: TrustLevel | null
+  size?: 'xs' | 'sm' | 'md'
+}) {
+  const key = (trust ?? 'unknown') as TrustLevel | 'unknown'
+  const meta = ORIGIN_TRUST_META[key] ?? ORIGIN_TRUST_META.unknown
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded font-medium ${badgeSizeClass(size)}`}
+      style={{
+        backgroundColor: `${meta.color}20`,
+        color: meta.color,
+        border: `1px solid ${meta.color}40`,
+      }}
+      title={meta.description}
+    >
+      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: meta.color }} />
+      {meta.label}
+    </span>
+  )
+}
+
+/** 来源通道徽章（文字形式，用于详情面板） */
+export function OriginChannelBadge({
+  channel,
+  size = 'xs',
+}: {
+  channel?: TrustChannel | null
+  size?: 'xs' | 'sm' | 'md'
+}) {
+  const key = (channel ?? 'unknown') as TrustChannel | 'unknown'
+  const meta = ORIGIN_CHANNEL_META[key] ?? ORIGIN_CHANNEL_META.unknown
+
+  return (
+    <span
+      className={`inline-flex items-center rounded border border-border/40 bg-surface/40 text-text-secondary ${badgeSizeClass(size)}`}
+    >
+      {meta.label}
+    </span>
+  )
+}
+
+/**
+ * 列表用的来源标记
+ *
+ * 只在需要留意的来源上出现（不可信 / 来源未知）。
+ * 每条都挂徽章会让列表被无关信息淹没，反而不容易看出哪条有问题。
+ */
+export function OriginMarker({
+  trust,
+  channel,
+}: {
+  trust?: TrustLevel | null
+  channel?: TrustChannel | null
+}) {
+  if (trust && trust !== 'untrusted') return null
+
+  const channelLabel = channel
+    ? (ORIGIN_CHANNEL_META[channel]?.label ?? '未知通道')
+    : undefined
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <OriginTrustBadge trust={trust} size="xs" />
+      {channelLabel && <OriginChannelBadge channel={channel} size="xs" />}
+    </span>
+  )
+}
+
+/**
+ * 来源定位
+ *
+ * URL 直接点开；文件路径没有跨平台可靠的外部打开入口，
+ * 改为点击复制 —— 给一个点了没反应的链接比不给更差。
+ */
+export function OriginLocator({ locator }: { locator: string }) {
+  const [copied, setCopied] = useState(false)
+  const isUrl = /^https?:\/\//i.test(locator)
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(locator)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // 剪贴板不可用时保持原状，文本仍可手动选中复制
+    }
+  }, [locator])
+
+  if (isUrl) {
+    return (
+      <a
+        href={locator}
+        target="_blank"
+        rel="noreferrer"
+        className="text-accent hover:underline break-all"
+      >
+        {locator}
+      </a>
+    )
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      title="点击复制路径"
+      className="text-text-secondary hover:text-text-primary break-all text-left"
+    >
+      {locator}
+      {copied && <span className="ml-1 text-[10px] text-green-500">已复制</span>}
+    </button>
   )
 }
 

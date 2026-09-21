@@ -30,6 +30,8 @@ import {
   type TaskType,
 } from '@intelligence/providerTypes'
 import { ruleBasedClassify } from '../memoryClassifier'
+import { guardMemoryWrite, isEligibleForPromotion, originFromEntryInput } from '../memoryWriteGuard'
+import { mergeOriginTrust, parseTrustChannel, parseTrustLevel } from './originTrust'
 
 // 旧 JSON 文件路径（仅用于一次性迁移）
 const OLD_FILE_PATH = BRAND.paths.memoryStore
@@ -64,10 +66,15 @@ interface MemoryRow {
   enabled: number
   source: string | null
   version: number
+  origin_trust: string | null
+  origin_locator: string | null
+  origin_channel: string | null
+  evidence: string | null
   sync_status: string
   remote_id: string | null
   last_synced_at: number | null
 }
+
 
 class LongTermMemoryService {
   private initialized = false
@@ -84,7 +91,12 @@ class LongTermMemoryService {
     logger.agent.info('[LongTermMemory] SQLite 已就绪:', result.dbPath)
   }
 
-  /** 将 SQLite 行转换为 MemoryEntry */
+  /**
+   * 将 SQLite 行转换为 MemoryEntry
+   *
+   * 来源字段缺失时返回 undefined 而非默认值 —— 「来源未知」与「来源可信」
+   * 是两种状态，审计视图需要能区分，不能在此处抹平。
+   */
   private rowToEntry(row: MemoryRow): MemoryEntry {
     const now = Date.now()
     return {
@@ -105,6 +117,10 @@ class LongTermMemoryService {
       expiresAt: row.expires_at ?? undefined,
       originalSessionId: row.conversation_id ?? undefined,
       verificationStatus: this.parseVerification(row.sync_status),
+      originTrust: parseTrustLevel(row.origin_trust),
+      originLocator: row.origin_locator ?? undefined,
+      originChannel: parseTrustChannel(row.origin_channel),
+      evidence: row.evidence ?? undefined,
     }
   }
 
@@ -137,8 +153,13 @@ class LongTermMemoryService {
 
   /** 将 MemoryEntry 转换为 SQLite 行数据 */
   private entryToRow(entry: MemoryEntry): Record<string, any> {
-    // 写入时自动分类（规则引擎，零延迟）
-    const classification = ruleBasedClassify(entry.content)
+    // 写入时自动分类（规则引擎，零延迟），来源信息随分类结果一同带出
+    const classification = ruleBasedClassify(entry.content, {
+      originTrust: entry.originTrust,
+      originLocator: entry.originLocator,
+      originChannel: entry.originChannel,
+      evidence: entry.evidence,
+    })
     return {
       id: entry.id,
       user_id: null,
@@ -167,6 +188,11 @@ class LongTermMemoryService {
       enabled: entry.enabled ? 1 : 0,
       source: entry.source,
       version: 1,
+      // 来源信任缺省为 trusted（与存量数据迁移口径一致）
+      origin_trust: classification.originTrust ?? 'trusted',
+      origin_locator: classification.originLocator ?? null,
+      origin_channel: classification.originChannel ?? null,
+      evidence: classification.evidence ?? null,
       sync_status: entry.verificationStatus ?? 'unverified',
       remote_id: null,
       last_synced_at: null,
@@ -198,7 +224,21 @@ class LongTermMemoryService {
     if (!content) throw new Error('Content cannot be empty')
 
     await this.ensureDb()
-    const status = input.status ?? 'short_term'
+
+    // 写入准入：外部内容不得直接沉淀为记忆
+    const decision = guardMemoryWrite(input, originFromEntryInput(input))
+    if (decision.disposition === 'reject') {
+      logger.agent.warn(`[LongTermMemory] 记忆写入被拒: ${decision.reason}`)
+      throw new Error(`Memory write rejected: ${decision.reason}`)
+    }
+
+    let accepted: MemoryEntryInput = input
+    if (decision.disposition === 'demote') {
+      logger.agent.info(`[LongTermMemory] 记忆降级写入: ${decision.reason}`)
+      accepted = { ...input, ...decision.override }
+    }
+
+    const status = accepted.status ?? 'short_term'
 
     // 检查精确匹配
     const all = await this.getEntries()
@@ -215,19 +255,38 @@ class LongTermMemoryService {
     })
 
     if (nearDuplicate) {
-      const mergedTags = [...new Set([...nearDuplicate.tags, ...(input.tags ?? [])])]
-      const mergedConfidence = Math.max(nearDuplicate.confidence, input.confidence ?? 0.7)
+      const mergedTags = [...new Set([...nearDuplicate.tags, ...(accepted.tags ?? [])])]
+      const mergedConfidence = Math.max(nearDuplicate.confidence, accepted.confidence ?? 0.7)
+      // 命中已有条目时信任级别向下收敛：不可信内容合并进可信条目，结果不可信
+      const mergedOrigin = mergeOriginTrust([nearDuplicate, {
+        originTrust: accepted.originTrust,
+        originLocator: accepted.originLocator,
+        originChannel: accepted.originChannel,
+        evidence: accepted.evidence,
+      } as MemoryEntry])
       await this.updateEntry(nearDuplicate.id, {
         tags: mergedTags,
         confidence: mergedConfidence,
+        originTrust: mergedOrigin.originTrust,
+        originLocator: mergedOrigin.originLocator,
+        originChannel: mergedOrigin.originChannel,
+        evidence: mergedOrigin.evidence,
       })
       logger.agent.info(`[LongTermMemory] Merged near-duplicate into existing entry: ${nearDuplicate.id}`)
-      return { ...nearDuplicate, tags: mergedTags, confidence: mergedConfidence }
+      return {
+        ...nearDuplicate,
+        tags: mergedTags,
+        confidence: mergedConfidence,
+        originTrust: mergedOrigin.originTrust,
+        originLocator: mergedOrigin.originLocator,
+        originChannel: mergedOrigin.originChannel,
+        evidence: mergedOrigin.evidence,
+      }
     }
 
     const now = Date.now()
     const { memoryDomainTag } = useSceneModeStore.getState().getActiveProfile()
-    const baseMemoryTags = input.tags ?? []
+    const baseMemoryTags = accepted.tags ?? []
     // 自动注入当前场景模式记忆域 tag，避免跨域污染
     const tags = baseMemoryTags.some(t => t.startsWith('domain:'))
       ? baseMemoryTags
@@ -235,21 +294,25 @@ class LongTermMemoryService {
     const entry: MemoryEntry = {
       id: crypto.randomUUID(),
       content,
-      source: input.source ?? 'auto_extracted',
+      source: accepted.source ?? 'auto_extracted',
       status,
-      confidence: input.confidence ?? 0.7,
+      confidence: accepted.confidence ?? 0.7,
       recallCount: 0,
       uniqueQueryCount: 0,
       lastRecalledAt: now,
       halfLifeDays: 14,
       tags,
-      enabled: input.enabled ?? true,
+      enabled: accepted.enabled ?? true,
       createdAt: now,
       updatedAt: now,
-      originalSessionId: input.originalSessionId,
-      correctionChain: input.correctionChain,
-      derivedFrom: input.derivedFrom,
-      verificationStatus: input.verificationStatus ?? 'unverified',
+      originalSessionId: accepted.originalSessionId,
+      correctionChain: accepted.correctionChain,
+      derivedFrom: accepted.derivedFrom,
+      verificationStatus: accepted.verificationStatus ?? 'unverified',
+      originTrust: accepted.originTrust,
+      originLocator: accepted.originLocator,
+      originChannel: accepted.originChannel,
+      evidence: accepted.evidence,
     }
 
     if (input.supersedeId) {
@@ -274,7 +337,7 @@ class LongTermMemoryService {
 
   async updateEntry(
     id: string,
-    updates: Partial<Pick<MemoryEntry, 'content' | 'tags' | 'enabled' | 'confidence' | 'status' | 'verificationStatus'>>
+    updates: Partial<Pick<MemoryEntry, 'content' | 'tags' | 'enabled' | 'confidence' | 'status' | 'verificationStatus' | 'originTrust' | 'originLocator' | 'originChannel' | 'evidence'>>
   ): Promise<boolean> {
     await this.ensureDb()
     const entry = await this.getEntry(id)
@@ -288,6 +351,11 @@ class LongTermMemoryService {
     if (updates.enabled !== undefined) rowUpdates.enabled = updates.enabled ? 1 : 0
     if (updates.confidence !== undefined) rowUpdates.importance = Math.min(1, Math.max(0, updates.confidence))
     if (updates.verificationStatus !== undefined) rowUpdates.sync_status = updates.verificationStatus
+    // 来源字段允许修正（如事后补充来源定位），但不参与业务计算
+    if (updates.originTrust !== undefined) rowUpdates.origin_trust = updates.originTrust
+    if (updates.originLocator !== undefined) rowUpdates.origin_locator = updates.originLocator
+    if (updates.originChannel !== undefined) rowUpdates.origin_channel = updates.originChannel
+    if (updates.evidence !== undefined) rowUpdates.evidence = updates.evidence
 
     if (updates.status !== undefined && updates.status !== entry.status) {
       rowUpdates.tier = updates.status === 'long_term' ? 'long_term' : (updates.status === 'forgotten' ? 'forgotten' : 'short_term')
@@ -441,6 +509,13 @@ class LongTermMemoryService {
   }
 
   async promoteToLongTerm(id: string): Promise<boolean> {
+    const entry = await this.getEntry(id)
+    if (!entry) return false
+    // 不可信来源的内容不参与长期提升
+    if (!isEligibleForPromotion(entry.originTrust)) {
+      logger.agent.warn(`[LongTermMemory] 拒绝提升来源不可信的条目: ${id}`)
+      return false
+    }
     return this.updateEntry(id, { status: 'long_term' })
   }
 
@@ -506,6 +581,8 @@ class LongTermMemoryService {
     const now = Date.now()
     let promoted = 0
     let forgotten = 0
+    /** 因来源不可信而未获提升的条目数，用于观察误伤面 */
+    let blocked = 0
 
     const candidates = await this.getEntries('short_term')
     for (const entry of candidates) {
@@ -522,6 +599,12 @@ class LongTermMemoryService {
       const recallThreshold = isUserStated ? 1 : 2
       const uniqueQueryThreshold = isUserStated ? 0 : 1
 
+      // 不可信来源不参与长期提升：一旦提升，后续每轮对话都会把它当既有事实读回来
+      if (!isEligibleForPromotion(entry.originTrust)) {
+        blocked++
+        continue
+      }
+
       if (score >= promoteThreshold && entry.recallCount >= recallThreshold && entry.uniqueQueryCount >= uniqueQueryThreshold) {
         await this.updateEntry(entry.id, { status: 'long_term' })
         promoted++
@@ -531,8 +614,10 @@ class LongTermMemoryService {
       }
     }
 
-    if (promoted > 0 || forgotten > 0) {
-      logger.agent.info(`[LongTermMemory] Deep promotion: ${promoted} promoted, ${forgotten} forgotten`)
+    if (promoted > 0 || forgotten > 0 || blocked > 0) {
+      logger.agent.info(
+        `[LongTermMemory] Deep promotion: ${promoted} promoted, ${forgotten} forgotten, ${blocked} blocked (untrusted origin)`
+      )
     }
 
     return { promoted, forgotten }
@@ -591,6 +676,35 @@ class LongTermMemoryService {
     return { merged, pruned }
   }
 
+  /**
+   * 持久化矛盾记录
+   *
+   * 使「哪两条记忆被判为矛盾」可事后查询与审计，不再只留在日志里。
+   * 写入失败不影响 REM 流程本身，只记录警告。
+   */
+  private async persistContradictions(
+    contradictions: Array<{ entryAId: string; entryBId: string; reason: string }>,
+  ): Promise<void> {
+    if (contradictions.length === 0) return
+
+    for (const item of contradictions) {
+      try {
+        const result = await api.memoryDb.upsertContradiction({
+          entryAId: item.entryAId,
+          entryBId: item.entryBId,
+          reason: item.reason,
+          detectedAt: Date.now(),
+        })
+        if (!result.success) {
+          logger.agent.warn('[LongTermMemory] 矛盾记录写入失败:', result.error)
+        }
+      } catch (err) {
+        logger.agent.warn('[LongTermMemory] 矛盾记录写入异常:', err)
+      }
+    }
+  }
+
+
   async runRemDreaming(): Promise<{ consolidated: number; insights: number; contradictions: number }> {
     await this.ensureDb()
     const longTerm = await this.getEntries('long_term')
@@ -608,6 +722,7 @@ class LongTermMemoryService {
         const reflectionResult = await reflectiveDreamingService.reflect(activeEntries)
         insights = reflectionResult.insights.length
         contradictions = reflectionResult.contradictions.length
+        await this.persistContradictions(reflectionResult.contradictions)
         for (const id of reflectionResult.supersededIds) {
           toRemove.add(id)
         }
@@ -630,6 +745,9 @@ class LongTermMemoryService {
       const totalRecall = group.reduce((sum, e) => sum + e.recallCount, 0)
       const allTags = [...new Set(group.flatMap(e => e.tags))]
 
+      // 合并来源的信任级别：任一来源不可信则整体不可信（向下收敛，不向上提升）
+      const groupOrigin = mergeOriginTrust(group)
+
       const consolidatedEntry: MemoryEntry = {
         id: crypto.randomUUID(),
         content: combinedContent,
@@ -647,6 +765,10 @@ class LongTermMemoryService {
         promotedAt: now,
         derivedFrom: group.map(e => e.id),
         verificationStatus: 'unverified',
+        originTrust: groupOrigin.originTrust,
+        originLocator: groupOrigin.originLocator,
+        originChannel: groupOrigin.originChannel,
+        evidence: groupOrigin.evidence,
       }
 
       for (const entry of group) {

@@ -20,8 +20,10 @@ import type {
   ForgettingStats,
   MemoryFeedback,
   MemoryFeedbackType,
+  MemoryContradiction,
   MemoryListQuery,
   MemoryListResponse,
+  MemoryOriginStats,
   MemoryOverview,
   MemoryRelation,
   MemoryRelationType,
@@ -68,6 +70,22 @@ function rowToAgentMemory(row: any): AgentMemory {
     classifiedBy: row.classified_by,
     classifiedAt: row.classified_at ? new Date(row.classified_at).toISOString() : null,
     classificationConfidence: row.classification_confidence,
+    // 来源字段缺失时保留 null：审计视图需要区分「来源未知」与「来源可信」
+    originTrust: row.origin_trust ?? null,
+    originLocator: row.origin_locator ?? null,
+    originChannel: row.origin_channel ?? null,
+    evidence: row.evidence ?? null,
+  }
+}
+
+/** 将 SQLite 行转换为矛盾记录 */
+function rowToContradiction(row: any): MemoryContradiction {
+  return {
+    id: row.id,
+    entryAId: row.entry_a_id,
+    entryBId: row.entry_b_id,
+    reason: row.reason ?? '',
+    detectedAt: new Date(row.detected_at ?? 0).toISOString(),
   }
 }
 
@@ -122,6 +140,8 @@ export const memoryQueryApi = {
     keyword?: string
     sortBy?: string
     sortOrder?: 'asc' | 'desc'
+    originTrust?: string
+    originChannel?: string
   }): Promise<MemoryListResponse> {
     await api.memoryDb.initialize()
 
@@ -138,6 +158,8 @@ export const memoryQueryApi = {
       keyword: query.keyword,
       sortBy: query.sortBy,
       sortOrder: query.sortOrder,
+      originTrust: query.originTrust,
+      originChannel: query.originChannel,
       enabledOnly: true,
     })
 
@@ -646,6 +668,46 @@ export const memorySyncApi = {
   },
 }
 
+// ============ 来源审计 ============
+
+/**
+ * 记忆来源审计
+ *
+ * 全部读本地 SQLite：来源字段是写入时记下的本地事实，
+ * 不经云端往返，避免同步延迟让审计视图与库内实际状态不一致。
+ */
+export const memoryAuditApi = {
+  /** 来源分布统计（按信任级别与通道分组） */
+  async getOriginStats(): Promise<MemoryOriginStats> {
+    await api.memoryDb.initialize()
+    const raw = await api.memoryDb.getOriginStats()
+    return {
+      byTrust: (raw?.byTrust ?? []).map((item) => ({
+        trust: (item.trust || 'unknown') as MemoryOriginStats['byTrust'][number]['trust'],
+        count: item.count,
+      })),
+      byChannel: (raw?.byChannel ?? []).map((item) => ({
+        channel: (item.channel || 'unknown') as MemoryOriginStats['byChannel'][number]['channel'],
+        count: item.count,
+      })),
+    }
+  },
+
+  /** 查询某条记忆参与的矛盾记录 */
+  async getContradictionsByEntry(entryId: string): Promise<MemoryContradiction[]> {
+    await api.memoryDb.initialize()
+    const rows = await api.memoryDb.getContradictionsByEntry(entryId)
+    return (rows ?? []).map(rowToContradiction)
+  },
+
+  /** 查询全部矛盾记录 */
+  async getAllContradictions(limit = 200): Promise<MemoryContradiction[]> {
+    await api.memoryDb.initialize()
+    const rows = await api.memoryDb.getAllContradictions(limit)
+    return (rows ?? []).map(rowToContradiction)
+  },
+}
+
 // ============ 统一导出 ============
 
 export const memoryApi = {
@@ -657,6 +719,7 @@ export const memoryApi = {
   relation: memoryRelationApi,
   feedback: memoryFeedbackApi,
   sync: memorySyncApi,
+  audit: memoryAuditApi,
 }
 
 // ============ 错误处理辅助 ============

@@ -9,6 +9,7 @@ import type { MessageCheckpoint } from './sessionSnapshot'
 import type { ContextItem } from './contextModel'
 import type { HandoffDocument, StructuredSummary } from '@intelligence/providerTypes'
 import type { CompressionStats } from '@intelligence/providerTypes'
+import type { UntrustedSourceSummary } from './trustTypes'
 
 export interface ContextStats {
   totalChars: number
@@ -66,6 +67,13 @@ export interface PendingToolApproval {
   status: import('@intelligence/providerTypes').ToolStatus
   /** 关联的 requestId，用于构建 approvalId: `${requestId}_${toolCallId}` */
   requestId: string
+  /**
+   * 触发本次审批的外部内容来源
+   *
+   * 仅当本轮消费过不可信内容、且该操作具副作用时才有值。用于在确认卡片上
+   * 说明「这次操作为什么被拦下来」，让用户知道它可能受外部内容影响。
+   */
+  untrustedSources?: UntrustedSourceSummary[]
 }
 
 /** Thread-local streaming state for the current agent run. */

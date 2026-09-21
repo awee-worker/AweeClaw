@@ -13,6 +13,7 @@ export { VisionAnalyzePreview } from './VisionAnalyzePreview'
 export { ChartRenderer } from './ChartRenderer'
 export { AgentCollaborationPanel } from './AgentCollaborationPanel'
 export { AutomationPanel } from './AutomationPanel'
+export { default as CapabilityGapCard } from './CapabilityGapCard'
 
 // 新增组件
 export { BranchSelector, MessageBranchActions } from './BranchControls'

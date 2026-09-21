@@ -115,6 +115,8 @@ const CODE_TOOL_PACK: ToolPack = {
     'add_edge',
     // 桌面伴侣控制（VRM 角色动作 / 表情 / 说话）
     'companion_control',
+    // 内置浏览器预览（本地页面 / 本地服务地址在应用内打开）
+    'open_preview',
   ],
   optionalTools: [
     'uiux_search',

@@ -442,6 +442,7 @@ export const en = {
   'tool.label.apply_skill': 'Apply Skill',
   'tool.label.todo_write': 'Task List',
   'tool.label.companion_control': 'Companion Control',
+  'tool.label.open_preview': 'Open Preview',
 
   // Desktop control tool labels (matches toolDefinitions.ts exactly)
   'tool.label.desktop_list_apps': 'List Installed Apps',
@@ -3307,6 +3308,7 @@ export const en = {
   'terminal': 'Terminal',
   'toolApprove': 'Approve',
   'toolAwaitingApproval': 'Awaiting Approval',
+  'toolAwaitingApprovalInBar': 'Waiting for your confirmation — approve or reject above the input box',
   'toolCollapse': 'Collapse',
   'toolExpand': 'Expand',
   'toolReject': 'Reject',

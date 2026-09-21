@@ -19,7 +19,7 @@ import {
     type PlanTaskArg,
     type PlanEdgeArg,
 } from './planBuilder'
-import { validatePath, isSensitivePath, platform, getDirname, getFileName, extractExtension, normalizePath, resolveToolPathInput } from '@shared/toolkit/pathHelper'
+import { validatePath, isSensitivePath, platform, getDirname, getFileName, extractExtension, isDirectoryTargetPath, normalizePath, resolveToolPathInput } from '@shared/toolkit/pathHelper'
 import { pathToLspUri } from '@shared/toolkit/uriHelper'
 import { waitForDiagnostics, isLanguageSupported, getLanguageId, didOpenDocument } from '@services/languageServerAdapter'
 import { checkAutomationTaskQuota } from '@services/quotaUsage'
@@ -67,6 +67,8 @@ import type { Language } from '@renderer/i18n'
 import type { ReplaceErrorCode } from '@utils/smartReplace'
 import { resolveAgentLanguage, pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { guardWriteFile } from './fileWritePolicy'
+import { openBuiltinPreview } from '@renderer/preview/openBuiltinPreview'
+import { detectLocalPageOpenCommand } from './localPageOpenGuard'
 import { executeAddNode, executeAddEdge } from './graphToolExecutors'
 import {
     extractDocumentLocal,
@@ -347,20 +349,12 @@ function notifyComposerChange(opts: {
 /**
  * 判断 create_file_or_folder 的目标路径是否应按目录处理
  *
- * 工具用尾斜杠区分文件与目录，但模型创建目录时常常漏掉它
- * （例如把「新建 reports 目录」写成 path="reports"，甚至补一个空串 content），
- * 结果落下一个无扩展名的空文件。这里补一层兜底：给出了实际内容的一律按
- * 文件处理，内容为空（未提供或空串）且末段没有扩展名的只可能是目录 ——
- * 无扩展名的空文件没有任何用途，而目录名恰好长这样。
+ * 判定规则与审批门禁共用（@shared/toolkit/pathHelper 的 isDirectoryTargetPath）：
+ * 执行时按目录落盘的调用，在审批层也必须按「只创建目录」对待，否则会出现
+ * 「执行建的是目录、审批却按写文件拦下来」的错位。
  */
 function shouldTreatAsDirectory(targetPath: string, args: Record<string, unknown>): boolean {
-    if (targetPath.endsWith('/') || targetPath.endsWith('\\')) return true
-
-    const content = args.content
-    if (typeof content === 'string' && content.trim() !== '') return false
-    if (content !== undefined && content !== null && typeof content !== 'string') return false
-
-    return !extractExtension(targetPath)
+    return isDirectoryTargetPath(targetPath, args.content)
 }
 
 /**
@@ -1842,6 +1836,47 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                     `该工具会自动复用已保存凭证，缺少凭证时会弹出账号密码输入框给用户，并支持输入后自动重试。`,
                 error: 'Use the git_sync tool for network git operations',
                 meta: { command, redirectedTool: 'git_sync' },
+            }
+        }
+
+        // ── 页面预览引导：用系统浏览器打开本地页面 → 改走内置浏览器 ──────────
+        // AI 收尾验证网页时习惯执行 `open index.html` / `start` / `xdg-open`，
+        // 这在应用内是「把预览丢到应用之外」，且 file: 往往直接打不开，失败后
+        // 还会退化成起一个临时静态服务。识别到这类命令就地改走内置浏览器预览，
+        // 并把结论回给模型，避免它继续在外围绕路。
+        const pageOpen = typeof command === 'string'
+            ? detectLocalPageOpenCommand(command, resolvedCwd || ctx.workspacePath || null)
+            : null
+        if (pageOpen) {
+            const preview = await openBuiltinPreview(
+                pageOpen.url ? { url: pageOpen.url } : { path: pageOpen.filePath },
+            )
+            if (preview.success) {
+                logger.agent.info(
+                    `[run_command] Redirected page open to built-in browser: ${pageOpen.rawTarget} → ${preview.url}`,
+                )
+                return {
+                    success: true,
+                    result:
+                        `已改用内置浏览器打开：${preview.url}\n` +
+                        `说明：AweeClaw 不使用系统浏览器预览本地页面（file: 会打不开，且会把预览留在应用之外）。` +
+                        `后续请直接用 open_preview 工具预览页面，静态页面无需另起服务。`,
+                    meta: {
+                        command,
+                        redirectedUrl: preview.url,
+                        redirectedTool: 'open_preview',
+                    },
+                }
+            }
+
+            // 目标打不开时不再回退到系统浏览器：那条路同样会失败，只会多一轮无效尝试
+            return {
+                success: false,
+                result: '',
+                error:
+                    `${preview.error || '无法打开该页面'}\n` +
+                    `请改用 open_preview 工具，并确认目标路径存在（静态页面无需另起本地服务）。`,
+                meta: { command, redirectedTool: 'open_preview' },
             }
         }
 
@@ -3859,6 +3894,51 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 success: false,
                 result: '',
                 error: `companion_control failed: ${toAppError(err).message}`,
+            }
+        }
+    },
+
+    /**
+     * 在内置浏览器打开预览（本地静态页面 / 本地服务地址）
+     *
+     * 路径按工具的统一规则解析与校验（工作区 + 授权目录 + 敏感路径拦截），
+     * 再由主进程的预览静态服务转成回环 http 地址交给内置浏览器 —— 内置浏览器的
+     * webview 只接受 http/https 源，本地文件不能直接加载。
+     */
+    async open_preview(args, ctx) {
+        const url = typeof args.url === 'string' ? args.url.trim() : ''
+        const rawPath = typeof args.path === 'string' ? args.path.trim() : ''
+        const title = typeof args.title === 'string' ? args.title.trim() : ''
+
+        if (!url && !rawPath) {
+            return { success: false, result: '', error: 'Provide either `url` or `path`' }
+        }
+
+        try {
+            let resolvedPath = ''
+            if (!url) {
+                // 与文件类工具同一套路径规则：越界与敏感路径在这里就被拦下
+                resolvedPath = resolvePath(rawPath, ctx.workspacePath || null, true)
+            }
+
+            const preview = await openBuiltinPreview(
+                url ? { url, title } : { path: resolvedPath, title },
+            )
+
+            if (!preview.success) {
+                return { success: false, result: '', error: preview.error || 'Failed to open preview' }
+            }
+
+            return {
+                success: true,
+                result: `已在内置浏览器打开预览：${preview.url}（标签页「${preview.title || '预览'}」）。静态页面无需另起服务；如需查看外部网页内容请使用 read_url 或 web_search。`,
+                meta: { path: resolvedPath || undefined, url: preview.url },
+            }
+        } catch (err) {
+            return {
+                success: false,
+                result: '',
+                error: `open_preview failed: ${toAppError(err).message}`,
             }
         }
     },

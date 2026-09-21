@@ -1,5 +1,7 @@
 import { logger } from '@toolkit/LogEngine'
 import { longTermMemoryService } from '../runtime/longTermMemoryService'
+import { buildMemoryOrigin } from '../runtime/memoryWriteGuard'
+import { getLastUntrustedSignal } from '../runtime/untrustedContextTracker'
 import type { MemoryEntry, MemorySource } from '@intelligence/providerTypes'
 
 export interface LongTermMemoryEntry {
@@ -80,6 +82,7 @@ export class LongTermMemory {
     const source: MemorySource = SOURCE_MAP[entry.source] || 'auto_extracted'
 
     try {
+      const origin = buildMemoryOrigin(getLastUntrustedSignal(), 'memory_extract')
       const result = await longTermMemoryService.addEntry({
         content: entry.content,
         source,
@@ -87,6 +90,9 @@ export class LongTermMemory {
         confidence: entry.confidence,
         tags,
         enabled: true,
+        originTrust: origin.trust,
+        originChannel: origin.channel,
+        originLocator: origin.locator,
       })
       return toMemoryEntry(result)
     } catch (err) {
@@ -169,6 +175,7 @@ export class LongTermMemory {
           tags.push(TYPE_TO_TAG[pattern.type])
 
           try {
+            const origin = buildMemoryOrigin(getLastUntrustedSignal(), 'memory_extract')
             const entry = await longTermMemoryService.addEntry({
               content: match[1].trim(),
               source: 'auto_extracted',
@@ -176,6 +183,9 @@ export class LongTermMemory {
               confidence: pattern.confidence,
               tags,
               enabled: true,
+              originTrust: origin.trust,
+              originChannel: origin.channel,
+              originLocator: origin.locator,
             })
             entries.push(toMemoryEntry(entry))
           } catch {

@@ -18,7 +18,43 @@ import { scenarioLoader } from './ScenarioLoader'
 import { DeclarativeScenarioModule } from './DeclarativeScenarioModule'
 import { loadProgrammaticScenario, setProgrammaticLoadFunction } from './ProgrammaticScenarioLoader'
 import type { DeclarativeScenarioConfig } from '@shared/protocols/scenario-declarative'
+import {
+  validateScenarioPackageManifest,
+  type ScenarioPackageManifest,
+  type ScenarioPackageValidation,
+} from '@shared/protocols/scenarioPackage'
 import { logger } from '@shared/toolkit/LogEngine'
+
+/** 场景包清单文件名 */
+export const SCENARIO_PACKAGE_MANIFEST_FILE = 'scenario-package.json'
+
+/**
+ * 从场景目录文件中解析场景包清单
+ *
+ * 兼容没有清单的旧场景：返回 manifest 为 null，由调用方按原有路径继续加载。
+ * 清单存在但格式错误时标记为不合法，避免半个包被装上。
+ */
+export function parseScenarioPackageManifest(files: Record<string, string>): {
+  manifest: ScenarioPackageManifest | null
+  validation: ScenarioPackageValidation
+} {
+  const raw = files?.[SCENARIO_PACKAGE_MANIFEST_FILE]
+  if (!raw) {
+    return { manifest: null, validation: { valid: true, errors: [], warnings: [] } }
+  }
+
+  let parsed: ScenarioPackageManifest
+  try {
+    parsed = JSON.parse(raw) as ScenarioPackageManifest
+  } catch {
+    return {
+      manifest: null,
+      validation: { valid: false, errors: [`${SCENARIO_PACKAGE_MANIFEST_FILE} 不是合法 JSON`], warnings: [] },
+    }
+  }
+
+  return { manifest: parsed, validation: validateScenarioPackageManifest(parsed) }
+}
 
 interface LoadScenarioResult {
   success: boolean
@@ -57,6 +93,20 @@ export async function loadExternalScenarios(): Promise<number> {
       if (!result.success || !result.config) {
         logger.agent.warn(`[ExternalScenarioLoader] No config found for scenario "${scenario.id}", skipping`)
         continue
+      }
+
+      // 场景包清单校验：清单不合法时整包跳过，不加载半个场景
+      const { manifest, validation } = parseScenarioPackageManifest(result.files || {})
+      if (manifest && !validation.valid) {
+        logger.agent.warn(
+          `[ExternalScenarioLoader] 场景包清单不合法，跳过加载 "${scenario.id}"：${validation.errors.join('；')}`
+        )
+        continue
+      }
+      if (manifest && validation.warnings.length > 0) {
+        logger.agent.info(
+          `[ExternalScenarioLoader] 场景包清单提示 "${scenario.id}"：${validation.warnings.join('；')}`
+        )
       }
 
       const config = result.config as unknown as Record<string, unknown>

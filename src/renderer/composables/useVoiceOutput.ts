@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { toast } from '@components/foundation/NotificationProvider';
 import { voiceApi } from '../services/voiceApi';
 
 export type PlaybackState = 'idle' | 'loading' | 'playing' | 'paused';
@@ -19,11 +20,14 @@ interface UseVoiceOutputReturn {
   pause: () => void;
   resume: () => void;
   currentText: string | null;
+  /** 最近一次播报的失败原因；成功或重新播报时清空 */
+  error: string | null;
 }
 
 export function useVoiceOutput(options?: UseVoiceOutputOptions): UseVoiceOutputReturn {
   const [playbackState, setPlaybackState] = useState<PlaybackState>('idle');
   const [currentText, setCurrentText] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const blobUrlRef = useRef<string | null>(null);
@@ -43,8 +47,17 @@ export function useVoiceOutput(options?: UseVoiceOutputOptions): UseVoiceOutputR
   const speak = useCallback(
     async (text: string) => {
       cleanup();
+      setError(null);
       setPlaybackState('loading');
       setCurrentText(text);
+
+      // 空文本没有可合成的内容，直接给出结论，避免用户面对「点了没反应」
+      if (!text.trim()) {
+        setPlaybackState('idle');
+        setCurrentText(null);
+        toast.warning('这条消息没有可朗读的文字内容');
+        return;
+      }
 
       try {
         const blob = await voiceApi.textToSpeech(text, {
@@ -74,6 +87,9 @@ export function useVoiceOutput(options?: UseVoiceOutputOptions): UseVoiceOutputR
         audio.onerror = () => {
           setPlaybackState('idle');
           setCurrentText(null);
+          const msg = '音频播放失败，请检查系统音频设备是否可用';
+          setError(msg);
+          toast.error(`语音播报失败：${msg}`);
           options?.onError?.(new Error('Audio playback error'));
         };
 
@@ -82,9 +98,11 @@ export function useVoiceOutput(options?: UseVoiceOutputOptions): UseVoiceOutputR
         setPlaybackState('idle');
         setCurrentText(null);
         const msg = err instanceof Error ? err.message : 'TTS failed';
+        setError(msg);
         // 未传 onError 的调用方（如消息操作栏的「语音播报」按钮）过去会完全静默，
-        // 用户只看到「点了没反应」；这里补一条 warn 便于定位。
+        // 用户只看到「点了没反应」；这里必须把失败原因摆到界面上。
         console.warn('[useVoiceOutput] 语音播报失败:', msg);
+        toast.error(`语音播报失败：${msg}`);
         options?.onError?.(new Error(msg));
       }
     },
@@ -124,5 +142,6 @@ export function useVoiceOutput(options?: UseVoiceOutputOptions): UseVoiceOutputR
     pause,
     resume,
     currentText,
+    error,
   };
 }

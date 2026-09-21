@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { voiceApi } from '../services/voiceApi';
 import { isAssistantMessage, getMessageText } from '@intelligence/providerTypes';
+import { toast } from '@components/foundation/NotificationProvider';
 import { StorageService } from '@shared/toolkit/StorageService';
 import type { ChatMessage } from '@intelligence/providerTypes';
 
@@ -96,13 +97,12 @@ export function useAutoSpeak({ isStreaming, messages }: UseAutoSpeakOptions): vo
           audio.play().catch(() => {});
         })
         .catch((err) => {
-          // 不静默：合成失败必须留下可追踪线索。
-          // 历史问题：优先级「仅本地」+ 非法音色时，播报毫无反应且无任何日志，
+          // 不静默：合成失败必须留下可追踪线索，并且要让用户看到。
+          // 历史问题：优先级「仅本地」+ 非法音色时，播报毫无反应，
           // 用户只能看到「点了没反应」。
-          console.warn(
-            '[useAutoSpeak] 自动播报失败:',
-            err instanceof Error ? err.message : err,
-          );
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn('[useAutoSpeak] 自动播报失败:', msg);
+          toast.warning(`自动语音播报失败：${msg}`, 6000);
         });
     }
 

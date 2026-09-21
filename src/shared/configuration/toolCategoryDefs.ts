@@ -138,6 +138,8 @@ const CORE_TOOLS: string[] = [
   'knowledge_search',
   // 桌面伴侣控制（VRM 角色动作 / 表情 / 说话）
   'companion_control',
+  // 内置浏览器预览（本地页面 / 本地服务地址在应用内打开）
+  'open_preview',
   // 定时任务
   'schedule',
   // Skill 按需加载
@@ -367,7 +369,8 @@ export const CAPABILITY_GROUPS: CapabilityGroupConfig[] = [
     id: 'companion',
     name: '伴侣与交互',
     nameEn: 'Companion & Interaction',
-    tools: ['companion_control', 'uiux_search', 'uiux_recommend'],
+    // open_preview：内置浏览器预览，属「在应用内与用户交互」的能力，与伴侣控制同组
+    tools: ['companion_control', 'open_preview', 'uiux_search', 'uiux_recommend'],
   },
 ]
 

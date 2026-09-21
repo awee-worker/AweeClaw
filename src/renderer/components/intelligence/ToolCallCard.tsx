@@ -327,21 +327,26 @@ const ToolCallCard = memo(function ToolCallCard({
 
       {isAwaitingApproval && (
         <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-status-warning/10 bg-status-warning/5">
-          <span className="text-xs text-status-warning/70 truncate">{t('toolAwaitingApproval', language as any)}</span>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={onReject}
-              className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-status-error hover:bg-status-error/10 rounded-md transition-all"
-            >
-              {t('toolReject', language as any)}
-            </button>
-            <button
-              onClick={onApprove}
-              className="px-3 py-1.5 text-xs font-medium bg-accent text-accent-foreground hover:bg-accent-hover rounded-md transition-all"
-            >
-              {t('toolApprove', language as any)}
-            </button>
-          </div>
+          <span className="text-xs text-status-warning/70 truncate">
+            {/* 审批入口不在会话内时（统一在输入框上方的审批条）只说明卡点，不放按钮 */}
+            {t(onApprove ? 'toolAwaitingApproval' : 'toolAwaitingApprovalInBar', language as any)}
+          </span>
+          {onApprove && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={onReject}
+                className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-status-error hover:bg-status-error/10 rounded-md transition-all"
+              >
+                {t('toolReject', language as any)}
+              </button>
+              <button
+                onClick={onApprove}
+                className="px-3 py-1.5 text-xs font-medium bg-accent text-accent-foreground hover:bg-accent-hover rounded-md transition-all"
+              >
+                {t('toolApprove', language as any)}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

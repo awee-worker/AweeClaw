@@ -1,5 +1,7 @@
 import { longTermMemoryService } from './longTermMemoryService'
 import type { MemoryEntry } from './longTermMemoryService/providerTypes'
+import { buildMemoryOrigin } from './memoryWriteGuard'
+import { getLastUntrustedSignal } from './untrustedContextTracker'
 
 export interface MemoryItem {
   id: string
@@ -43,11 +45,17 @@ class MemoryService {
 
   async addMemory(content: string): Promise<MemoryItem> {
     await this.ensureMigrated()
+    // 来源标记：本轮若读到过外部内容，这条记忆按不可信来源登记，
+    // 由写入守卫决定放行还是降级，避免外部内容借「记住」沉淀为跨会话事实
+    const origin = buildMemoryOrigin(getLastUntrustedSignal(), 'memory_write')
     const entry = await longTermMemoryService.addEntry({
       content,
       source: 'user',
       status: 'long_term',
       confidence: 1.0,
+      originTrust: origin.trust,
+      originChannel: origin.channel,
+      originLocator: origin.locator,
     })
     return entryToMemoryItem(entry)
   }

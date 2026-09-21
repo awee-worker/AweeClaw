@@ -11,6 +11,7 @@ import {
   ImportanceIndicator,
   RetentionIndicator,
   TagList,
+  OriginMarker,
   formatRelativeTime,
 } from './shared'
 import type { AgentMemory } from '../types'
@@ -68,6 +69,7 @@ export function MemoryCard({ memory, selectable = true, compact = false }: Memor
       {/* 头部：分类 + 层级 + 重要性 */}
       <div className="flex items-center gap-1.5 mb-2 flex-wrap">
         <CategoryBadge category={memory.category} size="xs" />
+        <OriginMarker trust={memory.originTrust} channel={memory.originChannel} />
         <TierBadge tier={memory.tier} size="xs" />
         {!memory.enabled && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-500/10 text-gray-500 border border-gray-500/20 flex items-center gap-0.5">
@@ -182,7 +184,8 @@ export function MemoryListItem({ memory }: { memory: AgentMemory }) {
       {/* 内容区 */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-0.5">
-          <CategoryBadge category={memory.category} size="xs" />
+        <CategoryBadge category={memory.category} size="xs" />
+        <OriginMarker trust={memory.originTrust} channel={memory.originChannel} />
           <TierBadge tier={memory.tier} size="xs" />
           {!memory.enabled && <EyeOff className="w-3 h-3 text-gray-400" />}
         </div>

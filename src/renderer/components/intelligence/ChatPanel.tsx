@@ -65,6 +65,7 @@ import { ChatInputWrapper } from './chatPanel/components/ChatInputWrapper'
 import { MessageIndexBar, type MessageIndexItem } from './chatPanel/components/MessageIndexBar'
 import { PredictionBubble } from './chatPanel/components/PredictionBubble'
 import PendingChangesBar from './PendingChangesBar'
+import PendingApprovalBar from './PendingApprovalBar'
 import { MountedTaskBar } from './MountedTaskBar'
 import { MountedTaskPromptCard } from './chatPanel/components/MountedTaskPromptCard'
 import { HumanApprovalCard } from './HumanApprovalCard'
@@ -209,7 +210,7 @@ export default function ChatPanel() {
     }
   }, [isStreaming, pendingChanges.length])
 
-  const { sendMessage, abort, approveCurrentTool, rejectCurrentTool, approveAllTools, rejectAllTools } = useAgentCommands()
+  const { sendMessage, abort, approveAllTools, rejectAllTools } = useAgentCommands()
   // 定向发送（不切换当前线程）：供自动续接把消息发回被中断的线程。
   // 注意：sendToThread 由 useThreadMessenger 提供（useAgent 的返回值里没有它）。
   const { sendToThread } = useThreadMessenger()
@@ -817,8 +818,8 @@ export default function ChatPanel() {
             onEdit={messageOps.handleEditMessage}
             onRegenerate={messageOps.handleRegenerate}
             onRestore={messageOps.handleRestore}
-            onApproveTool={pendingToolIds.length > 1 ? approveAllTools : approveCurrentTool}
-            onRejectTool={pendingToolIds.length > 1 ? rejectAllTools : rejectCurrentTool}
+            // 事前审批的操作入口在输入框上方的审批条（PendingApprovalBar），
+            // 此处不再注入批准回调：卡片只保留「等待确认」的状态表达
             onOpenDiff={handleShowDiff}
             pendingToolId={pendingToolCall?.id}
             pendingToolIds={pendingToolIds}
@@ -833,8 +834,6 @@ export default function ChatPanel() {
       )
     },
     [
-      approveCurrentTool,
-      approveAllTools,
       deleteSelectionMode,
       handleDeleteRoundForMessage,
       handleShowDiff,
@@ -844,8 +843,6 @@ export default function ChatPanel() {
       messageOps,
       pendingToolCall?.id,
       pendingToolIds,
-      rejectCurrentTool,
-      rejectAllTools,
       selectedMessageIds,
       timelineProjection.revealArchivedMessages,
       activeScenarioId,
@@ -1110,6 +1107,10 @@ export default function ChatPanel() {
                   language={language}
                   sceneContext={perceptionSceneContext}
                 />
+
+                {/* 事前审批统一入口：消息流里的工具卡片不再内嵌批准按钮 */}
+                <PendingApprovalBar onApprove={approveAllTools} onReject={rejectAllTools} />
+
                 <PendingChangesBar pendingChanges={pendingChanges} />
 
                 {/* 挂载任务：「是否挂载」询问卡片与已挂载的续跑入口都内嵌在会话

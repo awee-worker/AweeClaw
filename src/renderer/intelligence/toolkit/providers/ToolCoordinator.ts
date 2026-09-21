@@ -23,6 +23,7 @@ import {
 } from '@services/featureGuardService'
 import { GIT_TOOL_NAMES } from '@configuration/toolCategoryDefs'
 import { isGitToolsEnabled } from '../gitToolsGate'
+import { buildMissingPathHint, normalizeToolPathArgs } from '../toolArgNormalizer'
 
 class ToolManager {
   private providers = new Map<string, ToolProvider>()
@@ -317,18 +318,25 @@ class ToolManager {
       }, 'validation')
     }
 
+    // 路径类别名归一：把 file_path / dir 之类的写法归到工具声明的参数名上。
+    // 调用方偶尔会按别的工具的参数名传路径，直接进校验会稳定失败，
+    // AI 侧表现为反复重试同一个错误。
+    const normalizedArgs = normalizeToolPathArgs(toolName, args)
+
     // 验证参数
-    const validation = provider.validateArgs(toolName, args)
+    const validation = provider.validateArgs(toolName, normalizedArgs)
     if (!validation.valid) {
+      // 失败信息里补上「该传哪个参数名」的提示，让模型能一次改对
+      const error = `Validation failed: ${validation.error}${buildMissingPathHint(toolName, normalizedArgs)}`
       return this.finalizeResult(toolName, executionId, startedAt, provider.id, {
         success: false,
         result: '',
-        error: `Validation failed: ${validation.error}`,
+        error,
         outcome: { kind: 'error', code: 'VALIDATION_FAILED', retryable: false },
       }, 'validation')
     }
 
-    const semanticValidation = this.semanticValidate(toolName, args, context)
+    const semanticValidation = this.semanticValidate(toolName, normalizedArgs, context)
     if (!semanticValidation.valid) {
       return this.finalizeResult(toolName, executionId, startedAt, provider.id, {
         success: false,
@@ -340,7 +348,7 @@ class ToolManager {
 
     // 执行
     try {
-      const result = await provider.execute(toolName, args, context)
+      const result = await provider.execute(toolName, normalizedArgs, context)
       return this.finalizeResult(toolName, executionId, startedAt, provider.id, result, result.success ? undefined : 'execution')
     } catch (err) {
       logger.agent.error(`[ToolManager] Tool execution failed:`, err)

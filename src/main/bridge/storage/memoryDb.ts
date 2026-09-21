@@ -20,6 +20,9 @@
  * - memory-db:getPendingPush       — 获取待推送的记忆
  * - memory-db:markAsSynced         — 标记记忆为已同步
  * - memory-db:migrateFromJsonStore — 从旧 JSON store 迁移数据
+ * - memory-db:upsertContradiction  — 写入矛盾记录
+ * - memory-db:getContradictionsByEntry — 查询某条记忆参与的矛盾记录
+ * - memory-db:getAllContradictions — 查询全部矛盾记录
  * - memory-db:getPath              — 获取数据库文件路径
  */
 
@@ -281,6 +284,47 @@ export function registerMemoryDbIpcHandlers(): void {
     } catch (err) {
       logger.agent.error('[MemoryDb] MigrateFromJsonStore failed:', err)
       return { success: false, error: err instanceof Error ? err.message : String(err), migrated: 0, skipped: 0 }
+    }
+  })
+
+  // 写入矛盾记录
+  safeIpcHandle('memory-db:upsertContradiction', async (_event, record: any) => {
+    try {
+      db.upsertContradictionRecord(record)
+      return { success: true }
+    } catch (err) {
+      logger.agent.error('[MemoryDb] UpsertContradiction failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // 查询某条记忆的矛盾记录
+  safeIpcHandle('memory-db:getContradictionsByEntry', async (_event, entryId: string) => {
+    try {
+      return db.getContradictionsByEntry(entryId)
+    } catch (err) {
+      logger.agent.error('[MemoryDb] GetContradictionsByEntry failed:', err)
+      return []
+    }
+  })
+
+  // 查询全部矛盾记录
+  safeIpcHandle('memory-db:getAllContradictions', async (_event, limit?: number) => {
+    try {
+      return db.getAllContradictions(limit)
+    } catch (err) {
+      logger.agent.error('[MemoryDb] GetAllContradictions failed:', err)
+      return []
+    }
+  })
+
+  // 来源分布统计
+  safeIpcHandle('memory-db:getOriginStats', async () => {
+    try {
+      return db.getOriginStats()
+    } catch (err) {
+      logger.agent.error('[MemoryDb] GetOriginStats failed:', err)
+      return { byTrust: [], byChannel: [] }
     }
   })
 

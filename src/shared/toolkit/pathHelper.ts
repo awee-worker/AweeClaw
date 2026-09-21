@@ -19,6 +19,40 @@ import {
 import { BRAND } from '@shared/brand'
 
 /* ================================================================== */
+/* 路径参数名                                                          */
+/* ================================================================== */
+
+/**
+ * 单值路径参数名，顺序即优先级
+ *
+ * 同一语义在不同工具下写法不同：内置文件工具用 path，文档提取与部分场景工具用
+ * file_path，另有 filePath / dir / output_path 等。执行层的参数归一化与工具卡片的
+ * 路径展示共用这份清单，避免两边各写一份导致「执行认、卡片不认」。
+ */
+export const PATH_ARG_KEYS: readonly string[] = [
+  'path',
+  'file_path',
+  'filePath',
+  'filepath',
+  'file',
+  'dir',
+  'directory',
+  'folder',
+  'target_path',
+  'targetPath',
+  'output_path',
+  'outputPath',
+]
+
+/** 多值路径参数名 */
+export const PATH_LIST_ARG_KEYS: readonly string[] = [
+  'paths',
+  'files',
+  'file_paths',
+  'filePaths',
+]
+
+/* ================================================================== */
 /* 第一层：路径安全                                                    */
 /* ================================================================== */
 
@@ -154,6 +188,30 @@ export function extractExtension(path: unknown): string {
   const fileName = extractFileName(path)
   const dotIndex = fileName.lastIndexOf('.')
   return dotIndex > 0 ? fileName.slice(dotIndex + 1).toLowerCase() : ''
+}
+
+/**
+ * 判断创建类操作的目标路径是否应按目录处理
+ *
+ * 创建工具用尾斜杠区分文件与目录，但模型创建目录时常常漏掉它（把「新建 reports
+ * 目录」写成 path="reports"，甚至补一个空串 content），结果落下一个无扩展名的空文件。
+ * 这里补一层兜底：给出了实际内容的一律按文件处理，内容为空（未提供或空串）且
+ * 末段没有扩展名的只可能是目录 —— 无扩展名的空文件没有任何用途，而目录名恰好长这样。
+ *
+ * 执行层与审批判定共用这一处结论，避免出现「执行时按目录处理、审批时按文件拦截」的错位。
+ *
+ * @param targetPath 目标路径
+ * @param content    调用参数里的内容字段（未提供按空内容处理）
+ */
+export function isDirectoryTargetPath(targetPath: unknown, content?: unknown): boolean {
+  const target = typeof targetPath === 'string' ? targetPath : ''
+  if (!target) return false
+  if (target.endsWith('/') || target.endsWith('\\')) return true
+
+  if (typeof content === 'string' && content.trim() !== '') return false
+  if (content !== undefined && content !== null && typeof content !== 'string') return false
+
+  return !extractExtension(target)
 }
 
 /**

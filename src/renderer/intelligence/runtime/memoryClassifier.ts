@@ -13,6 +13,8 @@
  * 客户端先做规则预分类，云端同步后可再由 LLM 精化。
  */
 
+import type { TrustChannel, TrustLevel } from '@intelligence/types/trustTypes'
+
 /** 记忆分类编码（与后端 Prisma 枚举对齐） */
 export type MemoryCategory =
   | 'LIFE'
@@ -25,12 +27,28 @@ export type MemoryCategory =
   | 'FINANCE'
   | 'UNCATEGORIZED'
 
+/** 来源信息（写入侧提供，分类器原样带出） */
+export interface ClassificationOrigin {
+  originTrust?: TrustLevel
+  originLocator?: string
+  originChannel?: TrustChannel
+  evidence?: string
+}
+
 /** 分类结果 */
 export interface ClassificationResult {
   category: MemoryCategory
   subcategory: string | null
   confidence: number
   classifiedBy: 'rule' | 'system'
+  /** 来源信任级别 */
+  originTrust?: TrustLevel
+  /** 来源定位 */
+  originLocator?: string
+  /** 来源通道 */
+  originChannel?: TrustChannel
+  /** 证据片段 */
+  evidence?: string
 }
 
 /** 子分类关键词索引条目 */
@@ -110,13 +128,37 @@ for (const [category, subcategories] of Object.entries(CATEGORY_KEYWORDS)) {
 }
 
 /**
+ * 附加来源信息
+ *
+ * 分类器只负责归类，来源判定在写入侧完成；此处仅把调用方给的来源原样带出，
+ * 使「分类结果」与「来源信息」在同一份写入数据里传递，避免两处分别构造而失配。
+ */
+function withOrigin(
+  result: ClassificationResult,
+  origin?: ClassificationOrigin,
+): ClassificationResult {
+  if (!origin) return result
+  return {
+    ...result,
+    originTrust: origin.originTrust,
+    originLocator: origin.originLocator,
+    originChannel: origin.originChannel,
+    evidence: origin.evidence,
+  }
+}
+
+/**
  * 规则分类：基于关键词匹配
  * @param content 记忆内容
+ * @param origin  记忆来源信息（可选，原样带出，不参与归类计算）
  * @returns 分类结果，无命中时返回 UNCATEGORIZED
  */
-export function ruleBasedClassify(content: string): ClassificationResult {
+export function ruleBasedClassify(
+  content: string,
+  origin?: ClassificationOrigin,
+): ClassificationResult {
   if (!content || content.trim().length === 0) {
-    return { category: 'UNCATEGORIZED', subcategory: null, confidence: 0, classifiedBy: 'system' }
+    return withOrigin({ category: 'UNCATEGORIZED', subcategory: null, confidence: 0, classifiedBy: 'system' }, origin)
   }
 
   const text = content.toLowerCase()
@@ -141,7 +183,7 @@ export function ruleBasedClassify(content: string): ClassificationResult {
   }
 
   if (subcategoryHits.size === 0) {
-    return { category: 'UNCATEGORIZED', subcategory: null, confidence: 0, classifiedBy: 'system' }
+    return withOrigin({ category: 'UNCATEGORIZED', subcategory: null, confidence: 0, classifiedBy: 'system' }, origin)
   }
 
   // 取命中数最多的子分类
@@ -153,16 +195,16 @@ export function ruleBasedClassify(content: string): ClassificationResult {
   }
 
   if (!bestMatch) {
-    return { category: 'UNCATEGORIZED', subcategory: null, confidence: 0, classifiedBy: 'system' }
+    return withOrigin({ category: 'UNCATEGORIZED', subcategory: null, confidence: 0, classifiedBy: 'system' }, origin)
   }
 
   // 置信度：1 个 = 0.6，2 个 = 0.75，3+ 个 = 0.9
   const confidence = bestMatch.count >= 3 ? 0.9 : bestMatch.count === 2 ? 0.75 : 0.6
 
-  return {
+  return withOrigin({
     category: bestMatch.category,
     subcategory: bestMatch.subcategory,
     confidence,
     classifiedBy: 'rule',
-  }
+  }, origin)
 }

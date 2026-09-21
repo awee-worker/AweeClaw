@@ -274,6 +274,10 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   memoryDbGetPendingPush: (limit?: number) => Promise<any[]>
   memoryDbMarkAsSynced: (id: string, remoteId: string) => Promise<{ success: boolean; error?: string }>
   memoryDbMigrateFromJsonStore: (store: any) => Promise<{ success: boolean; migrated: number; skipped: number; error?: string }>
+  memoryDbUpsertContradiction: (record: any) => Promise<{ success: boolean; error?: string }>
+  memoryDbGetContradictionsByEntry: (entryId: string) => Promise<any[]>
+  memoryDbGetAllContradictions: (limit?: number) => Promise<any[]>
+  memoryDbGetOriginStats: () => Promise<{ byTrust: Array<{ trust: string; count: number }>; byChannel: Array<{ channel: string; count: number }> }>
   memoryDbGetPath: () => Promise<string>
 
   // Group Memory (P1-3 群聊长期记忆)
@@ -459,6 +463,11 @@ function createGroupedAPI() {
       onSearchResults: (callback: Parameters<typeof raw.onSearchResults>[0]) => raw.onSearchResults(callback),
       onSearchDone: (callback: Parameters<typeof raw.onSearchDone>[0]) => raw.onSearchDone(callback),
       onChanged: (callback: Parameters<typeof raw.onFileChanged>[0]) => raw.onFileChanged(callback),
+    },
+
+    // 内置预览（本地静态文件 → 内置浏览器可加载地址）
+    preview: {
+      resolveLocalUrl: (localPath: string) => raw.preview.resolveLocalUrl(localPath),
     },
 
     // 剪贴板

@@ -443,6 +443,7 @@ export const zh = {
   'tool.label.apply_skill': '应用技能',
   'tool.label.todo_write': '任务列表',
   'tool.label.companion_control': '桌面伴侣控制',
+  'tool.label.open_preview': '内置浏览器预览',
 
   // 桌面控制工具标签（与 toolDefinitions.ts 实际定义一一对应）
   'tool.label.desktop_list_apps': '查询已安装应用',
@@ -3306,6 +3307,7 @@ export const zh = {
   'terminal': '终端',
   'toolApprove': '批准',
   'toolAwaitingApproval': '等待批准',
+  'toolAwaitingApprovalInBar': '等待你确认，请在输入框上方批准或拒绝',
   'toolCollapse': '折叠',
   'toolExpand': '展开',
   'toolReject': '拒绝',

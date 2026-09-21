@@ -4,6 +4,15 @@ import { useAgentStore, type ThreadBoundStore } from '../state/IntelligenceStore
 import { EventBus } from './EventDispatcher'
 import { generateSummary } from '../contextModel'
 import { LEVEL_NAMES, updateStats, type CompressionStats } from '../capabilities/context/ContextCompressor'
+import {
+  RETRIEVABLE_TOOLS,
+  buildRetrievalPlaceholder,
+  computeContextQualitySignal,
+  computeResidentStats,
+  markCriticalMessages,
+  resolveContextQualityLevel,
+} from '../capabilities/context/contextGauge'
+import { UNTRUSTED_CONTENT_TAG } from '@intelligence/types/trustTypes'
 import { executeAutoHandoff } from '../runtime/sessionHandoffService'
 import { prepareHandoffForThread, type PreparedHandoffResult } from '../runtime/handoffSessionTracker'
 import { getMessageText, type ChatMessage, type ChatThread, type UserMessage } from '@intelligence/providerTypes'
@@ -69,7 +78,11 @@ export function compressLlmMessagesInPlace(
     }
   }
 
+  // 清理前标记关键消息，清理后校验留存，用于计算关键指令存活率
+  const criticalIds = markCriticalMessages(toMarkableMessages(messages))
+
   let cleared = 0
+  let clearedChars = 0
   for (let i = 0; i < protectFromIdx; i++) {
     const m = messages[i]
     if (m.role !== 'tool') continue
@@ -79,18 +92,100 @@ export function compressLlmMessagesInPlace(
 
     const content = typeof m.content === 'string' ? m.content : ''
     if (content.length > 100) {
-      ;(m as { content: MessageContent | null }).content = '[Cleared]'
+      // 可回溯内容保留取回线索（模型知道是什么、怎么拿回来），
+      // 不可回溯内容只能清空：留着占位符也没有取回路径
+      ;(m as { content: MessageContent | null }).content = RETRIEVABLE_TOOLS.has(name)
+        ? buildRetrievalPlaceholder(name)
+        : '[Cleared]'
       cleared++
+      clearedChars += content.length
     }
   }
 
   if (cleared > 0) {
-    logger.agent.info(
-      `[Compression] 主循环内压缩生效: cleared=${cleared} 条工具结果 (L${level}, 保护最近 ${keepTurns} 轮)`
-    )
+    reportContextQuality({ messages, protectFromIdx, criticalIds, clearedChars, level, keepTurns, cleared })
   }
 
   return { cleared }
+}
+
+/** 抽取可参与关键指令识别的文本视图 */
+function toMarkableMessages(messages: LLMMessage[]): Array<{ id: string; role: string; text: string }> {
+  return messages.map((message, index) => ({
+    id: String(index),
+    role: message.role,
+    text: typeof message.content === 'string' ? message.content : '',
+  }))
+}
+
+/**
+ * 上报上下文质量信号
+ *
+ * 水位只说明「还装得下」，这里补上「装进去的是不是有用」：
+ * 关键约束有没有被挤掉、压缩有没有实际收益、外部内容占比多高、
+ * 还有多少可回溯内容在白白常驻。
+ */
+function reportContextQuality(params: {
+  messages: LLMMessage[]
+  protectFromIdx: number
+  criticalIds: string[]
+  clearedChars: number
+  level: CompressionLevel
+  keepTurns: number
+  cleared: number
+}): void {
+  const { messages, protectFromIdx, criticalIds, clearedChars, level, keepTurns, cleared } = params
+
+  const retainedCriticalIds = markCriticalMessages(toMarkableMessages(messages))
+
+  // 只统计历史区（保护范围之外）的工具结果：保护范围内的内容本就该留，
+  // 这里的比值要回答的是「本可以移出却仍在占位」有多少
+  const { residentTokens, residentAvoidableTokens } = computeResidentStats(
+    messages
+      .slice(0, protectFromIdx)
+      .filter((message) => message.role === 'tool')
+      .map((message) => ({
+        name: message.name,
+        content: typeof message.content === 'string' ? message.content : '',
+      })),
+  )
+
+  let afterChars = 0
+  let untrustedChars = 0
+  for (const message of messages) {
+    const text = typeof message.content === 'string' ? message.content : ''
+    afterChars += text.length
+    if (text.includes(UNTRUSTED_CONTENT_TAG)) untrustedChars += text.length
+  }
+
+  const signal = computeContextQualitySignal({
+    criticalIds,
+    retainedCriticalIds,
+    beforeTokens: afterChars + clearedChars,
+    afterTokens: afterChars,
+    untrustedTokens: untrustedChars,
+    residentTokens,
+    residentAvoidableTokens,
+  })
+
+  const quality = resolveContextQualityLevel(signal)
+
+  logger.agent.info(
+    `[Compression] 主循环内压缩生效: cleared=${cleared} 条工具结果 (L${level}, 保护最近 ${keepTurns} 轮)，` +
+      `质量信号 criticalRetention=${signal.criticalRetentionRate} gain=${signal.compressionGainRatio} ` +
+      `untrusted=${signal.untrustedRatio} retrievableResident=${signal.residentAvoidableRatio} → ${quality}`
+  )
+
+  // 关键约束丢失或外部内容占比过高会直接改变模型的判断依据，需要显式告警
+  if (quality === 'poor') {
+    EventBus.emit({
+      type: 'context:warning',
+      level: 3,
+      message:
+        `Context quality degraded: criticalRetention=${signal.criticalRetentionRate}, ` +
+        `untrusted=${signal.untrustedRatio}`,
+    })
+  }
 }
 
 function isSummaryStale(summary: StructuredSummary | null | undefined, userTurns: number, minDelta = 2): boolean {

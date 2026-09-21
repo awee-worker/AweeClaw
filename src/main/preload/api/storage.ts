@@ -122,6 +122,13 @@ export function createStorageApi() {
       invoke('memory-db:markAsSynced')(id, remoteId),
     memoryDbMigrateFromJsonStore: (store: unknown) =>
       invoke('memory-db:migrateFromJsonStore')(store),
+    memoryDbUpsertContradiction: (record: unknown) =>
+      invoke('memory-db:upsertContradiction')(record),
+    memoryDbGetContradictionsByEntry: (entryId: string) =>
+      invoke('memory-db:getContradictionsByEntry')(entryId),
+    memoryDbGetAllContradictions: (limit?: number) =>
+      invoke('memory-db:getAllContradictions')(limit),
+    memoryDbGetOriginStats: invoke('memory-db:getOriginStats'),
     memoryDbGetPath: invoke('memory-db:getPath'),
 
     // ── Group Memory（P1-3 群聊长期记忆） ──

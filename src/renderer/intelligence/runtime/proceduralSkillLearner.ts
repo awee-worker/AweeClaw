@@ -36,8 +36,8 @@ const PERSIST_DEBOUNCE_MS = 5000
 const SOLIDIFY_MIN_OCCURRENCES = 2
 const SOLIDIFY_MIN_SUCCESS_RATE = 0.8
 
-/** 模板匹配阈值 */
-const MATCH_MIN_KEYWORD_OVERLAP = 0.4
+/** 模板匹配阈值（导出供能力缺口判定复用，保持两处口径一致） */
+export const MATCH_MIN_KEYWORD_OVERLAP = 0.4
 
 /** 已知动态参数字段名（值随任务变化，模式化为占位符） */
 const DYNAMIC_PARAM_FIELDS = new Set([
@@ -125,7 +125,7 @@ const STOP_WORDS_EN = new Set([
 ])
 
 /** 从文本提取关键词（英文 ≥3 字符 + 中文 2-4 字，去停用词） */
-function extractKeywords(text: string): string[] {
+export function extractKeywords(text: string): string[] {
   if (!text) return []
   const lower = text.toLowerCase()
   const enWords = lower.match(/[a-z][a-z0-9_-]{2,}/g) || []
@@ -200,7 +200,7 @@ function extractToolSequence(messages: ChatMessage[], assistantId?: string): Too
 }
 
 /** 计算 Jaccard 相似度 */
-function jaccardSimilarity(a: string[], b: string[]): number {
+export function jaccardSimilarity(a: string[], b: string[]): number {
   if (a.length === 0 || b.length === 0) return 0
   const setA = new Set(a)
   const setB = new Set(b)

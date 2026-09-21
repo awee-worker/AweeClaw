@@ -9,6 +9,7 @@ import type { InteractiveContent } from './interactiveSession'
 import type { FormContent } from './form'
 import type { FileSnapshot } from './sessionSnapshot'
 import type { StructuredSummary, CompressionLevel } from '@intelligence/providerTypes'
+import type { ToolOrigin } from './trustTypes'
 
 // ============================================
 // 消息部分类型
@@ -223,6 +224,13 @@ export interface ToolResultMessage {
   type: ToolResultType
   rawParams?: Record<string, unknown>
   compactedAt?: number
+  /**
+   * 结果来源标签
+   *
+   * 记录该结果由哪类通道产出（本地文件 / 网络 / 外部服务 / 渠道 / 外部智能体），
+   * 供上下文构建时区分「指令」与「数据」，以及审批时判定是否需要升级确认。
+   */
+  origin?: ToolOrigin
 }
 
 /** Checkpoint 消息 */

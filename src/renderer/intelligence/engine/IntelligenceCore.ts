@@ -46,6 +46,7 @@ import type { ExecutionConfig } from '../application/AgentExecutor'
 import { translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { agentRuntime } from './AgentRuntime'
 import { buildAgentSystemPrompt } from '../prompt-engine/PromptComposer'
+import { collectUntrustedSignal, rememberUntrustedSignal } from '../runtime/untrustedContextTracker'
 import { taskComplexityDetector } from '../capabilities/planning/TaskComplexityDetector'
 import { buildResumeNotice } from '../utils/resumeContext'
 import { buildPendingQuestionNotice } from '../utils/pendingQuestionContext'
@@ -261,12 +262,21 @@ export class AgentClass {
         return null
       })
 
+      // 汇总本轮上下文中已消费的外部内容，决定是否注入信任边界声明。
+      // 判定依据是工具结果上的来源标签，不做内容语义分析。
+      const untrustedContext = collectUntrustedSignal(
+        useAgentStore.getState().threads[threadId]?.messages,
+      )
+      // 暂存本轮信号：记忆写入等旁路动作拿不到消息数组，只能读这里
+      rememberUntrustedSignal(untrustedContext)
+
       const { prompt: systemPrompt, appliedSkills } = await buildAgentSystemPrompt(chatMode, workspacePath, {
         ...promptOptions,
         mentionedSkills: mentionedSkills.length > 0 ? mentionedSkills : undefined,
         userMessage: userMsgText,
         perceptionContext,
         isChannel: executionOptions?.isChannel,
+        untrustedContext,
       })
 
       // 提前提取，避免后续重复声明

@@ -63,7 +63,9 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
   proactiveRules: [
     { id: 'meeting-prep', name: '会议准备提醒', condition: 'calendar_event_in_15min', action: 'notify', payload: 'meeting-prep-card', enabled: true },
     { id: 'task-followup', name: '任务跟进', condition: 'task_due_in_1day', action: 'remind', payload: 'task-followup', enabled: true },
-    { id: 'focus-guard', name: '专注守护', condition: 'window_switching_high', action: 'suggest', payload: 'focus-guard', enabled: true },
+    // 专注守护默认关闭：常驻交互的主要失败模式是打扰而非能力不足，
+    // 把决定权交给用户，开启后也只在窗口切换确实偏高时才提示一次。
+    { id: 'focus-guard', name: '专注守护', condition: 'window_switching_high', action: 'suggest', payload: 'focus-guard', enabled: false },
     { id: 'standup-reminder', name: '久坐提醒', condition: 'idle_90min', action: 'suggest', payload: 'standup', enabled: true },
     { id: 'weekly-report', name: '周报提醒', condition: 'friday_16pm', action: 'remind', payload: 'work-report', enabled: true },
   ],
@@ -83,7 +85,8 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
   },
   cronJobs: [
     { id: 'weekly-report', name: '周报提醒', schedule: '0 16 * * 5', action: 'work-report', enabled: true },
-    { id: 'focus-check', name: '专注检查', schedule: '0 * * * *', action: 'work-focus-guard', enabled: true },
+    // 专注检查默认关闭，且频率从每小时降为工作日午间一次：定时轮询本身就是打扰源
+    { id: 'focus-check', name: '专注检查', schedule: '0 13 * * 1-5', action: 'work-focus-guard', enabled: false },
     { id: 'standup-check', name: '久坐检查', schedule: '0 */2 * * *', action: 'standup-check', enabled: true },
   ],
   defaultWorkMode: 'agent',

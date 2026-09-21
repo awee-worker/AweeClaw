@@ -2,6 +2,7 @@ import { Shield, Database, Cloud, Lock, HardDriveDownload } from 'lucide-react'
 import { ToggleSwitch } from '@components/ui'
 import { type Language } from '@renderer/i18n'
 import type { PrivacySettings } from '@shared/configuration/defaultProfile'
+import { EgressAuditPanel } from './EgressAuditPanel'
 
 interface PrivacySettingsPanelProps {
   language: Language
@@ -183,6 +184,8 @@ export function PrivacySettingsPanel({ language, privacySettings, setPrivacySett
           </div>
         </section>
       )}
+
+      <EgressAuditPanel language={language} />
 
       <section className="space-y-5 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
         <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest opacity-60 ml-1">

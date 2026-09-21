@@ -1,6 +1,8 @@
 import { logger } from '@toolkit/LogEngine'
 import { longTermMemoryService } from '../runtime/longTermMemoryService'
 import { knowledgeService } from '../runtime/knowledgeService'
+import { buildMemoryOrigin } from '../runtime/memoryWriteGuard'
+import { getLastUntrustedSignal } from '../runtime/untrustedContextTracker'
 import type { MemorySearchResult, MemoryRetrievalContext } from '@intelligence/providerTypes'
 import type { KnowledgeSearchResult, KnowledgeCategory } from '@intelligence/providerTypes'
 
@@ -175,12 +177,16 @@ class MemoryFusionEngine {
       return entry.id
     }
 
+    const origin = buildMemoryOrigin(getLastUntrustedSignal(), 'memory_write')
     const entry = await longTermMemoryService.addEntry({
       content,
       tags,
       confidence,
       status: layer,
       source: 'user',
+      originTrust: origin.trust,
+      originChannel: origin.channel,
+      originLocator: origin.locator,
     })
     return entry.id
   }

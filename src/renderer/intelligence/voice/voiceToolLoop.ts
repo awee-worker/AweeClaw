@@ -29,8 +29,10 @@ import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-confi
 import { isExternalAgentToolsExposed } from '@intelligence/toolkit/externalAgentToolsGate'
 import { resolveSceneToolsIntentFromMessages, resolveGitToolsIntentFromMessages } from '../decision/intentResolvers'
 import { useStore } from '@store'
-import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
+import { getToolApprovalType, getToolDisplayName, isWriteTool } from '@configuration/toolDefinitions'
 import { requiresApprovalGate } from '@intelligence/engine/toolOrchestrator'
+import { collectUntrustedSignal, rememberUntrustedSignal } from '../runtime/untrustedContextTracker'
+import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { truncateToolResult } from '@utils/partialJson'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { miniChatApprovalService, type AuthorizationMode } from './miniChatApprovalService'
@@ -474,9 +476,19 @@ export async function executeVoiceToolCall(
   }
 
   // 检查是否需要审批（统一复用 requiresApprovalGate，确保授权方式选择对语音模式同样生效）
+  // 不能只放行 terminal / dangerous：手动审批模式下创建与修改文件同样需要事前确认。
+  // 免确认的读写类工具直接执行，省掉信号汇总的开销。
   const approvalType = getToolApprovalType(toolCall.name)
-  if (approvalType === 'terminal' || approvalType === 'dangerous') {
-    const needsApproval = requiresApprovalGate(toolCall, 'agent')
+  if (approvalType !== 'none' || isWriteTool(toolCall.name)) {
+    // 外部内容来源一并透传：语音模式下消费过外部内容时，高权限操作同样升级确认
+    const voiceAgentState = useAgentStore.getState()
+    const voiceUntrusted = collectUntrustedSignal(
+      voiceAgentState.threads[voiceAgentState.currentThreadId ?? '']?.messages,
+      { currentTurnOnly: true },
+    )
+    // 暂存本轮信号：记忆写入等旁路动作拿不到消息数组，只能读这里
+    rememberUntrustedSignal(voiceUntrusted)
+    const needsApproval = requiresApprovalGate(toolCall, 'agent', voiceUntrusted, workspacePath)
     if (needsApproval) {
       logger.agent.info(`[VoiceToolLoop] Tool ${toolCall.name} skipped (requires approval in voice mode)`)
       return {
@@ -521,14 +533,16 @@ export async function executeMiniChatToolCall(
   authorizationMode?: AuthorizationMode,
 ): Promise<{ role: 'tool'; content: string; tool_call_id: string; name: string }> {
   // 审批检查：与 AgentSubLoop.executeToolCall 逻辑一致
-  // 仅 terminal / dangerous 类型需要事前审批；
-  // interaction 类型采用事后确认模式（像 VSCode/Trae），工具直接执行
+  // 需要事前审批的范围由授权方式决定（见 decideApprovalByMode）：
+  // 手动审批模式涵盖创建/修改文件、危险命令与外部内容；
+  // 交互类工具走事后确认（像 VSCode/Trae），执行成功后由卡片显示接受/拒绝
   const approvalType = getToolApprovalType(toolCall.name)
-  if (approvalType === 'terminal' || approvalType === 'dangerous') {
+  if (approvalType !== 'none' || isWriteTool(toolCall.name)) {
     const needsApproval = miniChatApprovalService.checkApprovalNeeded(
       toolCall,
       authorizationMode,
       'agent',
+      workspacePath,
     )
 
     if (needsApproval) {

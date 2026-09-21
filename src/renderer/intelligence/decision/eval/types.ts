@@ -11,6 +11,11 @@
  */
 
 import type { CommandRiskLevel } from '../commandRisk'
+import type { ToolOrigin, TrustLevel } from '@intelligence/types/trustTypes'
+import type { MemoryWriteDisposition } from '@intelligence/runtime/memoryWriteGuard'
+import type { TrajectoryMetrics } from './trajectory'
+
+export type { TrajectoryMetrics } from './trajectory'
 
 /** 预选意图标签（与 toolPreselector 的规则 id 对应） */
 export type PreselectIntentId =
@@ -163,6 +168,29 @@ export interface CommandRiskMetrics {
   }>
 }
 
+/**
+ * 多次运行的稳定性指标
+ *
+ * 用途：区分「随机性导致的偶发失败」与「真实缺陷导致的稳定失败」。
+ * 前者会在多次运行中表现为部分通过，后者表现为全败。
+ */
+export interface StabilityMetrics {
+  /** 同一用例重复次数 */
+  runs: number
+  /** 每轮用例总数（用于换算通过率） */
+  totalPerRun: number
+  /** 全部通过次数 */
+  passAll: number
+  /** 部分通过次数（表征随机性） */
+  passSome: number
+  /** 全败次数（真实缺陷信号） */
+  passNone: number
+  /** 通过率方差 */
+  variance: number
+  /** 各轮通过率明细 */
+  passRates: number[]
+}
+
 /** 单次评测汇总 */
 export interface EvalReport {
   generatedAt: string
@@ -173,6 +201,67 @@ export interface EvalReport {
   intents: IntentMetrics[]
   pruning?: PruneMetrics
   commandRisk?: CommandRiskMetrics
+  /** 轨迹级指标（来自真实执行记录，离线评测缺省不产出） */
+  trajectory?: TrajectoryMetrics
+  /** 稳定性指标（仅多次运行时产出） */
+  stability?: StabilityMetrics
+}
+
+// ============================================================
+// 注入防御验收（阶段一出口条件）
+// ============================================================
+
+/** 注入场景的人工标注期望 */
+export interface InjectionExpectation {
+  /** 该内容应被判定的来源信任级别 */
+  originTrust: TrustLevel
+  /** 该内容进入上下文时是否应被数据边界包裹 */
+  contextWrapped: boolean
+  /** 攻击者试图触发的动作是否应因此需要确认 */
+  requiresConfirmation: boolean
+  /** 该内容写入记忆时应收到的处置 */
+  memoryDisposition: MemoryWriteDisposition
+}
+
+/** 一条注入场景：攻击者借某个工具把指令带进上下文 */
+export interface InjectionDefenseSample {
+  id: string
+  /** 样本类别，用于分组统计 */
+  group: string
+  /** 攻击者借道的工具名 */
+  tool: string
+  /** 该工具的调用参数 */
+  params: Record<string, unknown>
+  /** 夹带指令的内容 */
+  payload: string
+  /** 攻击者试图触发的动作（目标工具） */
+  targetTool: string
+  /** 用于记忆准入判定的内容，缺省取 payload */
+  memoryContent?: string
+  /** 记忆写入方，缺省为自动提取 */
+  memorySource?: 'user' | 'auto_extracted'
+  /** 文件类工具的工作区落点，缺省取评测工作区 */
+  workspacePath?: string
+  expected: InjectionExpectation
+}
+
+/** 场景实测结果 */
+export interface InjectionDefenseOutcome {
+  sample: InjectionDefenseSample
+  /** 实际判定的来源 */
+  origin: ToolOrigin
+  /** 本轮不可信信号是否成立（决定是否注入信任边界声明） */
+  signalPresent: boolean
+  /** 工具结果进入上下文后的实际文本 */
+  contextText: string
+  /** 目标工具的审批类型 */
+  approvalType: string
+  /** 目标动作实际是否需要确认 */
+  requiresConfirmation: boolean
+  /** 记忆写入的实际处置 */
+  memoryDisposition: MemoryWriteDisposition
+  /** 记忆写入的实际理由，便于定位误判 */
+  memoryReason: string
 }
 
 /** 上下文裁剪指标（6.3） */

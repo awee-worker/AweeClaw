@@ -6,10 +6,14 @@
  * - 通过 IPC 同步授权方式到主窗口 store
  * - 使用内联样式 + CSS 变量跟随主题
  *
- * 三种授权方式：
- * - every-step（手动审批）：所有副作用操作均需审批
- * - dangerous-only（自动审批）：仅危险操作需审批
+ * 三种授权方式（判定与主窗口同源，一处规则见 approvalEscalation）：
+ * - every-step（手动审批）：创建/修改文件、危险命令、外部内容需审批
+ * - dangerous-only（自动审批）：仅危险操作与危险命令需审批
  * - never（完全访问）：所有操作自动执行
+ *
+ * 与主窗口唯一的行为差异：这里的写入文件仍走事前确认。主窗口把写入降级为
+ * 「执行后在变更条上接受或撤销」，而这条语音链路只提供批准/拒绝两种动作，
+ * 没有事后复核入口，直接放行等于让文件改动静默落盘。
  */
 
 import { memo, useState, useEffect, useRef } from 'react'
@@ -42,8 +46,8 @@ const MODES: Array<{
     icon: ShieldCheck,
     labelZh: '手动审批',
     labelEn: 'Manual Approval',
-    descZh: '所有副作用操作均需审批',
-    descEn: 'All side-effect operations require manual approval',
+    descZh: '创建与修改文件、危险命令、工作区外的内容需要审批',
+    descEn: 'Creating or editing files, dangerous commands and content outside the workspace require approval',
     color: 'rgb(52, 211, 153)',
   },
   {
@@ -51,8 +55,8 @@ const MODES: Array<{
     icon: ShieldAlert,
     labelZh: '自动审批',
     labelEn: 'Auto Approval',
-    descZh: '仅危险操作需审批',
-    descEn: 'Only dangerous operations require approval',
+    descZh: '仅危险操作（删除文件等）与危险命令需审批',
+    descEn: 'Only dangerous operations (such as deletion) and dangerous commands require approval',
     color: 'rgb(251, 191, 36)',
   },
   {

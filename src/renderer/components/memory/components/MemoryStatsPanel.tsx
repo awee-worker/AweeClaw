@@ -12,18 +12,28 @@ import {
   Database,
   Clock,
   Sparkles,
+  ShieldCheck,
 } from 'lucide-react'
 import { useMemoryStore } from '../store'
-import { CATEGORY_META, TIER_META, type MemoryCategory, type MemoryTier } from '../types'
-import { LoadingState } from './shared'
+import {
+  CATEGORY_META,
+  ORIGIN_CHANNEL_META,
+  ORIGIN_TRUST_META,
+  TIER_META,
+  type MemoryCategory,
+  type MemoryTier,
+} from '../types'
+import { LoadingState, OriginTrustBadge } from './shared'
 
 export function MemoryStatsPanel() {
-  const { overview, forgettingStats, fetchOverview, fetchForgettingStats } = useMemoryStore()
+  const { overview, forgettingStats, originStats, fetchOverview, fetchForgettingStats, fetchOriginStats } =
+    useMemoryStore()
 
   useEffect(() => {
     fetchOverview()
     fetchForgettingStats()
-  }, [fetchOverview, fetchForgettingStats])
+    fetchOriginStats()
+  }, [fetchOverview, fetchForgettingStats, fetchOriginStats])
 
   const totalMemories = overview?.total ?? 0
   const activeMemories = overview?.active ?? 0
@@ -35,6 +45,12 @@ export function MemoryStatsPanel() {
   const maxGrowth = useMemo(
     () => Math.max(1, ...recentGrowth.map((g) => g.count)),
     [recentGrowth],
+  )
+
+  // 来源分布基数：各类别相加，避免用 total 时存量未知来源被算成缺口
+  const originTrustTotal = useMemo(
+    () => Math.max(1, (originStats?.byTrust ?? []).reduce((sum, item) => sum + item.count, 0)),
+    [originStats],
   )
 
   if (!overview && !forgettingStats) {
@@ -242,6 +258,65 @@ export function MemoryStatsPanel() {
             <div className="flex items-center justify-between p-2 bg-surface-hover/20 rounded">
               <span className="text-text-muted">已过期</span>
               <span className="font-mono text-red-500">{forgettingStats.expired}</span>
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* 来源分布（审计） */}
+      {originStats && (
+        <SectionCard title="来源分布" icon={<ShieldCheck className="w-4 h-4" />}>
+          <div className="space-y-3">
+            <div>
+              <h5 className="text-xs text-text-muted mb-1.5">按信任级别</h5>
+              {originStats.byTrust.length > 0 ? (
+                <div className="space-y-1.5">
+                  {originStats.byTrust.map((item) => (
+                    <div key={item.trust} className="flex items-center gap-2 text-xs">
+                      <OriginTrustBadge
+                        trust={item.trust === 'unknown' ? null : item.trust}
+                        size="xs"
+                      />
+                      <div className="flex-1 h-1.5 rounded-full bg-surface-hover/40 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${Math.round((item.count / originTrustTotal) * 100)}%`,
+                            backgroundColor: (ORIGIN_TRUST_META[item.trust] ?? ORIGIN_TRUST_META.unknown)
+                              .color,
+                          }}
+                        />
+                      </div>
+                      <span className="font-mono text-text-primary w-8 text-right">
+                        {item.count}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyHint text="暂无来源数据" />
+              )}
+            </div>
+
+            <div>
+              <h5 className="text-xs text-text-muted mb-1.5">按来源通道</h5>
+              {originStats.byChannel.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {originStats.byChannel.map((item) => (
+                    <span
+                      key={item.channel}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-hover/50 border border-border/40 text-xs"
+                    >
+                      <span className="text-text-secondary">
+                        {ORIGIN_CHANNEL_META[item.channel]?.label ?? '未知通道'}
+                      </span>
+                      <span className="text-[10px] text-text-muted font-mono">{item.count}</span>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <EmptyHint text="暂无通道数据" />
+              )}
             </div>
           </div>
         </SectionCard>

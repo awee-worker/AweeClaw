@@ -64,6 +64,175 @@ export interface AgentResultIR {
   timestamp: number
 }
 
+// ===== 子代理回传契约 =====
+
+/** 证据引用：指向可回溯的位置，而不是原文 */
+export interface SubAgentEvidence {
+  kind: 'file' | 'url' | 'query'
+  ref: string
+}
+
+/**
+ * 子代理回传结果
+ *
+ * 只携带压缩后的结论与证据引用，不携带原始工具输出。
+ * 目的是避免子代理的中间过程污染父代理的上下文：父侧需要的是
+ * 「结论 + 去哪查证」，而不是子代理读到的每一行文件内容。
+ */
+export interface SubAgentResult {
+  /** 结论（压缩后） */
+  conclusion: string
+  /** 证据引用（路径 / URL / 查询），非原文 */
+  evidence: SubAgentEvidence[]
+  /** 执行摘要 */
+  summary: { steps: number; toolsUsed: string[] }
+  /** 是否因超限被截断 */
+  truncated: boolean
+}
+
+/** 回传体积上限（token） */
+export const SUB_AGENT_RESULT_TOKEN_LIMIT = 8 * 1024
+
+/** CJK 字符范围，用于按字符估算体量 */
+const CJK_REGEX = /[\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff]/g
+
+/** 证据引用条数上限，避免长任务把引用列表堆爆 */
+const MAX_EVIDENCE_ITEMS = 20
+
+/** 文件类工具的参数字段优先级 */
+const FILE_ARG_KEYS = ['path', 'filePath', 'file_path', 'file', 'filename'] as const
+
+/** 检索类工具的参数字段优先级 */
+const QUERY_ARG_KEYS = ['query', 'pattern', 'searchTerm', 'search_term', 'q'] as const
+
+/**
+ * 构造子代理回传结果
+ *
+ * 结论超过体积上限时按上限截断并置 truncated 为真；
+ * 证据引用与执行摘要不参与截断——它们的体积固定，且是父侧回溯的唯一线索。
+ */
+export function buildSubAgentResult(input: {
+  conclusion: string
+  evidence?: SubAgentEvidence[]
+  steps?: number
+  toolsUsed?: string[]
+  tokenLimit?: number
+}): SubAgentResult {
+  const limit = input.tokenLimit ?? SUB_AGENT_RESULT_TOKEN_LIMIT
+  const raw = input.conclusion ?? ''
+  const tokens = estimateTokens(raw)
+  const truncated = tokens > limit
+
+  return {
+    conclusion: truncated ? truncateToTokenLimit(raw, tokens, limit) : raw,
+    evidence: (input.evidence ?? []).slice(0, MAX_EVIDENCE_ITEMS),
+    summary: {
+      steps: input.steps ?? 0,
+      toolsUsed: input.toolsUsed ?? [],
+    },
+    truncated,
+  }
+}
+
+/**
+ * 从工具调用记录抽取证据引用
+ *
+ * 只取参数中的定位信息（路径 / URL / 查询词），不取工具输出内容。
+ * 同一路径重复出现时只保留一条。
+ */
+export function collectEvidence(
+  calls: Array<{ toolName: string; args: Record<string, unknown> }>,
+): SubAgentEvidence[] {
+  const evidence: SubAgentEvidence[] = []
+  const seen = new Set<string>()
+
+  const push = (item: SubAgentEvidence) => {
+    const key = `${item.kind}:${item.ref}`
+    if (seen.has(key)) return
+    seen.add(key)
+    evidence.push(item)
+  }
+
+  for (const call of calls) {
+    if (evidence.length >= MAX_EVIDENCE_ITEMS) break
+    const args = call.args ?? {}
+
+    const fileRef = pickString(args, FILE_ARG_KEYS) ?? pickMetaFilePath(args)
+    if (fileRef) {
+      push({ kind: 'file', ref: fileRef })
+      continue
+    }
+
+    const urlRef = pickString(args, ['url', 'link', 'href'] as const)
+    if (urlRef) {
+      push({ kind: 'url', ref: urlRef })
+      continue
+    }
+
+    const queryRef = pickString(args, QUERY_ARG_KEYS)
+    if (queryRef) push({ kind: 'query', ref: queryRef })
+  }
+
+  return evidence
+}
+
+/** 把子代理回传结果渲染为紧凑文本，供父侧消费 */
+export function renderSubAgentResult(result: SubAgentResult): string {
+  const lines: string[] = [result.conclusion]
+
+  if (result.evidence.length > 0) {
+    lines.push('', '证据引用：')
+    for (const item of result.evidence) {
+      lines.push(`- [${item.kind}] ${item.ref}`)
+    }
+  }
+
+  if (result.truncated) {
+    lines.push('', `（内容超过 ${SUB_AGENT_RESULT_TOKEN_LIMIT} token 上限，已压缩为结论与引用）`)
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * 估算文本体量（token）
+ *
+ * 这里刻意不接 tiktoken：编码器是懒加载的重资源，而「是否超过回传上限」
+ * 只需要量级判断，用字符数估算足够，不值得让子代理的返回路径依赖它。
+ * 系数与项目 token 估算的启发式口径一致（CJK 1.5 字符/token，拉丁 4 字符/token）。
+ */
+function estimateTokens(text: string): number {
+  if (!text) return 0
+  const cjkCount = (text.match(CJK_REGEX) || []).length
+  const latinCount = text.length - cjkCount
+  return Math.ceil(cjkCount / 1.5 + latinCount / 4)
+}
+
+function pickString(args: Record<string, unknown>, keys: readonly string[]): string | null {
+  for (const key of keys) {
+    const value = args[key]
+    if (typeof value === 'string' && value.trim()) return value
+  }
+  return null
+}
+
+/** edit_file / write_file 把路径放在 _meta.filePath 里 */
+function pickMetaFilePath(args: Record<string, unknown>): string | null {
+  const meta = args._meta
+  if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+    const value = (meta as Record<string, unknown>).filePath
+    if (typeof value === 'string' && value.trim()) return value
+  }
+  return null
+}
+
+/** 按 token 占比粗截断，末尾附上原始体量提示 */
+function truncateToTokenLimit(text: string, tokens: number, limit: number): string {
+  const ratio = limit / tokens
+  const keepChars = Math.max(0, Math.floor(text.length * ratio) - 48)
+  return `${text.slice(0, keepChars)}\n…[已按回传上限压缩，原始内容约 ${tokens} tokens]`
+}
+
 // ===== 常量 =====
 
 /** 总结最大长度 */

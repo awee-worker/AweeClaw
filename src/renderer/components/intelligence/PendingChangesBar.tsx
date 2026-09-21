@@ -1,10 +1,13 @@
 /**
- * 待确认文件变更栏（统一接受/拒绝）
+ * 文件变更复核栏（事后接受 / 撤销）
  *
- * 在底部消息输入框上方显示，像 VSCode/Trae 一样：
- * - 有待确认变更时显示此栏
- * - 可展开/折叠查看文件列表
- * - 支持全部接受 / 全部拒绝 / 单个接受 / 单个拒绝
+ * 位于消息输入框上方，是文件改动的事后裁决入口：
+ * - 手动审批模式下的创建与修改文件不阻塞执行，改动落盘后在这里等用户决定保留还是撤销
+ * - 自动审批模式下编辑现有代码文件同样汇到这里
+ * - 可展开/折叠查看文件列表与各文件的增删行数，支持全部接受 / 全部撤销 / 单文件处理
+ *
+ * 变更此刻已经写在磁盘上，因此「撤销」在执行层面就是回滚：恢复改动前的内容，
+ * 新建的文件则删除。措辞按这个事实选词，避免让用户以为拒绝能阻止尚未发生的写入。
  *
  * 数据来源：useAgentStore.pendingChanges
  * 操作：acceptChange / undoChange / acceptAllChanges / undoAllChanges
@@ -120,7 +123,9 @@ function PendingChangesBarBase({ pendingChanges }: PendingChangesBarProps) {
             <ChevronDown className="w-3.5 h-3.5 text-text-muted shrink-0" />
           )}
           <span className="text-xs font-medium text-text-primary truncate">
-            {isZh ? `${stats.total} 个文件待确认` : `${stats.total} file${stats.total > 1 ? 's' : ''} pending review`}
+            {isZh
+              ? `${stats.total} 个文件改动已应用`
+              : `${stats.total} file change${stats.total > 1 ? 's' : ''} applied`}
           </span>
           <span className="text-[11px] text-status-success shrink-0">+{stats.linesAdded}</span>
           <span className="text-[11px] text-status-error shrink-0">-{stats.linesRemoved}</span>
@@ -130,9 +135,9 @@ function PendingChangesBarBase({ pendingChanges }: PendingChangesBarProps) {
           <button
             onClick={handleRejectAll}
             className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-status-error hover:bg-status-error/10 rounded-md transition-all active:scale-95"
-            title={isZh ? '拒绝全部（撤销所有变更）' : 'Reject all (revert all changes)'}
+            title={isZh ? '撤销全部改动（恢复为改动前的内容）' : 'Revert all changes to their previous content'}
           >
-            {isZh ? '全部拒绝' : 'Reject all'}
+            {isZh ? '全部撤销' : 'Revert all'}
           </button>
           <button
             onClick={handleAcceptAll}

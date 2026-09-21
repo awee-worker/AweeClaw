@@ -1,6 +1,8 @@
 import { longTermMemoryService } from './registerHandlers'
 import { logger } from '@toolkit/LogEngine'
 import { StorageService } from '@shared/toolkit/StorageService'
+import { buildMemoryOrigin } from '../memoryWriteGuard'
+import { getLastUntrustedSignal } from '../untrustedContextTracker'
 import type { SelfLearningRecord, BehavioralPattern, LearningResult, LearningEventType } from '@intelligence/providerTypes'
 
 const MAX_RECORDS = 1000
@@ -101,6 +103,7 @@ class ProactiveLearningService {
         result.reinforcedIds.push(entry.id)
       } else {
         try {
+          const origin = buildMemoryOrigin(getLastUntrustedSignal(), 'memory_extract')
           const entry = await longTermMemoryService.addEntry({
             content: pattern.pattern,
             source: 'self_reflection',
@@ -108,6 +111,9 @@ class ProactiveLearningService {
             confidence: pattern.confidence,
             tags: [...pattern.tags, 'behavioral-pattern'],
             verificationStatus: 'unverified',
+            originTrust: origin.trust,
+            originChannel: origin.channel,
+            originLocator: origin.locator,
           })
           result.newMemoryIds.push(entry.id)
         } catch {

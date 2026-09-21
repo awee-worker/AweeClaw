@@ -18,6 +18,7 @@
 
 import { getToolApprovalType } from '@configuration/toolDefinitions'
 import { StorageService } from '@shared/toolkit/StorageService'
+import type { UntrustedSourceSummary } from '@intelligence/types/trustTypes'
 import { assessCommandRisk, type CommandRiskLevel } from './commandRisk'
 
 /** 存储键（StorageService 会自动加命名空间前缀） */
@@ -58,6 +59,13 @@ export interface ApprovalLedgerEntry {
   riskRationale?: string
   /** 命令摘要（截断后的命令，仅命令类工具有值） */
   commandSummary?: string
+  /**
+   * 本次审批发生时上下文里的外部内容来源
+   *
+   * 有值说明该操作是被外部内容引出来的。这是判断「外部内容有没有被拦成动作」
+   * 的直接依据，也是区分「用户自己要做的」与「被外部内容带出来的」唯一事实来源。
+   */
+  untrustedSources?: UntrustedSourceSummary[]
   /** 用户决定 */
   decision: 'approved' | 'rejected'
 }
@@ -89,6 +97,8 @@ export interface BuildApprovalEntryInput {
   decision: 'approved' | 'rejected'
   /** 用户的授权方式 */
   authorizationMode?: string
+  /** 本次审批时上下文中的外部内容来源 */
+  untrustedSources?: UntrustedSourceSummary[]
 }
 
 /**
@@ -98,7 +108,7 @@ export interface BuildApprovalEntryInput {
  * 是后续校准的关键字段，不能只记「用户点了批准」。
  */
 export function buildApprovalEntry(params: BuildApprovalEntryInput): ApprovalLedgerEntry {
-  const { toolCall, requestId, decision, authorizationMode } = params
+  const { toolCall, requestId, decision, authorizationMode, untrustedSources } = params
   const entry: ApprovalLedgerEntry = {
     timestamp: Date.now(),
     requestId,
@@ -107,6 +117,12 @@ export function buildApprovalEntry(params: BuildApprovalEntryInput): ApprovalLed
     approvalType: getToolApprovalType(toolCall.name),
     authorizationMode,
     decision,
+  }
+
+  // 仅在存在时写入：绝大多数审批并无外部内容参与，
+  // 逐条写空字段只会让账本变胖而不增加任何信息
+  if (untrustedSources && untrustedSources.length > 0) {
+    entry.untrustedSources = untrustedSources
   }
 
   if (toolCall.name === 'run_command') {

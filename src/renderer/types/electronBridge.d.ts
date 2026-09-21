@@ -1679,6 +1679,12 @@ export interface ElectronAPI {
   onFileChanged: (callback: (event: { event: 'create' | 'update' | 'delete'; path: string }) => void) => () => void
 
   // Clipboard
+  // Preview (built-in browser)
+  /** 把本地静态文件（或目录）解析成内置浏览器可加载的 http 地址 */
+  preview: {
+    resolveLocalUrl: (localPath: string) => Promise<{ success: boolean; url?: string; error?: string }>
+  }
+
   getClipboardFilePaths: () => Promise<string[]>
   hasClipboardFiles: () => Promise<boolean>
   getClipboardFileAttachments: () => Promise<ClipboardFileAttachment[]>

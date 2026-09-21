@@ -1,3 +1,5 @@
+import type { TrustChannel, TrustLevel } from '@intelligence/types/trustTypes'
+
 export type MemorySource = 'auto_extracted' | 'user' | 'dreaming_light' | 'dreaming_deep' | 'dreaming_rem' | 'self_reflection' | 'self_correction'
 
 export type MemoryStatus = 'short_term' | 'long_term' | 'forgotten'
@@ -31,6 +33,14 @@ export interface MemoryEntry {
   derivedFrom?: string[]
   verificationStatus?: VerificationStatus
   lastVerifiedAt?: number
+  /** 来源信任级别（缺省视为 trusted，兼容存量数据） */
+  originTrust?: TrustLevel
+  /** 来源定位：文件路径 / URL / 服务名 */
+  originLocator?: string
+  /** 来源通道 */
+  originChannel?: TrustChannel
+  /** 证据片段：写入时的原文摘要，用于事后核对 */
+  evidence?: string
 }
 
 export interface MemoryEntryInput {
@@ -46,6 +56,23 @@ export interface MemoryEntryInput {
   verificationStatus?: VerificationStatus
   supersedeId?: string
   supersedeReason?: string
+  /** 来源信任级别（缺省视为 trusted，兼容存量数据） */
+  originTrust?: TrustLevel
+  /** 来源定位：文件路径 / URL / 服务名 */
+  originLocator?: string
+  /** 来源通道 */
+  originChannel?: TrustChannel
+  /** 证据片段：写入时的原文摘要，用于事后核对 */
+  evidence?: string
+}
+
+/** 矛盾记录（持久化，替代仅打日志） */
+export interface MemoryContradictionRecord {
+  id: string
+  entryAId: string
+  entryBId: string
+  reason: string
+  detectedAt: number
 }
 
 export interface MemorySearchParams {

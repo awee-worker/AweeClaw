@@ -6,10 +6,17 @@ import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { playNotificationSound } from '@utils/notificationSound'
-import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
+import { getToolApprovalType, getToolDisplayName, isWriteTool } from '@configuration/toolDefinitions'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
 import { resolveSceneToolsIntent, resolveGitToolsIntent } from '../decision/intentResolvers'
 import { approvalService, requiresApprovalGate } from '@intelligence/engine/toolOrchestrator'
+import { collectUntrustedSignal, rememberUntrustedSignal } from '../runtime/untrustedContextTracker'
+import {
+  buildSubAgentResult,
+  collectEvidence,
+  renderSubAgentResult,
+  type SubAgentResult,
+} from './AgentIRChannel'
 import type { LLMConfig, LLMMessage, ToolDefinition, ToolExecutionContext, ToolExecutionResult } from '@intelligence/providerTypes'
 
 export interface SubLoopOptions {
@@ -26,7 +33,16 @@ export interface SubLoopResult {
   iterations: number
   toolCallsCount: number
   error?: string
+  /**
+   * 规范化后的回传结果
+   *
+   * 父侧需要原文时才读 content；只关心「结论 + 去哪查证」时读该字段，
+   * 避免子代理读到的文件原文进入父上下文。
+   */
+  result: SubAgentResult
 }
+
+export { renderSubAgentResult }
 
 interface CollectedToolCall {
   id: string
@@ -42,6 +58,20 @@ interface LLMCallResult {
 }
 
 const DEFAULT_MAX_ITERATIONS = 15
+
+/**
+ * 单条工具输出的字符上限
+ *
+ * 子代理循环不经过上下文压缩器，读一个大文件就可能把上下文撑爆。
+ * 这里只做兜底截断，上限刻意放宽到不影响正常任务的程度。
+ */
+const TOOL_OUTPUT_CHAR_LIMIT = 40_000
+
+/** 超长工具输出截断并标注，保留头部信息供子代理判断 */
+function clampToolOutput(output: string): string {
+  if (output.length <= TOOL_OUTPUT_CHAR_LIMIT) return output
+  return `${output.slice(0, TOOL_OUTPUT_CHAR_LIMIT)}\n…[输出过长已截断，原始长度 ${output.length} 字符]`
+}
 
 let toolsInitialized = false
 
@@ -286,12 +316,21 @@ async function executeToolCall(
   }
 
   const approvalType = getToolApprovalType(toolCall.name)
-  // 仅 terminal / dangerous 类型需要事前审批；
-  // interaction 类型采用事后确认模式（像 VSCode/Trae），工具直接执行，
-  // 执行成功后由 FileChangeCard 显示"接受/拒绝"按钮
-  if (approvalType === 'terminal' || approvalType === 'dangerous') {
-    // 统一复用 requiresApprovalGate，确保授权方式选择对子 Agent 同样生效
-    const needsApproval = requiresApprovalGate(toolCall, 'agent')
+  // 需要事前审批的范围由授权方式决定（见 decideApprovalByMode）：
+  // 手动审批模式涵盖创建/修改文件、危险命令与外部内容；
+  // 交互类工具采用事后确认模式（像 VSCode/Trae），执行成功后由 FileChangeCard
+  // 显示"接受/拒绝"按钮。免确认的读写类工具直接执行，省掉信号汇总的开销。
+  if (approvalType !== 'none' || isWriteTool(toolCall.name)) {
+    // 统一复用 requiresApprovalGate，确保授权方式选择对子 Agent 同样生效；
+    // 外部内容来源一并透传 —— 子 Agent 的高权限操作不应绕过确认升级
+    const subLoopAgentState = useAgentStore.getState()
+    const subLoopUntrusted = collectUntrustedSignal(
+      subLoopAgentState.threads[subLoopAgentState.currentThreadId ?? '']?.messages,
+      { currentTurnOnly: true },
+    )
+    // 暂存本轮信号：记忆写入等旁路动作拿不到消息数组，只能读这里
+    rememberUntrustedSignal(subLoopUntrusted)
+    const needsApproval = requiresApprovalGate(toolCall, 'agent', subLoopUntrusted, workspacePath)
     if (needsApproval) {
       const toolDisplayName = getToolDisplayName(toolCall.name)
 
@@ -374,16 +413,20 @@ async function executeToolCall(
     if (result.success) {
       const output = typeof result.result === 'string' ? result.result : JSON.stringify(result.result)
       logger.agent.info(`[AgentSubLoop] Tool ${toolCall.name} executed successfully`)
-      return { role: 'tool', content: output || 'Tool executed successfully (no output)', name: toolCall.name }
+      return {
+        role: 'tool',
+        content: clampToolOutput(output) || 'Tool executed successfully (no output)',
+        name: toolCall.name,
+      }
     } else {
       const errorOutput = result.error || 'Tool execution failed'
       logger.agent.warn(`[AgentSubLoop] Tool ${toolCall.name} failed: ${errorOutput}`)
-      return { role: 'tool', content: `Error: ${errorOutput}`, name: toolCall.name }
+      return { role: 'tool', content: `Error: ${clampToolOutput(errorOutput)}`, name: toolCall.name }
     }
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err)
     logger.agent.error(`[AgentSubLoop] Tool ${toolCall.name} exception: ${errorMsg}`)
-    return { role: 'tool', content: `Error: ${errorMsg}`, name: toolCall.name }
+    return { role: 'tool', content: `Error: ${clampToolOutput(errorMsg)}`, name: toolCall.name }
   }
 }
 
@@ -421,9 +464,28 @@ export async function runAgentSubLoop(options: SubLoopOptions): Promise<SubLoopR
 
   let totalToolCallsCount = 0
   let iteration = 0
+
+  /** 本轮的证据来源与工具使用记录，用于构造回传结果 */
+  const toolCallLog: Array<{ toolName: string; args: Record<string, unknown> }> = []
+  const toolsUsed = new Set<string>()
+
+  /** 统一出口：保证每个返回点都带上规范化的回传结果 */
+  const finalize = (content: string, error?: string): SubLoopResult => ({
+    content,
+    iterations: iteration,
+    toolCallsCount: totalToolCallsCount,
+    error,
+    result: buildSubAgentResult({
+      conclusion: content,
+      evidence: collectEvidence(toolCallLog),
+      steps: totalToolCallsCount,
+      toolsUsed: [...toolsUsed],
+    }),
+  })
+
   while (iteration < maxIterations) {
     if (abortSignal?.aborted) {
-      return { content: '', iterations: iteration, toolCallsCount: totalToolCallsCount, error: 'Aborted' }
+      return finalize('', 'Aborted')
     }
 
     iteration++
@@ -435,21 +497,12 @@ export async function runAgentSubLoop(options: SubLoopOptions): Promise<SubLoopR
 
     if (result.error) {
       logger.agent.warn(`[AgentSubLoop] LLM error on iteration ${iteration}: ${result.error}`)
-      return {
-        content: result.content || '',
-        iterations: iteration,
-        toolCallsCount: totalToolCallsCount,
-        error: result.error,
-      }
+      return finalize(result.content || '', result.error)
     }
 
     if (result.toolCalls.length === 0) {
       logger.agent.info(`[AgentSubLoop] No tool calls, loop complete after ${iteration} iterations`)
-      return {
-        content: result.content,
-        iterations: iteration,
-        toolCallsCount: totalToolCallsCount,
-      }
+      return finalize(result.content)
     }
 
     totalToolCallsCount += result.toolCalls.length
@@ -476,6 +529,11 @@ export async function runAgentSubLoop(options: SubLoopOptions): Promise<SubLoopR
     logger.agent.info(
       `[AgentSubLoop] Executing ${result.toolCalls.length} tool calls: ${result.toolCalls.map(tc => tc.name).join(', ')}`
     )
+    for (const tc of result.toolCalls) {
+      toolsUsed.add(tc.name)
+      toolCallLog.push({ toolName: tc.name, args: tc.arguments })
+    }
+
 
     const toolPromises = result.toolCalls.map(tc =>
       executeToolCall(tc, workspacePath, requestId)
@@ -496,15 +554,10 @@ export async function runAgentSubLoop(options: SubLoopOptions): Promise<SubLoopR
     }
 
     if (abortSignal?.aborted) {
-      return { content: '', iterations: iteration, toolCallsCount: totalToolCallsCount, error: 'Aborted' }
+      return finalize('', 'Aborted')
     }
   }
 
   logger.agent.warn(`[AgentSubLoop] Max iterations (${maxIterations}) reached`)
-  return {
-    content: '',
-    iterations: iteration,
-    toolCallsCount: totalToolCallsCount,
-    error: `Max iterations (${maxIterations}) reached`,
-  }
+  return finalize('', `Max iterations (${maxIterations}) reached`)
 }

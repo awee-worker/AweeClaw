@@ -101,6 +101,49 @@ export function renderEvalReportMarkdown(report: EvalReport): string {
     }
   }
 
+  if (report.trajectory) {
+    const trajectory = report.trajectory
+    lines.push('## 执行轨迹')
+    lines.push('')
+    lines.push('| 指标 | 数值 | 说明 |')
+    lines.push('| --- | --- | --- |')
+    lines.push(`| 工具调用总步数 | ${trajectory.totalSteps} | 本次执行的实际步数 |`)
+    lines.push(`| 无效重试次数 | ${trajectory.futileRetries} | 同工具同参数重复且前一步无进展的额外次数 |`)
+    lines.push(`| 无效重试占比 | ${percent(trajectory.futileRetryRatio)} | 相对总步数 |`)
+    lines.push(`| 循环检出次数 | ${trajectory.loopDetections} | 被循环检测拦截的步数 |`)
+    lines.push(
+      `| 首次可用结果步序 | ${trajectory.firstUsefulStep ?? '未产出'} | 越小越好，null 表示全程无有效产出 |`,
+    )
+    lines.push(`| 压缩触发次数 | ${trajectory.compressionEvents.length} | 上下文压缩事件的次数 |`)
+    lines.push('')
+    if (trajectory.compressionEvents.length > 0) {
+      lines.push('压缩事件分布：')
+      lines.push('')
+      lines.push('| 级别 | 触发时刻 |')
+      lines.push('| --- | --- |')
+      for (const event of trajectory.compressionEvents) {
+        lines.push(`| L${event.level} | ${new Date(event.at).toISOString()} |`)
+      }
+      lines.push('')
+    }
+  }
+
+  if (report.stability) {
+    const stability = report.stability
+    lines.push('## 运行稳定性')
+    lines.push('')
+    lines.push('| 指标 | 数值 | 说明 |')
+    lines.push('| --- | --- | --- |')
+    lines.push(`| 重复次数 | ${stability.runs} | 同一批用例的执行轮数 |`)
+    lines.push(`| 全部通过 | ${stability.passAll} | 该轮全部用例通过 |`)
+    lines.push(`| 部分通过 | ${stability.passSome} | 存在随机性，单独看某一轮会误判 |`)
+    lines.push(`| 全部失败 | ${stability.passNone} | 真实缺陷信号 |`)
+    lines.push(`| 通过率方差 | ${stability.variance} | 数值越大说明结果越不稳定 |`)
+    lines.push('')
+    lines.push(`各轮通过率：${stability.passRates.map((rate) => percent(rate)).join(' / ')}`)
+    lines.push('')
+  }
+
   lines.push('## 失败明细')
   lines.push('')
   if (report.taskCompletion.failures.length === 0) {

@@ -36,6 +36,25 @@ import {
   type TaskSampleOutcome,
 } from './metrics'
 import type { EvalReport } from './types'
+import type { ObservabilityBus } from '@intelligence/harness/observability'
+import {
+  appendBaseline,
+  compareBaseline,
+  readLatestBaseline,
+  toObservabilityMetrics,
+  type BaselineArchive,
+  type GateConfig,
+  type GateResult,
+} from './gate'
+
+export {
+  appendBaseline,
+  compareBaseline,
+  extractGateMetrics,
+  readLatestBaseline,
+  renderGateReport,
+} from './gate'
+export type { BaselineArchive, BaselineEntry, GateConfig, GateResult, MetricDelta } from './gate'
 
 /** 评测所使用的工具全集：取所有启用的工具，模拟最坏情况（不做任何维度过滤） */
 export function resolveAllEnabledTools(): string[] {
@@ -137,5 +156,36 @@ export function buildEvalReport(
     ],
     pruning: computePruneMetrics(pruneOutcomes),
     commandRisk: computeCommandRiskMetrics(commandRiskOutcomes),
+  }
+}
+
+/**
+ * 跑一次门禁
+ *
+ * 完整流程：读上一轮基线 → 比对当前结果 → 把当前结果追加进存档。
+ * 首次运行没有基线时只建立基线，不阻断。
+ */
+export function runGate(
+  current: EvalReport,
+  archive: BaselineArchive | null,
+  config: Partial<GateConfig> = {},
+): { gate: GateResult; archive: BaselineArchive } {
+  const baseline = readLatestBaseline(archive)
+  const gate = compareBaseline(baseline, current, config)
+  return { gate, archive: appendBaseline(archive, current) }
+}
+
+/**
+ * 把评测结果写入观测总线，形成时间序列
+ *
+ * 指标名统一加 `eval.` 前缀，便于在总线上与运行时指标区分开。
+ */
+export function emitEvalMetrics(
+  bus: ObservabilityBus,
+  report: EvalReport,
+  gate: GateResult,
+): void {
+  for (const metric of toObservabilityMetrics(report, gate)) {
+    bus.recordMetric(metric.name, metric.value, metric.labels)
   }
 }

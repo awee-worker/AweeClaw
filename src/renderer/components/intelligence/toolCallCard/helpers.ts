@@ -2,7 +2,12 @@
  * 工具调用卡片共享辅助函数
  * 提供参数提取、路径处理、语言推断等纯函数
  */
-import { getExtension, getFileName } from '@shared/toolkit/pathHelper'
+import {
+  getExtension,
+  getFileName,
+  PATH_ARG_KEYS,
+  PATH_LIST_ARG_KEYS,
+} from '@shared/toolkit/pathHelper'
 import type { Language } from '@renderer/i18n'
 
 /** 工具参数类型 */
@@ -35,6 +40,7 @@ export const TOOL_LABEL_KEYS: Record<string, string> = {
   apply_skill: 'tool.label.apply_skill',
   todo_write: 'tool.label.todo_write',
   companion_control: 'tool.label.companion_control',
+  open_preview: 'tool.label.open_preview',
   desktop_list_apps: 'tool.label.desktop_list_apps',
   desktop_launch_app: 'tool.label.desktop_launch_app',
   desktop_quit_app: 'tool.label.desktop_quit_app',
@@ -89,12 +95,22 @@ export const getPathList = (value: unknown): string[] => {
   return asStringArray(value).filter(Boolean)
 }
 
-/** 从工具参数中提取所有路径 */
+/**
+ * 从工具参数中提取所有路径
+ *
+ * 键名清单与执行层的参数归一化同源（@shared/toolkit/pathHelper）：
+ * 执行层认什么键名，卡片就认什么键名，否则会出现「工具正常执行、卡片却显示
+ * 不出目标文件」的错位。
+ */
 export function getToolPathList(args: ToolArgs): string[] {
-  const directPaths = getPathList(args.path)
-  if (directPaths.length > 0) return directPaths
-  const pluralPaths = getPathList(args.paths)
-  if (pluralPaths.length > 0) return pluralPaths
+  for (const key of PATH_ARG_KEYS) {
+    const directPaths = getPathList(args[key])
+    if (directPaths.length > 0) return directPaths
+  }
+  for (const key of PATH_LIST_ARG_KEYS) {
+    const pluralPaths = getPathList(args[key])
+    if (pluralPaths.length > 0) return pluralPaths
+  }
   return []
 }
 

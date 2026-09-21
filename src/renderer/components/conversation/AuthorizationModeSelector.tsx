@@ -4,10 +4,14 @@
  * 位于聊天输入框下方紧贴的 Bottom Actions 栏，与 ModeSelector / ModelSelector 并列。
  * 用户选择后即覆盖 autoApprove / freeModeEnabled，成为工具审批的唯一开关。
  *
- * 三种方式：
- * - every-step（手动审批，默认）：所有有副作用操作均需审批（命令、编辑、删除、邮件等）
- * - dangerous-only（自动审批）：仅危险操作（删除文件、危险命令如 rm -rf）需审批
+ * 三种方式（判定集中在 approvalEscalation.decideApprovalGateByMode）：
+ * - every-step（手动审批，默认）：创建与修改文件直接执行，改动落到输入框上方的变更条，
+ *   由用户接受或撤销；删除文件、危险命令、外部内容（工作区与授权目录之外的路径）需审批
+ * - dangerous-only（自动审批）：仅删除文件等不可逆操作与危险命令（rm 类、git reset --hard 等）需审批
  * - never（完全访问）：所有操作自动执行（主进程安全底线仍独立生效）
+ *
+ * 删除文件一类不可逆操作是前两种方式下的硬约束：既不随「少问」的取舍被稀释，
+ * 也不受工具是否注册审批类型影响（MCP / 场景工具同样拦）。
  *
  * 注意：只控制 UI 层审批门禁，不影响主进程安全底线（命令黑名单、危险模式、敏感路径、工作区边界）
  */
@@ -37,8 +41,8 @@ const MODES: Array<{
     icon: ShieldCheck,
     labelZh: '手动审批',
     labelEn: 'Manual Approval',
-    descZh: '所有副作用操作均需审批（命令、编辑、删除、邮件等）',
-    descEn: 'All side-effect operations require manual approval',
+    descZh: '创建与编辑文件，删除文件、危险命令与工作区外的内容需要审批',
+    descEn: 'Creating and modifying files, deleting files, dangerous commands and content outside the workspace need approval',
     color: 'text-emerald-400',
   },
   {
@@ -46,8 +50,8 @@ const MODES: Array<{
     icon: ShieldAlert,
     labelZh: '自动审批',
     labelEn: 'Auto Approval',
-    descZh: '仅危险操作（删除文件、危险命令如 rm -rf）需审批',
-    descEn: 'Only dangerous operations (deletion, dangerous commands) require approval',
+    descZh: '仅删除文件等不可逆操作与危险命令需审批',
+    descEn: 'Only irreversible operations (such as file deletion) and dangerous commands require approval',
     color: 'text-amber-400',
   },
   {
@@ -63,7 +67,7 @@ const MODES: Array<{
 
 /**
  * authorizationMode 为 undefined（旧版本未设置，回退 autoApprove 逻辑）时，
- * UI 仍展示等效的默认值 dangerous-only，让用户感知当前行为并引导显式选择。
+ * 展示更保守的「手动审批」档位，让用户看到可选的严格档位并引导显式选择。
  */
 const DISPLAY_DEFAULT: AuthorizationMode = 'every-step'
 

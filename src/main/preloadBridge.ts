@@ -51,6 +51,7 @@ import { createDebugMiscApi } from './preload/api/debugMisc'
 import { createDesktopApi } from './preload/api/desktop'
 import { createPluginApi } from './preload/api/plugin'
 import { createClipboardApi } from './preload/api/clipboard'
+import { createPreviewApi } from './preload/api/preview'
 import { createPerceptionApi } from './preload/api/perception'
 import { createPerceptionFusionApi } from './preload/api/perceptionFusion'
 import { createMonitoringApi } from './preload/api/monitoring'
@@ -105,6 +106,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ...createDesktopApi(),
   ...createPluginApi(),
   ...createClipboardApi(),
+  preview: createPreviewApi(),
   ...createCharacterCardApi(),
   ...createEmotionApi(),
   perception: createPerceptionApi(),

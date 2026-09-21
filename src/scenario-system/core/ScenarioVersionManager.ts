@@ -10,6 +10,11 @@
  */
 
 import type { ScenarioVersionInfo, ScenarioLoaderEvent } from '@shared/protocols/scenario-arch'
+import {
+  planScenarioPackageUpgrade,
+  type ScenarioPackageManifest,
+  type ScenarioPackageUpgradePlan,
+} from '@shared/protocols/scenarioPackage'
 import { logger } from '@shared/toolkit/LogEngine'
 
 interface VersionEntry {
@@ -111,6 +116,35 @@ class ScenarioVersionManagerClass {
 
   canUpgrade(_scenarioId: string, fromVersion: string, toVersion: string): boolean {
     return compareVersions(toVersion, fromVersion) > 0
+  }
+
+  /**
+   * 按场景包清单登记版本
+   *
+   * 调用方拿到清单后直接登记，省去逐字段映射。清单里的迁移脚本不在这一步执行。
+   */
+  registerPackageVersion(
+    scenarioId: string,
+    manifest: ScenarioPackageManifest,
+    releasedAt = Date.now(),
+  ): void {
+    this.registerVersion(scenarioId, {
+      version: manifest.version,
+      releasedAt,
+      isStable: true,
+    })
+  }
+
+  /**
+   * 判断能否从当前版本升级到清单版本，并给出需要执行的迁移脚本
+   *
+   * 门面方法：调用方不必同时依赖清单模块与版本管理器两处口径。
+   */
+  planPackageUpgrade(
+    current: ScenarioPackageManifest | null,
+    next: ScenarioPackageManifest,
+  ): ScenarioPackageUpgradePlan {
+    return planScenarioPackageUpgrade(current, next)
   }
 
   cleanupScenario(scenarioId: string): void {

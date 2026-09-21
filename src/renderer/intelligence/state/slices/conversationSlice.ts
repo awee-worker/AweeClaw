@@ -24,6 +24,9 @@ import type {
 } from '@intelligence/providerTypes'
 import type { LLMStreamSource } from '@shared/protocols/modelGateway'
 import { createIdleHandoffState, getMessageText } from '@intelligence/providerTypes'
+import { classifyToolOrigin, type TrustScope } from '@intelligence/runtime/toolOriginClassifier'
+import { buildToolPathPolicy } from '@intelligence/toolkit/toolPathPolicy'
+import { getTrustedAppDataRoots } from '@intelligence/toolkit/trustedPathRegistry'
 import { streamingBuffer } from '../StreamBuffer'
 import type { ThreadSlice } from './dialogThread'
 import { useStore } from '@store'
@@ -45,7 +48,7 @@ export interface MessageActions {
     finalizeAssistant: (messageId: string, targetThreadId?: string) => void
     finalizeTextBeforeToolCall: (messageId: string, targetThreadId?: string) => void
     updateMessage: (messageId: string, updates: Partial<ChatMessage>, targetThreadId?: string) => void
-    addToolResult: (toolCallId: string, name: string, content: string, type: ToolResultType, rawParams?: Record<string, unknown>, targetThreadId?: string) => string
+    addToolResult: (toolCallId: string, name: string, content: string, type: ToolResultType, rawParams?: Record<string, unknown>, targetThreadId?: string, executionRoot?: string | null) => string
     addCheckpoint: (type: 'user_message' | 'tool_edit', fileSnapshots: Record<string, FileSnapshot>, targetThreadId?: string) => string
     clearMessages: (targetThreadId?: string) => void
     deleteMessagesAfter: (messageId: string, targetThreadId?: string) => void
@@ -569,9 +572,32 @@ export const createMessageSlice: StateCreator<
     },
 
     // 添加工具结果
-    addToolResult: (toolCallId, name, content, type, rawParams, targetThreadId) => {
+    addToolResult: (toolCallId, name, content, type, rawParams, targetThreadId, executionRoot) => {
         const threadId = targetThreadId || get().currentThreadId
         if (!threadId) return ''
+
+        // 结果来源在写入时即固定：后续上下文构建与审批都依赖它区分「指令」与「数据」，
+        // 若延迟到读取时判定，参数已可能被压缩/清理而丢失路径信息
+        //
+        // 可信范围必须与工具执行的放行依据同源：项目执行窗口里相对路径解析到项目目录
+        // （工具上下文的 workspacePath），而 store 的 workspacePath 是全局工作区。
+        // 只用 store 的值判定，AI 在项目目录里创建的文件会被判成「外部内容」，
+        // 当轮后续的写入操作随即多一次确认 —— 与界面展示的授权方式不符。
+        const mainStore = useStore.getState()
+        const trustScope: TrustScope = {
+            executionRoot: executionRoot ?? null,
+            authorizedRoots: buildToolPathPolicy({
+                allowedToolPaths: mainStore.allowedToolPaths,
+                securitySettings: mainStore.securitySettings,
+                trustedAppDataRoots: getTrustedAppDataRoots(),
+            }).extraAllowedRoots,
+        }
+        const origin = classifyToolOrigin(
+            name,
+            rawParams,
+            mainStore.workspacePath,
+            trustScope,
+        )
 
         const message: ToolResultMessage = {
             id: generateId(),
@@ -582,6 +608,7 @@ export const createMessageSlice: StateCreator<
             timestamp: Date.now(),
             type,
             rawParams,
+            origin,
         }
 
         set(state => {

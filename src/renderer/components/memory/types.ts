@@ -3,6 +3,8 @@
  * 与后端 Prisma schema 对齐
  */
 
+import type { TrustChannel, TrustLevel } from '@intelligence/types/trustTypes'
+
 // ============ 枚举类型 ============
 
 export type MemoryCategory =
@@ -70,6 +72,11 @@ export interface AgentMemory {
   classifiedBy?: ClassifiedBy | null
   classifiedAt?: string | null
   classificationConfidence?: number | null
+  // v3.2 来源溯源（存量数据可能为空，展示为「来源未知」）
+  originTrust?: TrustLevel | null
+  originLocator?: string | null
+  originChannel?: TrustChannel | null
+  evidence?: string | null
   // 关联数据
   spatialMemory?: SpatialMemory | null
   sourceRelations?: MemoryRelation[]
@@ -276,6 +283,52 @@ export interface MemoryFilter {
   minImportance?: number
   maxImportance?: number
   enabledOnly?: boolean
+  /** 来源信任级别筛选（'all' 表示不筛选） */
+  originTrust?: TrustLevel | 'all'
+  /** 来源通道筛选（'all' 表示不筛选） */
+  originChannel?: TrustChannel | 'all'
+}
+
+/** 记忆矛盾记录（哪两条记忆被判为矛盾） */
+export interface MemoryContradiction {
+  id: string
+  entryAId: string
+  entryBId: string
+  reason: string
+  detectedAt: string
+}
+
+/** 来源分布统计（按信任级别与通道分组） */
+export interface MemoryOriginStats {
+  byTrust: Array<{ trust: TrustLevel | 'unknown'; count: number }>
+  byChannel: Array<{ channel: TrustChannel | 'unknown'; count: number }>
+}
+
+// ============ 来源显示元数据 ============
+
+/** 来源信任级别展示元数据 */
+export const ORIGIN_TRUST_META: Record<
+  TrustLevel | 'unknown',
+  { label: string; labelEn: string; color: string; description: string }
+> = {
+  instruction: { label: '指令', labelEn: 'Instruction', color: '#3B82F6', description: '系统提示、用户直输指令' },
+  trusted: { label: '可信', labelEn: 'Trusted', color: '#10B981', description: '工作区文件、本地知识库、本地执行结果' },
+  untrusted: { label: '不可信', labelEn: 'Untrusted', color: '#EF4444', description: '网页、外部服务、渠道消息、外部智能体' },
+  unknown: { label: '来源未知', labelEn: 'Unknown', color: '#6B7280', description: '历史数据，未记录来源' },
+}
+
+/** 来源通道展示元数据 */
+export const ORIGIN_CHANNEL_META: Record<
+  TrustChannel | 'unknown',
+  { label: string; labelEn: string }
+> = {
+  local_fs: { label: '本地文件', labelEn: 'Local file' },
+  local_compute: { label: '本地执行', labelEn: 'Local compute' },
+  web: { label: '网页抓取', labelEn: 'Web' },
+  external_service: { label: '外部服务', labelEn: 'External service' },
+  channel_message: { label: '渠道消息', labelEn: 'Channel message' },
+  agent: { label: '外部智能体', labelEn: 'External agent' },
+  unknown: { label: '未知通道', labelEn: 'Unknown' },
 }
 
 // ============ 分类显示元数据 ============

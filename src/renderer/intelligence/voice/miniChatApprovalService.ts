@@ -15,9 +15,9 @@
  */
 
 import { logger } from '@toolkit/LogEngine'
-import { needsCommandApproval } from '@intelligence/decision/commandRisk'
 import { buildApprovalEntry, recordApproval } from '@intelligence/decision/approvalLedger'
-import { getToolApprovalType, isWriteTool } from '@configuration/toolDefinitions'
+import { decideApprovalByMode, isIrreversibleTool } from '@intelligence/decision/approvalEscalation'
+import { getToolApprovalType } from '@configuration/toolDefinitions'
 import type { ApprovalGateToolInfo } from '@intelligence/engine/toolOrchestrator'
 
 // ============================================
@@ -61,18 +61,21 @@ class MiniChatApprovalCoordinator {
   /**
    * 检查工具是否需要审批（store 独立版本）
    *
-   * 与 toolOrchestrator.ts 的 requiresApprovalGate 逻辑一致，
-   * 但 authorizationMode 由参数传入，不依赖 Zustand store。
+   * 授权方式已设置时由 decideApprovalByMode 统一判定，与主窗口 requiresApprovalGate
+   * 同源，避免两处规则各自演化；authorizationMode 由参数传入，不依赖 Zustand store。
+   * 删除文件一类不可逆操作在两种授权方式下都强制确认，语音入口不做例外。
    *
    * @param toolCall 工具调用信息
    * @param authorizationMode 授权方式（来自 voiceContext）
    * @param chatMode 聊天模式（'agent' / 'chat'）
+   * @param workspacePath 当前工作区路径，用于判定「外部内容」
    * @returns 是否需要审批
    */
   checkApprovalNeeded(
     toolCall: ApprovalGateToolInfo,
     authorizationMode: AuthorizationMode | undefined,
     chatMode?: string,
+    workspacePath?: string | null,
   ): boolean {
     // chat 模式（纯对话无工具副作用）始终不审批
     if (chatMode === 'chat') return false
@@ -82,28 +85,15 @@ class MiniChatApprovalCoordinator {
     const toolName = toolCall.name
     const approvalType = getToolApprovalType(toolName)
 
-    // authorizationMode 有值时，成为工具审批的唯一开关
     if (authorizationMode !== undefined) {
-      if (authorizationMode === 'never') {
-        // 无需确认：所有操作免 UI 审批
-        return false
-      }
-      if (authorizationMode === 'dangerous-only') {
-        // 危险确认：危险操作 + 风险命令需审批（判定与主窗口门禁同源）
-        if (approvalType === 'dangerous') return true
-        if (toolName === 'run_command') {
-          const command = toolCall.arguments?.command as string | undefined
-          if (command && needsCommandApproval(command)) return true
-        }
-        return false
-      }
-      if (authorizationMode === 'every-step') {
-        // 每步确认：所有有副作用操作都审批；纯读不审批
-        return approvalType !== 'none' || isWriteTool(toolName)
-      }
-      // 未知模式兜底：需审批（更安全）
-      return true
+      return decideApprovalByMode(toolName, toolCall.arguments, authorizationMode, {
+        workspacePath,
+      })
     }
+
+    // 删除文件一类不可逆操作同样强制确认：MCP 与场景工具没有审批类型注册，
+    // 只看 approvalType 会让它们在语音入口静默通过
+    if (isIrreversibleTool(toolName)) return true
 
     // authorizationMode 未设置时：默认需要审批（安全优先）
     // 与主窗口 store 的回退逻辑不同，这里不依赖 autoApprove/freeModeEnabled

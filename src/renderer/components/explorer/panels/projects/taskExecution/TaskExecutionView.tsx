@@ -35,6 +35,7 @@ import { tasksApi, getApiErrorMessage } from '@renderer/adapters/taskProjectApi'
 import { logger } from '@shared/toolkit/LogEngine'
 import type { TaskItem } from '../../tasks/types'
 import { TASK_STATUS_CONFIG } from '../../tasks/taskConstants'
+import PendingChangesBar from '@renderer/components/intelligence/PendingChangesBar'
 import { TaskExecutionMessages } from './TaskExecutionMessages'
 import { TaskExecutionInput } from './TaskExecutionInput'
 import { TaskResultCard } from './TaskResultCard'
@@ -95,6 +96,10 @@ export function TaskExecutionView({
 
   // threadMessageVersions 用于触发消息列表重渲染（消息内容变更时版本号递增）
   const messageVersion = useAgentStore(s => s.threadMessageVersions[threadId] ?? 0)
+
+  // 文件改动复核条的数据源：手动审批模式下写入不阻塞执行，
+  // 改动需要在这里留一个接受或撤销的入口，否则执行视图里就成了静默写入
+  const pendingChanges = useAgentStore(s => s.pendingChanges)
 
   // 从响应式 streamState 派生 isStreaming（避免非响应式的 getState 调用导致 UI 不更新）
   const isStreaming = streamState.phase === 'streaming'
@@ -407,6 +412,13 @@ export function TaskExecutionView({
           )}
 
           {/* 工具批准：已改为内联渲染于工具卡片（ToolCallGroup），与主聊天窗口一致，无需独立批准条 */}
+
+          {/* 文件改动复核：与主会话一致，创建与修改文件执行后在此接受或撤销 */}
+          {pendingChanges.length > 0 && (
+            <div className="flex-shrink-0 px-4 pb-1">
+              <PendingChangesBar pendingChanges={pendingChanges} />
+            </div>
+          )}
 
           {/* 发送错误提示 */}
           {sendError && (

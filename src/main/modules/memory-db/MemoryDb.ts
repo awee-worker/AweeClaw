@@ -15,6 +15,7 @@
  * - memory_classification_log: 分类日志
  * - memory_feedback: 用户反馈
  * - memory_version: 记忆版本历史
+ * - memory_contradiction: 矛盾记录（哪两条记忆被判为矛盾及原因）
  * - memory_sync_state: 云端同步状态（记录最后同步时间、游标）
  */
 
@@ -62,10 +63,24 @@ export interface MemoryEntryRow {
   enabled: number // 0 | 1
   source: string | null
   version: number
+  // v3.2 来源溯源
+  origin_trust: string | null
+  origin_locator: string | null
+  origin_channel: string | null
+  evidence: string | null
   // 同步字段
   sync_status: string // local | synced | pending_push | pending_pull
   remote_id: string | null
   last_synced_at: number | null
+}
+
+/** 记忆矛盾记录行（对应 memory_contradiction 表） */
+export interface MemoryContradictionRow {
+  id: string
+  entry_a_id: string
+  entry_b_id: string
+  reason: string
+  detected_at: number
 }
 
 export interface MemoryRelationRow {
@@ -243,10 +258,31 @@ export class MemoryDb {
         enabled                 INTEGER NOT NULL DEFAULT 1,
         source                  TEXT,
         version                 INTEGER NOT NULL DEFAULT 1,
+        origin_trust            TEXT,
+        origin_locator          TEXT,
+        origin_channel          TEXT,
+        evidence                TEXT,
         sync_status             TEXT NOT NULL DEFAULT 'local',
         remote_id               TEXT,
         last_synced_at          INTEGER
       )
+    `)
+
+    // 记忆矛盾记录表（v3.2：矛盾检出从日志升级为可查询记录）
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS memory_contradiction (
+        id          TEXT PRIMARY KEY NOT NULL,
+        entry_a_id  TEXT NOT NULL,
+        entry_b_id  TEXT NOT NULL,
+        reason      TEXT NOT NULL DEFAULT '',
+        detected_at INTEGER NOT NULL DEFAULT 0
+      )
+    `)
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_memory_contradiction_entry_a ON memory_contradiction (entry_a_id)
+    `)
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_memory_contradiction_entry_b ON memory_contradiction (entry_b_id)
     `)
 
     // 记忆关联关系表
@@ -374,6 +410,20 @@ export class MemoryDb {
     `)
   }
 
+  /** 读取某张表已有的列名集合（表不存在时返回空集合） */
+  private getTableColumns(table: string): Set<string> {
+    const cols = new Set<string>()
+    try {
+      const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name?: unknown }>
+      for (const row of rows) {
+        if (row && typeof row.name === 'string') cols.add(row.name)
+      }
+    } catch (err) {
+      logger.agent.warn(`[MemoryDb] Failed to read columns of ${table}:`, err)
+    }
+    return cols
+  }
+
   /** Schema 迁移 */
   private migrateSchema(): void {
     const existingVersion = this.db.prepare("SELECT value FROM schema_version WHERE key = 'version'").get() as any
@@ -383,6 +433,37 @@ export class MemoryDb {
       this.db.prepare("INSERT OR REPLACE INTO schema_version (key, value) VALUES ('version', '1')").run()
       logger.agent.info('[MemoryDb] Schema initialized to v1')
     }
+
+    if (version < 2) {
+      this.migrateToV2()
+    }
+  }
+
+  /**
+   * v2 迁移：记忆条目新增来源溯源字段。
+   *
+   * 存量行没有来源信息，统一置为 trusted —— 「来源未知」不等于「来源不可信」，
+   * 若按不可信处理会让全部历史记忆被下游净化规则拦下。
+   */
+  private migrateToV2(): void {
+    const columns: Array<{ name: string; ddl: string }> = [
+      { name: 'origin_trust', ddl: 'origin_trust TEXT' },
+      { name: 'origin_locator', ddl: 'origin_locator TEXT' },
+      { name: 'origin_channel', ddl: 'origin_channel TEXT' },
+      { name: 'evidence', ddl: 'evidence TEXT' },
+    ]
+
+    const existing = this.getTableColumns('memory_entry')
+    for (const column of columns) {
+      if (existing.has(column.name)) continue
+      this.db.exec(`ALTER TABLE memory_entry ADD COLUMN ${column.ddl}`)
+    }
+
+    this.db.exec(
+      "UPDATE memory_entry SET origin_trust = 'trusted' WHERE origin_trust IS NULL OR origin_trust = ''"
+    )
+    this.db.prepare("INSERT OR REPLACE INTO schema_version (key, value) VALUES ('version', '2')").run()
+    logger.agent.info('[MemoryDb] Schema migrated to v2 (memory origin columns)')
   }
 
   // ============================================
@@ -398,13 +479,17 @@ export class MemoryDb {
         access_count, last_accessed_at, expires_at, created_at, updated_at,
         category, subcategory, tier, classification_confidence, classified_by,
         classified_at, content_hash, retention_score, last_reviewed_at, review_count,
-        spatial_context, tags, enabled, source, version, sync_status, remote_id, last_synced_at
+        spatial_context, tags, enabled, source, version,
+        origin_trust, origin_locator, origin_channel, evidence,
+        sync_status, remote_id, last_synced_at
       ) VALUES (
         @id, @user_id, @conversation_id, @type, @content, @summary, @importance,
         @access_count, @last_accessed_at, @expires_at, @created_at, @updated_at,
         @category, @subcategory, @tier, @classification_confidence, @classified_by,
         @classified_at, @content_hash, @retention_score, @last_reviewed_at, @review_count,
-        @spatial_context, @tags, @enabled, @source, @version, @sync_status, @remote_id, @last_synced_at
+        @spatial_context, @tags, @enabled, @source, @version,
+        @origin_trust, @origin_locator, @origin_channel, @evidence,
+        @sync_status, @remote_id, @last_synced_at
       )
       ON CONFLICT(id) DO UPDATE SET
         user_id = @user_id,
@@ -432,6 +517,10 @@ export class MemoryDb {
         enabled = @enabled,
         source = @source,
         version = @version,
+        origin_trust = @origin_trust,
+        origin_locator = @origin_locator,
+        origin_channel = @origin_channel,
+        evidence = @evidence,
         sync_status = @sync_status,
         remote_id = @remote_id,
         last_synced_at = @last_synced_at
@@ -463,6 +552,10 @@ export class MemoryDb {
       enabled: entry.enabled ?? 1,
       source: entry.source ?? null,
       version: entry.version ?? 1,
+      origin_trust: entry.origin_trust ?? null,
+      origin_locator: entry.origin_locator ?? null,
+      origin_channel: entry.origin_channel ?? null,
+      evidence: entry.evidence ?? null,
       sync_status: entry.sync_status ?? 'local',
       remote_id: entry.remote_id ?? null,
       last_synced_at: entry.last_synced_at ?? null,
@@ -505,6 +598,10 @@ export class MemoryDb {
     minImportance?: number
     maxImportance?: number
     enabledOnly?: boolean
+    /** 按来源信任级别筛选（all / trusted / untrusted） */
+    originTrust?: string
+    /** 按来源通道筛选 */
+    originChannel?: string
     sortBy?: string
     sortOrder?: 'asc' | 'desc'
     limit?: number
@@ -574,6 +671,15 @@ export class MemoryDb {
     if (options.enabledOnly) {
       where.push('enabled = 1')
     }
+    // 来源筛选：'all' 表示不筛选
+    if (options.originTrust && options.originTrust !== 'all') {
+      where.push('origin_trust = ?')
+      params.push(options.originTrust)
+    }
+    if (options.originChannel && options.originChannel !== 'all') {
+      where.push('origin_channel = ?')
+      params.push(options.originChannel)
+    }
 
     const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
     const allowedSortFields = ['created_at', 'updated_at', 'importance', 'retention_score', 'last_reviewed_at']
@@ -602,6 +708,7 @@ export class MemoryDb {
       'last_reviewed_at', 'review_count', 'spatial_context', 'tags', 'enabled',
       'source', 'version', 'sync_status', 'remote_id', 'last_synced_at',
       'user_id', 'conversation_id', 'type',
+      'origin_trust', 'origin_locator', 'origin_channel', 'evidence',
     ]
 
     const setClauses: string[] = []
@@ -628,6 +735,8 @@ export class MemoryDb {
   /** 删除记忆条目 */
   deleteEntry(id: string): boolean {
     const result = this.db.prepare('DELETE FROM memory_entry WHERE id = ?').run(id)
+    // 同步清理矛盾记录：条目已删，指向它的记录会变成悬空引用
+    this.deleteContradictionsByEntry(id)
     return result.changes > 0
   }
 
@@ -643,7 +752,36 @@ export class MemoryDb {
       return result.changes
     }
     const result = this.db.prepare('DELETE FROM memory_entry').run()
+    // 记忆已清空，矛盾记录失去指向对象，一并清理
+    this.db.prepare('DELETE FROM memory_contradiction').run()
     return result.changes
+  }
+
+  /**
+   * 来源分布统计（按信任级别与通道分组）
+   *
+   * 存量行没有来源信息，统一归入 unknown，不并入 trusted ——
+   * 审计视图要能看出「有多少条记忆的来源是不可追溯的」。
+   */
+  getOriginStats(): {
+    byTrust: Array<{ trust: string; count: number }>
+    byChannel: Array<{ channel: string; count: number }>
+  } {
+    const byTrust = this.db.prepare(
+      `SELECT COALESCE(NULLIF(origin_trust, ''), 'unknown') AS trust, COUNT(*) AS count
+       FROM memory_entry
+       GROUP BY COALESCE(NULLIF(origin_trust, ''), 'unknown')
+       ORDER BY count DESC`
+    ).all() as Array<{ trust: string; count: number }>
+
+    const byChannel = this.db.prepare(
+      `SELECT COALESCE(NULLIF(origin_channel, ''), 'unknown') AS channel, COUNT(*) AS count
+       FROM memory_entry
+       GROUP BY COALESCE(NULLIF(origin_channel, ''), 'unknown')
+       ORDER BY count DESC`
+    ).all() as Array<{ channel: string; count: number }>
+
+    return { byTrust, byChannel }
   }
 
   /** 获取记忆统计 */
@@ -1199,6 +1337,75 @@ export class MemoryDb {
   deleteRelation(id: string): boolean {
     const result = this.db.prepare('DELETE FROM memory_relation WHERE id = ?').run(id)
     return result.changes > 0
+  }
+
+  // ============================================
+  // 矛盾记录
+  // ============================================
+
+  /**
+   * 写入矛盾记录。
+   *
+   * 同一对条目（不分先后）只保留一条，重复检出时更新原因与时间。
+   */
+  upsertContradictionRecord(record: {
+    id?: string
+    entryAId: string
+    entryBId: string
+    reason?: string
+    detectedAt?: number
+  }): void {
+    const { entryAId, entryBId } = record
+    if (!entryAId || !entryBId || entryAId === entryBId) return
+
+    const existing = this.db.prepare(
+      `SELECT id FROM memory_contradiction
+       WHERE (entry_a_id = ? AND entry_b_id = ?) OR (entry_a_id = ? AND entry_b_id = ?)`
+    ).get(entryAId, entryBId, entryBId, entryAId) as { id: string } | undefined
+
+    const now = Date.now()
+    if (existing) {
+      this.db.prepare(
+        'UPDATE memory_contradiction SET reason = ?, detected_at = ? WHERE id = ?'
+      ).run(record.reason ?? '', record.detectedAt ?? now, existing.id)
+      return
+    }
+
+    this.db.prepare(
+      `INSERT INTO memory_contradiction (id, entry_a_id, entry_b_id, reason, detected_at)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(
+      record.id ?? crypto.randomUUID(),
+      entryAId,
+      entryBId,
+      record.reason ?? '',
+      record.detectedAt ?? now,
+    )
+  }
+
+  /** 查询某条记忆参与的全部矛盾记录 */
+  getContradictionsByEntry(entryId: string): MemoryContradictionRow[] {
+    return this.db.prepare(
+      `SELECT * FROM memory_contradiction
+       WHERE entry_a_id = ? OR entry_b_id = ?
+       ORDER BY detected_at DESC`
+    ).all(entryId, entryId) as MemoryContradictionRow[]
+  }
+
+  /** 查询全部矛盾记录 */
+  getAllContradictions(limit: number = 200): MemoryContradictionRow[] {
+    const safeLimit = Math.min(Math.max(limit, 1), 1000)
+    return this.db.prepare(
+      'SELECT * FROM memory_contradiction ORDER BY detected_at DESC LIMIT ?'
+    ).all(safeLimit) as MemoryContradictionRow[]
+  }
+
+  /** 删除某条记忆参与的全部矛盾记录 */
+  deleteContradictionsByEntry(entryId: string): number {
+    const result = this.db.prepare(
+      'DELETE FROM memory_contradiction WHERE entry_a_id = ? OR entry_b_id = ?'
+    ).run(entryId, entryId)
+    return result.changes
   }
 
   // ============================================

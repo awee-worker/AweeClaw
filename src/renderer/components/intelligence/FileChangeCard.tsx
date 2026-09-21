@@ -19,7 +19,9 @@ import { getFileName, joinPath } from '@shared/toolkit/pathHelper'
 import { ExpandablePreviewContainer } from './ToolCallCard'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { t } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
+import { getFriendlyToolName } from '@intelligence/display/toolFriendlyName'
+import { getPrimaryToolPath } from './toolCallCard/helpers'
 import { api } from '../../adapters/electronBridge'
 import { toast } from '@components/foundation/NotificationProvider'
 
@@ -49,9 +51,10 @@ function resolveAbsolutePath(filePath: string, workspacePath: string): string {
   return joinPath(workspacePath, filePath)
 }
 
-/** 从工具参数中提取文件路径 */
+/** 从工具参数中提取文件路径（兼容 path / file_path / filePath，场景开发工具用后者） */
 function extractFilePath(args: Record<string, unknown>, meta?: Record<string, unknown>): string {
-  return ((args.path as string) || (meta?.filePath as string)) || ''
+  const metaPath = meta?.filePath
+  return getPrimaryToolPath(args) || (typeof metaPath === 'string' ? metaPath : '')
 }
 
 /** 解析旧内容来源：meta.oldContent > old_string > 流式占位 */
@@ -283,6 +286,21 @@ function ApprovalBar({
   )
 }
 
+/**
+ * 等待确认提示
+ *
+ * 审批入口不在会话内时（主聊天窗口统一由输入框上方的审批条处理）使用：
+ * 卡片仍要说明「卡在这一步」，但不在这里放批准/拒绝按钮。
+ */
+function AwaitingNotice({ language }: { language: string }) {
+  return (
+    <div className="px-3 py-2 border-t border-status-warning/10 bg-status-warning/5">
+      <span className="text-xs text-status-warning/70 truncate">
+        {t('toolAwaitingApprovalInBar', language as any)}
+      </span>
+    </div>
+  )
+}
 /** 错误信息块 */
 function ErrorBlock({ error }: { error: string }) {
   return (
@@ -477,7 +495,11 @@ function FileChangeCard({
   ) : isActive ? (
     <span className="font-medium text-[12px] italic">editing...</span>
   ) : (
-    <span className="font-medium text-[12px] text-text-primary opacity-50">&lt;empty path&gt;</span>
+    // 参数里没有路径时（例如非标准路径键名的工具），退化成工具动作名，
+    // 让等待确认的卡片仍能说明「这次要做什么」，而不是抛一个开发者占位符
+    <span className="font-medium text-[12px] text-text-secondary">
+      {getFriendlyToolName(toolCall.name, language as Language).label}
+    </span>
   )
 
   const trailing = (
@@ -563,9 +585,12 @@ function FileChangeCard({
 
       {toolCall.error && isExpanded && <ErrorBlock error={toolCall.error} />}
 
-      {isAwaitingApproval && (
-        <ApprovalBar language={language} onApprove={onApprove} onReject={onReject} />
-      )}
+      {isAwaitingApproval &&
+        (onApprove ? (
+          <ApprovalBar language={language} onApprove={onApprove} onReject={onReject} />
+        ) : (
+          <AwaitingNotice language={language} />
+        ))}
     </div>
   )
 }

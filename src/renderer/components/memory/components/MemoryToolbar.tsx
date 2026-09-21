@@ -19,12 +19,14 @@ import {
 import { useMemoryStore } from '../store'
 import {
   CATEGORY_META,
+  ORIGIN_CHANNEL_META,
   TIER_META,
   type MemoryCategory,
   type MemoryTier,
   type MemoryViewMode,
   type MemorySortField,
 } from '../types'
+import type { TrustChannel, TrustLevel } from '@intelligence/types/trustTypes'
 
 const VIEW_MODES: Array<{ mode: MemoryViewMode; icon: typeof LayoutList; label: string }> = [
   { mode: 'list', icon: LayoutList, label: '列表' },
@@ -40,6 +42,13 @@ const SORT_FIELDS: Array<{ field: MemorySortField; label: string }> = [
   { field: 'importance', label: '重要性' },
   { field: 'retentionScore', label: '保留值' },
   { field: 'lastReviewedAt', label: '复习时间' },
+]
+
+/** 来源信任筛选选项（'all' 表示不筛选） */
+const ORIGIN_TRUST_FILTERS: Array<{ value: TrustLevel | 'all'; label: string }> = [
+  { value: 'all', label: '全部' },
+  { value: 'trusted', label: '可信' },
+  { value: 'untrusted', label: '不可信' },
 ]
 
 export function MemoryToolbar() {
@@ -101,6 +110,25 @@ export function MemoryToolbar() {
     [filter.tiers, setFilter, fetchMemories],
   )
 
+  // 来源信任筛选
+  const toggleOriginTrust = useCallback(
+    (trust: TrustLevel | 'all') => {
+      setFilter({ originTrust: trust })
+      setTimeout(() => fetchMemories(true), 0)
+    },
+    [setFilter, fetchMemories],
+  )
+
+  // 来源通道筛选
+  const toggleOriginChannel = useCallback(
+    (channel: TrustChannel | 'all') => {
+      setFilter({ originChannel: channel })
+      setTimeout(() => fetchMemories(true), 0)
+    },
+    [setFilter, fetchMemories],
+  )
+
+
   // 批量删除
   const handleBatchDelete = useCallback(async () => {
     if (!confirm(`确定要删除选中的 ${selectedMemoryIds.size} 条记忆吗？`)) return
@@ -118,7 +146,9 @@ export function MemoryToolbar() {
     !!filter.keyword ||
     (filter.categories && filter.categories.length > 0) ||
     (filter.tiers && filter.tiers.length > 0) ||
-    filter.minImportance !== undefined
+    filter.minImportance !== undefined ||
+    (filter.originTrust !== undefined && filter.originTrust !== 'all') ||
+    (filter.originChannel !== undefined && filter.originChannel !== 'all')
 
   return (
     <div className="flex flex-col gap-2 px-4 py-3 border-b border-border/40 bg-surface/20">
@@ -300,6 +330,47 @@ export function MemoryToolbar() {
               )
             })}
           </div>
+
+          <div className="w-px h-4 bg-border/40" />
+
+          {/* 来源信任筛选：审计入口，用于找出全部外部来源的记忆 */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs text-text-muted">来源：</span>
+            {ORIGIN_TRUST_FILTERS.map(({ value, label }) => {
+              const active = (filter.originTrust ?? 'all') === value
+              return (
+                <button
+                  key={value}
+                  onClick={() => toggleOriginTrust(value)}
+                  className={`text-xs px-2 py-0.5 rounded border transition-all ${
+                    active
+                      ? 'font-medium bg-accent/10 text-accent border-accent/30'
+                      : 'text-text-secondary hover:text-text-primary border-border/40'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* 来源通道筛选 */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-text-muted">通道：</span>
+            <select
+              value={filter.originChannel ?? 'all'}
+              onChange={(e) => toggleOriginChannel(e.target.value as TrustChannel | 'all')}
+              className="text-xs px-1.5 py-0.5 rounded border border-border/40 bg-surface text-text-secondary focus:outline-none focus:border-accent/40"
+            >
+              <option value="all">全部</option>
+              {Object.entries(ORIGIN_CHANNEL_META).map(([key, meta]) => (
+                <option key={key} value={key}>
+                  {meta.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
 
           {hasActiveFilter && (
             <button

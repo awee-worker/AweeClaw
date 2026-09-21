@@ -25,6 +25,16 @@ import { getBuiltinProvider } from '@shared/configuration/aiProviders'
 import { useStore } from '@store'
 import type { LLMConfig } from '@intelligence/providerTypes'
 import type { ComplexityScore } from '../capabilities/planning/TaskComplexityDetector'
+import {
+  DEFAULT_PRIVACY_POLICY,
+  egressAudit,
+  isLocalProvider,
+  recordRoutingDecision,
+  resolveLocalFirstDecision,
+  type EgressAuditLog,
+  type LocalFirstDecision,
+  type PrivacyPolicy,
+} from './egressAudit'
 
 /** 路由层级 */
 export type ModelTier = 'lightweight' | 'standard' | 'complex'
@@ -272,3 +282,52 @@ class ModelRouter {
 
 /** 模型路由器单例 */
 export const modelRouter = new ModelRouter()
+
+/**
+ * 记录本次路由决策的出口信息
+ *
+ * 在 route() 之后调用。层级路由回答「用哪个模型」，这里回答
+ * 「这次调用会发到本机还是外部」，并落到出口审计，供隐私面板查证。
+ *
+ * 敏感内容命中强制本地策略但本地不可用时，按策略配置决定拒绝还是回退，
+ * 拒绝时不产生出口记录（没有发生网络行为）。
+ */
+export function recordRoutingEgress(
+  decision: RoutingDecision,
+  input: {
+    tokens?: number
+    sensitive?: boolean
+    policy?: PrivacyPolicy
+    /** 本地模型是否可用，缺省按提供商判定 */
+    localModelAvailable?: boolean
+  } = {},
+  log: EgressAuditLog = egressAudit,
+): LocalFirstDecision {
+  const policy = input.policy ?? DEFAULT_PRIVACY_POLICY
+  const localModelAvailable = input.localModelAvailable ?? isLocalProvider(decision.config.provider)
+
+  const localDecision = resolveLocalFirstDecision({
+    policy,
+    sensitive: input.sensitive ?? false,
+    localModelAvailable,
+  })
+
+  if (localDecision.chosen === 'denied') {
+    logger.agent.warn(
+      `[ModelRouter] 敏感内容按策略拒绝外发（本地模型不可用）：${localDecision.reason}`
+    )
+    return localDecision
+  }
+
+  recordRoutingDecision(
+    localDecision,
+    {
+      provider: decision.config.provider,
+      model: decision.config.model,
+      tokens: input.tokens,
+    },
+    log,
+  )
+
+  return localDecision
+}

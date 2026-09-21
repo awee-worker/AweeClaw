@@ -17,7 +17,7 @@ import { useStore } from '@renderer/state'
 import type { WorkspaceAgent } from '@renderer/state/slices/agentWorkspaceSlice'
 import type { LLMConfig } from '@intelligence/providerTypes'
 import { smartOrchestrator, extractFilesFromOutput, type ExtractedFile, type AgentProgressEvent } from '../multiAgent/SmartOrchestrator'
-import { runAgentSubLoop } from '../multiAgent/AgentSubLoop'
+import { runAgentSubLoop, renderSubAgentResult } from '../multiAgent/AgentSubLoop'
 import { TeamCollaborationProtocol } from '../multiAgent/TeamCollaborationProtocol'
 import { playNotificationSound } from '@utils/notificationSound'
 import { agentHarness } from '../harness'
@@ -264,6 +264,13 @@ export function createExecuteAgent(
 
     if (result.error && !result.content) {
       throw new Error(result.error)
+    }
+
+    // 子代理产出超过回传上限时，只回传结论与证据引用，
+    // 避免它读到的文件原文进入父代理上下文
+    if (result.result?.truncated) {
+      logger.agent.info('[MultiAgentExecution] 子代理产出超限，改为回传结构化结论与引用')
+      return renderSubAgentResult(result.result)
     }
 
     return result.content || ''

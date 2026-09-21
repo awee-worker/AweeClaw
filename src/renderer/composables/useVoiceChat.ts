@@ -21,6 +21,24 @@ import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { logger } from '@shared/toolkit/LogEngine'
 import { io, type Socket } from 'socket.io-client'
 import { getTokens } from '@services/backendApi'
+import { toast } from '@components/foundation/NotificationProvider'
+
+/**
+ * 播报失败提示节流
+ *
+ * 分句流式播报逐句调 TTS，配置一旦有问题就是连续失败。
+ * 逐条弹提示会把界面刷满，反而盖住真正需要看的信息；
+ * 同一原因 8 秒内只提示一次。
+ */
+let lastTtsFailureNotice = { at: 0, message: '' }
+
+function notifyTtsFailure(message: string): void {
+  const now = Date.now()
+  if (lastTtsFailureNotice.message === message && now - lastTtsFailureNotice.at < 8000) return
+  lastTtsFailureNotice = { at: now, message }
+  toast.warning(`语音播报失败：${message}`, 6000)
+}
+
 
 /**
  * 前端 VAD + 统一语音对话 hook
@@ -364,7 +382,15 @@ export function useVoiceChat(options?: VoiceChatOptions) {
    */
   const segmentChainRef = useRef<Promise<void>>(Promise.resolve())
   /** 本轮是否启用分句流式（跟随 options.sentenceStreaming，在 connect 时定格） */
+  /** 本轮是否启用分句流式（跟随 options.sentenceStreaming，在 connect 时定格） */
   const segmentStreamingRef = useRef(false)
+  /**
+   * 本轮实际入队的分句数。
+   *
+   * 唯一用途：分句流式开了却没有产出任何音频时，允许最终整段兜底播报，
+   * 避免「模式选对了、声音却没有」。
+   */
+  const segmentEnqueuedRef = useRef(0)
 
   // refs - TTS 播放（拆分式模式使用）
   const ttsAudioContextRef = useRef<AudioContext | null>(null)
@@ -595,7 +621,9 @@ export function useVoiceChat(options?: VoiceChatOptions) {
         playTtsQueue()
       }
     } catch (err) {
-      logger.system.warn('[VoiceChat] Announcement TTS failed:', err)
+      const msg = err instanceof Error ? err.message : String(err)
+      logger.system.warn('[VoiceChat] Announcement TTS failed:', msg)
+      notifyTtsFailure(msg)
     } finally {
       ttsPendingRef.current--
     }
@@ -643,10 +671,13 @@ export function useVoiceChat(options?: VoiceChatOptions) {
               contentType: 'audio/mp3',
               segmentText: text,
             })
+            segmentEnqueuedRef.current += 1
             playTtsQueue()
           }
         } catch (err) {
-          logger.system.warn('[VoiceChat] Segment TTS failed:', err)
+          const msg = err instanceof Error ? err.message : String(err)
+          logger.system.warn('[VoiceChat] Segment TTS failed:', msg)
+          notifyTtsFailure(msg)
         } finally {
           if (turnAtEnqueue === turnIdRef.current) ttsPendingRef.current -= 1
         }
@@ -730,6 +761,7 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       // 新一轮开始：作废上一轮的播放监视，并清空分句缓冲
       clearPlaybackWatch()
       turnIdRef.current += 1
+      segmentEnqueuedRef.current = 0
       speakStreamRef.current = ''
       speakCursorRef.current = 0
       segmentChainRef.current = Promise.resolve()
@@ -990,8 +1022,12 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       const speakableAnnouncement = stripNonSpeakableContent(announcementTextRef.current)
       // 分句流式模式下，本轮文本在生成过程中已逐句合成播放（含上面补切的尾巴），
       // 这里若再整段合成播放一遍，就是同一段话读两遍。
+      // 分句流式模式下，本轮文本在生成过程中已逐句合成播放（含上面补切的尾巴）。
+      // 但存在「开了分句流式却一段都没入队」的情况（流式回调没吐文本、
+      // 或首句都在缓冲里没切出来），此时若仍整段跳过就是彻底无声。
+      // 因此以实际入队段数为准：一段都没有就整段兜底播报。
       const shouldPlayFinalTts =
-        !segmentStreamingRef.current &&
+        (!segmentStreamingRef.current || segmentEnqueuedRef.current === 0) &&
         Boolean(speakableFinal.trim()) &&
         speakableFinal !== speakableAnnouncement
 
@@ -1015,7 +1051,9 @@ export function useVoiceChat(options?: VoiceChatOptions) {
             playTtsQueue()
           }
         } catch (err) {
-          logger.system.warn('[VoiceChat] Final TTS failed:', err)
+          const msg = err instanceof Error ? err.message : String(err)
+          logger.system.warn('[VoiceChat] Final TTS failed:', msg)
+          notifyTtsFailure(msg)
         } finally {
           ttsPendingRef.current--
         }

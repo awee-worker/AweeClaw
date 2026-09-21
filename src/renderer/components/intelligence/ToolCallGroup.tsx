@@ -65,7 +65,15 @@ const GROUP_STATUS_LABELS: Record<ToolGroupStatus, string> = {
 
 /** 工具调用卡片渲染选项 */
 export interface ToolCallCardOptions {
+  /** 会话内可直接操作（批准 / 拒绝）的待批准卡片 */
   pendingToolId?: string
+  /**
+   * 处于等待确认状态的工具 id 集合
+   *
+   * 只用于状态表达：审批操作入口不在会话内（例如主聊天窗口统一由输入框上方的
+   * 审批条处理）时，卡片仍要让用户看出「卡在这一步」，但不渲染批准按钮。
+   */
+  awaitingToolIds?: Set<string>
   onApproveTool?: () => void
   onRejectTool?: () => void
   onOpenDiff?: (path: string, oldContent: string, newContent: string) => void
@@ -87,6 +95,9 @@ export function renderToolCallCard(
   opts: ToolCallCardOptions,
 ): ReactNode {
   const isPending = tc.id === opts.pendingToolId
+  // 等待确认的状态表达与操作入口分开：集合里的卡片都显示「待确认」，
+  // 但只有会话内提供了批准回调时才在卡片上渲染按钮
+  const isAwaiting = isPending || (opts.awaitingToolIds?.has(tc.id) ?? false)
 
   // 涉及文件变更的工具渲染为差异预览卡片
   if (needsDiffPreview(tc.name)) {
@@ -94,7 +105,7 @@ export function renderToolCallCard(
       <FileChangeCard
         key={tc.id}
         toolCall={tc}
-        isAwaitingApproval={isPending}
+        isAwaitingApproval={isAwaiting}
         onApprove={isPending ? opts.onApproveTool : undefined}
         onReject={isPending ? opts.onRejectTool : undefined}
         onOpenInEditor={opts.onOpenDiff}
@@ -111,7 +122,7 @@ export function renderToolCallCard(
         content={
           typeof tc.arguments.content === 'string' ? tc.arguments.content : ''
         }
-        isAwaitingApproval={isPending}
+        isAwaitingApproval={isAwaiting}
         isSuccess={tc.status === 'success'}
         messageId={opts.messageId || ''}
         toolCallId={tc.id}
@@ -130,7 +141,7 @@ export function renderToolCallCard(
     <ToolCallCard
       key={tc.id}
       toolCall={tc}
-      isAwaitingApproval={isPending}
+      isAwaitingApproval={isAwaiting}
       onApprove={isPending ? opts.onApproveTool : undefined}
       onReject={isPending ? opts.onRejectTool : undefined}
     />
@@ -280,14 +291,29 @@ function ToolCallGroup({
     return ids
   }, [pendingToolIds, pendingToolId])
 
-  // 是否使用批量批准模式（多个待批准工具）
-  const useBatchApproval = approvalIdSet.size > 1
+  /**
+   * 会话内是否提供审批操作入口
+   *
+   * 主聊天窗口把批准/拒绝统一放在输入框上方的审批条（PendingApprovalBar），
+   * 不向消息流注入回调；此时卡片只表达「待确认」状态，不渲染按钮，也不渲染
+   * 组内的批量批准面板 —— 同一批操作出现两个操作位置只会让用户犹豫。
+   */
+  const inlineApprovalEnabled = !!onApproveTool
+
+  // 是否使用批量批准模式（多个待批准工具且会话内提供操作入口）
+  const useBatchApproval = inlineApprovalEnabled && approvalIdSet.size > 1
 
   // 批量模式下，单卡片不显示批准按钮（由批量面板统一处理）
-  const cardPendingId = useBatchApproval ? undefined : pendingToolId
+  const cardPendingId = useBatchApproval
+    ? undefined
+    : (inlineApprovalEnabled ? pendingToolId : undefined)
+
+  // 无会话内操作入口时，把「等待确认」交给集合表达，保证每张卡都能看出卡点
+  const awaitingToolIds = inlineApprovalEnabled ? undefined : approvalIdSet
 
   const opts: ToolCallCardOptions = {
     pendingToolId: cardPendingId,
+    awaitingToolIds,
     onApproveTool,
     onRejectTool,
     onOpenDiff,

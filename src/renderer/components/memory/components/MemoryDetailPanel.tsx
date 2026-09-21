@@ -25,6 +25,9 @@ import {
   RetentionIndicator,
   TagList,
   RelationTypeBadge,
+  OriginTrustBadge,
+  OriginChannelBadge,
+  OriginLocator,
   LoadingState,
   formatRelativeTime,
   formatDate,
@@ -61,6 +64,8 @@ export function MemoryDetailPanel({ floating = false }: { floating?: boolean } =
     reviewMemory,
     createFeedback,
     deleteRelation,
+    contradictions,
+    fetchMemoryDetail,
   } = useMemoryStore()
 
   const [activeTab, setActiveTab] = useState<TabId>('info')
@@ -381,6 +386,70 @@ export function MemoryDetailPanel({ floating = false }: { floating?: boolean } =
                           />
                         )}
                     </div>
+
+                    {/* 来源 */}
+                    <div className="pt-2 border-t border-border/20">
+                      <h4 className="text-xs text-text-muted mb-2">来源</h4>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-text-muted">信任级别:</span>
+                          <OriginTrustBadge trust={currentMemory.originTrust} size="xs" />
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-text-muted">来源通道:</span>
+                          <OriginChannelBadge channel={currentMemory.originChannel} size="xs" />
+                        </div>
+                        {currentMemory.originLocator && (
+                          <div className="flex items-start gap-2 text-xs">
+                            <span className="text-text-muted shrink-0">来源定位:</span>
+                            <OriginLocator locator={currentMemory.originLocator} />
+                          </div>
+                        )}
+                        {currentMemory.evidence && (
+                          <div className="text-xs">
+                            <span className="text-text-muted">证据片段:</span>
+                            <p className="mt-1 text-text-secondary bg-surface/40 border border-border/30 rounded px-2 py-1.5 whitespace-pre-wrap break-words">
+                              {currentMemory.evidence}
+                            </p>
+                          </div>
+                        )}
+                        {!currentMemory.originTrust && (
+                          <p className="text-[11px] text-text-muted">
+                            这条记忆写入时未记录来源，无法追溯它从哪来。
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 矛盾记录 */}
+                    {contradictions.length > 0 && (
+                      <div className="pt-2 border-t border-border/20">
+                        <h4 className="text-xs text-text-muted mb-2">
+                          矛盾记录（{contradictions.length}）
+                        </h4>
+                        <div className="space-y-1.5">
+                          {contradictions.map((item) => {
+                            const otherId =
+                              item.entryAId === currentMemory.id ? item.entryBId : item.entryAId
+                            return (
+                              <div key={item.id} className="flex items-start gap-1.5 text-xs">
+                                <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0 text-amber-500" />
+                                <span className="text-text-secondary flex-1">
+                                  {item.reason || '被判定与另一条记忆相矛盾'}
+                                  <span className="text-text-muted">（{formatDate(item.detectedAt)}）</span>
+                                </span>
+                                <button
+                                  onClick={() => fetchMemoryDetail(otherId)}
+                                  className="text-accent hover:underline shrink-0"
+                                >
+                                  查看
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     {/* 快速反馈 */}
                     <div className="pt-2 border-t border-border/20">

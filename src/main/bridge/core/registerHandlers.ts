@@ -94,6 +94,10 @@ import { registerClipboardHandlers } from '../system/clipboardService'
 // ── screenshot ──────────────────────────────────────────
 import { registerMainWindowScreenshotHandlers } from '../../modules/screenshot/mainWindowScreenshot'
 
+// ── preview ─────────────────────────────────────────────
+import { registerPreviewHandlers } from '../system/preview'
+import { previewStaticServer } from '../../modules/preview/PreviewStaticServer'
+
 // 安全模块（guard 目录）
 import {
   securityManager,
@@ -344,6 +348,9 @@ export function registerAllHandlers(context: IPCContext) {
   // 剪贴板服务（读取原生剪贴板文件路径，用于粘贴文件到聊天）
   registerOnce('clipboard', () => registerClipboardHandlers())
 
+  // 内置预览（把本地静态文件暴露成内置浏览器可加载的 http 地址）
+  registerOnce('preview', () => registerPreviewHandlers())
+
   // 主窗口截图（聊天输入框截图按钮触发，结果作为附件添加到输入框）
   registerOnce('screenshot-main-window', () =>
     registerMainWindowScreenshotHandlers(
@@ -378,6 +385,8 @@ export function cleanupAllHandlers() {
   cleanupMcpHandlers()
   cleanupAllLLMServices()
   cleanupAuditHandlers()
+  // 内置预览静态服务随应用退出关闭（不 await：退出流程不该被端口回收拖住）
+  void previewStaticServer.dispose()
   // DebugService 清理由 performGlobalCleanup 中异步处理（需要 await）
   logger.ipc.info('[IPC] All handlers cleaned up')
 }

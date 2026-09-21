@@ -30,6 +30,7 @@ import { isAssistantMessage } from '@intelligence/types/conversationModel'
 import { tasksApi, getApiErrorMessage } from '@renderer/adapters/taskProjectApi'
 import { logger } from '@shared/toolkit/LogEngine'
 import type { TaskItem } from '@renderer/components/explorer/panels/tasks/types'
+import PendingChangesBar from '@renderer/components/intelligence/PendingChangesBar'
 import { TaskExecutionMessages } from '@renderer/components/explorer/panels/projects/taskExecution/TaskExecutionMessages'
 import { TaskExecutionInput } from '@renderer/components/explorer/panels/projects/taskExecution/TaskExecutionInput'
 import { TaskResultCard } from '@renderer/components/explorer/panels/projects/taskExecution/TaskResultCard'
@@ -72,6 +73,10 @@ export function ExecutionContent({ threadId, projectId }: ExecutionContentProps)
   }))
 
   const messageVersion = useAgentStore(s => s.threadMessageVersions[threadId] ?? 0)
+
+  // 文件改动复核条的数据源：手动审批模式下写入不阻塞执行，
+  // 改动要在这里给用户一个接受或撤销的入口，否则执行窗口里就成了静默写入
+  const pendingChanges = useAgentStore(s => s.pendingChanges)
 
   // 从 streamState 派生流式状态
   const isStreaming = streamState.phase === 'streaming'
@@ -262,6 +267,13 @@ export function ExecutionContent({ threadId, projectId }: ExecutionContentProps)
           <button onClick={() => setSendError(null)} className="text-[12px] text-red-500/70 hover:text-red-500">
             ✕
           </button>
+        </div>
+      )}
+
+      {/* 文件改动复核：与主会话一致，创建与修改文件执行后在此接受或撤销 */}
+      {pendingChanges.length > 0 && (
+        <div className="flex-shrink-0 px-4 pb-1">
+          <PendingChangesBar pendingChanges={pendingChanges} />
         </div>
       )}
 

@@ -14,10 +14,16 @@ import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { toolManager } from '../toolkit/providers'
 import { notifyWorkspaceTreeChange } from '../toolkit/workspaceTreeNotifier'
-import { getToolApprovalType, isFileEditTool, needsFileSnapshot, isWriteTool } from '@configuration/toolDefinitions'
+import { getToolApprovalType, isFileEditTool, isWriteTool, needsFileSnapshot } from '@configuration/toolDefinitions'
 import { pathStartsWith, joinPath, normalizePath } from '@shared/toolkit/pathHelper'
-import { needsCommandApproval } from '@intelligence/decision/commandRisk'
+import { buildToolPathPolicy } from '../toolkit/toolPathPolicy'
+import { getTrustedAppDataRoots } from '../toolkit/trustedPathRegistry'
 import { buildApprovalEntry, recordApproval } from '@intelligence/decision/approvalLedger'
+import { decideApprovalGateByMode, isIrreversibleTool, shouldEscalateForUntrusted } from '@intelligence/decision/approvalEscalation'
+import type { ApprovalGate } from '@intelligence/decision/approvalEscalation'
+import { collectUntrustedSignal, rememberUntrustedSignal } from '../runtime/untrustedContextTracker'
+import type { UntrustedContextSignal, UntrustedSourceSummary } from '@intelligence/types/trustTypes'
+import { dispatchCompanionState } from '@/renderer/components/vrm-companion/companionStateDispatcher'
 import { useStore } from '@store'
 import { EventBus } from './EventDispatcher'
 import { truncateToolResult } from '@utils/partialJson'
@@ -435,67 +441,101 @@ export interface ApprovalGateToolInfo {
 }
 
 /**
- * 检查工具是否需要审批
+ * 放行方式判定（三态）
+ *
  * 基于 TOOL_CONFIGS 中的 approvalType 配置和用户的 autoApprove / authorizationMode 设置
  *
  * 优先级：authorizationMode > freeModeEnabled > autoApprove
- * - authorizationMode 有值时覆盖 autoApprove/freeModeEnabled（用户在输入框下方选择的授权方式）
+ * - authorizationMode 有值时由 approvalEscalation.decideApprovalGateByMode 统一判定
+ *   （手动审批 / 自动审批 / 完全访问三套规则集中在那里，避免各入口各写一份）
  * - authorizationMode 为 undefined（旧版本未设置）时回退到 autoApprove/freeModeEnabled 逻辑
+ *
+ * 三态的意义：'block' 是执行前必须等用户放行，'review' 是直接执行、改动事后由变更条裁决。
+ * 只有能提供事后复核入口的链路（主会话的输入框上方变更条）才应区分两者；
+ * 其余调用方用 requiresApprovalGate 收敛成二值即可。
+ *
+ * 例外：删除文件一类不可逆操作在两条链路上都强制确认（完全访问除外）。
+ * 「自动审批」「自由模式」「自动批准危险操作」选择的都是少问日常操作，
+ * 不包含让不可逆操作静默执行的授权。
+ *
+ * @param workspacePath 当前工作区路径；手动审批模式下用于判定「外部内容」
  */
-export function requiresApprovalGate(toolCall: ApprovalGateToolInfo, chatMode?: string): boolean {
-  // chat 模式（纯对话无工具副作用）始终不审批，与授权方式正交
-  if (chatMode === 'chat') return false
+export function resolveApprovalGate(
+  toolCall: ApprovalGateToolInfo,
+  chatMode?: string,
+  untrustedContext?: UntrustedContextSignal,
+  workspacePath?: string | null,
+): ApprovalGate {
+  // chat 模式（纯对话无工具副作用）始终不拦截，与授权方式正交
+  if (chatMode === 'chat') return 'none'
 
   const toolName = toolCall.name
   const approvalType = getToolApprovalType(toolName)
+
   const mainStore = useStore.getState()
   const authMode = mainStore.authorizationMode
 
-  // 新授权方式优先且覆盖 autoApprove/freeModeEnabled
-  // authMode 有值时，成为工具审批的唯一开关（用户在输入框下方选择的授权方式）
+  // 授权方式已设置：交给统一判定
   if (authMode !== undefined) {
-    if (authMode === 'never') {
-      // 无需确认：所有操作免 UI 审批（主进程安全底线仍独立生效）
-      return false
-    }
-    if (authMode === 'dangerous-only') {
-      // 危险确认：危险操作（删除文件）+ 风险命令需审批
-      // 风险命令含两级：命中危险模式（主进程会硬拦截，审批让用户先看见并有机会拒绝）
-      // 与命中灰区规则（未命中危险模式但不可逆，例如 git reset --hard、删除家目录文件）
-      if (approvalType === 'dangerous') return true
-      if (toolName === 'run_command') {
-        const command = toolCall.arguments?.command as string | undefined
-        if (command && needsCommandApproval(command)) return true
-      }
-      return false
-    }
-    if (authMode === 'every-step') {
-      // 每步确认：所有有副作用操作都审批（terminal/dangerous/interaction + 写入类工具）；纯读不审批
-      return approvalType !== 'none' || isWriteTool(toolName)
-    }
-    // 未知模式兜底：需审批（更安全）
-    return true
+    // 「外部内容」以用户的实际授权范围为准：工作区 + 安全设置里的允许目录
+    // + 项目执行窗口的项目目录 + 可信应用数据目录
+    const policy = buildToolPathPolicy({
+      allowedToolPaths: mainStore.allowedToolPaths,
+      securitySettings: mainStore.securitySettings,
+      trustedAppDataRoots: getTrustedAppDataRoots(),
+    })
+    return decideApprovalGateByMode(toolName, toolCall.arguments, authMode, {
+      workspacePath,
+      authorizedRoots: policy.extraAllowedRoots,
+      allowOutsideWorkspace: policy.allowOutsideWorkspace,
+      untrustedContext,
+    })
   }
 
   // ===== 兼容性回退：authorizationMode 未设置（旧版本升级），使用原有 autoApprove/freeModeEnabled 逻辑 =====
-  if (approvalType === 'none') return false
+  // 不可逆操作不参与这段回退：自由模式与「自动批准危险操作」表达的是少问日常操作，
+  // 不包括让删除文件静默执行。判定与主链路同源（isIrreversibleTool）
+  if (isIrreversibleTool(toolName)) return 'block'
 
+  let requiresBySetting: boolean
+  if (approvalType === 'none') requiresBySetting = false
   // 自由模式：自动批准所有工具调用，无需用户确认
-  if (mainStore.freeModeEnabled) {
-    return false
-  }
+  else if (mainStore.freeModeEnabled) requiresBySetting = false
+  else if (approvalType === 'terminal' && mainStore.autoApprove?.terminal) requiresBySetting = false
+  else if (approvalType === 'dangerous' && mainStore.autoApprove?.dangerous) requiresBySetting = false
+  else requiresBySetting = true
 
-  const autoApprove = mainStore.autoApprove
+  if (requiresBySetting) return 'block'
 
-  if (approvalType === 'terminal' && autoApprove?.terminal) {
-    return false
-  }
+  // 免确认的操作若本轮消费过外部内容，再要一次确认 —— 切断「外部内容 → 高权限动作」的收益链。
+  // 判定口径限本轮：历史轮次的外部内容不该让此后的每一轮都多一次确认。
+  //
+  // 例外：创建 / 修改文件不在这一段升级里。这条回退链路的语义由 autoApprove 与自由模式
+  // 决定，写文件本身就属免确认（approvalType 为 none）；而 authorizationMode 未显式设置时，
+  // 界面上展示的默认授权方式正是「自动审批」。此时再叠一次确认，用户看到的是
+  // 「自动审批」却要为每次写文件点确认，界面承诺与实际行为不符。
+  // 命令执行、对外发送与不可逆操作仍照旧升级。
+  if (isWriteTool(toolName)) return 'none'
 
-  if (approvalType === 'dangerous' && autoApprove?.dangerous) {
-    return false
-  }
+  return shouldEscalateForUntrusted(toolName, approvalType, untrustedContext, authMode)
+    ? 'block'
+    : 'none'
+}
 
-  return true
+/**
+ * 是否需要用户确认（二值）
+ *
+ * 供只有「执行 / 不执行」两种结论的链路使用（子 Agent、语音助手、渠道消息等）：
+ * 它们没有事后复核入口，把 'review' 一并视为需要确认 —— 直接放行等于让文件改动
+ * 静默落盘。
+ */
+export function requiresApprovalGate(
+  toolCall: ApprovalGateToolInfo,
+  chatMode?: string,
+  untrustedContext?: UntrustedContextSignal,
+  workspacePath?: string | null,
+): boolean {
+  return resolveApprovalGate(toolCall, chatMode, untrustedContext, workspacePath) !== 'none'
 }
 
 interface ApprovalCohort {
@@ -715,7 +755,18 @@ async function invokeToolInvocation(
           errorCode: result.success ? undefined : result.outcome?.code,
         })
 
-        store.addToolResult(toolCall.id, toolCall.name, content, result.success ? 'success' : 'tool_error')
+        // 必须带上调用参数：结果来源在写入时即固定，缺参数会让文件类工具无法判定路径落点，
+        // 一律被标成不可信来源，进而把当轮所有写入类操作都拖进确认流程。
+        // 同时带上本次执行的基准目录：项目执行窗口里它未必等于 store.workspacePath，
+        // 判定用错基准会把落在项目目录里的文件判成「外部内容」
+        store.addToolResult(
+          toolCall.id,
+          toolCall.name,
+          content,
+          result.success ? 'success' : 'tool_error',
+          toolCall.arguments,
+          workspacePath,
+        )
       }
       if (result.success) {
         publishToolLifecycleEvent({
@@ -822,7 +873,14 @@ async function invokeToolInvocation(
           endTime: Date.now(),
           errorCode: 'EXECUTION_ERROR',
         })
-        store.addToolResult(toolCall.id, toolCall.name, `Error: ${errorMsg}`, 'tool_error')
+        store.addToolResult(
+          toolCall.id,
+          toolCall.name,
+          `Error: ${errorMsg}`,
+          'tool_error',
+          toolCall.arguments,
+          workspacePath,
+        )
       }
       publishToolLifecycleEvent({ type: 'tool:error', id: toolCall.id, error: errorMsg, ...identity })
 
@@ -896,14 +954,25 @@ async function orchestrateToolBatchInternal(
   const failed = new Set<string>()
   const pending = new Set(toolCalls.map(tc => tc.id))
 
-  // 分离需要审批和不需要审批的工具
-  // 单次遍历完成划分：requiresApprovalGate 要读 store 并对命令做模式匹配，
+  // 分流：事前必须放行的（block）与可直接执行的
+  // 单次遍历完成划分：判定要读 store 并对命令做模式匹配，
   // 两次 filter 会让每条工具调用被判定两遍
+  // 本轮是否消费过外部内容：决定高权限操作是否需要额外确认。
+  // 此处统一汇总一次，供本轮所有待批项共用。
+  const agentStoreState = useAgentStore.getState()
+  const untrustedContext = collectUntrustedSignal(
+    agentStoreState.threads[agentStoreState.currentThreadId ?? '']?.messages,
+    { currentTurnOnly: true },
+  )
+  // 暂存本轮信号：记忆写入等旁路动作拿不到消息数组，只能读这里
+  rememberUntrustedSignal(untrustedContext)
+
   const approvalRequired: ToolCall[] = []
-  const noApprovalRequired: ToolCall[] = []
+  const directExecution: ToolCall[] = []
   for (const tc of toolCalls) {
-    if (requiresApprovalGate(tc, context.chatMode)) approvalRequired.push(tc)
-    else noApprovalRequired.push(tc)
+    const gate = resolveApprovalGate(tc, context.chatMode, untrustedContext, context.workspacePath)
+    if (gate === 'block') approvalRequired.push(tc)
+    else directExecution.push(tc)
   }
 
   // 在执行前保存文件快照
@@ -914,10 +983,11 @@ async function orchestrateToolBatchInternal(
     logger.agent.warn('[Tools] Failed to capture file snapshots, continuing without undo points:', snapshotError)
   }
 
-  // 1. 先执行不需要审批的工具。
+  // 1. 先执行无需事前放行的工具：'none' 与 'review' 两类都在这里。
+  //    'review' 的改动由变化条事后裁决，执行阶段与免确认工具同路。
   //    注意：即使无需审批，也必须尊重工具的 parallel 配置。
   //    例如 todo_write / create_task_plan 这类工具绝不能与 read/write 混在同一批并行。
-  if (noApprovalRequired.length > 0) {
+  if (directExecution.length > 0) {
     store.setStreamState({
       phase: 'tool_running',
       statusText: undefined,
@@ -932,9 +1002,9 @@ async function orchestrateToolBatchInternal(
 
     // 用于记录无审批工具的执行 Promise，以支持依赖等待
     const inFlight: Promise<AgentToolExecutionResult>[] = []
-    const noApprovalPromiseMap = new Map<string, Promise<AgentToolExecutionResult>>()
+    const directPromiseMap = new Map<string, Promise<AgentToolExecutionResult>>()
 
-    for (const batch of buildExecutionBatches(noApprovalRequired)) {
+    for (const batch of buildExecutionBatches(directExecution)) {
       for (const tc of batch.toolCalls) {
       if (!batch.parallel && inFlight.length > 0) {
         await Promise.allSettled(inFlight)
@@ -942,10 +1012,10 @@ async function orchestrateToolBatchInternal(
       }
 
       const promise = (async () => {
-        // 等待被依赖的无审批工具执行完毕
+        // 等待被依赖的直接执行工具执行完毕
         const tcDeps = deps.get(tc.id) || new Set()
         const depPromises = Array.from(tcDeps)
-          .map(depId => noApprovalPromiseMap.get(depId))
+          .map(depId => directPromiseMap.get(depId))
           .filter(Boolean) as Promise<AgentToolExecutionResult>[]
 
         if (depPromises.length > 0) {
@@ -1014,7 +1084,7 @@ async function orchestrateToolBatchInternal(
 
         return batch.parallel ? limit(run) : run()
       })()
-      noApprovalPromiseMap.set(tc.id, promise)
+      directPromiseMap.set(tc.id, promise)
 
       if (batch.parallel) {
         inFlight.push(promise)
@@ -1089,6 +1159,13 @@ async function orchestrateToolBatchInternal(
     }
 
     const effectiveRequestId = context.requestId || ''
+    // 审批前汇总一次外部内容来源：此时本轮已读到的外部结果都在消息里，
+    // 确认卡片据此说明「这次操作为什么被拦下来」。
+    // 口径与门禁一致（限本轮），否则卡片会列出与本次拦截无关的历史来源。
+    const untrustedSources: UntrustedSourceSummary[] = collectUntrustedSignal(
+      store.getMessages(),
+      { currentTurnOnly: true },
+    ).sources
     store.setStreamState({
       phase: 'tool_pending',
       streamDetail: 'tool_awaiting',
@@ -1099,11 +1176,19 @@ async function orchestrateToolBatchInternal(
         arguments: tc.arguments,
         status: tc.status,
         requestId: effectiveRequestId,
+        ...(untrustedSources.length > 0 ? { untrustedSources } : {}),
       })),
       statusText: undefined,
       requestId: context.requestId,
       assistantId: context.assistantId ?? context.currentAssistantId ?? undefined,
     })
+
+    // 桌面伴侣状态表达：把「等待用户确认」映射成伴侣的提示动作。
+    // 属旁路能力，不 await、失败也不影响审批流程。
+    void dispatchCompanionState(
+      'awaiting_approval',
+      useStore.getState().language === 'en' ? 'en' : 'zh'
+    )
 
     const approvalResults = await approvalService.waitForBatchApproval(
       groupToolCalls.map(tc => tc.id),
@@ -1125,6 +1210,7 @@ async function orchestrateToolBatchInternal(
             requestId: effectiveRequestId,
             decision: approvalResults.get(tc.id) === false ? 'rejected' : 'approved',
             authorizationMode,
+            untrustedSources,
           }),
         )
       }
@@ -1148,6 +1234,12 @@ async function orchestrateToolBatchInternal(
     }
 
     if (approvedTools.length > 0) {
+      // 审批通过、恢复执行：伴侣回到「思考」状态
+      void dispatchCompanionState(
+        'working',
+        useStore.getState().language === 'en' ? 'en' : 'zh'
+      )
+
       store.setStreamState({
         phase: 'tool_running',
         streamDetail: 'tool_executing',

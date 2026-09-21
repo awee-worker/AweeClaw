@@ -13,6 +13,7 @@ import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
 import { joinPath, platform } from '@shared/toolkit/pathHelper'
 import { parse as parseYaml } from 'yaml'
 import { BRAND } from '@shared/brand'
+import type { CapabilityGap } from '@intelligence/capabilities/planning/capabilityGapDetector'
 
 // ============================================
 // 类型定义
@@ -51,6 +52,14 @@ interface MarketplaceResult {
     package: string       // owner/repo@skill-name
     installs: number
     url: string
+}
+
+/** 能力缺口对应的市场候选 */
+export interface MarketplaceSuggestion extends MarketplaceResult {
+    /** 命中的能力关键词，用于向用户解释为何推荐 */
+    matchedKeywords: string[]
+    /** 相关度 0~1，按命中关键词占比计算 */
+    relevance: number
 }
 
 // ============================================
@@ -236,6 +245,34 @@ class SkillService {
             logger.agent.error('[SkillService] Marketplace search failed:', err)
             return []
         }
+    }
+
+    /**
+     * 按能力缺口检索技能市场候选
+     *
+     * 只做检索与排序，不安装：安装必须由用户点击确认，不存在自动安装路径。
+     */
+    async suggestSkillsForGap(gap: CapabilityGap, limit = 3): Promise<MarketplaceSuggestion[]> {
+        const query = gap.keywords.slice(0, 3).join(' ').trim()
+        if (!query) return []
+
+        const results = await this.searchMarketplace(query)
+        if (results.length === 0) return []
+
+        return results
+            .map((result) => {
+                const text = `${result.name} ${result.package}`.toLowerCase()
+                const matchedKeywords = gap.keywords.filter((keyword) => text.includes(keyword.toLowerCase()))
+                return {
+                    ...result,
+                    matchedKeywords,
+                    relevance: gap.keywords.length > 0
+                        ? matchedKeywords.length / gap.keywords.length
+                        : 0,
+                }
+            })
+            .sort((a, b) => b.relevance - a.relevance || b.installs - a.installs)
+            .slice(0, Math.max(1, limit))
     }
 
     /**
