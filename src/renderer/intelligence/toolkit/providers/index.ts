@@ -27,6 +27,7 @@ import { mcpToolProvider } from './ProtocolToolRegistry'
 import { a2aToolProvider } from './A2aToolRegistry'
 import type { ToolLoadingContext } from '@configuration/toolCategoryDefs'
 import { getAllowedToolGroupsSync } from '@services/featureGuardService'
+import { setGitToolsEnabled } from '../gitToolsGate'
 
 let initialized = false
 
@@ -61,6 +62,8 @@ export function setToolLoadingContext(context: ToolLoadingContext): void {
     ...context,
     allowedToolGroups: context.allowedToolGroups ?? getAllowedToolGroupsSync(),
   }
+  // Git 工具门控缓存同步刷新：执行层（ToolCoordinator）需要同步读取本轮是否放行 git_*
+  setGitToolsEnabled(merged.gitToolsEnabled === true)
   builtinToolProvider.setContext(merged)
   mcpToolProvider.setContext(merged)
   a2aToolProvider.setContext(merged)

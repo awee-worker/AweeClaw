@@ -43,7 +43,7 @@ import { useAgentStore } from '../state/IntelligenceStore'
 import { buildFileChangeDescriptor } from '@intelligence/utils/fileMutationHelper'
 import { EventBus } from '../engine/EventDispatcher'
 import {
-    hasTrailingBackgroundOperator,
+    hasBackgroundIntent,
     matchesLongRunningCommand,
     matchesBroadScanCommand,
     resolveCommandTimeout,
@@ -1951,7 +1951,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 3. 其余命令按关键词模式匹配（含 `cd xxx && python3 -m http.server` 组合形式）。
         const inlineScript = parseInlineScriptCommand(command)
         const inlineBodyIsShell = inlineScript?.runtime === 'sh'
-        const isBackgroundRequest = Boolean(isBackground) || hasTrailingBackgroundOperator(command)
+        const isBackgroundRequest = hasBackgroundIntent(command, isBackground)
         const isLongRunningProcess = isBackgroundRequest
             || ((!inlineScript || inlineBodyIsShell) && (
                 matchesLongRunningCommand(command)

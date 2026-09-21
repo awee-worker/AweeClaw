@@ -22,7 +22,7 @@ import { estimateMessagesTokens } from '../capabilities/context/ContextCompresso
 import { lintService } from '../runtime/codeAnalysisService'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
-import { resolveSceneToolsIntentFromMessages } from '../decision/intentResolvers'
+import { resolveSceneToolsIntentFromMessages, resolveGitToolsIntentFromMessages } from '../decision/intentResolvers'
 import { resolveRelativeChangePath, isFileWriteToolResult } from '@intelligence/utils/fileMutationHelper'
 import { isCodeFile } from '@intelligence/toolkit/fileReadPolicies'
 import { composerService } from '@intelligence/runtime/composerEngine'
@@ -513,6 +513,9 @@ export async function executeAgentCycle(
     // 场景工具按需暴露：仅当用户最新消息带有明确的场景数据记录/查询/管理意图时
     // 才对 LLM 可见；执行任务/开发时 AI 任务跟踪应使用系统内置 todo_write 等（致命问题 #4）
     sceneToolsEnabled: resolveSceneToolsIntentFromMessages(llmMessages).value,
+    // Git 工具按需暴露：用户没有提出 Git 操作时不把 git_* 下发给 LLM。
+    // 工作区并非都是 Git 仓库，AI 自己「探路」（git_status / git_log）会稳定失败
+    gitToolsEnabled: resolveGitToolsIntentFromMessages(llmMessages).value,
     externalAgentEnabled: isExternalAgentToolsExposed(),
     ...agentToolFields,
   })

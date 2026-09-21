@@ -21,6 +21,8 @@ import {
   isToolAllowedByPlanSync,
   buildToolNotAllowedMessage,
 } from '@services/featureGuardService'
+import { GIT_TOOL_NAMES } from '@configuration/toolCategoryDefs'
+import { isGitToolsEnabled } from '../gitToolsGate'
 
 class ToolManager {
   private providers = new Map<string, ToolProvider>()
@@ -285,6 +287,25 @@ class ToolManager {
         },
       }, 'validation')
     }
+
+    // Git 工具兜底校验（执行层强制）
+    // 主闸门是「可见性」—— getToolsForContext 在用户没有提出 Git 操作时不下发 git_*；
+    // 此处拦截绕过上下文过滤的直接调用：工作区并非都是 Git 仓库，AI 自己「探路」
+    // 会稳定失败，因此要求先由用户在指令中授权。
+    if (GIT_TOOL_NAMES.includes(toolName) && !isGitToolsEnabled()) {
+      logger.agent.warn(`[ToolManager] Tool "${toolName}" rejected: git tools are not enabled for this turn`)
+      const isZhGit = useStore.getState().language === 'zh'
+      const gitErrorMsg = isZhGit
+        ? `工具 "${toolName}" 需要用户先提出 Git 操作才会启用。\n本轮用户消息没有提到提交、分支、合并、差异、历史等版本控制操作，请先询问用户是否需要操作仓库，不要自行探测，也不要改用命令行执行 git。`
+        : `Tool "${toolName}" is enabled only after the user asks for a Git operation.\nThis turn's message does not mention commits, branches, merges, diffs or history — ask the user first instead of probing the repository, and do not fall back to running git in the terminal.`
+      return this.finalizeResult(toolName, executionId, startedAt, undefined, {
+        success: false,
+        result: '',
+        error: gitErrorMsg,
+        outcome: { kind: 'error', code: 'TOOL_NOT_ALLOWED', retryable: false },
+      }, 'validation')
+    }
+
     const provider = this.findProviderForTool(toolName)
 
     if (!provider) {

@@ -10,11 +10,14 @@ import { platform as runtimePlatform } from '@shared/toolkit/pathHelper'
  *
  * 匹配规则说明：
  * - 命令分隔符（&&/;/||）后匹配具体命令，支持 `cd xxx && python3 -m http.server` 形式
+ * - 启动包装器（nohup/setsid/env/sudo/…）先被跳过再匹配主体：包装器之后的命令仍需命中
+ *   服务关键词，因此 `time ls`、`sudo cat` 这类短命令不会误判，而
+ *   `nohup python3 -m http.server`（不带 `&` 但同样常驻）能被正确识别
  * - python 版本号兼容：python、python3、python3.11、python3.12 等均匹配
  * - 包含常见静态服务器、开发服务器、文件监听、数据库服务等持续运行进程
  * - `--watch`/`--serve`/`-w` 等持续监听标志单独匹配（tsc --watch、sass --watch 等）
  */
-export const LONG_RUNNING_COMMAND_PATTERN = /(?:^|&&|;|\|\|)\s*(?:(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?(?:dev|start|serve|serve:|watch)|python\d*(?:\.\d+)*\s+-m\s+(?:http\.server|flask|werkzeug|gunicorn)|uvicorn|nodemon|webpack(?:-dev-server)?|vite|http-server|live-server|serve\s+-s|json-server|php\s+-S|ruby\s+-runhttpd|docker\s+(?:compose\s+)?up|kubectl\s+port-forward|minio\s+server|redis-server|tailwindcss\s+--watch)|\s--watch(?:\s|$)|\s--serve(?:\s|$)/
+export const LONG_RUNNING_COMMAND_PATTERN = /(?:^|&&|;|\|\|)\s*(?:(?:nohup|setsid|env|caffeinate|stdbuf|time|exec|sudo)\s+)*(?:(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?(?:dev|start|serve|serve:|watch)|python\d*(?:\.\d+)*\s+-m\s+(?:http\.server|flask|werkzeug|gunicorn|uvicorn|fastapi)|uvicorn|nodemon|webpack(?:-dev-server)?|vite|http-server|live-server|serve\s+-s|json-server|php\s+-S|ruby\s+-runhttpd|docker\s+(?:compose\s+)?up|kubectl\s+port-forward|minio\s+server|redis-server|tailwindcss\s+--watch|ng\s+serve|next\s+dev|hugo\s+server|mkdocs\s+serve|vitepress\s+dev|deno\s+serve|flask\s+run|streamlit\s+run|jupyter\s+(?:notebook|lab)|rails\s+(?:s|server)|java\s+-jar|dotnet\s+(?:run|watch)|gradle[^\n]*\s+bootRun|mvn[^\n]*spring-boot:run)|\s--watch(?:\s|$)|\s--serve(?:\s|$)/
 
 /**
  * 安装/构建类耗时命令模式
@@ -95,9 +98,45 @@ export function hasTrailingBackgroundOperator(command: string): boolean {
   return /(?:[^&\\]|^)&\s*$/.test(command.trim())
 }
 
+/**
+ * 检测命令中是否出现 shell 的「后台执行操作符」`&`
+ *
+ * 与 hasTrailingBackgroundOperator 的区别：不要求 `&` 落在行尾，因此
+ * `nohup xxx & disown`、`python3 -m http.server 8877 & echo started` 这类写法同样命中。
+ *
+ * 必须排除三类误报，否则会把正常命令塞进后台通道（命令并非常驻，AI 只会拿到
+ * 「已启动」而丢掉真实输出）：
+ * - 逻辑与 `&&`
+ * - I/O 重定向 `2>&1` / `>&2` / `&>file` / `&>>file`
+ * - 引号内的 `&`（未加引号的 URL 查询串、文本字面量等）
+ *
+ * 另外要求 `&` 之后是空白、分号、管道或行尾 —— shell 的后台操作符必然在这里收尾，
+ * 而未加引号的 URL 中 `&` 后紧跟字母数字（`&b=2`），不会命中。
+ */
+export function hasBackgroundOperator(command: string): boolean {
+  const withoutQuoted = command
+    .replace(/'[^']*'/g, "''")
+    .replace(/"[^"]*"/g, '""')
+  const withoutRedirect = withoutQuoted
+    .replace(/\d*>&\d*/g, '')
+    .replace(/&>>?/g, '')
+  return /(?:^|[^&\\])&(?!&)(?=\s|;|\||$)/.test(withoutRedirect)
+}
+
+/**
+ * 命令是否带有「显式后台意图」—— 调用方显式传 is_background，或命令文本里出现 `&`
+ *
+ * 这类命令必须走后台通道立即返回，绝不能进入 sentinel 等待通道：
+ * 包裹后的命令会变成 `... &; printf END`，在 bash / sh 下是语法错误 →
+ * 命令根本不执行、END sentinel 永远不输出，工具只能靠超时兜底，
+ * 表现为「命令一直在执行、拿不到结果」。
+ */
+export function hasBackgroundIntent(command: string, isBackground = false): boolean {
+  return Boolean(isBackground) || hasBackgroundOperator(command)
+}
+
 export function isLongRunningCommand(command: string, isBackground = false): boolean {
-  return Boolean(isBackground)
-    || hasTrailingBackgroundOperator(command)
+  return hasBackgroundIntent(command, isBackground)
     || matchesLongRunningCommand(command)
 }
 

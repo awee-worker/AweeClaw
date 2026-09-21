@@ -60,6 +60,18 @@ export interface ToolLoadingContext {
    */
   sceneToolsEnabled?: boolean
   /**
+   * 是否暴露 Git 工具（git_*）。
+   *
+   * 缺省为 false —— git_* 工具默认不对 LLM 可见：
+   * 工作区并不都是 Git 仓库，AI 在接手任务时先跑一遍 git_status / git_log「探路」
+   * 会稳定失败，既污染上下文，也让用户误以为环境出了问题。
+   *
+   * 仅当用户最新消息带有明确的版本控制指令（提交 / 分支 / 合并 / 差异 / 历史 /
+   * 拉取推送 / 工作树 / 审计封存等）时，由上层（loopDetector / AgentSubLoop /
+   * voiceToolLoop / PromptComposer）计算后置为 true，即由用户在指令中授权。
+   */
+  gitToolsEnabled?: boolean
+  /**
    * 是否暴露外部编码智能体工具（external_agent_*）。
    *
    * 缺省为 false —— 外部智能体工具默认不对 LLM 可见，
@@ -135,18 +147,27 @@ const CORE_TOOLS: string[] = [
   // Graph Runtime 动态建图（graphVersion=2 执行期可用，无活跃图时工具返回友好错误）
   'add_node',
   'add_edge',
-  // Git 只读工具（状态 / 差异 / 历史）：只读且无副作用，所有模式可用
+  // Git 只读工具（状态 / 差异 / 历史）：实际是否下发由 gitToolsEnabled 门控决定
   'git_status',
   'git_diff',
   'git_log',
 ]
 
 /**
- * Git 写入类工具 - 仅 agent / plan 模式暴露
+ * Git 只读工具（状态 / 差异 / 历史）
+ */
+const GIT_READ_TOOLS: string[] = [
+  'git_status',
+  'git_diff',
+  'git_log',
+]
+
+/**
+ * Git 写入类工具
  *
  * chat 模式为「免审批」通道，若允许直接 commit / 切分支 / push，
  * 用户在聊天里让 AI "帮我提交一下"就可能在没有审阅 diff 的情况下改到仓库，
- * 因此这组工具只挂在 agent / plan 模式（其审批门禁由 approvalType='terminal' 驱动）。
+ * 因此这组只挂在 agent / plan 模式（其审批门禁由 approvalType='terminal' 驱动）。
  */
 const GIT_WRITE_TOOLS: string[] = [
   'git_commit',
@@ -157,6 +178,11 @@ const GIT_WRITE_TOOLS: string[] = [
   // 审计封存：会提交未提交变更并打审计 tag
   'git_audit',
 ]
+
+/**
+ * 全部 Git 工具名（含只读与写入），供「按需暴露」门控与执行层兜底校验共用
+ */
+export const GIT_TOOL_NAMES: readonly string[] = [...GIT_READ_TOOLS, ...GIT_WRITE_TOOLS]
 
 /** UI/UX 工具 - uiux-designer 角色专用 */
 const UIUX_TOOLS: string[] = [
@@ -517,6 +543,15 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
     }
   }
 
+  // 2.5 Git 写入类工具：仅 agent / plan 模式纳入候选（chat 为免审批通道，
+  //     不暴露写仓库能力）。放在白名单过滤之前，使智能体工具白名单同样能约束它们；
+  //     最终是否下发仍由下面 3.5 的 gitToolsEnabled 门控决定。
+  if (context.mode !== 'chat') {
+    for (const tool of GIT_WRITE_TOOLS) {
+      tools.add(tool)
+    }
+  }
+
   // 3. 自定义智能体白名单过滤：激活了智能体且配置了 builtinTools 时，
   //    内置工具仅保留白名单内的（extract_document 为系统必需工具，始终保留）
   //    空数组表示不允许任何内置工具
@@ -526,11 +561,17 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
     tools = new Set(Array.from(tools).filter((tool) => allow.has(tool)))
   }
 
-  // 3.5 Git 写入类工具：仅 agent / plan 模式（chat 为免审批通道，不暴露写仓库能力）
-  if (context.mode !== 'chat') {
-    for (const tool of GIT_WRITE_TOOLS) {
-      tools.add(tool)
-    }
+  // 3.5 Git 工具（git_*）为「按需暴露」：
+  //     - 默认不下发给 LLM：工作区并非都是 Git 仓库，AI 自行「探路」
+  //       （先跑一遍 git_status / git_log）会稳定失败，只会污染上下文；
+  //     - 仅当用户本轮明确要求版本控制操作（提交 / 分支 / 差异 / 历史 / 拉取推送 …）时，
+  //       由上层计算 gitToolsEnabled=true 后下发；
+  //     - 即便放行，chat 模式（免审批通道）仍不暴露写入类工具，
+  //       避免未经审阅 diff 就改到仓库（其审批门禁由 approvalType='terminal' 驱动）。
+  if (context.gitToolsEnabled !== true) {
+    tools = new Set(Array.from(tools).filter((tool) => !GIT_TOOL_NAMES.includes(tool)))
+  } else if (context.mode === 'chat') {
+    tools = new Set(Array.from(tools).filter((tool) => !GIT_WRITE_TOOLS.includes(tool)))
   }
 
   // 4. 场景工具（scene_tools_*）为“按需暴露”：

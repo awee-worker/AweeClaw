@@ -77,7 +77,6 @@ interface PipelineContext {
   /** 静默附加给模型的说明（断点续接/上下文衔接），只拼进请求，不影响用户气泡 */
   agentContext?: string
   contextItems: ContextItem[]
-  contextItems: ContextItem[]
   messageHistory: ChatMessage[]
   modeDescriptor: ReturnType<typeof modeRegistry.getOrDefault>
   budgetController: TokenBudgetController

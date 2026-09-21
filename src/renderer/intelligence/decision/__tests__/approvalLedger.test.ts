@@ -13,9 +13,9 @@ import {
   summarizeApprovalLedger,
   summarizeCommand,
 } from '../approvalLedger'
-import type { ApprovalLedgerInput } from '../approvalLedger'
+import type { BuildApprovalEntryInput } from '../approvalLedger'
 
-function makeEntry(overrides: Partial<ApprovalLedgerInput> = {}) {
+function makeEntry(overrides: Partial<BuildApprovalEntryInput> = {}) {
   return buildApprovalEntry({
     toolCall: {
       id: 'call-1',

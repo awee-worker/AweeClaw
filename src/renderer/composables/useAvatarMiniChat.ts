@@ -28,6 +28,7 @@ import {
   callLLMWithTools,
   executeMiniChatToolCall,
   ensureVoiceToolsInitialized,
+  refreshToolLoadingContextForMessages,
   type VoiceToolCallRecord,
 } from '@intelligence/voice/voiceToolLoop'
 import {
@@ -433,6 +434,9 @@ export function useAvatarMiniChat(
 
       // 确保工具系统已初始化
       await ensureVoiceToolsInitialized()
+      // 按本次对话消息刷新工具加载上下文：场景工具与 Git 工具均为按需暴露，
+      // 不刷新会沿用上一轮主对话的判定，导致可见工具与本轮意图不符
+      refreshToolLoadingContextForMessages(llmMessagesRef.current)
       const tools = toolManager.getAllToolDefinitions()
 
       try {

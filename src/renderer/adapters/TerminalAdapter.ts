@@ -18,7 +18,10 @@ import { getEditorConfig } from '@shared/configuration/preferenceSync';
 import { logger } from '@toolkit/LogEngine';
 import { toAppError } from '@shared/toolkit/errorCatalog';
 import { isMac } from '@services/keybindingAdapter';
-import { getInteractiveTerminalBackend } from '@intelligence/toolkit/commandExecutor';
+import {
+  getInteractiveTerminalBackend,
+  hasTrailingBackgroundOperator,
+} from '@intelligence/toolkit/commandExecutor';
 import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter';
 import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol';
 
@@ -1693,7 +1696,9 @@ export class TerminalManagerClass {
       // 命令以未转义的 `&` 结尾时，不能再直接拼 `; ` —— shell 会看到 `&;`：
       // bash / sh 直接报语法错误（命令不执行、END sentinel 也不输出，工具只能靠超时兜底），
       // zsh 恰好接受。这里补一个空操作 `:`，让 `&` 与后面的 `;` 合法分隔，保证 sentinel 一定输出。
-      const backgroundSeam = /(?:[^&\\]|^)&\s*$/.test(cmdWithCwd) ? ' :' : ''
+      // 判定与后台通道共用同一函数，避免两处正则各自演化后出现「一边认为要补空操作、
+      // 另一边不补」的漂移（漂移的结果就是 `&;` 语法错误 → 命令不执行且等不到 sentinel）。
+      const backgroundSeam = hasTrailingBackgroundOperator(cmdWithCwd) ? ' :' : ''
       const mainCommand = `${sentinelStart}; ${cmdWithCwd}${backgroundSeam}; ${sentinelEnd}`
 
       // ── 回显清除策略 ──

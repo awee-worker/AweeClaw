@@ -62,9 +62,6 @@ export interface ApprovalLedgerEntry {
   decision: 'approved' | 'rejected'
 }
 
-/** 记录入参：时间戳由账本自行填充 */
-export type ApprovalLedgerInput = Omit<ApprovalLedgerEntry, 'timestamp'>
-
 /** 内存缓存：避免每次读取都解析 localStorage */
 let cache: ApprovalLedgerEntry[] | null = null
 
@@ -82,18 +79,25 @@ export function summarizeCommand(command: string, maxLength = COMMAND_SUMMARY_MA
   return `${singleLine.slice(0, maxLength)}…`
 }
 
+/** 构造记录的入参：时间戳由账本自行填充 */
+export interface BuildApprovalEntryInput {
+  /** 触发审批的工具调用 */
+  toolCall: { id: string; name: string; arguments?: Record<string, unknown> }
+  /** 所属请求 id */
+  requestId: string
+  /** 用户决定 */
+  decision: 'approved' | 'rejected'
+  /** 用户的授权方式 */
+  authorizationMode?: string
+}
+
 /**
  * 由工具调用构造一条记录
  *
  * 命令类工具顺带做一次风险分级：审批被触发的原因（是硬拦截还是灰区）
  * 是后续校准的关键字段，不能只记「用户点了批准」。
  */
-export function buildApprovalEntry(params: {
-  toolCall: { id: string; name: string; arguments?: Record<string, unknown> }
-  requestId: string
-  decision: 'approved' | 'rejected'
-  authorizationMode?: string
-}): ApprovalLedgerEntry {
+export function buildApprovalEntry(params: BuildApprovalEntryInput): ApprovalLedgerEntry {
   const { toolCall, requestId, decision, authorizationMode } = params
   const entry: ApprovalLedgerEntry = {
     timestamp: Date.now(),

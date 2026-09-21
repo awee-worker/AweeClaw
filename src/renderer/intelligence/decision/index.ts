@@ -71,6 +71,8 @@ export {
 export {
   resolveSceneToolsIntent,
   resolveSceneToolsIntentFromMessages,
+  resolveGitToolsIntent,
+  resolveGitToolsIntentFromMessages,
   resolveVisualAnalysisIntent,
   resolveSceneToolsIntentAsync,
   resolveVisualAnalysisIntentAsync,

@@ -2,7 +2,7 @@
  * 意图判定统一出口
  *
  * 定位：把散落在各调用方的关键词判定收口到决策层，使「场景工具意图」
- * 「视觉分析意图」这类判断拥有统一的来源、置信度与扩展点。
+ * 「Git 工具意图」「视觉分析意图」这类判断拥有统一的来源、置信度与扩展点。
  *
  * 为什么默认走同步规则层：
  * 这些判定位于提示词构建与工具加载的主链路上，每轮对话都会执行。若在此
@@ -19,6 +19,7 @@
 
 import { logger } from '@toolkit/LogEngine'
 import { isSceneToolsIntent, isSceneToolsIntentFromMessages } from '@intelligence/utils/sceneToolsIntent'
+import { isGitToolsIntent, isGitToolsIntentFromMessages } from '@intelligence/utils/gitToolsIntent'
 import { needsVisualAnalysis } from '@intelligence/utils/imageIntentDetector'
 import {
   booleanQuestion,
@@ -111,7 +112,44 @@ export function resolveSceneToolsIntentFromMessages(
   return resolution(false, 0.75, '消息序列未命中任何意图信号')
 }
 
+/**
+ * Git 工具意图判定（同步，仅规则）
+ *
+ * git_* 工具默认不暴露：工作区并非都是 Git 仓库，AI 自行「探路」会稳定失败。
+ * 只有用户在消息里明确要求版本控制操作时，才把 git_* 下发给 LLM。
+ */
+export function resolveGitToolsIntent(state: DecisionState): IntentResolution {
+  const text = typeof state.userMessage === 'string' ? state.userMessage : ''
+  const history = Array.isArray(state.history)
+    ? state.history.filter((item): item is string => typeof item === 'string')
+    : undefined
+
+  if (isGitToolsIntent(text, history)) {
+    return resolution(true, 0.92, '命中 Git 操作意图词表')
+  }
+
+  if (text.trim().length > 0 && text.trim().length < SHORT_MESSAGE_LENGTH) {
+    return resolution(false, 0.6, '消息过短且无 Git 意图信号，判定依据不足')
+  }
+
+  return resolution(false, 0.75, '未命中 Git 操作意图信号')
+}
+
+/** 从 LLM 消息数组推导 Git 工具意图（同步，仅规则） */
+export function resolveGitToolsIntentFromMessages(
+  messages?: Array<{ role?: string; content?: unknown }>,
+): IntentResolution {
+  if (isGitToolsIntentFromMessages(messages)) {
+    return resolution(true, 0.92, '消息序列命中 Git 操作意图词表')
+  }
+  const lastUser = findLastUserText(messages)
+  if (lastUser.trim().length > 0 && lastUser.trim().length < SHORT_MESSAGE_LENGTH) {
+    return resolution(false, 0.6, '最后一条用户消息过短，判定依据不足')
+  }
+  return resolution(false, 0.75, '消息序列未命中 Git 操作意图信号')
+}
 /** 视觉分析意图判定（同步，仅规则） */
+
 export function resolveVisualAnalysisIntent(state: DecisionState): IntentResolution {
   const text = typeof state.userMessage === 'string' ? state.userMessage : ''
 
@@ -140,10 +178,11 @@ export async function resolveSceneToolsIntentAsync(
   if (!sync.lowConfidence) return sync
   if (options?.allowLlm === false) return sync
 
+  const threshold = options?.lowConfidenceThreshold ?? DEFAULT_LOW_CONFIDENCE_THRESHOLD
   const decided = await decisionService.decideOne(
     state,
     booleanQuestion(QUESTION_SCENE_TOOLS_INTENT, '这条消息是否在要求记录或查询用户的个人场景数据？'),
-    { lowConfidenceThreshold: options?.lowConfidenceThreshold },
+    { lowConfidenceThreshold: threshold },
   )
 
   const answer = decided.answer
@@ -160,7 +199,7 @@ export async function resolveSceneToolsIntentAsync(
     confidence: answer.confidence,
     source: 'llm',
     rationale: answer.rationale ?? '模型判定',
-    lowConfidence: isLowConfidence(answer, options?.lowConfidenceThreshold),
+    lowConfidence: isLowConfidence(answer, threshold),
   }
 }
 
@@ -173,10 +212,11 @@ export async function resolveVisualAnalysisIntentAsync(
   if (!sync.lowConfidence) return sync
   if (options?.allowLlm === false) return sync
 
+  const threshold = options?.lowConfidenceThreshold ?? DEFAULT_LOW_CONFIDENCE_THRESHOLD
   const decided = await decisionService.decideOne(
     state,
     booleanQuestion(QUESTION_VISUAL_ANALYSIS_INTENT, '这条消息是否需要读取图片的像素内容（而非仅知道文件路径）？'),
-    { lowConfidenceThreshold: options?.lowConfidenceThreshold },
+    { lowConfidenceThreshold: threshold },
   )
 
   const answer = decided.answer
@@ -187,7 +227,7 @@ export async function resolveVisualAnalysisIntentAsync(
     confidence: answer.confidence,
     source: 'llm',
     rationale: answer.rationale ?? '模型判定',
-    lowConfidence: isLowConfidence(answer, options?.lowConfidenceThreshold),
+    lowConfidence: isLowConfidence(answer, threshold),
   }
 }
 

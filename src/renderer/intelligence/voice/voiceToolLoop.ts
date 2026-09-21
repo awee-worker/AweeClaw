@@ -27,7 +27,7 @@ import {
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
 import { isExternalAgentToolsExposed } from '@intelligence/toolkit/externalAgentToolsGate'
-import { resolveSceneToolsIntentFromMessages } from '../decision/intentResolvers'
+import { resolveSceneToolsIntentFromMessages, resolveGitToolsIntentFromMessages } from '../decision/intentResolvers'
 import { useStore } from '@store'
 import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
 import { requiresApprovalGate } from '@intelligence/engine/toolOrchestrator'
@@ -215,7 +215,7 @@ export async function ensureVoiceToolsInitialized(): Promise<void> {
  * 每次执行时刷新工具加载上下文（场景/智能体可能在会话间切换）
  * 确保语音路径始终使用最新的智能体工具白名单
  */
-function refreshVoiceToolLoadingContext(sceneToolsEnabled = false): void {
+function refreshVoiceToolLoadingContext(sceneToolsEnabled = false, gitToolsEnabled = false): void {
   const activeScenarioId = useStore.getState().activeScenarioId
   const activeScenario = scenarioRegistry.getActive()
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
@@ -233,9 +233,24 @@ function refreshVoiceToolLoadingContext(sceneToolsEnabled = false): void {
     scenarioTools,
     // 场景工具按需暴露（致命问题 #4）：语音对话同样仅在场景数据意图时可见
     sceneToolsEnabled,
+    // Git 工具按需暴露：语音对话同样仅在用户要求版本控制操作时可见 git_*
+    gitToolsEnabled,
     externalAgentEnabled: isExternalAgentToolsExposed(),
     ...agentToolFields,
   })
+}
+
+/**
+ * 按对话消息刷新工具加载上下文
+ *
+ * 场景工具与 Git 工具都是「按需暴露」，判定依据都是当前对话的用户消息。
+ * 头像迷你聊天与语音路径共用本函数，避免各自计算导致可见工具与提示词不一致。
+ */
+export function refreshToolLoadingContextForMessages(messages: LLMMessage[]): void {
+  refreshVoiceToolLoadingContext(
+    resolveSceneToolsIntentFromMessages(messages).value,
+    resolveGitToolsIntentFromMessages(messages).value,
+  )
 }
 
 /**
@@ -645,8 +660,9 @@ export async function runVoiceToolLoop(options: VoiceToolLoopOptions): Promise<V
 
   // 确保工具系统已初始化（失败也不阻塞，只是没有工具可用）
   await ensureVoiceToolsInitialized()
-  // 每次执行刷新工具加载上下文（智能体可能已切换）
-  refreshVoiceToolLoadingContext(resolveSceneToolsIntentFromMessages(messages).value)
+  // 每次执行刷新工具加载上下文（智能体可能已切换，场景/Git 工具按需暴露）
+  refreshToolLoadingContextForMessages(messages)
+
 
   // 获取可用工具列表（与普通对话完全相同）
   const tools = toolManager.getAllToolDefinitions()

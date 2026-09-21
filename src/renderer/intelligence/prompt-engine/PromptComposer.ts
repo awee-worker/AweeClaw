@@ -50,7 +50,7 @@ import {
   getSceneToolsSnapshot,
   getSceneToolsRecentEvents,
 } from '@/renderer/components/scene-tools/agentBridge'
-import { resolveSceneToolsIntent } from '../decision/intentResolvers'
+import { resolveSceneToolsIntent, resolveGitToolsIntent } from '../decision/intentResolvers'
 
 let projectSummaryCache: { path: string; summary: string; timestamp: number } | null = null
 const SUMMARY_CACHE_TTL = 5 * 60 * 1000
@@ -128,6 +128,12 @@ export interface PromptContext {
    * 为 false（缺省）时既不注入场景工具指南/上下文，工具列表也不含 scene_tools_*。
    */
   sceneToolsEnabled?: boolean
+  /**
+   * Git 工具是否对 LLM 可见（git_*）。
+   * 由调用方按用户消息意图计算（见 buildAgentSystemPrompt）；
+   * 为 false（缺省）时工具列表不含 git_*，提示词也不注入 Git 使用规则。
+   */
+  gitToolsEnabled?: boolean
   /** 场景模式人设提示词（work/life/study，正交于 WorkMode 的推理深度） */
   scenePersonaPrompt?: string
   /** 场景模式指令段落（记忆域、可用技能等约束） */
@@ -311,7 +317,19 @@ const FILE_EDIT_PRIORITY = `## File Editing Priority (MANDATORY — NO EXCEPTION
 - **If write_file is rejected**: Do NOT retry write_file. Instead: 1) call read_file(path) to get current content, 2) use edit_file with old_string/new_string or start_line/end_line/content.
 - \`write_file\` on an existing file is ONLY allowed for intentional full-file replacement (the entire file content is being regenerated). NEVER use write_file for partial modification of an existing file.`
 
-function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' | 'executing', isChannel?: boolean, sceneToolsEnabled = false, userMessage?: string): string {
+/**
+ * Git 工具按需暴露说明
+ *
+ * git_* 只在用户本轮明确提出 Git 操作时下发，这里把策略写进提示词：
+ * 既避免 AI 在用户需要版本控制时误以为自己做不了，
+ * 也避免它在接手任务时自行探测仓库。
+ */
+const GIT_TOOLS_ON_DEMAND = `## Git Tools (ON-DEMAND)
+- git_* tools are exposed only when the user explicitly asks for a Git operation in this turn (commit / branch / merge / diff / history / pull / push / worktree / audit seal).
+- Never probe the repository on your own, and do not run git through run_command as a substitute. Many workspaces are not Git repositories, so probing only produces errors — ask the user first.`
+
+
+function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' | 'executing', isChannel?: boolean, sceneToolsEnabled = false, userMessage?: string, gitToolsEnabled = false): string {
   const excludeCategories: ToolCategory[] = []
   const activeScenario = scenarioRegistry.getActive()
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
@@ -321,7 +339,7 @@ function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' 
   // 场景工具按需暴露：prompt 中的工具描述与执行层工具列表保持一致（致命问题 #4）
   // 套餐工具能力组：系统提示里的工具清单必须与执行层可见工具一致，
   // 否则 AI 会去调用被套餐禁用的工具（可见性才是主闸门）
-  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, scenarioTools, isChannel, sceneToolsEnabled, allowedToolGroups: getAllowedToolGroupsSync(), ...agentFields })
+  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, scenarioTools, isChannel, sceneToolsEnabled, gitToolsEnabled, allowedToolGroups: getAllowedToolGroupsSync(), ...agentFields })
   // 按用户意图裁剪工具描述以压缩提示词体积；
   // 命中开发类意图或无法判定意图时保持全量，避免因漏选工具导致任务失败
   const preselected = preselectTools({ userMessage: userMessage ?? '', allowedTools })
@@ -334,7 +352,10 @@ ${baseTools}
 
 ${FILE_EDIT_PRIORITY}
 
+${GIT_TOOLS_ON_DEMAND}
+
 ${toolGuidelines}`
+
 }
 
 /**
@@ -717,7 +738,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     PROFESSIONAL_OBJECTIVITY,
     LANGUAGE_MATCHING,
     identity.securityRules,
-    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery),
+    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery, ctx.gitToolsEnabled),
     identity.conventions,
     identity.workflow,
     GRAPH_PLAN_GUIDE,
@@ -752,7 +773,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     PROFESSIONAL_OBJECTIVITY,
     LANGUAGE_MATCHING,
     identity.securityRules,
-    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery),
+    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery, ctx.gitToolsEnabled),
     identity.conventions,
     GRAPH_PLAN_GUIDE,
     identity.outputFormat,
@@ -894,6 +915,8 @@ export async function buildAgentSystemPrompt(
   // 场景工具意图：下方三处共用同一判定结果。判定出口默认只走规则层（零延迟），
   // 而 prompt 构建处于对话主链路，此处不引入模型调用
   const sceneToolsIntent = resolveSceneToolsIntent({ userMessage }).value
+  // Git 工具意图与场景工具同理：主链路只走规则层，不引入模型调用
+  const gitToolsIntent = resolveGitToolsIntent({ userMessage }).value
 
   const ctx: PromptContext = {
     os: getOS(),
@@ -925,6 +948,9 @@ export async function buildAgentSystemPrompt(
     // - 仅当用户消息带明确的“场景数据记录/查询/管理”意图时才注入指南与上下文
     // - AI 执行开发/多步任务时任务跟踪应使用系统内置 todo_write / create_task_plan，不触碰场景工具
     sceneToolsEnabled: sceneToolsIntent,
+    // Git 工具按需暴露：仅当用户消息带明确的版本控制指令（提交 / 分支 / 差异 / 历史 …）时，
+    // git_* 才进入工具列表与提示词；工作区不都是 Git 仓库，AI 自行探测只会报错
+    gitToolsEnabled: gitToolsIntent,
     sceneToolsGuide: sceneToolsIntent ? buildSceneToolsGuideSection(sceneProfile) : null,
     sceneToolsContext: sceneToolsIntent ? buildSceneToolsContextSection(sceneProfile) : null,
     customAgentPrompt: activeAgent?.systemPrompt || null,
