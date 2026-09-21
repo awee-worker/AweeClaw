@@ -424,7 +424,12 @@ export function useSettingsLocalState(embedded: boolean) {
       : { ...state.localProviderConfigs }
 
     try {
-      set('llmConfig', state.localConfig)
+      // 走与设置加载相同的解析路径：模型卡片里的「生成参数」优先于 Provider 级默认值，
+      // 不这样做的话模型级参数要重启后才生效（内存里的 llmConfig 一直是旧快照）
+      set('llmConfig', resolveRuntimeLLMConfig(
+        state.localConfig as Partial<PersistedLLMConfig>,
+        finalProviderConfigs,
+      ))
       set('language', state.localLanguage)
       set('autoApprove', state.localAutoApprove)
       set('promptTemplateId', state.localPromptTemplateId)

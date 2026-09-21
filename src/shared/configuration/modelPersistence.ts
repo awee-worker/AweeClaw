@@ -139,6 +139,23 @@ export function serializePersistedLLMConfig(config: LLMConfig): PersistedLLMConf
   }
 }
 
+/**
+ * 历史默认的最大输出 tokens。
+ *
+ * 早期版本的默认值是 8192，推理模型的思考 token 与正文共享该额度，
+ * 很容易出现「思考占满额度、正文无输出」。这里把仍停留在旧默认值的配置
+ * 视为「用户未自定义」，随新默认值一同升级；用户显式设置过的其他值保持不动。
+ */
+const LEGACY_DEFAULT_MAX_TOKENS = 8192
+
+function resolveMaxTokens(
+  saved: number | undefined,
+  fallback: number | undefined,
+): number | undefined {
+  if (saved === undefined) return fallback
+  return saved === LEGACY_DEFAULT_MAX_TOKENS ? fallback : saved
+}
+
 export function resolvePersistedLLMBehavior(
   saved: Partial<PersistedLLMConfig> | undefined,
   defaults: LLMConfig,
@@ -166,7 +183,7 @@ export function resolvePersistedLLMBehavior(
     thinkingBudget: saved?.thinkingBudget ?? defaults.thinkingBudget,
     reasoningEffort: saved?.reasoningEffort ?? defaults.reasoningEffort,
     temperature: saved?.temperature ?? defaults.temperature,
-    maxTokens: saved?.maxTokens ?? defaults.maxTokens,
+    maxTokens: resolveMaxTokens(saved?.maxTokens, defaults.maxTokens),
     topP: saved?.topP ?? defaults.topP,
     topK: saved?.topK ?? defaults.topK,
     frequencyPenalty: saved?.frequencyPenalty ?? defaults.frequencyPenalty,

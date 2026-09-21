@@ -1535,6 +1535,8 @@ export const zh = {
   'provider.generation': '生成参数',
   'provider.generationDesc': '温度、Top P、最大 Token 等',
   'provider.maxTokens': '最大 Token',
+  'provider.maxTokensDesc': '单次响应的输出上限。推理模型的思考 token 与正文共享此额度，设置过小会导致思考占满额度、正文无输出；拉到「不限」则不限制，由模型自身决定',
+  'provider.maxTokensUnlimited': '不限',
   'provider.temperature': '随机性 (Temperature)',
   'provider.precise': '精确',
   'provider.creative': '创意',

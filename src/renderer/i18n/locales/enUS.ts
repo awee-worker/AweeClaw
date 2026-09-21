@@ -1528,6 +1528,8 @@ export const en = {
   'provider.generation': 'Generation',
   'provider.generationDesc': 'Temperature, Top P, Max Tokens, etc.',
   'provider.maxTokens': 'Max Tokens',
+  'provider.maxTokensDesc': 'Output cap for a single response. Reasoning tokens share this budget with the answer, so a small value lets thinking consume it all and leaves no room for the reply. Set it to "Unlimited" to let the model decide.',
+  'provider.maxTokensUnlimited': 'Unlimited',
   'provider.temperature': 'Temperature',
   'provider.precise': 'Precise',
   'provider.creative': 'Creative',

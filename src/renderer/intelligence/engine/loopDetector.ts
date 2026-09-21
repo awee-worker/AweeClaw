@@ -1115,8 +1115,8 @@ export async function executeAgentCycle(
               suggestion: truncated
                 ? getLocalizedText(
                     language,
-                    '建议提高「最大输出 tokens」或降低思考预算后点击继续。',
-                    'Raise the max output tokens (or lower the thinking budget), then click Continue.',
+                    '可在「设置 → 模型 → 高级设置」调大「最大 Token」（或设为「不限」），或调低「思考 Token 预算」后点击继续。',
+                    'In Settings → Model → Advanced, raise "Max Tokens" (or set it to "Unlimited") or lower the "Thinking Budget", then click Continue.',
                   )
                 : getLocalizedText(language, '可直接点击继续，或重新发送以续接任务。', 'Click Continue, or resend to resume the task.'),
               action: { label: getLocalizedText(language, '继续', 'Continue'), actionType: 'continue' },

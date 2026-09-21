@@ -15,7 +15,10 @@
 export const LLM_DEFAULTS = {
   temperature: 0.7,
   topP: 1,
-  maxTokens: 8192,
+  // 单次响应（含思考）的输出上限。推理模型的思考 token 与正文共享该额度，
+  // 默认值过小会让思考吃满额度、正文无输出（finishReason=length 且正文为空）。
+  // 0 表示不向 Provider 传递上限，由模型自身决定。
+  maxTokens: 32768,
   timeout: 120000,
   frequencyPenalty: 0,
   presencePenalty: 0,

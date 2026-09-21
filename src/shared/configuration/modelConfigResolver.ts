@@ -46,6 +46,29 @@ function resolveProviderTransportConfig(
   }
 }
 
+/**
+ * 读取指定模型的「自定义生成参数」（模型卡片里的生成参数面板）。
+ *
+ * UI 语义是「自定义参数覆盖 Provider 默认值」，因此只返回显式设置过的字段：
+ * 面板里未改动的项为 undefined，若一并透传会把全局配置覆盖成空值。
+ */
+function resolveModelGenerationParams(
+  providerId: string,
+  model: string,
+  providerConfigs: ProviderConfigMap,
+): Partial<LLMConfig> {
+  const providerConfig = providerConfigs[providerId]
+  const modelConfig = providerConfig && 'modelConfigs' in providerConfig
+    ? providerConfig.modelConfigs?.[model]
+    : undefined
+  const raw = modelConfig?.generationParams
+  if (!raw) return {}
+
+  return Object.fromEntries(
+    Object.entries(raw).filter(([, value]) => value !== undefined),
+  ) as Partial<LLMConfig>
+}
+
 export function resolveRuntimeLLMConfig(
   saved: Partial<PersistedLLMConfig> | undefined,
   providerConfigs: ProviderConfigMap,
@@ -54,14 +77,17 @@ export function resolveRuntimeLLMConfig(
   const providerId = saved?.provider ?? defaults.provider
   const transport = resolveProviderTransportConfig(providerId, providerConfigs)
   const behavior = resolvePersistedLLMBehavior(saved, defaults)
+  const model = saved?.model ?? transport.model ?? defaults.model
+  const modelParams = resolveModelGenerationParams(providerId, model, providerConfigs)
 
   return {
     provider: providerId,
-    model: saved?.model ?? transport.model ?? defaults.model,
+    model,
     apiKey: transport.apiKey,
     baseUrl: transport.baseUrl,
     timeout: transport.timeout,
     ...behavior,
+    ...modelParams,
     headers: transport.headers,
     protocol: transport.protocol,
     openAICompatibilityProfile: transport.openAICompatibilityProfile,
@@ -101,7 +127,8 @@ export function resolveScenarioLLMConfig(
         ...baseConfig,
         temperature: overrides.temperature,
         topP: overrides.topP,
-        maxTokens: baseConfig.maxTokens != null
+        // 0 / 未设置 = 不限制，此时直接采用场景自身的输出上限（场景约束优先）
+        maxTokens: baseConfig.maxTokens
             ? Math.min(overrides.maxTokens, baseConfig.maxTokens)
             : overrides.maxTokens,
         timeout: baseConfig.timeout != null
@@ -126,7 +153,8 @@ export function resolveScenarioTaskLLMConfig(
         ...baseConfig,
         temperature: overrides.temperature,
         topP: overrides.topP,
-        maxTokens: baseConfig.maxTokens != null
+        // 同 resolveScenarioLLMConfig：0 / 未设置 = 不限制，采用场景自身上限
+        maxTokens: baseConfig.maxTokens
             ? Math.min(overrides.maxTokens, baseConfig.maxTokens)
             : overrides.maxTokens,
         timeout: baseConfig.timeout != null

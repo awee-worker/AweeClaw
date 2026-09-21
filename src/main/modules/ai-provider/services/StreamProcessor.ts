@@ -997,6 +997,23 @@ const SCENARIO_STREAM_POLICIES: Record<ScenarioDomain, ScenarioStreamPolicy> = {
 }
 
 /**
+ * 合并场景策略上限与用户配置的输出上限。
+ *
+ * 三态语义：
+ * - 策略上限 ≤ 0：策略不干预，沿用用户配置（含「不限制」）
+ * - 用户配置为 0 / 未设置：视为「不限制」，此时采用场景上限（场景约束优先）
+ * - 两者都有：取较小值
+ */
+function resolveScenarioStreamMaxTokens(
+  policyMaxTokens: number,
+  configuredMaxTokens: number | undefined,
+): number | undefined {
+  if (policyMaxTokens <= 0) return configuredMaxTokens
+  if (!configuredMaxTokens) return policyMaxTokens
+  return Math.min(policyMaxTokens, configuredMaxTokens)
+}
+
+/**
  * 场景感知流式处理器
  *
  * 在标准 StreamingService 基础上，增加场景策略：
@@ -1093,13 +1110,10 @@ export class ScenarioStreamProcessor {
       ...params,
       config: {
         ...params.config,
-        maxTokens:
-          policy.maxTokens > 0
-            ? Math.min(
-                policy.maxTokens,
-                params.config.maxTokens ?? policy.maxTokens,
-              )
-            : params.config.maxTokens,
+        maxTokens: resolveScenarioStreamMaxTokens(
+          policy.maxTokens,
+          params.config.maxTokens,
+        ),
         timeout: Math.max(
           params.config.timeout ?? policy.totalTimeoutMs,
           policy.totalTimeoutMs,

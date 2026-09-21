@@ -904,6 +904,9 @@ export function ModelProviderPanel({
     [currentProtocol, language],
   )
 
+  // 0 表示「不限制」：不向 Provider 下发输出上限，由模型自身决定
+  const maxTokensValue = localConfig.maxTokens ?? LLM_DEFAULTS.maxTokens
+
   const selectedReasoningEffort = useMemo(() => {
     const currentValue = localConfig.reasoningEffort ?? 'medium'
     const preferredFallback = reasoningEffortOptions.find(option => option.value === 'medium')?.value
@@ -1755,21 +1758,30 @@ export function ModelProviderPanel({
                     <div className="flex items-center justify-between">
                       <label className="text-xs text-text-secondary">{t('provider.maxTokens', language as Language)}</label>
                       <span className="text-xs font-mono bg-background/50 px-1.5 py-0.5 rounded text-accent">
-                        {localConfig.maxTokens ?? LLM_DEFAULTS.maxTokens}
+                        {maxTokensValue === 0
+                          ? t('provider.maxTokensUnlimited', language as Language)
+                          : maxTokensValue.toLocaleString()}
                       </span>
                     </div>
                     <input
                       type="range"
-                      min={1024}
-                      max={32768}
+                      min={0}
+                      max={131072}
                       step={1024}
-                      value={localConfig.maxTokens ?? LLM_DEFAULTS.maxTokens}
+                      value={maxTokensValue}
                       onChange={(e) => setLocalConfig({
                         ...localConfig,
                         maxTokens: parseInt(e.target.value)
                       })}
                       className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent hover:accent-accent-hover"
                     />
+                    <div className="flex items-center justify-between text-[11px] text-text-muted px-1">
+                      <span>{t('provider.maxTokensUnlimited', language as Language)}</span>
+                      <span>128K</span>
+                    </div>
+                    <p className="text-[11px] text-text-muted">
+                      {t('provider.maxTokensDesc', language as Language)}
+                    </p>
                   </div>
 
                   {/* Temperature */}

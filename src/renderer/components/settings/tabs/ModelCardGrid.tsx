@@ -10,6 +10,11 @@ import {
 } from '@renderer/types/modelProvider'
 import { ActionButton, ToggleSwitch } from '@components/ui'
 import { t, type Language } from '@renderer/i18n'
+import { LLM_DEFAULTS } from '@configuration/defaultProfile'
+
+/** 最大输出 tokens 滑块上限：0 表示不限制（不下发该参数） */
+const MAX_TOKENS_SLIDER_MAX = 131072
+const MAX_TOKENS_SLIDER_STEP = 1024
 
 interface ModelCardGridProps {
   models: string[]
@@ -181,9 +186,26 @@ function ModelParamsEditor({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="text-xs text-text-secondary">{t('provider.maxTokens', language)}</label>
-                    <span className="text-xs font-mono bg-background/50 px-1.5 py-0.5 rounded text-accent">{params.maxTokens ?? 8192}</span>
+                    <span className="text-xs font-mono bg-background/50 px-1.5 py-0.5 rounded text-accent">
+                      {(params.maxTokens ?? LLM_DEFAULTS.maxTokens) === 0
+                        ? t('provider.maxTokensUnlimited', language)
+                        : (params.maxTokens ?? LLM_DEFAULTS.maxTokens).toLocaleString()}
+                    </span>
                   </div>
-                  <input type="range" min={1024} max={32768} step={1024} value={params.maxTokens ?? 8192} onChange={e => updateParam('maxTokens', parseInt(e.target.value))} className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent" />
+                  <input
+                    type="range"
+                    min={0}
+                    max={MAX_TOKENS_SLIDER_MAX}
+                    step={MAX_TOKENS_SLIDER_STEP}
+                    value={params.maxTokens ?? LLM_DEFAULTS.maxTokens}
+                    onChange={e => updateParam('maxTokens', parseInt(e.target.value))}
+                    className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-text-muted px-1">
+                    <span>{t('provider.maxTokensUnlimited', language)}</span>
+                    <span>128K</span>
+                  </div>
+                  <p className="text-[11px] text-text-muted">{t('provider.maxTokensDesc', language)}</p>
                 </div>
 
                 <div className="space-y-1.5">

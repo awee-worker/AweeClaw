@@ -78,6 +78,8 @@ export function buildGenerationSettings(config: LLMConfig): GenerationSettings {
     protocol !== 'openai-responses' &&
     !isOpenAIReasoningRoute
 
+  // maxTokens 为 0 或未设置时按「不限制」处理：不下发输出上限，
+  // 由 Provider 侧按模型自身能力决定（Anthropic 走模型输出上限、OpenAI/Gemini 走服务端默认）。
   const maxOutputTokens = normalizePositiveInteger(config.maxTokens)
   const thinkingBudget = normalizeNonNegativeInteger(config.thinkingBudget)
 
@@ -92,6 +94,14 @@ export function buildGenerationSettings(config: LLMConfig): GenerationSettings {
       maxTokens: maxOutputTokens,
       thinkingBudget,
       hint: '调低思考预算或调高最大输出 tokens 可避免思考占满输出额度',
+    })
+  } else if (maxOutputTokens === undefined) {
+    // 「不限制」模式：不下发输出上限，最终额度由 Provider / 模型决定。
+    // 记一条 info 便于排查「正文被截断」类问题时确认上限来源。
+    logger.llm.info('[RequestConfig] 未设置最大输出 tokens，改由 Provider 决定输出上限', {
+      provider: config.provider,
+      model: config.model,
+      thinkingBudget: thinkingBudget ?? null,
     })
   }
 
