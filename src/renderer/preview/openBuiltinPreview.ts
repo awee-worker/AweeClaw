@@ -31,6 +31,8 @@ export interface OpenBuiltinPreviewResult {
     url?: string
     /** 实际使用的标签页标题 */
     title?: string
+    /** 本地静态预览的根目录（供调用方登记自动刷新） */
+    rootDir?: string
     error?: string
 }
 
@@ -77,8 +79,8 @@ export async function openBuiltinPreview(
             }
         }
         const title = input.title || deriveTitle(rawPath)
-        activatePreview(resolved.url, title)
-        return { success: true, url: resolved.url, title }
+        activatePreview(resolved.url, title, resolved.rootDir)
+        return { success: true, url: resolved.url, title, rootDir: resolved.rootDir }
     } catch (err) {
         return {
             success: false,
@@ -88,12 +90,19 @@ export async function openBuiltinPreview(
 }
 
 /** 打开（或复用）预览标签页并激活 */
-function activatePreview(url: string, title: string): void {
+function activatePreview(url: string, title: string, rootDir?: string): void {
     previewSessionService.openUrl(url, {
         title,
         source: 'manual',
         activate: true,
+        previewRoot: rootDir,
     })
+
+    // 本地静态页面：登记目录监听，页面文件改动后自动刷新
+    if (rootDir) {
+        void api.preview.watchAutoReload(rootDir, url)
+    }
+
     // 预览要抢焦点，避免被右侧边栏挡住
     useStore.getState().setActiveSidePanel(null)
 }

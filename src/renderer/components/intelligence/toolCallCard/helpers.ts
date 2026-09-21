@@ -41,6 +41,7 @@ export const TOOL_LABEL_KEYS: Record<string, string> = {
   todo_write: 'tool.label.todo_write',
   companion_control: 'tool.label.companion_control',
   open_preview: 'tool.label.open_preview',
+  inspect_preview: 'tool.label.inspect_preview',
   desktop_list_apps: 'tool.label.desktop_list_apps',
   desktop_launch_app: 'tool.label.desktop_launch_app',
   desktop_quit_app: 'tool.label.desktop_quit_app',

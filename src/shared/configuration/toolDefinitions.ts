@@ -1888,6 +1888,65 @@ Notes:
         },
     },
 
+    inspect_preview: {
+        name: 'inspect_preview',
+        displayName: 'Inspect Preview',
+        description: 'Read the runtime health of a page open in AweeClaw\'s built-in browser: console errors, failed resource loads, blank-screen detection and renderer crashes. Use it right after open_preview to verify the page actually rendered, instead of assuming it worked.',
+        detailedDescription: `Read the runtime health of a preview page.
+
+What it reports:
+- Console errors / warnings emitted by the page (with source file, line and repeat count)
+- Resource loads that failed (404 / connection refused / blocked)
+- Blank screen: the page finished loading but rendered almost nothing visible
+- Renderer crash
+
+Where the data comes from:
+- The main process listens to the webview's console / load / crash events, so the numbers reflect
+  what the page really did at runtime — not a static analysis of the source files.
+
+Choosing the target:
+- Pass \`url\` to inspect the tab for a specific address (partial match is enough,
+  e.g. "5173" matches http://localhost:5173/).
+- Omit it to inspect the most recently active preview tab.
+
+When to use it:
+- Right after open_preview, to confirm the page rendered instead of showing a blank screen.
+- When the user says the preview looks broken and you need the actual error text.
+- Before reporting a web page as done.
+
+Set \`include_network\` when you suspect slow or missing assets: it appends the page's resource
+waterfall (url / type / duration / size / status), read from the page's own Performance API.`,
+        examples: [
+            'inspect_preview  ← checks the most recent preview tab',
+            'inspect_preview url="5173"',
+            'inspect_preview url="localhost:5173" include_network=true',
+        ],
+        criticalRules: [
+            'Call it after open_preview to verify the page rendered — open_preview succeeding does not mean the page worked',
+            'Quote the actual console error text when reporting to the user; do not paraphrase it into a vague summary',
+            'If it reports a blank screen, check the build output / script paths before retrying',
+        ],
+        category: 'interaction',
+        approvalType: 'none',
+        parallel: false,
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            url: {
+                type: 'string',
+                description: 'Preview tab to inspect, matched against its URL (partial match is enough, e.g. "5173"). Omit to use the most recently active tab.',
+            },
+            session_id: {
+                type: 'string',
+                description: 'Exact preview session id when you already have one. Takes priority over `url`.',
+            },
+            include_network: {
+                type: 'boolean',
+                description: 'Also return the resource waterfall (url / type / duration / size / status). Default false.',
+            },
+        },
+    },
+
     knowledge_search: {
         name: 'knowledge_search',
         displayName: 'Knowledge Search',

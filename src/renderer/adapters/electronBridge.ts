@@ -465,9 +465,29 @@ function createGroupedAPI() {
       onChanged: (callback: Parameters<typeof raw.onFileChanged>[0]) => raw.onFileChanged(callback),
     },
 
-    // 内置预览（本地静态文件 → 内置浏览器可加载地址）
+    // 内置预览（本地静态文件 → 内置浏览器可加载地址；页面健康采集）
     preview: {
       resolveLocalUrl: (localPath: string) => raw.preview.resolveLocalUrl(localPath),
+      healthAttach: (guestId: number, sessionId: string, url: string) =>
+        raw.preview.healthAttach(guestId, sessionId, url),
+      healthDetach: (guestId: number) => raw.preview.healthDetach(guestId),
+      healthGet: (sessionId: string) => raw.preview.healthGet(sessionId),
+      collectNetwork: (guestId: number) => raw.preview.collectNetwork(guestId),
+      onHealth: (callback: Parameters<typeof raw.preview.onHealth>[0]) =>
+        raw.preview.onHealth(callback),
+      watchAutoReload: (rootDir: string, url: string) =>
+        raw.preview.watchAutoReload(rootDir, url),
+      unwatchAutoReload: (rootDir: string, url: string) =>
+        raw.preview.unwatchAutoReload(rootDir, url),
+      onAutoReload: (callback: Parameters<typeof raw.preview.onAutoReload>[0]) =>
+        raw.preview.onAutoReload(callback),
+      openDevTools: (guestId: number, rect: Parameters<typeof raw.preview.openDevTools>[1]) =>
+        raw.preview.openDevTools(guestId, rect),
+      setDevToolsBounds: (
+        guestId: number,
+        rect: Parameters<typeof raw.preview.setDevToolsBounds>[1],
+      ) => raw.preview.setDevToolsBounds(guestId, rect),
+      closeDevTools: (guestId: number) => raw.preview.closeDevTools(guestId),
     },
 
     // 剪贴板

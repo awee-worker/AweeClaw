@@ -23,6 +23,7 @@ import { BrowserWindow, ipcMain, powerMonitor } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import { getDeviceLinkClient } from './DeviceLinkClient'
 import { setFileChangeForwarder } from '../../guard/fileSystemObserver'
+import { previewSessionReporter } from './PreviewSessionReporter'
 
 /** 文件变更事件防抖间隔（1s 内合并） */
 const FILE_CHANGE_DEBOUNCE_MS = 1000
@@ -138,6 +139,8 @@ class DeviceLinkEventBridge {
 
     // ── 8. 连接状态上报（由 client 在 ws open/close 时调用 pushConnectivity） ─
     //    见 DeviceLinkClient 在 start/stop/connect 成功/closed 时调用此通道
+    // ── 9. 预览会话快照（移动端接力：让手机看到电脑正在预览什么） ────
+    previewSessionReporter.attach()
 
     logger.deviceLink.info('[EventBridge] Attached')
   }
@@ -246,6 +249,7 @@ class DeviceLinkEventBridge {
     } catch (err) {
       logger.deviceLink.debug(`[EventBridge] Failed to clear file change forwarder: ${(err as Error).message}`)
     }
+    previewSessionReporter.detach()
   }
 }
 

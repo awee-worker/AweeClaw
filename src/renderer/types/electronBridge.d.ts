@@ -1682,7 +1682,61 @@ export interface ElectronAPI {
   // Preview (built-in browser)
   /** 把本地静态文件（或目录）解析成内置浏览器可加载的 http 地址 */
   preview: {
-    resolveLocalUrl: (localPath: string) => Promise<{ success: boolean; url?: string; error?: string }>
+    resolveLocalUrl: (localPath: string) => Promise<{
+      success: boolean
+      url?: string
+      /** 预览根目录：本地静态文件预览时返回，供登记自动刷新 */
+      rootDir?: string
+      error?: string
+    }>
+    /** 绑定 webview guest 到预览会话，开始采集页面健康数据 */
+    healthAttach: (
+      guestId: number,
+      sessionId: string,
+      url: string,
+    ) => Promise<{
+      success: boolean
+      data?: import('@protocols/previewProtocol').PreviewHealthSnapshot
+      error?: string
+    }>
+    /** 解绑 webview guest，停止健康采集 */
+    healthDetach: (guestId: number) => Promise<{ success: boolean; error?: string }>
+    /** 读取指定会话的健康快照 */
+    healthGet: (sessionId: string) => Promise<{
+      success: boolean
+      data?: import('@protocols/previewProtocol').PreviewHealthSnapshot | null
+      error?: string
+    }>
+    /** 采集页面资源瀑布（排查加载问题时按需调用） */
+    collectNetwork: (guestId: number) => Promise<{
+      success: boolean
+      data?: import('@protocols/previewProtocol').PreviewNetworkEntry[]
+      error?: string
+    }>
+    /** 健康状态推送订阅 */
+    onHealth: (
+      callback: (snapshot: import('@protocols/previewProtocol').PreviewHealthSnapshot) => void,
+    ) => () => void
+    /** 登记预览目录的自动刷新（本地静态页面专用） */
+    watchAutoReload: (rootDir: string, url: string) => Promise<{ success: boolean; error?: string }>
+    /** 取消预览目录的自动刷新 */
+    unwatchAutoReload: (rootDir: string, url: string) => Promise<{ success: boolean; error?: string }>
+    /** 目录变化触发的自动刷新订阅 */
+    onAutoReload: (
+      callback: (payload: import('@protocols/previewProtocol').PreviewAutoReloadPayload) => void,
+    ) => () => void
+    /** 把预览 webview 的 DevTools 内嵌到应用内（docked=false 时调用方回退独立窗口） */
+    openDevTools: (
+      guestId: number,
+      rect: import('@protocols/previewProtocol').DevToolsRect,
+    ) => Promise<{ success: boolean; data?: { docked: boolean }; error?: string }>
+    /** 同步内嵌 DevTools 的面板矩形 */
+    setDevToolsBounds: (
+      guestId: number,
+      rect: import('@protocols/previewProtocol').DevToolsRect,
+    ) => Promise<{ success: boolean; error?: string }>
+    /** 关闭内嵌 DevTools */
+    closeDevTools: (guestId: number) => Promise<{ success: boolean; error?: string }>
   }
 
   getClipboardFilePaths: () => Promise<string[]>

@@ -117,6 +117,8 @@ const CODE_TOOL_PACK: ToolPack = {
     'companion_control',
     // 内置浏览器预览（本地页面 / 本地服务地址在应用内打开）
     'open_preview',
+    // 预览页面健康自检（控制台错误 / 加载失败 / 白屏）
+    'inspect_preview',
   ],
   optionalTools: [
     'uiux_search',

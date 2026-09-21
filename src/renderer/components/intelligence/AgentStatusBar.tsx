@@ -60,6 +60,7 @@ const TOOL_LABEL_KEYS: Record<string, string> = {
   todo_write: 'tool.label.todo_write',
   companion_control: 'tool.label.companion_control',
   open_preview: 'tool.label.open_preview',
+  inspect_preview: 'tool.label.inspect_preview',
 }
 
 /** 文件变更类型到图标/颜色的视觉配置 */

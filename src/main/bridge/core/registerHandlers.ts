@@ -97,6 +97,9 @@ import { registerMainWindowScreenshotHandlers } from '../../modules/screenshot/m
 // ── preview ─────────────────────────────────────────────
 import { registerPreviewHandlers } from '../system/preview'
 import { previewStaticServer } from '../../modules/preview/PreviewStaticServer'
+import { previewHealthMonitor } from '../../modules/preview/PreviewHealthMonitor'
+import { previewAutoReload } from '../../modules/preview/PreviewAutoReload'
+import { previewDevTools } from '../../modules/preview/PreviewDevTools'
 
 // 安全模块（guard 目录）
 import {
@@ -387,6 +390,12 @@ export function cleanupAllHandlers() {
   cleanupAuditHandlers()
   // 内置预览静态服务随应用退出关闭（不 await：退出流程不该被端口回收拖住）
   void previewStaticServer.dispose()
+  // 页面健康监控：解绑全部 webview 监听，避免退出阶段残留回调
+  previewHealthMonitor.dispose()
+  // 预览自动刷新：释放目录监听
+  previewAutoReload.dispose()
+  // 内嵌 DevTools：移除原生面板视图
+  previewDevTools.dispose()
   // DebugService 清理由 performGlobalCleanup 中异步处理（需要 await）
   logger.ipc.info('[IPC] All handlers cleaned up')
 }

@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStableCallback } from '@renderer/composables/usePerformance'
+import { api } from '@renderer/adapters/electronBridge'
 import { previewSessionService } from '@renderer/preview/previewSessionManager'
 import type { PreviewSession } from '@shared/protocols/previewProtocol'
 
@@ -53,6 +54,10 @@ export interface WebviewController {
   isLoading: boolean
   /** DevTools 是否打开 */
   devtoolsOpen: boolean
+  /** guest webContents id；null 表示 webview 尚未就绪，此时无法内嵌 DevTools */
+  guestId: number | null
+  /** webview 标签是否已挂载（未挂载时命令类按钮无效果） */
+  webviewReady: boolean
   /** 当前缩放因子（1 = 100%） */
   zoomFactor: number
   /** 后退 */
@@ -63,8 +68,14 @@ export interface WebviewController {
   stop: () => void
   /** 刷新（走 previewSessionService.reload → reloadToken 变化 → webview.reload） */
   reload: () => void
-  /** 切换 DevTools（独立窗口） */
+  /** 切换 DevTools（优先内嵌到右侧面板，条件不满足时退回独立窗口） */
   toggleDevtools: () => void
+  /** 内嵌面板是否可用：false 时不再占位，DevTools 走独立窗口 */
+  dockUsable: boolean
+  /** 标记内嵌不可用，收起占位面板 */
+  collapseDock: () => void
+  /** 以独立窗口打开 DevTools（内嵌不可用时的回退路径） */
+  openDetachedDevTools: () => void
   /** 放大（+10%，上限 300%） */
   zoomIn: () => void
   /** 缩小（-10%，下限 50%） */
@@ -84,6 +95,8 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
 
   const nodeRef = useRef<HTMLWebViewElement | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
+  /** 当前 webview 的 guest webContents id：页面健康采集的关联键 */
+  const guestIdRef = useRef<number | null>(null)
   // 记录已加载的 url / reloadToken，避免与 webview src 初始加载重复
   const lastLoadedUrlRef = useRef<string>('')
   const lastReloadTokenRef = useRef<number>(0)
@@ -93,7 +106,13 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
   const [canGoForward, setCanGoForward] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [devtoolsOpen, setDevtoolsOpen] = useState(false)
+  /** guest id 同步到 state：内嵌 DevTools 面板要据此判断能否挂载 */
+  const [guestId, setGuestId] = useState<number | null>(null)
   const [zoomFactor, setZoomFactor] = useState(1)
+  /** 内嵌面板是否可用；不可用时 DevTools 退回独立窗口，不再占位 */
+  const [dockUsable, setDockUsable] = useState(true)
+  /** 命令回调里要读到最新的打开状态，state 在闭包里会滞后 */
+  const devtoolsOpenRef = useRef(false)
 
   /** 同步 webview 导航状态到本地 state + previewSessionService（内存态） */
   const syncNavState = useStableCallback((webview: HTMLWebViewElement) => {
@@ -162,14 +181,38 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
       }
     }
     const handleDevtoolsOpened = () => {
+      devtoolsOpenRef.current = true
       setDevtoolsOpen(true)
       const sid = sessionIdRef.current
       if (sid) previewSessionService.syncWebviewState(sid, { devtoolsOpen: true })
     }
     const handleDevtoolsClosed = () => {
+      devtoolsOpenRef.current = false
       setDevtoolsOpen(false)
       const sid = sessionIdRef.current
       if (sid) previewSessionService.syncWebviewState(sid, { devtoolsOpen: false })
+    }
+
+    /**
+     * 上报 guest 给主进程，开始采集页面健康数据
+     *
+     * dom-ready 在每次导航完成后都会触发，主进程以最新会话为准重建采集状态，
+     * 因此这里无需额外的导航判断。
+     */
+    const registerHealth = () => {
+      const sid = sessionIdRef.current
+      if (!sid) return
+      try {
+        const id = webview.getWebContentsId()
+        if (typeof id !== 'number' || id < 0) return
+        guestIdRef.current = id
+        setGuestId(id)
+        // 会话上记一份 guest id，AI 侧按需采集资源瀑布时需要它
+        previewSessionService.setGuestId(sid, id)
+        void api.preview.healthAttach(id, sid, sessionRef.current?.url || '')
+      } catch {
+        // webview 尚未 attach 时 getWebContentsId 会抛错，留给下一次 dom-ready
+      }
     }
 
     const listeners: Array<[string, EventListener]> = [
@@ -184,11 +227,31 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
       ['devtools-closed', handleDevtoolsClosed as EventListener],
     ]
     listeners.forEach(([name, handler]) => webview.addEventListener(name, handler))
+    webview.addEventListener('dom-ready', registerHealth)
 
     return () => {
       listeners.forEach(([name, handler]) => webview.removeEventListener(name, handler))
+      webview.removeEventListener('dom-ready', registerHealth)
+
+      // 停止健康采集：guest 可能已销毁，主进程按 id 直接释放记录
+      const detachedGuestId = guestIdRef.current
+      if (detachedGuestId !== null) {
+        guestIdRef.current = null
+        setGuestId(null)
+        const sid = sessionIdRef.current
+        if (sid) previewSessionService.setGuestId(sid, null)
+        void api.preview.healthDetach(detachedGuestId)
+      }
+
+      // 取消目录监听：标签页关掉后不必再为它做自动刷新
+      const previewRoot = sessionRef.current?.previewRoot
+      const currentUrl = sessionRef.current?.url
+      if (previewRoot && currentUrl) {
+        void api.preview.unwatchAutoReload(previewRoot, currentUrl)
+      }
     }
   })
+
 
   /** callback ref：webview 挂载时绑定事件，卸载时解绑 */
   const webviewRef = useCallback((el: HTMLWebViewElement | null) => {
@@ -278,14 +341,62 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
     }
   })
 
+  /**
+   * 切换 DevTools
+   *
+   * 打开时先置状态让右侧占位面板出现，真正的挂载由面板自己发起（只有它知道自己的矩形）；
+   * 关闭时两条路径都走一遍：内嵌面板归主进程管，独立窗口归 webview 管。
+   *
+   * 内嵌面板需要 guest id 才能把 DevTools 挂上去，拿不到时直接以独立窗口打开，
+   * 避免点击后既没有面板也没有窗口、看起来「按钮没反应」。
+   */
   const toggleDevtools = useStableCallback(() => {
     const webview = nodeRef.current
     if (!webview) return
-    if (webview.isDevToolsOpened()) {
-      webview.closeDevTools()
-    } else {
-      // webview 的 DevTools 默认以独立窗口打开（detach），不遮挡内置浏览器
+
+    if (devtoolsOpenRef.current) {
+      const openGuestId = guestIdRef.current
+      if (openGuestId !== null) {
+        void api.preview.closeDevTools(openGuestId)
+      }
+      // 先复位本地状态：内嵌 DevTools 由主进程承载，guest 的 isDevToolsOpened()
+      // 在这种模式下并不为真，事件也不一定回传，长期挂在「已打开」会让按钮失灵
+      devtoolsOpenRef.current = false
+      setDevtoolsOpen(false)
+      try {
+        webview.closeDevTools()
+      } catch {
+        // 未打开时 closeDevTools 可能抛错，忽略
+      }
+      return
+    }
+
+    if (guestIdRef.current === null) {
+      try {
+        webview.openDevTools()
+      } catch {
+        // webview 未就绪时忽略
+      }
+      return
+    }
+
+    setDockUsable(true)
+    setDevtoolsOpen(true)
+  })
+
+  /** 内嵌不可用：收起占位面板，DevTools 改由独立窗口承载 */
+  const collapseDock = useStableCallback(() => {
+    setDockUsable(false)
+  })
+
+  /** 以独立窗口打开 DevTools（webview 的默认行为） */
+  const openDetachedDevTools = useStableCallback(() => {
+    const webview = nodeRef.current
+    if (!webview) return
+    try {
       webview.openDevTools()
+    } catch {
+      // webview 未就绪时忽略
     }
   })
 
@@ -315,6 +426,11 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
     stop,
     reload,
     toggleDevtools,
+    guestId,
+    webviewReady: webviewMounted,
+    dockUsable,
+    collapseDock,
+    openDetachedDevTools,
     zoomIn,
     zoomOut,
     resetZoom,

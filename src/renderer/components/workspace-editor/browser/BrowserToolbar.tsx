@@ -9,14 +9,18 @@
  *           外部打开（系统浏览器）、新建标签页（强制创建新会话）
  */
 import { ArrowLeft, ArrowRight, RefreshCw, X, SquareDashedMousePointer, ZoomIn, ZoomOut, ExternalLink, Plus } from 'lucide-react'
+import type { PreviewHealthSnapshot } from '@shared/protocols/previewProtocol'
 import { ActionButton } from '@components/ui'
 import { useStore } from '@store'
 import { t, type Language } from '@renderer/i18n'
 import type { WebviewController } from './hooks/useWebviewController'
 import BrowserAddressBar from './BrowserAddressBar'
+import BrowserHealthIndicator from './BrowserHealthIndicator'
 
 interface BrowserToolbarProps {
   controller: WebviewController
+  /** 当前页面健康快照（运行时态，未采集到时为空） */
+  health?: PreviewHealthSnapshot
   addressInput: string
   onAddressChange: (value: string) => void
   onNavigate: (url: string) => void
@@ -27,8 +31,10 @@ interface BrowserToolbarProps {
   onNewTab: () => void
 }
 
+
 export default function BrowserToolbar({
   controller,
+  health,
   addressInput,
   onAddressChange,
   onNavigate,
@@ -38,6 +44,7 @@ export default function BrowserToolbar({
 }: BrowserToolbarProps) {
   const language = useStore((state) => state.language) as Language
   const { canGoBack, canGoForward, isLoading, devtoolsOpen, zoomFactor } = controller
+
 
   const zoomPercent = Math.round(zoomFactor * 100)
 
@@ -81,6 +88,9 @@ export default function BrowserToolbar({
         </ActionButton>
       </div>
 
+      {/* 页面健康指示灯（控制台错误 / 加载失败 / 白屏） */}
+      <BrowserHealthIndicator health={health} />
+
       {/* 地址栏 */}
       <BrowserAddressBar
         value={addressInput}
@@ -89,15 +99,15 @@ export default function BrowserToolbar({
         onReset={onResetAddress}
         isLoading={isLoading}
       />
-
       {/* 功能组 */}
       <div className="flex items-center gap-0.5 shrink-0">
-        {/* 元素检查（DevTools toggle） */}
+        {/* 元素检查（DevTools toggle）：webview 未挂载时无目标，置灰避免点了没反馈 */}
         <ActionButton
           variant="ghost"
           size="icon"
           className={`h-8 w-8 ${devtoolsOpen ? 'text-accent ring-2 ring-accent/30' : ''}`}
           onClick={controller.toggleDevtools}
+          disabled={!controller.webviewReady}
           title={devtoolsOpen ? t('editor.browser.inspectActive', language) : t('editor.browser.inspect', language)}
           aria-label={t('editor.browser.inspect', language)}
           aria-pressed={devtoolsOpen}

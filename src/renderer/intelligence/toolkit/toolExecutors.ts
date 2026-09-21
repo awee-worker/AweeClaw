@@ -68,6 +68,13 @@ import type { ReplaceErrorCode } from '@utils/smartReplace'
 import { resolveAgentLanguage, pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { guardWriteFile } from './fileWritePolicy'
 import { openBuiltinPreview } from '@renderer/preview/openBuiltinPreview'
+import { previewSessionService } from '@renderer/preview/previewSessionManager'
+import type {
+    PreviewHealthLevel,
+    PreviewHealthSnapshot,
+    PreviewNetworkEntry,
+    PreviewSession,
+} from '@shared/protocols/previewProtocol'
 import { detectLocalPageOpenCommand } from './localPageOpenGuard'
 import { executeAddNode, executeAddEdge } from './graphToolExecutors'
 import {
@@ -78,6 +85,101 @@ import { buildToolPathPolicy } from './toolPathPolicy'
 import { getTrustedAppDataRoots } from './trustedPathRegistry'
 
 // ===== 辅助函数 =====
+
+/** 健康等级的中文说明（拼进给 AI 的报告） */
+const PREVIEW_HEALTH_TEXT: Record<PreviewHealthLevel, string> = {
+    healthy: '正常',
+    warning: '有告警',
+    error: '有错误',
+}
+
+/**
+ * 定位预览会话：显式 id > URL 提示 > 最近活跃
+ *
+ * URL 采用包含匹配：调用方给的通常是 "5173" / "localhost:5173" 这类片段。
+ */
+function resolvePreviewSession(sessionId: string, urlHint: string): PreviewSession | null {
+    const sessions = previewSessionService.getState().sessions
+    if (sessions.length === 0) {
+        return null
+    }
+
+    if (sessionId) {
+        return sessions.find((session) => session.id === sessionId) || null
+    }
+
+    if (urlHint) {
+        const needle = urlHint.toLowerCase()
+        return (
+            sessions.find((session) => session.url.toLowerCase().includes(needle)) ||
+            sessions.find((session) => session.title.toLowerCase().includes(needle)) ||
+            null
+        )
+    }
+
+    // getState() 已按 updatedAt 降序排列，首个即最近活跃
+    return sessions[0]
+}
+
+/** 把健康快照整理成可读报告 */
+function formatPreviewHealth(
+    session: PreviewSession,
+    health: PreviewHealthSnapshot,
+    network: PreviewNetworkEntry[],
+): string {
+    const lines: string[] = [
+        `预览「${session.title}」(${health.url || session.url}) 健康状态：${PREVIEW_HEALTH_TEXT[health.level]}`,
+    ]
+
+    if (health.crashed) {
+        lines.push('渲染进程已崩溃：页面无法交互，需重新加载并排查死循环或内存问题。')
+    }
+    if (health.blank) {
+        lines.push('页面已加载完成但渲染结果接近空白（疑似白屏）：优先检查构建产物与脚本路径。')
+    }
+
+    if (health.loadFailures.length > 0) {
+        lines.push('', `加载失败 ${health.loadFailures.length} 项：`)
+        health.loadFailures.forEach((failure) => {
+            const code = failure.errorCode ? `[${failure.errorCode}] ` : ''
+            lines.push(`- ${code}${failure.errorDescription} → ${failure.url}`)
+        })
+    }
+
+    if (health.consoleMessages.length > 0) {
+        lines.push('', `控制台记录 ${health.consoleMessages.length} 条：`)
+        health.consoleMessages.forEach((entry) => {
+            const location = entry.source
+                ? ` (${entry.source}${entry.line > 0 ? `:${entry.line}` : ''})`
+                : ''
+            const repeat = entry.count > 1 ? ` ×${entry.count}` : ''
+            lines.push(`- [${entry.level}] ${entry.message}${location}${repeat}`)
+        })
+    }
+
+    if (network.length > 0) {
+        const shown = network.slice(0, 40)
+        lines.push('', `资源瀑布（共 ${network.length} 条，格式：类型 状态 耗时 大小）：`)
+        shown.forEach((entry) => {
+            const status = entry.status ? ` ${entry.status}` : ''
+            lines.push(`- ${entry.type}${status} ${entry.duration}ms ${entry.size}B → ${entry.url}`)
+        })
+        if (network.length > shown.length) {
+            lines.push(`- …另有 ${network.length - shown.length} 条未列出`)
+        }
+    }
+
+    if (
+        !health.crashed &&
+        !health.blank &&
+        health.loadFailures.length === 0 &&
+        health.consoleMessages.length === 0
+    ) {
+        lines.push('未发现控制台错误、加载失败或白屏迹象。')
+    }
+
+    return lines.join('\n')
+}
 
 /**
  * Git 工具的公共前置检查：工作区存在 + 目标目录是 git 仓库
@@ -3939,6 +4041,69 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 success: false,
                 result: '',
                 error: `open_preview failed: ${toAppError(err).message}`,
+            }
+        }
+    },
+
+    /**
+     * 读取内置浏览器中预览页面的运行状况
+     *
+     * 数据来自主进程的健康监控（真实事件流，而非源码静态分析），
+     * 让 AI 在交付页面后能自检：是否白屏、是否报错、资源是否加载失败。
+     */
+    async inspect_preview(args, _ctx) {
+        const sessionId = typeof args.session_id === 'string' ? args.session_id.trim() : ''
+        const urlHint = typeof args.url === 'string' ? args.url.trim() : ''
+        const includeNetwork = args.include_network === true
+
+        const session = resolvePreviewSession(sessionId, urlHint)
+        if (!session) {
+            return {
+                success: false,
+                result: '',
+                error: urlHint
+                    ? `没有匹配「${urlHint}」的预览标签页。先用 open_preview 打开页面。`
+                    : '当前没有预览标签页。先用 open_preview 打开页面。',
+            }
+        }
+
+        try {
+            // 主进程快照比渲染进程缓存更实时：推送有节流，直接取更准
+            const response = await api.preview.healthGet(session.id)
+            const health = (response.success ? response.data : null) || session.health || null
+
+            if (!health) {
+                return {
+                    success: true,
+                    result: `预览「${session.title}」尚未采集到健康数据（页面可能仍在加载）。地址：${session.url}`,
+                    meta: { sessionId: session.id, url: session.url, collected: false },
+                }
+            }
+
+            let network: PreviewNetworkEntry[] = []
+            if (includeNetwork && session.guestId) {
+                const collected = await api.preview.collectNetwork(session.guestId)
+                network = collected.success ? collected.data || [] : []
+            }
+
+            return {
+                success: true,
+                result: formatPreviewHealth(session, health, network),
+                meta: {
+                    sessionId: session.id,
+                    url: session.url,
+                    level: health.level,
+                    consoleMessages: health.consoleMessages.length,
+                    loadFailures: health.loadFailures.length,
+                    blank: health.blank,
+                    crashed: health.crashed,
+                },
+            }
+        } catch (err) {
+            return {
+                success: false,
+                result: '',
+                error: `inspect_preview failed: ${toAppError(err).message}`,
             }
         }
     },
