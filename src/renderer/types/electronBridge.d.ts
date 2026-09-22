@@ -1298,22 +1298,16 @@ export interface ElectronAPI {
       protocol: 'homeassistant' | 'mqtt' | 'ble' | 'custom',
     ) => Promise<{ success: boolean; data?: boolean; error?: string }>
 
-    // 渲染层回调注入
-    setRendererCallbacks: (callbacks: {
-      fetchProviderConfig: (
-        providerId: string,
-      ) => Promise<{ success: boolean; data?: unknown; error?: string }>
-      reportReadings: (
-        readings: Array<{
-          entityExternalId: string
-          value?: number
-          stringValue?: string
-          unit?: string
-          source?: string
-          recordedAt: number
-        }>,
-      ) => Promise<{ success: boolean; error?: string }>
+    // 云端凭据同步（Bridge 访问后端接口所需的登录态）
+    setCredentials: (creds: {
+      serverUrl: string
+      accessToken: string
     }) => Promise<{ success: boolean; data?: boolean; error?: string }>
+    clearCredentials: () => Promise<{
+      success: boolean
+      data?: boolean
+      error?: string
+    }>
 
     // 性能指标（阶段8 s8-08）
     getMetrics: () => Promise<{

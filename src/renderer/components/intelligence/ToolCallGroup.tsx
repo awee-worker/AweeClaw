@@ -384,10 +384,14 @@ function ToolCallGroup({
 
         return (
           <div
-            // 关键：批量执行场景只有单一组，使用固定 key 而非 group.status，
-            // 避免组状态变化（进行中 → 已完成）时整个分组容器卸载重建导致闪动。
-            // 审批场景多组并存，按 status 分组本就是设计，保持 status key。
-            key={groups.length === 1 ? 'group-main' : group.status}
+            // key 取组内首个工具 id：组状态会随执行推进变化（进行中 → 已完成），
+            // 组数也会在审批前后于「单组」与「多组」之间来回切（有工具等待批准时
+            // 才按状态拆分）。这两种变化都会改变 group.status 与 groups.length，
+            // 用它们作 key 会让整个分组容器——连同其下所有卡片 DOM——被卸载重建，
+            // 紧接着重播淡入动画并重算高度，表现为卡片闪一下、会话内容跳动。
+            // 首个工具 id 在一次连续调用里恒定，用它作 key 可以让状态推进和
+            // 分组增删都落在同一份 DOM 上，只更新卡片内容而不重建容器。
+            key={group.tools[0]?.id ?? group.status}
             style={{ contain: 'layout style' }}
           >
             {/* 分组标题（仅多工具时显示）

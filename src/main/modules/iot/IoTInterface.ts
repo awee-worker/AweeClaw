@@ -237,7 +237,12 @@ export interface AdapterHandle {
 // IPC 通信协议
 // ============================================================
 
-/** 渲染层 → 主进程：获取 Provider 配置的回调函数类型 */
+/**
+ * 获取 Provider 运行配置的回调类型
+ *
+ * 由主进程的云端绑定实现（见 IoTBridgeBindings），从后端拉取含解密
+ * authConfig 的配置；不跨进程传递函数。
+ */
 export type FetchProviderConfigFn = (
   providerId: string,
 ) => Promise<{
@@ -246,7 +251,7 @@ export type FetchProviderConfigFn = (
   error?: string;
 }>;
 
-/** 渲染层 → 主进程：批量上报读数到后端的回调函数类型 */
+/** 批量上报读数到后端的回调类型（同样由主进程实现） */
 export type ReportReadingsFn = (
   readings: Array<{
     entityExternalId: string;

@@ -11,8 +11,12 @@
  * - Provider 连接管理：connectProvider / disconnectProvider / testProviderConnection
  * - 实体查询：listEntitySnapshots / listEntitySnapshotsByProvider
  * - 适配器管理：registerAdapter / unregisterAdapter / listAdapters（仅查询）
- * - 渲染层回调注入：setRendererCallbacks
+ * - 云端凭据同步：setCredentials / clearCredentials
  * - 事件订阅：onBridgeEvent（通过 ipcRenderer.on 接收推送）
+ *
+ * 云端回调（拉取 Provider 配置、批量上报读数）在注册时由主进程内部绑定，
+ * 不通过 IPC 传递 —— 函数无法被结构化克隆，跨进程传递必然失败。
+ * 主进程需要的是凭据（serverUrl + accessToken），由渲染进程推送。
  *
  * @module iot/IoTIpc
  */
@@ -21,11 +25,14 @@ import { ipcMain, type BrowserWindow } from 'electron';
 import { logger } from '@shared/toolkit/LogEngine';
 import { IoTBridge } from './IoTBridge';
 import { IoTMetricsCollector } from './IoTMetricsCollector';
+import { bindIoTBridgeCallbacks } from './IoTBridgeBindings';
+import {
+  iotBridgeCredentials,
+  type IoTBridgeCredentials,
+} from './IoTBridgeCredentials';
 import type {
   IoTProtocol,
   IoTProtocolAdapter,
-  FetchProviderConfigFn,
-  ReportReadingsFn,
   MetricsWindow,
 } from './IoTInterface';
 
@@ -58,6 +65,9 @@ export function registerIoTIpc(mainWindow: BrowserWindow | null): void {
 
   // 主窗口引用同步到 Bridge
   bridge.setMainWindow(mainWindow);
+
+  // 绑定云端回调：Bridge 启动前必须就绪，否则 start() 会直接拒绝
+  bindIoTBridgeCallbacks(bridge);
 
   // ============================================================
   // Bridge 生命周期
@@ -151,24 +161,31 @@ export function registerIoTIpc(mainWindow: BrowserWindow | null): void {
   );
 
   // ============================================================
-  // 渲染层回调注入
+  // 云端凭据同步
   // ============================================================
 
   ipcMain.handle(
-    `${IPC_PREFIX}setRendererCallbacks`,
-    async (
-      _,
-      callbacks: {
-        fetchProviderConfig: FetchProviderConfigFn;
-        reportReadings: ReportReadingsFn;
-      },
-    ) => {
+    `${IPC_PREFIX}setCredentials`,
+    async (_, creds: IoTBridgeCredentials) => {
       return wrap(() => {
-        bridge.setRendererCallbacks(callbacks);
+        if (!creds?.serverUrl || !creds?.accessToken) {
+          throw new Error('serverUrl 与 accessToken 均为必填');
+        }
+        iotBridgeCredentials.set({
+          serverUrl: creds.serverUrl.replace(/\/+$/, ''),
+          accessToken: creds.accessToken,
+        });
         return true;
       });
     },
   );
+
+  ipcMain.handle(`${IPC_PREFIX}clearCredentials`, async () => {
+    return wrap(() => {
+      iotBridgeCredentials.clear();
+      return true;
+    });
+  });
 
   // ============================================================
   // 性能指标（阶段8 s8-08 + 阶段9 s9-08）

@@ -13,7 +13,7 @@
  * - Provider 连接管理：connectProvider / disconnectProvider / testProviderConnection
  * - 实体查询：listEntitySnapshots / listEntitySnapshotsByProvider
  * - 适配器查询：hasAdapter
- * - 渲染层回调注入：setRendererCallbacks（启动时由 BridgeController 调用）
+ * - 云端凭据同步：setCredentials / clearCredentials
  * - 事件订阅：onBridgeEvent
  */
 
@@ -129,23 +129,6 @@ export interface BridgeEvent {
   error?: string;
   timestamp: number;
 }
-
-/** 渲染层注入：获取 Provider 配置（含解密 authConfig） */
-export type FetchProviderConfigFn = (
-  providerId: string,
-) => Promise<IpcResponse<IoTProviderSummary>>;
-
-/** 渲染层注入：批量上报读数到后端 */
-export type ReportReadingsFn = (
-  readings: Array<{
-    entityExternalId: string;
-    value?: number;
-    stringValue?: string;
-    unit?: string;
-    source?: ReadingSource;
-    recordedAt: number;
-  }>,
-) => Promise<IpcResponse>;
 
 // ============================================================
 // 性能指标（阶段8 s8-08）
@@ -274,18 +257,20 @@ export interface IoTBridgeApi {
   /** 查询协议适配器是否已注册 */
   hasAdapter: (protocol: IoTProtocol) => Promise<IpcResponse<boolean>>;
 
-  // ===== 渲染层回调注入 =====
+  // ===== 云端凭据同步 =====
   /**
-   * 注入渲染层回调（Bridge 启动前调用）
+   * 同步云端凭据到主进程（Bridge 启动前调用）
    *
-   * Bridge 通过这些回调：
-   * - 获取 Provider 配置（含解密后的 authConfig）
-   * - 批量上报读数到后端 /api/v1/iot/readings/batch
+   * 主进程的 Bridge 需要访问后端接口（拉取 Provider 运行配置、
+   * 批量上报读数），但 accessToken 由渲染进程管理，因此在此推送。
+   * 登录后推送一次，accessToken 刷新后重新推送覆盖。
    */
-  setRendererCallbacks: (callbacks: {
-    fetchProviderConfig: FetchProviderConfigFn;
-    reportReadings: ReportReadingsFn;
+  setCredentials: (creds: {
+    serverUrl: string;
+    accessToken: string;
   }) => Promise<IpcResponse<boolean>>;
+  /** 清除主进程持有的云端凭据（登出 / 认证失效时调用） */
+  clearCredentials: () => Promise<IpcResponse<boolean>>;
 
   // ===== 性能指标（阶段8 s8-08 + 阶段9 s9-08） =====
   /** 获取 Bridge 性能指标快照 */
@@ -345,9 +330,10 @@ export function createIoTBridgeApi(): IoTBridgeApi {
     // ===== 适配器查询 =====
     hasAdapter: (protocol) => ipcRenderer.invoke('iot:hasAdapter', protocol),
 
-    // ===== 渲染层回调注入 =====
-    setRendererCallbacks: (callbacks) =>
-      ipcRenderer.invoke('iot:setRendererCallbacks', callbacks),
+    // ===== 云端凭据同步 =====
+    setCredentials: (creds) =>
+      ipcRenderer.invoke('iot:setCredentials', creds),
+    clearCredentials: () => ipcRenderer.invoke('iot:clearCredentials'),
 
     // ===== 性能指标 =====
     getMetrics: () => ipcRenderer.invoke('iot:getMetrics'),

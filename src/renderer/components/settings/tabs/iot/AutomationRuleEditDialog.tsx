@@ -279,6 +279,7 @@ export function AutomationRuleEditDialog({
               <ActionConfigEditor
                 language={language}
                 actionType={actionType}
+                triggerType={triggerType}
                 config={actionConfig}
                 onChange={setActionConfig}
               />

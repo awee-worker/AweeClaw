@@ -4810,6 +4810,8 @@ export const en = {
   'iot.provider.listTitle': 'Providers',
   'iot.provider.listSubtitle': '{count} provider(s)',
   'iot.provider.listSubtitleBridgeOff': '{count} provider(s) (Bridge not running)',
+  'iot.provider.bridgeNotRunningTip':
+    'Bridge is not running, so providers cannot connect yet. Click "Stopped · Click to start" at the top of this page to start it — the Connect button appears here afterwards.',
   'iot.provider.new': 'New',
   'iot.provider.mqttPublish': 'MQTT Publish',
   'iot.provider.empty': 'No providers yet. Click "New" to create.',
@@ -4835,12 +4837,24 @@ export const en = {
   'iot.provider.authConfigLabel': 'Auth Config (JSON)',
   'iot.provider.authConfigInvalid': 'Invalid authConfig JSON',
   'iot.provider.authConfigHint': 'Secrets will be AES-256-GCM encrypted at backend',
+  'iot.provider.authConfigTemplate': 'Quick fill',
+  'iot.provider.authConfigOverwrite':
+    'Auth config is not empty. Filling in the template will overwrite it. Continue?',
+  'iot.provider.authConfigFilled': '"{template}" applied — complete the empty values',
+  'iot.provider.tpl.haRest': 'Basic (REST poll)',
+  'iot.provider.tpl.haWs': 'Live (WebSocket)',
+  'iot.provider.tpl.mqttBasic': 'Username / password',
+  'iot.provider.tpl.mqttTls': 'TLS mutual auth',
+  'iot.provider.tpl.mqttWill': 'Last will + $SYS',
+  'iot.provider.tpl.bleName': 'By name prefix',
+  'iot.provider.tpl.bleAddress': 'By MAC address',
+  'iot.provider.tpl.customEmpty': 'Empty skeleton',
 
   // Entity Explorer panel
   'iot.entity.explorerTitle': 'Entity Explorer',
   'iot.entity.explorerSubtitleOn': '{count} live entities',
   'iot.entity.explorerSubtitleOff': 'Bridge not running, no live data',
-  'iot.entity.bridgeNotRunningTip': 'IoT Bridge is not running. Start it in "Providers" tab and connect a provider first.',
+  'iot.entity.bridgeNotRunningTip': 'IoT Bridge is not running. Click "Stopped · Click to start" at the top of this page to start it, then connect a provider in the "Providers" tab.',
   'iot.entity.searchPlaceholder': 'Search entity ID or state',
   'iot.entity.allTypes': 'All types',
   'iot.entity.empty': 'No entity data',
@@ -5024,7 +5038,23 @@ export const en = {
   'iot.rule.actionConfig.commandTurnOff': 'Turn Off',
   'iot.rule.actionConfig.commandSetValue': 'Set Value',
   'iot.rule.actionConfig.targetHint': 'Email address or Webhook URL (optional for toast)',
-  'iot.rule.actionConfig.messageHint': 'Variables: {entityId} {value} {state} {timestamp}',
+  'iot.rule.actionConfig.messagePlaceholder':
+    'Temperature alert: {entityId} is {value} (threshold exceeded)',
+  'iot.rule.actionConfig.varsTitle': 'Available variables',
+  'iot.rule.actionConfig.varsCommonHint':
+    '{eventType} (trigger event) and {timestamp} (trigger time) work for every trigger type; unknown variables are kept as-is',
+  'iot.rule.actionConfig.var.entityId': 'Entity ID that fired the trigger, e.g. sensor.temp_1',
+  'iot.rule.actionConfig.var.value': 'Reading value',
+  'iot.rule.actionConfig.var.unit': 'Reading unit',
+  'iot.rule.actionConfig.var.fromState': 'State before the change',
+  'iot.rule.actionConfig.var.toState': 'State after the change',
+  'iot.rule.actionConfig.var.anomalyType': 'Anomaly type',
+  'iot.rule.actionConfig.var.severity': 'Anomaly severity',
+  'iot.rule.actionConfig.var.description': 'Anomaly description',
+  'iot.rule.actionConfig.var.providerId': 'Provider ID',
+  'iot.rule.actionConfig.var.providerName': 'Provider name',
+  'iot.rule.actionConfig.var.providerEventType':
+    'Provider change type (created / updated / deleted)',
 
   // ===== Proactive Assistant - Suggestion Card (s10-06) =====
   'proactive.card.ariaLabel': 'Proactive Suggestion',

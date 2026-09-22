@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AssistantPart, ToolCall } from '@intelligence/providerTypes'
-import { buildAssistantGroups } from '../assistantGrouping'
+import { buildAssistantGroups, toolGroupKey } from '../assistantGrouping'
 
 function makeToolCall(id: string, name = 'create_file_or_folder'): ToolCall {
   return { id, name, arguments: {}, status: 'success' } as unknown as ToolCall
@@ -102,7 +102,10 @@ describe('buildAssistantGroups', () => {
     expect(shapeOf(buildAssistantGroups(parts, [persisted]))).toEqual(['tools:a@0'])
   })
 
-  it('新建预览组的 startIndex 等于 parts 长度，正式化后分组身份不变', () => {
+  it('parts 完整时，预览组的 startIndex 与正式化后的下标一致', () => {
+    // 前提是文本已全部写入 parts。文本若还压在 StreamingBuffer 里，正式化前会先
+    // flush 出一个 text part，下标随之位移 —— 分组身份不能依赖 startIndex，
+    // 渲染 key 走 toolGroupKey，见下一个用例。
     const parts = [reasoningPart('现在创建 b')]
     const preview = [makeToolCall('b')]
 
@@ -112,5 +115,26 @@ describe('buildAssistantGroups', () => {
 
     expect(shapeOf(previewed)).toEqual(['reasoning@0', 'tools:b@1'])
     expect(shapeOf(persisted)).toEqual(['reasoning@0', 'tools:b@1'])
+  })
+
+  it('文本缓冲区 flush 导致下标位移时，工具组的渲染标识保持不变', () => {
+    // 回归场景：流式文本尚未写入 parts，工具先以预览出现（落位 parts.length = 0）；
+    // 正式化时先 flush 出 text part，工具组的 startIndex 变成 1。
+    // 渲染 key 若取 startIndex，这一步会把同一个组判定成换了元素，整组卡片卸载重建，
+    // 表现为卡片闪一下、会话内容跳动。
+    const previewed = buildAssistantGroups([], [makeToolCall('b')])
+    const persisted = buildAssistantGroups([textPart('现在创建 b'), toolPart('b')])
+
+    const previewedGroup = previewed[0]
+    const persistedGroup = persisted[1]
+    if (previewedGroup.type !== 'tool_group' || persistedGroup.type !== 'tool_group') {
+      throw new Error('预期两侧的首个渲染单元都是工具组')
+    }
+
+    // 下标确实位移了……
+    expect(previewedGroup.startIndex).toBe(0)
+    expect(persistedGroup.startIndex).toBe(1)
+    // ……但渲染标识不变，工具卡片得以复用同一份 DOM
+    expect(toolGroupKey(previewedGroup)).toBe(toolGroupKey(persistedGroup))
   })
 })

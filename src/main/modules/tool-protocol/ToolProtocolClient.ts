@@ -47,6 +47,43 @@ const DEFAULT_TIMEOUT = 30000
 const NPX_TIMEOUT = 60000  // npx/uvx 首次需要下载包，给更长超时
 
 /**
+ * 从插件入口模块解析出 MCP 服务器工厂函数。
+ *
+ * 兼容几种常见的导出写法：
+ * - `export default createMcpServer`（默认导出工厂函数）
+ * - `export function createMcpServer()` / `export function create()`
+ * - `export default { createMcpServer }`（默认导出持有工厂的对象）
+ * - CJS `module.exports = createMcpServer`（interop 后落在 default 上）
+ *
+ * @param mod 动态 import 得到的模块命名空间
+ * @returns 工厂函数；没有可用导出时返回 null
+ */
+function resolvePluginFactory(
+  mod: Record<string, unknown>,
+): (() => unknown) | null {
+  const defaultExport = mod.default
+  const defaultObj =
+    typeof defaultExport === 'object' && defaultExport !== null
+      ? (defaultExport as Record<string, unknown>)
+      : undefined
+
+  const candidates: unknown[] = [
+    defaultExport,
+    defaultObj?.createMcpServer,
+    defaultObj?.create,
+    mod.createMcpServer,
+    mod.create,
+  ]
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'function') {
+      return candidate as () => unknown
+    }
+  }
+  return null
+}
+
+/**
  * Windows 命令解析：将裸命令名（如 npx、uvx）解析为可被 spawn 直接执行的完整路径。
  *
  * Windows 上 npx/uvx/pnpm 等工具是 .cmd 批处理文件，
@@ -473,8 +510,8 @@ export class McpClient extends EventEmitter {
 
       // 动态加载入口模块
       const factoryModule = await import(entryPath)
-      const factory = factoryModule.default || factoryModule.createMcpServer || factoryModule.create
-      if (typeof factory !== 'function') {
+      const factory = resolvePluginFactory(factoryModule)
+      if (!factory) {
         throw new Error(
           `Plugin ${config.pluginKey} entry must export default function or createMcpServer() returning { server, clientTransport }`,
         )

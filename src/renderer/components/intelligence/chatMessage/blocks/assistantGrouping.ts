@@ -74,6 +74,27 @@ function appendPreviewToolGroup(
   result.push({ type: 'tool_group', toolCalls: fresh, startIndex: tailIndex })
 }
 
+/** 工具组分组项 */
+export type ToolGroupItem = Extract<AssistantGroupItem, { type: 'tool_group' }>
+
+/**
+ * 工具组的稳定标识（用作渲染 key）
+ *
+ * 工具组会在「流式预览 → 正式写入 parts」这一步重算一遍，而它的 startIndex 是
+ * parts 下标：预览阶段按当前的 parts.length 落位，正式化时文本缓冲区先 flush
+ * 再写入，下标会整体位移一格。拿 startIndex 当 key，同一个组就会被判定成换了
+ * 元素，整组卡片被卸载重建（淡入动画重播、高度重排），观感就是卡片闪一下。
+ *
+ * 组内首个工具在两个阶段是同一个 id，用它作锚点才能让这一步复用同一份 DOM。
+ * 组内工具是累积的，首元素不会变；空数组在分组逻辑里不会出现，这里只作退化兜底。
+ *
+ * @param group 工具组分组项
+ * @returns 该组的稳定标识
+ */
+export function toolGroupKey(group: ToolGroupItem): string {
+  return group.toolCalls[0]?.id ?? `tools@${group.startIndex}`
+}
+
 /**
  * 将助手消息的 Part 序列分组为渲染单元
  *

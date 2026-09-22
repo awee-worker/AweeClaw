@@ -66,29 +66,31 @@ async function onAuthSuccess(userId: string | undefined): Promise<void> {
   } catch (e) {
     logger.system.warn('[Auth] Rehydrate after auth failed:', e)
   }
-  // 推送登录凭据给主进程的设备联动模块，触发 WebSocket 与后端长连接
+  // 推送登录凭据给主进程（设备联动 WebSocket、IoT Bridge 云端调用）
   try {
-    pushDeviceLinkCredentials()
+    pushCloudCredentialsToMain()
   } catch (e) {
-    logger.system.warn('[Auth] Push device-link credentials failed:', e)
+    logger.system.warn('[Auth] Push cloud credentials failed:', e)
   }
 }
 
 /**
- * 推送当前登录态到主进程的设备联动模块。
+ * 推送当前登录态到主进程需要云端凭据的模块。
  * - 登录/注册/手机号登录成功后调用
- * - token 刷新后调用（让 WS 用新 token 重连）
+ * - token 刷新后调用（让 WS / Bridge 用新 token 重连）
  * - restoreSession 成功后调用（应用启动时恢复连接）
  * - 工作区切换后可再次调用以更新 workspacePath
  *
- * deviceName 不传，由主进程自动用 hostname + OS 填充。
+ * 涉及模块：
+ * - device-link：建立与后端的 WebSocket 长连接（deviceName 不传，由主进程自动填充）
+ * - iot：IoT Bridge 拉取 Provider 运行配置、批量上报读数
  */
-function pushDeviceLinkCredentials(): void {
+function pushCloudCredentialsToMain(): void {
   const state = useStore.getState()
   const serverUrl = state.serverUrl
   const tokens = getTokens()
   if (!serverUrl || !tokens?.accessToken) {
-    logger.system.debug('[Auth] Skip device-link push: no serverUrl or accessToken')
+    logger.system.debug('[Auth] Skip credential push: no serverUrl or accessToken')
     return
   }
   const workspacePath = state.workspacePath || undefined
@@ -105,6 +107,21 @@ function pushDeviceLinkCredentials(): void {
     .catch((e) => {
       logger.system.warn('[Auth] deviceLink.pushCredentials failed:', e)
     })
+  void window.electronAPI.iot
+    .setCredentials({ serverUrl, accessToken: tokens.accessToken })
+    .catch((e: unknown) => {
+      logger.system.warn('[Auth] iot.setCredentials failed:', e)
+    })
+}
+
+/** 清除主进程侧持有的云端凭据（登出 / 认证失效） */
+function clearCloudCredentialsInMain(): void {
+  void api.deviceLink.clearCredentials().catch((e) => {
+    logger.system.warn('[Auth] deviceLink.clearCredentials failed:', e)
+  })
+  void window.electronAPI.iot.clearCredentials().catch((e: unknown) => {
+    logger.system.warn('[Auth] iot.clearCredentials failed:', e)
+  })
 }
 
 export interface CloudUser {
@@ -372,10 +389,8 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     clearPersistedAuth();
     set({ isAuthenticated: false, cloudUser: null, quota: null, cloudMode: 'local' });
     restoreWorkspaceAgentStore().catch(() => {});
-    // 通知主进程断开设备联动 WebSocket 连接
-    void api.deviceLink.clearCredentials().catch((e) => {
-      logger.system.warn('[Auth] deviceLink.clearCredentials failed:', e)
-    });
+    // 通知主进程断开设备联动 WebSocket 连接、清除 IoT Bridge 云端凭据
+    clearCloudCredentialsInMain();
     import('@store').then(({ useStore }) => {
       useStore.getState().setShowWelcomePage(true);
     }).catch(() => {});
@@ -594,8 +609,8 @@ setOnTokenRefresh((newTokens) => {
       }
     }).catch(() => {});
   }
-  // 同步推送新 token 给设备联动模块，让 WS 用新 token 重连
-  pushDeviceLinkCredentials();
+  // 同步推送新 token 给主进程模块（设备联动 WS / IoT Bridge）
+  pushCloudCredentialsToMain();
 });
 
 setOnAuthFailed(() => {
@@ -608,15 +623,15 @@ setOnAuthFailed(() => {
 api.llm.onCloudTokenRefreshed((data) => {
   logger.system.info('[Auth] Cloud token refreshed from main process')
   syncRefreshedTokens(data.accessToken, data.refreshToken)
-  // 主进程刷新的 token 也同步到设备联动模块
-  pushDeviceLinkCredentials()
+  // 主进程刷新的 token 也同步到设备联动 / IoT Bridge 模块
+  pushCloudCredentialsToMain()
 })
 
 // 监听主进程云端认证失效事件
 api.llm.onCloudAuthFailed(() => {
   logger.system.warn('[Auth] Cloud auth failed from main process')
-  // 通知设备联动模块断开 WS（避免用失效 token 持续重连）
-  void api.deviceLink.clearCredentials().catch(() => {})
+  // 通知主进程清除凭据（避免用失效 token 持续重连 / 上报）
+  clearCloudCredentialsInMain()
   if (authFailedHandler) {
     authFailedHandler()
   }

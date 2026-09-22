@@ -178,10 +178,10 @@ export class IoTBridge extends EventEmitter {
   /** Bridge 是否运行中 */
   private running = false;
 
-  /** 渲染层注入：获取 Provider 配置 */
+  /** 云端回调（由 IoTBridgeBindings 注入）：获取 Provider 配置 */
   private fetchProviderConfig: FetchProviderConfigFn | null = null;
 
-  /** 渲染层注入：批量上报读数到后端 */
+  /** 云端回调（由 IoTBridgeBindings 注入）：批量上报读数到后端 */
   private reportReadings: ReportReadingsFn | null = null;
 
   /** 主窗口引用（用于推送事件） */
@@ -296,23 +296,26 @@ export class IoTBridge extends EventEmitter {
   }
 
   // ============================================================
-  // 渲染层回调注入
+  // 云端回调注入
   // ============================================================
 
   /**
-   * 注入渲染层回调
+   * 注入云端回调
    *
-   * 必须在 start() 之前调用。Bridge 通过这些回调：
+   * 必须在 start() 之前调用（由 IoTIpc 注册时完成）。Bridge 通过这些回调：
    * - 获取 Provider 配置（含解密后的 authConfig）
    * - 批量上报读数到后端 /api/v1/iot/readings/batch
+   *
+   * 实现位于主进程（IoTBridgeBindings），不通过 IPC 传递 —— 函数无法
+   * 被结构化克隆，跨进程传递必然失败。
    */
-  setRendererCallbacks(callbacks: {
+  setCloudCallbacks(callbacks: {
     fetchProviderConfig: FetchProviderConfigFn;
     reportReadings: ReportReadingsFn;
   }): void {
     this.fetchProviderConfig = callbacks.fetchProviderConfig;
     this.reportReadings = callbacks.reportReadings;
-    logger.iot?.info('[IoTBridge] 渲染层回调已注入');
+    logger.iot?.info('[IoTBridge] 云端回调已注入');
   }
 
   /** 设置主窗口引用（用于推送事件） */
@@ -341,7 +344,7 @@ export class IoTBridge extends EventEmitter {
 
     if (!this.fetchProviderConfig || !this.reportReadings) {
       throw new Error(
-        '渲染层回调未注入，请先调用 setRendererCallbacks()',
+        'Bridge 云端回调未初始化，请重启应用后重试',
       );
     }
 
@@ -441,7 +444,7 @@ export class IoTBridge extends EventEmitter {
    * 连接指定 Provider
    *
    * 流程：
-   * 1. 通过渲染层回调获取 Provider 配置
+   * 1. 通过云端回调获取 Provider 配置
    * 2. 根据协议查找适配器
    * 3. 调用适配器 connect() 建立连接
    * 4. 维护状态与事件推送
@@ -453,7 +456,7 @@ export class IoTBridge extends EventEmitter {
       throw new Error('Bridge 未启动，请先调用 start()');
     }
     if (!this.fetchProviderConfig) {
-      throw new Error('渲染层回调未注入');
+      throw new Error('Bridge 云端回调未初始化，请重启应用后重试');
     }
     if (this.handles.has(providerId)) {
       logger.iot?.warn(
@@ -578,7 +581,7 @@ export class IoTBridge extends EventEmitter {
     if (!this.fetchProviderConfig) {
       return {
         success: false,
-        message: '渲染层回调未注入',
+        message: 'Bridge 云端回调未初始化，请重启应用后重试',
       };
     }
 
@@ -1193,7 +1196,7 @@ export class IoTBridge extends EventEmitter {
     if (this.pendingReadings.length === 0) return;
     if (!this.reportReadings) {
       logger.iot?.warn(
-        '[IoTBridge] 渲染层上报回调未注入，丢弃待上报读数',
+        '[IoTBridge] 云端上报回调未注入，丢弃待上报读数',
       );
       this.pendingReadings = [];
       return;

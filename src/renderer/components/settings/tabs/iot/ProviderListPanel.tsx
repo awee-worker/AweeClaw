@@ -26,6 +26,7 @@ import {
   Check,
   Loader2,
   Send,
+  Wand2,
 } from 'lucide-react'
 import { type Language, createTranslator } from '@renderer/i18n'
 import { logger } from '@shared/toolkit/LogEngine'
@@ -68,6 +69,83 @@ const PROTOCOLS: Array<IoTProvider['protocol']> = [
   'ble',
   'custom',
 ]
+
+/** 认证配置模板 */
+interface AuthConfigTemplate {
+  /** 模板标识，i18n key 为 iot.provider.tpl.<id> */
+  id: string
+  /** 模板内容，字段与各协议适配器解析的 authConfig 保持一致 */
+  config: Record<string, unknown>
+}
+
+/**
+ * 各协议的常用认证配置模板
+ *
+ * 字段来源于对应适配器的 authConfig 解析逻辑，不含未被解析的字段，
+ * 避免用户填入后误以为生效。
+ */
+const AUTH_CONFIG_TEMPLATES: Record<IoTProvider['protocol'], AuthConfigTemplate[]> = {
+  homeassistant: [
+    { id: 'haRest', config: { token: '' } },
+    { id: 'haWs', config: { token: '', useWebSocket: true } },
+  ],
+  mqtt: [
+    {
+      id: 'mqttBasic',
+      config: { username: '', password: '', topics: ['#'], qos: 0, keepalive: 60 },
+    },
+    {
+      id: 'mqttTls',
+      config: {
+        username: '',
+        password: '',
+        topics: ['#'],
+        qos: 1,
+        keepalive: 60,
+        ca: '',
+        rejectUnauthorized: true,
+      },
+    },
+    {
+      id: 'mqttWill',
+      config: {
+        username: '',
+        password: '',
+        topics: ['#'],
+        qos: 1,
+        keepalive: 60,
+        lastWill: {
+          topic: 'aweeclaw/status',
+          payload: 'offline',
+          qos: 1,
+          retain: true,
+        },
+        subscribeSys: true,
+      },
+    },
+  ],
+  ble: [
+    {
+      id: 'bleName',
+      config: {
+        namePrefix: '',
+        serviceUuids: [],
+        characteristicUuids: [],
+        pollIntervalMs: 30000,
+      },
+    },
+    {
+      id: 'bleAddress',
+      config: {
+        address: '',
+        serviceUuids: [],
+        characteristicUuids: [],
+        pollIntervalMs: 30000,
+      },
+    },
+  ],
+  custom: [{ id: 'customEmpty', config: {} }],
+}
 
 /**
  * ProviderListPanel
@@ -178,10 +256,13 @@ export function ProviderListPanel({
       const isConnected = state?.state === 'connected'
       setTogglingId(id)
       try {
-        if (isConnected) {
-          await window.electronAPI.iot.disconnectProvider(id)
-        } else {
-          await window.electronAPI.iot.connectProvider(id)
+        const res = isConnected
+          ? await window.electronAPI.iot.disconnectProvider(id)
+          : await window.electronAPI.iot.connectProvider(id)
+        // IPC 失败通过返回值传递，不会抛异常，需显式检查
+        if (!res.success) {
+          alert(t('iot.provider.operationFailed', { error: res.error ?? '' }))
+          return
         }
         await loadBridgeStatus()
         onBridgeChanged()
@@ -372,6 +453,13 @@ export function ProviderListPanel({
         </div>
       )}
 
+      {/* Bridge 未启动：连接按钮不可见，需明确告知启动位置 */}
+      {!bridgeRunning && (
+        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[12px] leading-relaxed">
+          {t('iot.provider.bridgeNotRunningTip')}
+        </div>
+      )}
+
       {loading ? (
         <div className="py-12 flex items-center justify-center">
           <Loader2 className="w-6 h-6 animate-spin text-text-muted" />
@@ -449,6 +537,33 @@ function ProviderEditDialog({
   })
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  /** 最近一次填入的模板标识，用于提示用户补全占位值 */
+  const [filledTemplateId, setFilledTemplateId] = useState<string | null>(null)
+
+  /**
+   * 填入认证配置模板
+   *
+   * 已有内容时先确认，避免覆盖用户手填的密钥。
+   */
+  const applyAuthConfigTemplate = useCallback(
+    (tpl: AuthConfigTemplate) => {
+      if (authConfigJson.trim() && !window.confirm(t('iot.provider.authConfigOverwrite'))) {
+        return
+      }
+      setAuthConfigJson(JSON.stringify(tpl.config, null, 2))
+      setFilledTemplateId(tpl.id)
+    },
+    [authConfigJson, t],
+  )
+
+  /** 切换协议时清空模板提示，避免提示与当前协议不符 */
+  const handleProtocolChange = useCallback(
+    (next: IoTProvider['protocol']) => {
+      setProtocol(next)
+      setFilledTemplateId(null)
+    },
+    [],
+  )
 
   /** 提交保存 */
   const handleSubmit = useCallback(async () => {
@@ -543,7 +658,7 @@ function ProviderEditDialog({
             </label>
             <select
               value={protocol}
-              onChange={(e) => setProtocol(e.target.value as IoTProvider['protocol'])}
+              onChange={(e) => handleProtocolChange(e.target.value as IoTProvider['protocol'])}
               className="w-full px-3 py-2 rounded-lg bg-surface/40 border border-border/40 text-sm text-text-primary focus:outline-none focus:border-accent/50"
             >
               {PROTOCOLS.map((p) => (
@@ -604,21 +719,57 @@ function ProviderEditDialog({
             <label className="block text-[12px] font-medium text-text-secondary mb-1.5">
               {t('iot.provider.authConfigLabel')}
             </label>
+
+            {/* 快速填写：按当前协议给出常用模板 */}
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+              <span className="flex items-center gap-1 text-[12px] text-text-muted">
+                <Wand2 className="w-3 h-3" />
+                {t('iot.provider.authConfigTemplate')}
+              </span>
+              {AUTH_CONFIG_TEMPLATES[protocol].map((tpl) => (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  onClick={() => applyAuthConfigTemplate(tpl)}
+                  className={`px-2 py-0.5 rounded-md border text-[12px] transition-all ${
+                    filledTemplateId === tpl.id
+                      ? 'border-accent/50 bg-accent/10 text-accent'
+                      : 'border-border/40 text-text-secondary hover:border-accent/50 hover:text-accent'
+                  }`}
+                >
+                  {t(`iot.provider.tpl.${tpl.id}`)}
+                </button>
+              ))}
+            </div>
+
             <textarea
               value={authConfigJson}
-              onChange={(e) => setAuthConfigJson(e.target.value)}
+              onChange={(e) => {
+                setAuthConfigJson(e.target.value)
+                setFilledTemplateId(null)
+              }}
               rows={6}
               placeholder={
                 protocol === 'homeassistant'
                   ? '{\n  "token": "long-lived-token"\n}'
                   : protocol === 'mqtt'
-                  ? '{\n  "username": "user",\n  "password": "pass",\n  "clientId": "aweeclaw",\n  "topic": "#"\n}'
+                  ? '{\n  "username": "user",\n  "password": "pass",\n  "topics": ["#"]\n}'
+                  : protocol === 'ble'
+                  ? '{\n  "namePrefix": "Aweeclaw",\n  "serviceUuids": []\n}'
                   : '{}'
               }
               className="w-full px-3 py-2 rounded-lg bg-surface/40 border border-border/40 text-sm text-text-primary font-mono focus:outline-none focus:border-accent/50"
             />
-            <p className="text-[12px] text-text-muted mt-1">
-              {t('iot.provider.authConfigHint')}
+            <p
+              className={`text-[12px] mt-1 ${
+                filledTemplateId ? 'text-accent' : 'text-text-muted'
+              }`}
+            >
+              {filledTemplateId
+                ? t('iot.provider.authConfigFilled', {
+                    template: t(`iot.provider.tpl.${filledTemplateId}`),
+                  })
+                : t('iot.provider.authConfigHint')}
             </p>
           </div>
 

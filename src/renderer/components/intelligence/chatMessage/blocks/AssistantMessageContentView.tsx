@@ -7,7 +7,7 @@ import React, { useMemo, useRef } from 'react'
 import type { AssistantPart, ToolCall, TodoItem } from '@intelligence/providerTypes'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { CommitProbe } from '@intelligence/diagnostics/CommitProbe'
-import { buildAssistantGroups } from './assistantGrouping'
+import { buildAssistantGroups, toolGroupKey } from './assistantGrouping'
 import { reuseToolCallsIfUnchanged } from './toolCallsArrayReuse'
 import ToolCallGroup from '../../ToolCallGroup'
 import { TodoListPanel } from '../../TodoListPanel'
@@ -77,15 +77,21 @@ function AssistantMessageContentViewBase({ parts, hideTodoList, previewToolCalls
     const result = buildAssistantGroups(parts, previewToolCalls)
 
     // 引用回收：元素逐个相同的工具组沿用上一轮的数组，保住 ToolCallGroup 的 memo。
-    // 按 startIndex 对齐即可 —— 分组顺序由 parts 顺序决定，同一起点的组必然同源。
-    const previousToolCalls = new Map<number, ToolCall[]>()
+    // 按组内首个工具 id 对齐：分组顺序由 parts 顺序决定，同一个工具组在预览与正式
+    // 两个阶段的锚点工具不会变；若按下标对齐，文本缓冲区 flush 造成的下标位移会让
+    // 回收全部落空，白白重建一遍数组引用并把 ToolCallGroup 的重渲染带出来。
+    const previousToolCalls = new Map<string, ToolCall[]>()
     for (const group of previousGroupsRef.current) {
-      if (group.type === 'tool_group') previousToolCalls.set(group.startIndex, group.toolCalls)
+      if (group.type !== 'tool_group') continue
+      const anchor = group.toolCalls[0]?.id
+      if (anchor) previousToolCalls.set(anchor, group.toolCalls)
     }
     for (let i = 0; i < result.length; i++) {
       const group = result[i]
       if (group.type !== 'tool_group') continue
-      const reused = reuseToolCallsIfUnchanged(previousToolCalls.get(group.startIndex), group.toolCalls)
+      const anchor = group.toolCalls[0]?.id
+      if (!anchor) continue
+      const reused = reuseToolCallsIfUnchanged(previousToolCalls.get(anchor), group.toolCalls)
       if (reused !== group.toolCalls) {
         result[i] = { ...group, toolCalls: reused }
       }
@@ -124,8 +130,13 @@ function AssistantMessageContentViewBase({ parts, hideTodoList, previewToolCalls
         // 关键：单个工具调用不再走 renderPart 普通路径，避免
         // 「单工具卡片 → 多工具分组」切换时 key/组件树变化导致整组卸载重建闪动。
         // ToolCallGroup 内部对单工具不显示分组头，视觉与普通卡片一致。
+        //
+        // key 用 toolGroupKey（组内首个工具的 id）而非 group.startIndex：
+        // 预览阶段按 parts.length 落位、正式化时文本缓冲区先 flush 再写入，下标会位移，
+        // 用下标作 key 会把「预览 → 正式」判定成换了元素，整组卡片卸载重建并闪一下。
+        // 详见 ./assistantGrouping 中 toolGroupKey 的说明。
         return (
-          <div key={`wrap-group-${group.startIndex}`} className="w-full">
+          <div key={`wrap-group-${toolGroupKey(group)}`} className="w-full">
             <ToolCallGroup
               toolCalls={group.toolCalls}
               pendingToolId={ctx.pendingToolId}

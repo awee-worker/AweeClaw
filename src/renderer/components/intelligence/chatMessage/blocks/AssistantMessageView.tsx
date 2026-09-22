@@ -193,16 +193,28 @@ function AssistantMessageViewBase({
 
     const threadId = state.currentThreadId
     const threadStreamState = threadId ? state.threads[threadId]?.streamState : undefined
-    const isActiveAssistant =
+
+    /**
+     * 消息是否仍是当前执行中的助手消息。
+     *
+     * 只认归属：流式标记 + assistantId 匹配，不掺 phase。phase 会在迭代间隙、
+     * 模型连接与重试时短暂离开活跃集合，若用它来门控实时数据来源，正处在预览阶段
+     * （尚未写入 parts）的工具会因为读不到预览表而整体消失，phase 恢复后又出现，
+     * 看起来就是工具卡片反复闪动。数据来源按归属取，状态表达才按 phase 取。
+     */
+    const isLiveAssistant =
       Boolean(message.isStreaming) &&
       !!threadId &&
-      threadStreamState?.assistantId === message.id &&
-      ACTIVE_STREAM_PHASES.has(threadStreamState?.phase ?? 'idle')
+      threadStreamState?.assistantId === message.id
 
-    // 只有正在流式输出的那条消息才需要从 store 取实时 parts，其余消息直接用自身 props。
+    /** 是否处于活跃流式阶段：只用于进度表达（如等待指示器），不用于数据订阅 */
+    const isActiveAssistant =
+      isLiveAssistant && ACTIVE_STREAM_PHASES.has(threadStreamState?.phase ?? 'idle')
+
+    // 只有当前执行中的那条消息才需要从 store 取实时 parts，其余消息直接用自身 props。
     // 不做这层收窄的话，每条消息组件都会在每次 store 更新时遍历整个消息数组做一次 find，
     // 流式期间每秒数十次更新就会退化成「消息数²」级别的扫描。
-    const liveMessage = isActiveAssistant
+    const liveMessage = isLiveAssistant
       ? state.threads[threadId!]?.messages.find(msg => msg.id === message.id && msg.role === 'assistant')
       : undefined
 
@@ -210,7 +222,7 @@ function AssistantMessageViewBase({
       isStreaming: isActiveAssistant,
       liveParts: liveMessage && isAssistantMessage(liveMessage) ? liveMessage.parts : undefined,
       liveInteractive: liveMessage && isAssistantMessage(liveMessage) ? liveMessage.interactive : undefined,
-      previewMap: isActiveAssistant
+      previewMap: isLiveAssistant
         ? state.threads[threadId!]?.toolStreamingPreviews || EMPTY_PREVIEWS
         : EMPTY_PREVIEWS,
       waitPhase: isActiveAssistant ? threadStreamState?.waitPhase : undefined,
