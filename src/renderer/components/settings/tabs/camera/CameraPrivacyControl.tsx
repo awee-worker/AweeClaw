@@ -54,6 +54,7 @@ import {
   savePluginConfig,
   type InstalledPlugin,
 } from '@services/pluginService'
+import { useStore } from '@store'
 
 // ============================================================
 // 常量
@@ -615,6 +616,16 @@ export function CameraPrivacyControl({
 
 function PluginNotInstalledView({ language }: { language: Language }) {
   const isZh = language === 'zh'
+
+  // 关闭设置页后再打开插件中心：MainContentArea 中 showSettingsPage 的判断
+  // 早于 showPluginCenterPage，不先关掉设置页插件中心不会渲染
+  const handleOpenPluginCenter = () => {
+    const store = useStore.getState()
+    store.setShowSettings(false)
+    store.setShowSettingsPage(false)
+    store.setShowPluginCenterPage(true)
+  }
+
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="p-4 bg-amber-500/10 rounded-2xl mb-4">
@@ -629,14 +640,7 @@ function PluginNotInstalledView({ language }: { language: Language }) {
           : 'Please install the "Computer Vision" plugin from the marketplace first, then return here to configure.'}
       </p>
       <button
-        onClick={() => {
-          // 触发打开插件中心事件（由外层监听）
-          window.dispatchEvent(
-            new CustomEvent('aweeclaw:openPluginCenter', {
-              detail: { pluginKey: COMPUTER_VISION_PLUGIN_KEY },
-            }),
-          )
-        }}
+        onClick={handleOpenPluginCenter}
         className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-all"
       >
         <ExternalLink className="w-4 h-4" />

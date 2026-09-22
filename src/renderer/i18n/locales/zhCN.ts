@@ -774,7 +774,7 @@ export const zh = {
   'settings.voiceSettings': '语音设置',
   'settings.vision': '视觉',
   'settings.visionSettings': '视觉设置',
-  'settings.desktop': '桌面控制',
+  'settings.desktop': '电脑控制',
   'settings.loadingSettings': '正在加载设置项...',
   'settings.closeSettings': '关闭设置',
   'settings.backToApp': '返回应用',
@@ -3978,7 +3978,10 @@ export const zh = {
   'file-tree.sharefailed': '分享失败：{error}',
 
   // ============ Desktop Control (Phase 3) ============
-  'desktop.title': '桌面控制',
+  'desktop.title': '电脑控制',
+  'desktop.plugin.guide.title': '未安装「电脑控制」插件',
+  'desktop.plugin.guide.desc': '本页手动功能无需插件即可使用；安装「电脑控制」插件后，AI 才能截屏、模拟鼠标键盘来操控这台电脑。',
+  'desktop.plugin.guide.install': '前往插件市场',
   'desktop.subtitle': '管理桌面自动化权限与紧急停止',
   'desktop.systemPermissions': '系统权限',
   'desktop.emergencyStop': '紧急停止',

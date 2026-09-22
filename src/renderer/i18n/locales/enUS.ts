@@ -773,7 +773,7 @@ export const en = {
   'settings.voiceSettings': 'Voice Settings',
   'settings.vision': 'Vision',
   'settings.visionSettings': 'Vision Settings',
-  'settings.desktop': 'Desktop Control',
+  'settings.desktop': 'Computer Control',
   'settings.loadingSettings': 'Loading settings...',
   'settings.closeSettings': 'Close settings',
   'settings.backToApp': 'Back to app',
@@ -3979,7 +3979,10 @@ export const en = {
   'file-tree.sharefailed': 'Share failed: {error}',
 
   // ============ Desktop Control (Phase 3) ============
-  'desktop.title': 'Desktop Control',
+  'desktop.title': 'Computer Control',
+  'desktop.plugin.guide.title': 'Computer Use plugin not installed',
+  'desktop.plugin.guide.desc': 'The manual tools on this page work without the plugin. Install the "Computer Use" plugin so AI can take screenshots and control the mouse and keyboard.',
+  'desktop.plugin.guide.install': 'Open Plugin Marketplace',
   'desktop.subtitle': 'Manage desktop automation permissions and emergency stop',
   'desktop.systemPermissions': 'System Permissions',
   'desktop.emergencyStop': 'Emergency Stop',
