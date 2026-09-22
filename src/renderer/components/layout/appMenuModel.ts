@@ -9,11 +9,10 @@
  * - kind='external' → 系统浏览器打开链接
  * - kind='action'   → 本地动作（如检查更新）
  *
- * 与原生菜单保持一致：文件 / 编辑 / 视图 / 场景 / 会话 / 窗口 / 帮助
+ * 与原生菜单保持一致：文件 / 编辑 / 视图 / 会话 / 窗口 / 帮助
  */
 
 import { t, type Language } from '@renderer/i18n'
-import type { ScenarioCategory } from '@shared/protocols/scenario'
 
 /** 可执行的原生角色（与主进程 windowLifecycle.ts 的 MenuRole 对齐） */
 export type AppMenuRole =
@@ -33,10 +32,8 @@ export type AppMenuEntry =
       accelerator?: string
       commandId: string
       payload?: unknown
-      /** 勾选态（场景切换） */
+      /** 勾选态（用于单选类条目） */
       checked?: boolean
-      /** 场景类条目显示为单选样式 */
-      radio?: boolean
       disabled?: boolean
     }
   | { kind: 'role'; label: string; accelerator?: string; role: AppMenuRole }
@@ -51,14 +48,6 @@ export interface AppMenuTopLevel {
   entries: AppMenuEntry[]
 }
 
-/** 场景条目 */
-export interface ScenarioMenuEntry {
-  id: string
-  name: string
-  description?: string
-  category?: ScenarioCategory
-}
-
 /** 最近工作区条目 */
 export interface RecentWorkspaceEntry {
   path: string
@@ -67,33 +56,9 @@ export interface RecentWorkspaceEntry {
 
 export interface BuildAppMenuOptions {
   lang: Language
-  scenarios: ScenarioMenuEntry[]
-  activeScenarioId: string | null
   recentWorkspaces: RecentWorkspaceEntry[]
   docsUrl: string
   githubUrl: string
-}
-
-/** 场景分组阈值：超过此值按 category 分组（与主进程一致） */
-const SCENARIO_GROUP_THRESHOLD = 12
-
-/** 场景分类 → i18n key */
-const CATEGORY_KEY_MAP: Record<string, string> = {
-  development: 'menu.catDevelopment',
-  data: 'menu.catData',
-  creative: 'menu.catCreative',
-  productivity: 'menu.catProductivity',
-  education: 'menu.catEducation',
-  automation: 'menu.catAutomation',
-  research: 'menu.catResearch',
-  communication: 'menu.catCommunication',
-  entertainment: 'menu.catEntertainment',
-  business: 'menu.catBusiness',
-  health: 'menu.catHealth',
-  finance: 'menu.catFinance',
-  legal: 'menu.catLegal',
-  marketing: 'menu.catMarketing',
-  energy: 'menu.catEnergy',
 }
 
 /**
@@ -106,7 +71,6 @@ export function buildAppMenuModel(opts: BuildAppMenuOptions): AppMenuTopLevel[] 
     { id: 'file', label: tr('menu.file'), entries: buildFileMenu(tr, opts.recentWorkspaces) },
     { id: 'edit', label: tr('menu.edit'), entries: buildEditMenu(tr) },
     { id: 'view', label: tr('menu.view'), entries: buildViewMenu(tr) },
-    { id: 'scenario', label: tr('menu.scenario'), entries: buildScenarioMenu(tr, opts.scenarios, opts.activeScenarioId) },
     { id: 'ai', label: tr('menu.ai'), entries: buildAiMenu(tr) },
     { id: 'window', label: tr('menu.window'), entries: buildWindowMenu(tr) },
     { id: 'help', label: tr('menu.help'), entries: buildHelpMenu(tr, opts.docsUrl, opts.githubUrl) },
@@ -176,53 +140,6 @@ function buildViewMenu(tr: Tr): AppMenuEntry[] {
     { kind: 'role', label: tr('menu.reloadWindow'), role: 'reload' },
     { kind: 'role', label: tr('menu.devTools'), accelerator: 'Ctrl+Alt+I', role: 'toggleDevTools' },
   ]
-}
-
-function buildScenarioMenu(tr: Tr, scenarios: ScenarioMenuEntry[], activeScenarioId: string | null): AppMenuEntry[] {
-  const items = buildScenarioItems(tr, scenarios, activeScenarioId)
-  return [
-    ...items,
-    { kind: 'separator' },
-    { kind: 'command', label: tr('menu.scenarioManage'), commandId: 'scenario.openManager' },
-  ]
-}
-
-function buildScenarioItems(tr: Tr, scenarios: ScenarioMenuEntry[], activeScenarioId: string | null): AppMenuEntry[] {
-  if (scenarios.length === 0) {
-    return [{ kind: 'command', label: tr('menu.noScenarios'), commandId: '', disabled: true }]
-  }
-
-  if (scenarios.length <= SCENARIO_GROUP_THRESHOLD) {
-    return scenarios.map<AppMenuEntry>((s) => ({
-      kind: 'command',
-      label: s.name,
-      commandId: 'scenario.switch',
-      payload: { scenarioId: s.id },
-      checked: s.id === activeScenarioId,
-      radio: true,
-    }))
-  }
-
-  // 场景较多：按 category 分组
-  const grouped = new Map<string, ScenarioMenuEntry[]>()
-  for (const s of scenarios) {
-    const cat = s.category ?? 'custom'
-    if (!grouped.has(cat)) grouped.set(cat, [])
-    grouped.get(cat)!.push(s)
-  }
-
-  return Array.from(grouped.entries()).map<AppMenuEntry>(([category, group]) => ({
-    kind: 'submenu',
-    label: tr(CATEGORY_KEY_MAP[category] ?? 'menu.catOther'),
-    children: group.map<AppMenuEntry>((s) => ({
-      kind: 'command',
-      label: s.name,
-      commandId: 'scenario.switch',
-      payload: { scenarioId: s.id },
-      checked: s.id === activeScenarioId,
-      radio: true,
-    })),
-  }))
 }
 
 function buildAiMenu(tr: Tr): AppMenuEntry[] {

@@ -4,8 +4,6 @@
  * 职责：
  * 1. 监听主进程菜单命令（onExecuteCommand）→ menuCommandDispatcher
  * 2. 监听渲染进程自绘菜单本地事件（Windows/Linux）→ 同一分发器
- * 3. 将场景列表 + 当前激活场景同步到主进程（用于动态构建场景菜单）
- * 4. 监听主进程的场景请求，按需推送最新场景数据
  *
  * 与 useGlobalShortcuts 的分工：
  * - useGlobalShortcuts：处理键盘快捷键
@@ -17,9 +15,7 @@
 import { useEffect, useRef } from 'react'
 import { useStore } from '@store'
 import { api } from '../adapters/electronBridge'
-import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useAgentHistoryActions } from './useAgent'
-import { logger } from '@toolkit/LogEngine'
 import {
   dispatchMenuCommand,
   MENU_EXECUTE_COMMAND_EVENT,
@@ -45,9 +41,6 @@ type MenuCommandId =
   | 'toggle-ai-panel'
   | 'workbench.action.toggleSidebar'
   | 'workbench.action.toggleDevTools'
-  // 场景菜单
-  | 'scenario.switch'
-  | 'scenario.openManager'
   // AI 菜单
   | 'ai-chat'
   | 'ai-explain'
@@ -125,53 +118,6 @@ export function useMenuBridge(): void {
     return () => {
       unsubscribe?.()
       window.removeEventListener(MENU_EXECUTE_COMMAND_EVENT, onLocalCommand)
-    }
-  }, [])
-
-
-  // 2. 场景列表同步到主进程
-  useEffect(() => {
-    const syncScenarios = (lang: string) => {
-      try {
-        const all = scenarioRegistry.getAll()
-        const isZh = lang.toLowerCase().includes('zh')
-        const scenarios = all.map((s) => ({
-          id: s.id,
-          name: isZh ? (s.nameZh || s.name) : s.name,
-          description: isZh ? (s.descriptionZh || s.description) : s.description,
-          category: s.category,
-        }))
-        api.syncScenarios({
-          scenarios,
-          activeId: useStore.getState().activeScenarioId,
-        })
-      } catch (err) {
-        logger.system.error('[MenuBridge] Sync scenarios failed', err)
-      }
-    }
-
-    // 初始同步（从 store 直接读取最新 language，避免闭包问题）
-    syncScenarios(useStore.getState().language)
-
-    // 监听主进程主动请求
-    const unsubscribe = api.onScenarioRequest(() => {
-      syncScenarios(useStore.getState().language)
-    })
-
-    // 场景/语言切换时同步（直接从 subscribe 的 state 参数读取，避免 ref 延迟）
-    let prevActiveScenarioId = useStore.getState().activeScenarioId
-    let prevLanguage = useStore.getState().language
-    const unsubscribeStore = useStore.subscribe((state) => {
-      if (state.activeScenarioId !== prevActiveScenarioId || state.language !== prevLanguage) {
-        prevActiveScenarioId = state.activeScenarioId
-        prevLanguage = state.language
-        syncScenarios(state.language)
-      }
-    })
-
-    return () => {
-      unsubscribe?.()
-      unsubscribeStore()
     }
   }, [])
 }

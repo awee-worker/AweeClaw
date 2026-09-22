@@ -3,10 +3,10 @@
  *
  * 背景：主窗口 frame:false，Windows 下原生菜单栏不显示，顶部菜单入口缺失。
  * 本组件在标题栏中绘制与 macOS 原生菜单一致的菜单结构：
- * 文件 / 编辑 / 视图 / 场景 / 会话 / 窗口 / 帮助
+ * 文件 / 编辑 / 视图 / 会话 / 窗口 / 帮助
  *
  * 命名约定：
- * - 菜单为 Windows 专属，调用方（AppTitleBar）仅在非 macOS 渲染
+ * - 调用方（AppTitleBar）仅在非 macOS 渲染：Windows 排在搜索按钮之后，Linux 保持在项目选择器之前
  * - 菜单数据由 appMenuModel 构建，命令经 menuCommandDispatcher 执行
  */
 
@@ -15,7 +15,6 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Check, ChevronRight } from 'lucide-react'
 import { useStore } from '@store'
 import { api } from '../../adapters/electronBridge'
-import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { BRAND } from '@shared/brand'
 import { logger } from '@toolkit/LogEngine'
@@ -26,30 +25,18 @@ import {
   type AppMenuEntry,
   type AppMenuTopLevel,
   type RecentWorkspaceEntry,
-  type ScenarioMenuEntry,
 } from './appMenuModel'
 import type { Language } from '@renderer/i18n'
 
 export default function AppMenuBar() {
   const language = useStore((s) => s.language) as Language
-  const activeScenarioId = useStore((s) => s.activeScenarioId)
 
   const [openId, setOpenId] = useState<string | null>(null)
   const [recentWorkspaces, setRecentWorkspaces] = useState<RecentWorkspaceEntry[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // 场景列表（每次渲染读取，保证场景安装/卸载后菜单即时更新）
-  const scenarios: ScenarioMenuEntry[] = scenarioRegistry.getAll().map((s) => ({
-    id: s.id,
-    name: language === 'zh' ? s.nameZh || s.name : s.name,
-    description: language === 'zh' ? s.descriptionZh || s.description : s.description,
-    category: s.category,
-  }))
-
   const menus: AppMenuTopLevel[] = buildAppMenuModel({
     lang: language,
-    scenarios,
-    activeScenarioId,
     recentWorkspaces,
     docsUrl: BRAND.links.docs,
     githubUrl: BRAND.links.github,

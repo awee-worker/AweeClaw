@@ -7,9 +7,8 @@
  * - audit:*      操作审计日志
  * - resources:*  打包内静态资源读取
  * - workbench:*  命令面板命令执行
- * - menu:*       场景菜单同步
  */
-import { invoke, send, on, onArgs } from '../ipcHelpers'
+import { invoke, on, onArgs } from '../ipcHelpers'
 
 export function createDebugMiscApi() {
   return {
@@ -68,16 +67,6 @@ export function createDebugMiscApi() {
 
     // ── 命令面板 / 菜单 ──
     onExecuteCommand: onArgs<[string, unknown?]>('workbench:execute-command'),
-    syncScenarios: (data: {
-      scenarios: Array<{
-        id: string
-        name: string
-        description?: string
-        category?: string
-      }>
-      activeId: string | null
-    }) => send('menu:syncScenarios')(data),
-    onScenarioRequest: on<void>('menu:requestScenarios'),
 
     // ── HTTP API ──
     httpReadUrl: (url: string, timeout?: number) =>

@@ -2,25 +2,23 @@
  * 菜单构建器
  *
  * 职责：
- * 1. 组装完整菜单模板（平台分支 + 动态场景）
+ * 1. 组装完整菜单模板（平台分支 + 动态最近工作区）
  * 2. 调用 Menu.setApplicationMenu 应用菜单
  * 3. 提供 rebuild(lang) 接口供语言切换时重建
- * 4. 提供动态数据更新接口（最近工作区、场景列表）
+ * 4. 提供动态数据更新接口（最近工作区）
  *
  * 架构：
- * - macOS: App / File / Edit / View / Scenario / AI / Window / Help
- * - Windows/Linux: File(含设置+退出) / Edit / View / Scenario / AI / Help
+ * - macOS: App / File / Edit / View / AI / Window / Help
+ * - Windows/Linux: File(含设置+退出) / Edit / View / AI / Help
  */
 
 import { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron'
 import type { Language } from '../appBootstrap'
 import { t } from './menuI18n'
 import { createCommandSender } from './menuActions'
-import { initScenarioSync } from './menuScenarioSync'
 import { buildFileMenu, type RecentWorkspace } from './menuItems/fileMenu'
 import { buildEditMenu } from './menuItems/editMenu'
 import { buildViewMenu } from './menuItems/viewMenu'
-import { buildScenarioMenu } from './menuItems/scenarioMenu'
 import { buildAiMenu } from './menuItems/aiMenu'
 import { buildWindowMenu } from './menuItems/windowMenu'
 import { buildHelpMenu } from './menuItems/helpMenu'
@@ -52,7 +50,6 @@ export class MenuBuilder {
   /**
    * 初始化菜单系统
    * - 构建初始菜单
-   * - 注册场景同步 IPC
    */
   async init(lang: Language): Promise<void> {
     this.currentLang = lang
@@ -63,8 +60,6 @@ export class MenuBuilder {
       this.currentRecentWorkspaces = []
     }
     this.rebuild()
-    // 初始化场景同步（场景列表到达后自动重建菜单）
-    initScenarioSync(this.ctx.getWin, () => this.rebuild())
   }
 
   /**
@@ -120,9 +115,6 @@ export class MenuBuilder {
 
     // 视图菜单
     menus.push(buildViewMenu(commonCtx))
-
-    // 场景菜单（动态）
-    menus.push(buildScenarioMenu(commonCtx))
 
     // AI 菜单
     menus.push(buildAiMenu(commonCtx))

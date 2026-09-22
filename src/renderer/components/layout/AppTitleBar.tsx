@@ -57,6 +57,12 @@ const isMac = typeof navigator !== 'undefined' && (
   ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toUpperCase().indexOf('MAC') ?? -1) >= 0
 )
 
+/** Windows 平台判定：用于决定自绘菜单栏的摆放位置（Windows 排在搜索按钮之后） */
+const isWindows = typeof navigator !== 'undefined' && (
+  navigator.platform.toUpperCase().indexOf('WIN') >= 0 ||
+  ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toUpperCase().indexOf('WIN') ?? -1) >= 0
+)
+
 /**
  * 消息中心铃铛状态
  *
@@ -468,8 +474,8 @@ export default function AppTitleBar() {
           }
         </button>
 
-        {/* Windows/Linux：自绘顶部菜单栏（macOS 使用系统菜单栏） */}
-        {!isMac && <AppMenuBar />}
+        {/* Linux：自绘顶部菜单栏保持在项目选择器之前（macOS 使用系统菜单栏） */}
+        {!isMac && !isWindows && <AppMenuBar />}
 
         <div className="no-drag">
           <ProjectSelector />
@@ -490,6 +496,9 @@ export default function AppTitleBar() {
             {t('layout.search', language as Language)}
           </span>
         </div>
+
+        {/* Windows：自绘顶部菜单栏紧跟在搜索按钮之后 */}
+        {isWindows && <AppMenuBar />}
       </div>
 
       <div className="flex-1 min-w-0" />
