@@ -5,7 +5,7 @@
  * 点击展开明细。目标是无需打开 DevTools 就能判断「页面为什么不对」。
  */
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from 'lucide-react'
 import type { PreviewHealthLevel, PreviewHealthSnapshot } from '@shared/protocols/previewProtocol'
 import { useStore } from '@store'
 import { t, type Language } from '@renderer/i18n'
@@ -13,6 +13,13 @@ import { t, type Language } from '@renderer/i18n'
 interface BrowserHealthIndicatorProps {
   /** 健康快照；尚未采集到时为 undefined */
   health?: PreviewHealthSnapshot
+  /**
+   * 主动重新拉取一次快照
+   *
+   * 采集侧按节拍推送，且只推「有变化」的状态；面板展开时手动取一次实时快照，
+   * 可以覆盖绑定未赶上、推送尚未到达这类空档。
+   */
+  onRecheck?: () => Promise<void> | void
 }
 
 /** 等级对应的颜色与文案 */
@@ -50,9 +57,11 @@ function shortSource(source: string): string {
   }
 }
 
-export default function BrowserHealthIndicator({ health }: BrowserHealthIndicatorProps) {
+export default function BrowserHealthIndicator({ health, onRecheck }: BrowserHealthIndicatorProps) {
   const language = useStore((state) => state.language) as Language
   const [open, setOpen] = useState(false)
+  /** 重新检测进行中：按钮转圈并置灰，避免连点 */
+  const [rechecking, setRechecking] = useState(false)
   /** 展开方向：默认右对齐（贴按钮右侧），按钮靠近窗口左边时改为左对齐 */
   const [align, setAlign] = useState<'left' | 'right'>('right')
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -101,6 +110,18 @@ export default function BrowserHealthIndicator({ health }: BrowserHealthIndicato
       setAlign(fitsRight || !fitsLeft ? 'right' : 'left')
     }
     setOpen(true)
+  }
+
+  /** 手动重新检测：取一次主进程的实时快照 */
+  const handleRecheck = async () => {
+    if (!onRecheck || rechecking) return
+
+    setRechecking(true)
+    try {
+      await onRecheck()
+    } finally {
+      setRechecking(false)
+    }
   }
 
   const tracked = Boolean(health)
@@ -220,6 +241,18 @@ export default function BrowserHealthIndicator({ health }: BrowserHealthIndicato
             <p className="text-[11px] text-text-muted">
               {t('editor.browser.health.untracked', language)}
             </p>
+          )}
+
+          {onRecheck && (
+            <button
+              type="button"
+              onClick={handleRecheck}
+              disabled={rechecking}
+              className="w-full h-7 flex items-center justify-center gap-1.5 rounded-lg border border-border/50 text-[11px] text-text-secondary hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${rechecking ? 'animate-spin' : ''}`} />
+              {t('editor.browser.health.refresh', language)}
+            </button>
           )}
         </div>
       )}

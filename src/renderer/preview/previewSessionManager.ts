@@ -4,6 +4,7 @@ import { buildPreviewDocumentPath, parsePreviewDocumentPath } from '@shared/prot
 import { api } from '@renderer/adapters/electronBridge'
 import { devServerDiscoveryService } from './devServerLocator'
 import { recordPreview } from './previewHistory'
+import { logger } from '@renderer/toolkit/LogEngine'
 
 interface PreviewSessionState {
   sessions: PreviewSession[]
@@ -39,14 +40,19 @@ export class PreviewSessionService {
   private readonly sessionByUrl = new Map<string, string>()
   private state: PreviewSessionState = { sessions: [] }
   /** 健康推送订阅是否已建立（只需一次） */
-  /** 健康推送订阅是否已建立（只需一次） */
   private healthBridgeAttached = false
   /** 自动刷新订阅是否已建立（只需一次） */
   private autoReloadBridgeAttached = false
+  /**
+   * 订阅会话状态变化
+   *
+   * 订阅时先同步一次当前状态（调用方无需自行初始化），之后每次 emit 都会收到
+   * 最新快照。监听器必须登记进 listeners，否则 emit 遍历不到，订阅形同虚设。
+   */
   subscribe(listener: PreviewSessionListener): () => void {
     this.ensureHealthBridge()
-    this.ensureHealthBridge()
     this.ensureAutoReloadBridge()
+    this.listeners.add(listener)
     listener(this.state)
     return () => this.listeners.delete(listener)
   }
@@ -153,8 +159,6 @@ export class PreviewSessionService {
       source: session.source,
       previewRoot: session.previewRoot,
     })
-
-    return session
 
     return session
   }
@@ -276,14 +280,16 @@ export class PreviewSessionService {
       return
     }
 
+    const nextToken = session.reloadToken + 1
     this.sessions.set(sessionId, {
       ...session,
       status: 'loading',
-      reloadToken: session.reloadToken + 1,
+      reloadToken: nextToken,
       updatedAt: Date.now(),
     })
     this.rebuildState()
     this.emit()
+    logger.system.info('[PreviewRefresh] token bumped', { sessionId, token: nextToken })
   }
 
   /**
@@ -355,6 +361,8 @@ export class PreviewSessionService {
   applyHealth(snapshot: PreviewHealthSnapshot): void {
     const session = this.sessions.get(snapshot.sessionId)
     if (!session) {
+      // 会话已关闭或 id 不匹配：快照直接丢弃，留一条记录便于排查
+      logger.system.warn('[PreviewHealth] drop snapshot, session not found:', snapshot.sessionId)
       return
     }
 

@@ -1713,6 +1713,12 @@ export interface ElectronAPI {
       data?: import('@protocols/previewProtocol').PreviewNetworkEntry[]
       error?: string
     }>
+    /**
+     * 按 guest 重载页面
+     *
+     * webview 标签的 reload() 在部分页面状态下会静默失效，重载改由主进程执行。
+     */
+    reloadGuest: (guestId: number) => Promise<{ success: boolean; error?: string }>
     /** 健康状态推送订阅 */
     onHealth: (
       callback: (snapshot: import('@protocols/previewProtocol').PreviewHealthSnapshot) => void,

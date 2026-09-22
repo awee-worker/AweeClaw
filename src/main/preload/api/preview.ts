@@ -7,6 +7,7 @@
  * - preview:health-detach     解绑 guest（停止健康采集）
  * - preview:health-get        读取指定会话的健康快照
  * - preview:network-collect   采集页面资源瀑布
+ * - preview:reload            按 guest 重载页面
  * - preview:health-changed    健康状态推送（main → render）
  * - preview:auto-reload-watch   登记预览目录的自动刷新
  * - preview:auto-reload-unwatch 取消预览目录的自动刷新
@@ -57,6 +58,14 @@ export function createPreviewApi() {
     /** 采集页面资源瀑布（排查加载问题时按需调用） */
     collectNetwork: (guestId: number) =>
       invoke<PreviewIpcResponse<PreviewNetworkEntry[]>>('preview:network-collect')(guestId),
+
+    /**
+     * 按 guest 重载页面
+     *
+     * 由主进程对同一个 webContents 调 reload()：webview 标签自身的 reload() 与
+     * loadURL() 在部分页面状态下会静默失效，需绕开标签层。
+     */
+    reloadGuest: (guestId: number) => invoke<PreviewIpcResponse>('preview:reload')(guestId),
 
     /** 订阅健康状态推送 */
     onHealth: on<PreviewHealthSnapshot>(PREVIEW_HEALTH_CHANNEL),

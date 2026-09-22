@@ -254,6 +254,9 @@ class PreviewHealthMonitor {
     attach(guestId: number, sessionId: string, url: string, owner: WebContents): PreviewHealthSnapshot | null {
         const guest = webContents.fromId(guestId)
         if (!guest || guest.isDestroyed()) {
+            logger.system.warn(
+                `[PreviewHealth] attach rejected: guest unavailable (guest=${guestId} session=${sessionId})`,
+            )
             return null
         }
 
@@ -280,6 +283,16 @@ class PreviewHealthMonitor {
         this.guestBySession.set(sessionId, guestId)
         this.watchSession(guest.session)
         this.bindGuest(record, guest)
+
+        // 绑定后先推一次初始快照：一个既没告警也没加载失败的页面不会再有后续变更，
+        // 不推就等于这个会话永远「没有健康数据」。
+        this.schedulePush(record)
+
+        // 采集是否真的挂上，只在运行时能看出来：留一行可检索的记录，便于排查
+        // 「状态灯一直没数据」时区分「请求没到」与「绑定被拒」
+        logger.system.info(
+            `[PreviewHealth] attached session=${sessionId} guest=${guestId} url=${url || '-'}`,
+        )
 
         return this.toSnapshot(record)
     }
@@ -506,7 +519,9 @@ class PreviewHealthMonitor {
             void detectBlank(guest).then((blank) => {
                 // 采样期间可能已解绑或已导航，重新取记录再写入
                 const current = this.recordsByGuest.get(guestId)
-                if (!current || current.blank === blank) return
+                if (!current) return
+                // 无论结果是否翻转都要推：加载完成本身就是一个需要同步出去的状态
+                // （快照里还带着标题），只有翻转才推会让「页面正常」一直不外显。
                 current.blank = blank
                 this.schedulePush(current)
             })

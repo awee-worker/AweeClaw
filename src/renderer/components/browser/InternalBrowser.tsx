@@ -157,7 +157,10 @@ export default function InternalBrowser() {
 
       {/* webview 主体（复用已有内置浏览器的 webview 容器） */}
       <div className="flex-1 min-h-0 relative">
-        {session && <BrowserWebView session={session} controller={controller} />}
+        {/* key 用重建序号：刷新令牌推进时 React 重建 webview 元素，页面重新加载 */}
+        {session && (
+          <BrowserWebView key={controller.reloadNonce} session={session} controller={controller} />
+        )}
       </div>
     </div>
   )

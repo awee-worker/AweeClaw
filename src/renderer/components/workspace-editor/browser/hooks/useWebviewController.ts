@@ -3,7 +3,7 @@
  *
  * 封装 <webview> 标签的全部命令式操作与状态同步：
  * - 事件绑定（did-start-loading / did-navigate / page-title-updated / devtools-opened 等）
- * - URL / reloadToken 变化 → webview.loadURL / reload（不使用 key 强制 remount）
+ * - URL 变化 → webview.loadURL；刷新令牌推进 → webview.reload（订阅 service，不等父组件回流）
  * - 命令操作（后退/前进/停止/DevTools/缩放）
  * - 派生状态（canGoBack/canGoForward/isLoading/devtoolsOpen/zoomFactor）同步到 previewSessionService
  *
@@ -18,6 +18,7 @@ import { useStableCallback } from '@renderer/composables/usePerformance'
 import { api } from '@renderer/adapters/electronBridge'
 import { previewSessionService } from '@renderer/preview/previewSessionManager'
 import type { PreviewSession } from '@shared/protocols/previewProtocol'
+import { logger } from '@renderer/toolkit/LogEngine'
 
 /** 缩放范围与步长（与 Chrome DevTools 行为一致） */
 const MIN_ZOOM = 0.5
@@ -58,6 +59,14 @@ export interface WebviewController {
   guestId: number | null
   /** webview 标签是否已挂载（未挂载时命令类按钮无效果） */
   webviewReady: boolean
+  /**
+   * webview 元素重建序号
+   *
+   * 调用方必须把它作为 <webview> 所在组件的 key：刷新令牌推进时序号变化，
+   * React 重建节点，页面按 src 重新加载。刷新靠它落地，不依赖 webview 的
+   * reload()/loadURL()（这两个命令在本环境实测不产生重载）。
+   */
+  reloadNonce: number
   /** 当前缩放因子（1 = 100%） */
   zoomFactor: number
   /** 后退 */
@@ -66,8 +75,17 @@ export interface WebviewController {
   goForward: () => void
   /** 停止加载 */
   stop: () => void
-  /** 刷新（走 previewSessionService.reload → reloadToken 变化 → webview.reload） */
+  /** 刷新（登记在 service 里的会话走刷新令牌，本地构造的会话直接重载 webview） */
   reload: () => void
+  /**
+   * 重新向主进程上报 guest，重启页面健康采集
+   *
+   * 工具栏「重新检测」用它补齐「绑定没赶上」的情况（webview 早于事件注册就
+   * dom-ready、或采集被中途解绑）。
+   *
+   * @returns 是否上报成功；false 表示 webview 尚未就绪
+   */
+  reportHealth: () => boolean
   /** 切换 DevTools（优先内嵌到右侧面板，条件不满足时退回独立窗口） */
   toggleDevtools: () => void
   /** 内嵌面板是否可用：false 时不再占位，DevTools 走独立窗口 */
@@ -101,6 +119,8 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
   const lastLoadedUrlRef = useRef<string>('')
   const lastReloadTokenRef = useRef<number>(0)
   const [webviewMounted, setWebviewMounted] = useState(false)
+  /** webview 元素重建序号：变化即让页面重新加载（key 驱动，不依赖 webview 命令方法） */
+  const [reloadNonce, setReloadNonce] = useState(0)
 
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
@@ -123,6 +143,57 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
     const sid = sessionIdRef.current
     if (sid) {
       previewSessionService.syncWebviewState(sid, { canGoBack: back, canGoForward: forward })
+    }
+  })
+
+  /**
+   * 上报 guest 给主进程，开始采集页面健康数据
+   *
+   * dom-ready 在每次导航完成后都会触发，主进程以最新会话为准重建采集状态，
+   * 因此这里无需额外的导航判断。
+   *
+   * 放在 hook 级而不是 bindEvents 闭包里：除事件触发外，挂载补报与用户点
+   * 「重新检测」也要能调它——webview 早于监听注册就 dom-ready 时，只有再读
+   * 一次 guest id 才能把采集补上。
+   */
+  const registerHealth = useStableCallback((): boolean => {
+    const webview = nodeRef.current
+    const sid = sessionIdRef.current
+    if (!webview || !sid) return false
+
+    try {
+      const id = webview.getWebContentsId()
+      if (typeof id !== 'number' || id < 0) return false
+
+      guestIdRef.current = id
+      setGuestId(id)
+      // 会话上记一份 guest id，AI 侧按需采集资源瀑布时需要它
+      previewSessionService.setGuestId(sid, id)
+
+      void api.preview
+        .healthAttach(id, sid, sessionRef.current?.url || '')
+        .then((response) => {
+          logger.system.info('[PreviewHealth] attach response', {
+            success: response?.success,
+            hasData: Boolean(response?.data),
+          })
+          // 采集侧只在「有变化」时推送，本身没有告警和加载失败的页面等不到推送；
+          // 绑定返回的初始快照必须落到会话上，否则状态灯一直停在「未采集到数据」。
+          if (response?.success && response.data) {
+            previewSessionService.applyHealth(response.data)
+          } else if (response && response.success === false) {
+          logger.system.warn('[PreviewHealth] Attach failed:', response.error)
+          }
+        })
+        .catch((error) => {
+          logger.system.warn('[PreviewHealth] Attach rejected:', error)
+        })
+
+      return true
+    } catch {
+      // webview 尚未 attach 时 getWebContentsId 会抛错：挂载补报阶段属于正常时序，
+      // 留给 dom-ready 或用户的手动重试
+      return false
     }
   })
 
@@ -193,26 +264,11 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
       if (sid) previewSessionService.syncWebviewState(sid, { devtoolsOpen: false })
     }
 
-    /**
-     * 上报 guest 给主进程，开始采集页面健康数据
-     *
-     * dom-ready 在每次导航完成后都会触发，主进程以最新会话为准重建采集状态，
-     * 因此这里无需额外的导航判断。
-     */
-    const registerHealth = () => {
-      const sid = sessionIdRef.current
-      if (!sid) return
-      try {
-        const id = webview.getWebContentsId()
-        if (typeof id !== 'number' || id < 0) return
-        guestIdRef.current = id
-        setGuestId(id)
-        // 会话上记一份 guest id，AI 侧按需采集资源瀑布时需要它
-        previewSessionService.setGuestId(sid, id)
-        void api.preview.healthAttach(id, sid, sessionRef.current?.url || '')
-      } catch {
-        // webview 尚未 attach 时 getWebContentsId 会抛错，留给下一次 dom-ready
-      }
+    const handleDomReady = () => {
+      // dom-ready 是「本次导航的文档已就绪」的确切信号：页面持续发起请求时
+      // did-stop-loading 可能迟迟不来，只靠它复位会让工具栏长期停在加载态
+      setIsLoading(false)
+      registerHealth()
     }
 
     const listeners: Array<[string, EventListener]> = [
@@ -227,11 +283,29 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
       ['devtools-closed', handleDevtoolsClosed as EventListener],
     ]
     listeners.forEach(([name, handler]) => webview.addEventListener(name, handler))
-    webview.addEventListener('dom-ready', registerHealth)
+    webview.addEventListener('dom-ready', handleDomReady)
+
+    /**
+     * 目录监听随「挂载」重新登记
+     *
+     * 打开/恢复预览时登记的那一次不足以覆盖整个生命周期：标签页切走（以及开发态
+     * StrictMode 的模拟卸载）会走下面的清理解绑，若不在挂载时补登记，切回来之后
+     * 文件改动就再也推不到这个标签页了。
+     */
+    const autoReloadRoot = sessionRef.current?.previewRoot
+    const autoReloadUrl = sessionRef.current?.url
+    if (autoReloadRoot && autoReloadUrl) {
+      void api.preview.watchAutoReload(autoReloadRoot, autoReloadUrl)
+    }
+
+    // 挂载时先尝试上报一次：页面已经加载完成的重挂（开发态 StrictMode 的模拟卸载再挂载）
+    // 不会再有 dom-ready，只把上报挂在事件上会让健康采集永久缺席。
+    // 未就绪时 getWebContentsId 会抛错，由 registerHealth 内部吞掉。
+    registerHealth()
 
     return () => {
       listeners.forEach(([name, handler]) => webview.removeEventListener(name, handler))
-      webview.removeEventListener('dom-ready', registerHealth)
+      webview.removeEventListener('dom-ready', handleDomReady)
 
       // 停止健康采集：guest 可能已销毁，主进程按 id 直接释放记录
       const detachedGuestId = guestIdRef.current
@@ -299,19 +373,84 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
     }
   }, [session?.url, webviewMounted, session])
 
-  // session.reloadToken 变化 → reload
+  /**
+   * 把重载落到页面本体上
+   *
+   * 优先让主进程按 guest 执行重载：webview 标签自身的 reload() 与 loadURL()
+   * 在部分页面状态下会静默失效（loadURL 指向同一地址会被当成同文档导航短路），
+   * 而主进程走的是同一个 webContents 的原生重载路径。
+   * guest 还没就绪（未 attach）时退回重建 webview 元素：key 变化让 React 重新
+   * 挂载节点，按 src 重新加载，同样绕开那两个失效的命令。
+   */
+  const performReload = useStableCallback(() => {
+    const guest = guestIdRef.current
+
+    if (guest === null) {
+      logger.system.info('[PreviewRefresh] guest not ready, rebuild webview')
+      setReloadNonce((value) => value + 1)
+      return
+    }
+
+    void api.preview
+      .reloadGuest(guest)
+      .then((response) => {
+        logger.system.info('[PreviewRefresh] guest reload done', {
+          guest,
+          success: response?.success,
+        })
+        if (response && response.success === false) {
+          setReloadNonce((value) => value + 1)
+        }
+      })
+      .catch((error) => {
+        logger.system.warn('[PreviewRefresh] guest reload failed, rebuild webview:', error)
+        setReloadNonce((value) => value + 1)
+      })
+  })
+
+  /**
+   * 消费一次刷新令牌：触发一次重载
+   *
+   * 令牌只增不减，「已消费令牌」就是闸门：同一次刷新无论从哪条路径先到，
+   * 都只会重载一次。
+   */
+  const consumeReloadToken = useStableCallback((token: number) => {
+    if (!(token > lastReloadTokenRef.current)) return
+
+    lastReloadTokenRef.current = token
+    logger.system.info('[PreviewRefresh] token consumed', { token })
+    performReload()
+  })
+
+  /**
+   * 刷新令牌推进 → 直接重载 webview
+   *
+   * 这里自己订阅 service，而不是等父组件把新会话对象回传后再由 effect 处理：
+   * 刷新是命令式操作，父组件那条链路（usePreviewSessionSync 订阅 → 本地 state →
+   * 重新渲染 → effect）任何一环没接上，按钮就会「点了没反应」。订阅与会话表同源，
+   * 令牌推进必然落到 webview 上；自动刷新推来的令牌走的也是同一条路径。
+   */
+  useEffect(() => {
+    const sid = session?.id
+    if (!sid) return
+
+    return previewSessionService.subscribe((state) => {
+      const current = state.sessions.find((item) => item.id === sid)
+      if (!current) return
+      consumeReloadToken(current.reloadToken)
+    })
+  }, [session?.id])
+
+  /**
+   * 会话对象上的令牌推进 → 直接重载 webview
+   *
+   * 与上面的订阅互补：会话由调用方本地构造时（内部浏览器不注册 service），
+   * service 里查不到这条会话，刷新只能靠这里。两条路径共用同一个「已消费令牌」，
+   * 先到的那条负责重载，后到的那条看到令牌相等自然跳过，不会刷两次。
+   */
   useEffect(() => {
     if (!webviewMounted || !session) return
-    const webview = nodeRef.current
-    if (!webview) return
-    if (session.reloadToken !== lastReloadTokenRef.current) {
-      lastReloadTokenRef.current = session.reloadToken
-      try {
-        webview.reload()
-      } catch {
-        // reload 在未加载完成时可能抛出，忽略
-      }
-    }
+    consumeReloadToken(session.reloadToken)
   }, [session?.reloadToken, webviewMounted, session])
 
   // ---- 命令方法（useStableCallback 保证引用稳定，子组件 memo 不失效）----
@@ -336,9 +475,31 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
 
   const reload = useStableCallback(() => {
     const sid = sessionIdRef.current
-    if (sid) {
+    const inService = Boolean(sid && previewSessionService.getSession(sid))
+    logger.system.info('[PreviewRefresh] reload requested', {
+      sessionId: sid,
+      inService,
+      guest: guestIdRef.current,
+    })
+
+    // 会话登记在 service 里：推进令牌，让状态与自动刷新通道保持一致
+    if (sid && inService) {
       previewSessionService.reload(sid)
+
+      // 令牌被订阅回调消费即说明重载已经发起；没被消费时由这里补一次。
+      // 刷新不能押在「订阅链路是否接通」上，两者合起来保证点一次刷新只重载一次。
+      const latest = previewSessionService.getSession(sid)?.reloadToken ?? 0
+      if (lastReloadTokenRef.current < latest) {
+        lastReloadTokenRef.current = latest
+        logger.system.info('[PreviewRefresh] reload via fallback', { token: latest })
+        performReload()
+      }
+      return
     }
+
+    // 会话不在 service 里（调用方本地构造的会话）：service 对未知会话全部 no-op，
+    // 无法走令牌，直接重载
+    performReload()
   })
 
   /**
@@ -425,9 +586,11 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
     goForward,
     stop,
     reload,
+    reportHealth: registerHealth,
     toggleDevtools,
     guestId,
     webviewReady: webviewMounted,
+    reloadNonce,
     dockUsable,
     collapseDock,
     openDetachedDevTools,

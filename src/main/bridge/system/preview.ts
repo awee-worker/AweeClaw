@@ -181,6 +181,23 @@ export function registerPreviewHandlers(): void {
     })
 
     /**
+     * 按 guest 重载页面
+     *
+     * 重载交给主进程的 WebContents.reload()：webview 标签自身的 reload() 与
+     * loadURL() 在部分页面状态下会静默失效（表现为「点了刷新没反应」），
+     * 而这里是同一个 webContents 的原生重载路径，不经过标签层。
+     */
+    safeIpcHandle('preview:reload', async (event, guestId: unknown) => {
+        const guest = resolveOwnedGuest(event, guestId)
+        if (!guest) {
+            return { success: false, error: 'Unknown preview guest' }
+        }
+
+        guest.reload()
+        return { success: true }
+    })
+
+    /**
      * 登记预览目录的自动刷新
      *
      * 只对本地静态页面调用：dev server 自带 HMR，不需要这份监听。

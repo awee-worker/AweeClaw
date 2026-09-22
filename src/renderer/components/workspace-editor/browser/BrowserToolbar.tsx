@@ -8,7 +8,7 @@
  * - 功能组：元素检查（DevTools toggle）、缩放（50%–300%，点击百分比重置）、
  *           外部打开（系统浏览器）、新建标签页（强制创建新会话）
  */
-import { ArrowLeft, ArrowRight, RefreshCw, X, SquareDashedMousePointer, ZoomIn, ZoomOut, ExternalLink, Plus } from 'lucide-react'
+import { ArrowLeft, ArrowRight, RefreshCw, SquareDashedMousePointer, ZoomIn, ZoomOut, ExternalLink, Plus } from 'lucide-react'
 import type { PreviewHealthSnapshot } from '@shared/protocols/previewProtocol'
 import { ActionButton } from '@components/ui'
 import { useStore } from '@store'
@@ -21,6 +21,8 @@ interface BrowserToolbarProps {
   controller: WebviewController
   /** 当前页面健康快照（运行时态，未采集到时为空） */
   health?: PreviewHealthSnapshot
+  /** 主动重新拉取一次健康快照 */
+  onRecheckHealth?: () => Promise<void> | void
   addressInput: string
   onAddressChange: (value: string) => void
   onNavigate: (url: string) => void
@@ -35,6 +37,7 @@ interface BrowserToolbarProps {
 export default function BrowserToolbar({
   controller,
   health,
+  onRecheckHealth,
   addressInput,
   onAddressChange,
   onNavigate,
@@ -76,20 +79,22 @@ export default function BrowserToolbar({
           <ArrowRight className="w-4 h-4" />
         </ActionButton>
 
+        {/* 固定为刷新：加载态会随页面请求反复切换，若在这里切成「停止」，
+            页面持续请求时按钮会长期停在停止态，用户点到的就不是刷新 */}
         <ActionButton
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          onClick={isLoading ? controller.stop : controller.reload}
-          title={isLoading ? t('editor.browser.stop', language) : t('editor.browser.reload', language)}
-          aria-label={isLoading ? t('editor.browser.stop', language) : t('editor.browser.reload', language)}
+          onClick={controller.reload}
+          title={t('editor.browser.reload', language)}
+          aria-label={t('editor.browser.reload', language)}
         >
-          {isLoading ? <X className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
+          <RefreshCw className="w-4 h-4" />
         </ActionButton>
       </div>
 
       {/* 页面健康指示灯（控制台错误 / 加载失败 / 白屏） */}
-      <BrowserHealthIndicator health={health} />
+      <BrowserHealthIndicator health={health} onRecheck={onRecheckHealth} />
 
       {/* 地址栏 */}
       <BrowserAddressBar

@@ -10,8 +10,10 @@
  *
  * 入口 WebPreviewTab.tsx 懒加载本组件，保持 WorkspaceEditor 引用路径不变。
  */
+import { useCallback } from 'react'
 import type { OpenFile } from '@store'
 import { api } from '@renderer/adapters/electronBridge'
+import { previewSessionService } from '@renderer/preview/previewSessionManager'
 import { usePreviewSessionSync } from './hooks/usePreviewSessionSync'
 import { useWebviewController } from './hooks/useWebviewController'
 import BrowserToolbar from './BrowserToolbar'
@@ -29,6 +31,8 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
     usePreviewSessionSync(file)
 
   const controller = useWebviewController(session)
+  // 取出稳定引用：重新检测的 useCallback 依赖它，不依赖每次渲染重建的 controller 对象
+  const { reportHealth } = controller
 
   const handleOpenExternal = () => {
     if (session?.url) {
@@ -46,6 +50,33 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
   const dockedGuestId =
     session && controller.devtoolsOpen && controller.dockUsable ? controller.guestId : null
 
+  /**
+   * 重新检测页面健康
+   *
+   * 快照推送有节拍，展开面板时直接取一次主进程的实时数据：
+   * 之前没赶上绑定、或页面已变化但推送还在路上的情况都能补齐。
+   */
+  const handleRecheckHealth = useCallback(async () => {
+    const sessionId = session?.id
+    if (!sessionId) return
+
+    try {
+      const response = await api.preview.healthGet(sessionId)
+      if (response.success && response.data) {
+        previewSessionService.applyHealth(response.data)
+        return
+      }
+    } catch {
+      // 取不到就继续往下重新绑定
+    }
+
+    // 主进程没有这个会话的记录：说明绑定没赶上（webview 早于事件注册就 dom-ready，
+    // 或采集被中途解绑）。重新上报 guest，attach 会把初始快照推回来。
+    if (!reportHealth()) {
+      console.warn('[PreviewHealth] Recheck skipped: webview not ready')
+    }
+  }, [session?.id, reportHealth])
+
   /** 内嵌不可用：DevTools 改在独立窗口打开，占位面板收起 */
   const handleUndockDevTools = () => {
     controller.openDetachedDevTools()
@@ -57,6 +88,7 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
       <BrowserToolbar
         controller={controller}
         health={session?.health}
+        onRecheckHealth={handleRecheckHealth}
         addressInput={addressInput}
         onAddressChange={setAddressInput}
         onNavigate={commitNavigation}
@@ -71,7 +103,16 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
             <BrowserEmptyState />
           ) : (
             <>
-              <BrowserWebView session={session} controller={controller} />
+              {/*
+                key 用重建序号：刷新令牌推进时 React 重建 webview 元素，页面按 src
+                重新加载。刷新刻意不走 webview.reload()/loadURL()——那两个命令在本
+                环境实测不产生重载（同地址 loadURL 被当作同文档导航短路，reload 静默失效）。
+              */}
+              <BrowserWebView
+                key={controller.reloadNonce}
+                session={session}
+                controller={controller}
+              />
               <BrowserStatusOverlay session={session} />
             </>
           )}
