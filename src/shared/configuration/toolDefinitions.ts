@@ -1989,10 +1989,16 @@ The search combines keyword matching (40%) and semantic vector similarity (60%) 
     apply_skill: {
         name: 'apply_skill',
         displayName: 'Apply Skill',
-        description: 'Load a project skill by name to apply its domain-specific instructions, guidelines, and templates to the current task.',
+        description: 'Load an INSTALLED skill by name to apply its domain-specific instructions, guidelines, and templates to the current task. The name must be copied verbatim from the "Available Skills" list — never guess it.',
         detailedDescription: `Load a project-specific skill's full content (instructions, guidelines, templates) by name.
 
 Available skills are listed in the system prompt under "Available Skills". Each skill has a name and description.
+
+## Hard constraints (skill_name)
+- \`skill_name\` MUST be an exact copy of a name from the "Available Skills" list — only installed skills can be loaded.
+- NEVER invent, translate, pluralise, abbreviate or guess a skill name. A name seen elsewhere (scene-mode skill lists, plugin names, marketplace pages) is NOT an installed skill.
+- If "Available Skills" is empty, or none of its entries fits the task, do NOT call this tool at all.
+- If the tool reports the skill is not installed, tell the user how to install it (「插件与技能市场」) instead of retrying with other guessed names.
 
 ## When to use
 You SHOULD proactively call \`apply_skill\` when:
@@ -2011,7 +2017,7 @@ The tool returns the full skill content which you MUST follow as project-specifi
         requiresWorkspace: true,
         enabled: true,
         parameters: {
-            skill_name: { type: 'string', description: 'The name of the skill to load (as shown in Available Skills list)', required: true },
+            skill_name: { type: 'string', description: 'Exact skill name copied verbatim from the "Available Skills" list in the system prompt. Never invent, translate or guess a name.', required: true },
         },
     },
 

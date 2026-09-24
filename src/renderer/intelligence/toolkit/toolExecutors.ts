@@ -62,7 +62,7 @@ import {
 import type { ExternalAgentId, AgentPermissionMode } from '@shared/externalAgents'
 import { publishAgentRunStart } from './agentRunBus'
 import pLimit from 'p-limit'
-import { skillService } from '../runtime/skillRepository'
+import { skillService, type SkillItem } from '../runtime/skillRepository'
 import type { Language } from '@renderer/i18n'
 import type { ReplaceErrorCode } from '@utils/smartReplace'
 import { resolveAgentLanguage, pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
@@ -1016,6 +1016,148 @@ async function guardedWriteFile(opts: {
     }
 }
 
+
+/**
+ * 加载技能内容：返回技能正文、安装目录与目录清单
+ *
+ * 供 apply_skill 在「精确命中」与「近似命中」两种路径下复用。
+ */
+async function buildSkillLoadResult(skill: SkillItem): Promise<ToolExecutionResult> {
+    // skill 安装目录
+    const installPath = skill.filePath.replace(/[/\\]SKILL\.md$/i, '')
+    const isWin = platform.isWindows
+    const normalizedPath = isWin ? installPath.replace(/\//g, '\\') : installPath
+
+    // 扫描 skill 目录下的所有文件，让 AI 知道有哪些脚本可用
+    let fileTree = ''
+    try {
+        const items = await api.file.readDir(installPath)
+        if (items && items.length > 0) {
+            const listFiles = async (dir: string, prefix: string): Promise<string[]> => {
+                const entries = await api.file.readDir(dir)
+                if (!entries) return []
+                const lines: string[] = []
+                for (const entry of entries) {
+                    if (entry.name === 'SKILL.md' || entry.name.startsWith('.') || entry.name === 'node_modules') continue
+                    const entryPath = `${dir}${isWin ? '\\' : '/'}${entry.name}`
+                    if (entry.isDirectory) {
+                        lines.push(`${prefix}${entry.name}/`)
+                        lines.push(...await listFiles(entryPath, prefix + '  '))
+                    } else {
+                        lines.push(`${prefix}${entry.name}`)
+                    }
+                }
+                return lines
+            }
+            const tree = await listFiles(installPath, '  ')
+            if (tree.length > 0) {
+                fileTree = `\n\n## Skill Directory Contents\n\`\`\`\n${normalizedPath}/\n${tree.join('\n')}\n\`\`\``
+            }
+        }
+    } catch {
+        // 扫描失败不影响主流程
+    }
+
+    const scriptHint = isWin
+        ? `On Windows: use \`node\` for .js, \`python\` for .py, \`cmd /c\` for .bat/.cmd`
+        : `Use \`bash\` for .sh, \`node\` for .js, \`python\` for .py`
+
+    const result = [
+        `<skill name="${skill.name}" path="${normalizedPath}">`,
+        skill.content,
+        `</skill>`,
+        fileTree,
+        ``,
+        `## Execution Guidelines`,
+        `- **Working Directory (CRITICAL)**: Set \`cwd\` to \`${normalizedPath}\` for ALL shell commands from this skill`,
+        `- **Scripts**: If the skill references scripts or commands, execute them from the skill directory. ${scriptHint}`,
+        `- **Relative Paths**: All relative paths in the skill instructions are relative to \`${normalizedPath}\``,
+    ].join('\n')
+
+    return { success: true, result }
+}
+
+/**
+ * 技能名不存在时的降级处理
+ *
+ * 技能名由模型生成，写错字（大小写 / 连字符 / 单复数 / 前缀）很常见。
+ * 直接返回 "not found" 既中断任务，又让用户看到一次无意义的「应用失败」。
+ * 这里按 不可用原因 → 近似技能 → 市场检索 → 可用清单 逐级降级，
+ * 保证任何一次调用都能得到可执行的下一步，而不是一句死胡同式的错误。
+ */
+async function resolveUninstalledSkill(skillName: string): Promise<ToolExecutionResult> {
+    // ① 技能已安装，只是被禁用或当前场景模式不可用：说明真实原因
+    const unavailable = await skillService.explainUnavailableSkill(skillName)
+    if (unavailable) {
+        const { reason } = unavailable
+        const advice = reason === 'disabled'
+            ? 'The skill is installed but disabled. Ask the user to enable it in 「设置 → 技能」, then retry.'
+            : 'The skill is installed but not available in the current scene mode. Ask the user to switch mode or enable it in 「设置 → 技能」, then retry.'
+        return {
+            success: true,
+            result: `Skill "${unavailable.skill.name}" is installed but not available (reason: ${reason}).\n\nNo skill content was loaded. ${advice}`,
+            meta: { skillOutcome: 'unavailable', skillName: unavailable.skill.name, reason },
+        }
+    }
+
+    const similar = await skillService.findSimilarSkills(skillName, 3)
+
+    // ② 只有一个高度接近的候选：直接按该技能加载，并说明名称差异
+    if (similar.length === 1 && similar[0].score >= 0.8) {
+        const loaded = await buildSkillLoadResult(similar[0].skill)
+        return {
+            ...loaded,
+            result: `Note: no skill named "${skillName}" is installed. Loaded the closest match "${similar[0].skill.name}" instead.\n\n${loaded.result}`,
+            meta: { skillOutcome: 'alias_applied', skillName: similar[0].skill.name, requestedName: skillName },
+        }
+    }
+
+    // ③ 存在多个相近候选：交给模型确认，不擅自替用户选
+    if (similar.length > 0 && similar[0].score >= 0.6) {
+        const candidates = similar
+            .map(({ skill, score }) => `- ${skill.name} (match ${Math.round(score * 100)}%): ${skill.description}`)
+            .join('\n')
+        return {
+            success: true,
+            result: `Skill "${skillName}" is not installed. Closest installed skills:\n${candidates}\n\nNo skill content was loaded. If one of them fits the task, re-call apply_skill with its exact name; otherwise continue WITHOUT a skill — do not guess another name.`,
+            meta: {
+                skillOutcome: 'candidates',
+                requestedName: skillName,
+                candidates: similar.map(item => item.skill.name),
+            },
+        }
+    }
+
+    // ④ 未安装但市场存在：引导用户安装，不自动安装
+    const market = await skillService.searchSkillMarket(skillName, 3)
+    if (market.length > 0) {
+        const lines = market
+            .map(item => item.source === 'backend'
+                ? `- ${item.name}（标识 ${item.identifier}${item.installs > 0 ? `，下载 ${item.installs} 次` : ''}）`
+                : `- ${item.name}（标识 ${item.identifier}，来自 skills.sh）`)
+            .join('\n')
+        return {
+            success: true,
+            result: `Skill "${skillName}" is not installed, but a matching skill exists in the marketplace:\n${lines}\n\nNo skill content was loaded and nothing was installed. Tell the user the skill is available but not installed and can be added from 「插件与技能市场」. Do NOT call apply_skill again for this name in this turn.`,
+            meta: {
+                skillOutcome: 'not_installed',
+                requestedName: skillName,
+                market: market.map(item => item.identifier),
+            },
+        }
+    }
+
+    // ⑤ 完全没有来源：明确告知不存在，并给出当前可用清单
+    const installed = await skillService.getSkills()
+    const available = installed.length > 0
+        ? `Installed skills: ${installed.map(s => s.name).join(', ')}`
+        : 'No skills are installed in this workspace.'
+    return {
+        success: true,
+        result: `Skill "${skillName}" does not exist — it is neither installed nor available in the marketplace.\n${available}\n\nNo skill content was loaded. Do NOT call apply_skill again with this or a guessed name; continue the task with the available tools, or ask the user which skill they meant.`,
+        meta: { skillOutcome: 'unknown', requestedName: skillName },
+    }
+}
 
 const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: ToolExecutionContext) => Promise<ToolExecutionResult>> = {
     async read_file(args, ctx) {
@@ -4199,71 +4341,20 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
     },
 
     async apply_skill(args, _ctx) {
-        const skillName = args.skill_name as string
+        const skillName = String(args.skill_name || '').trim()
         if (!skillName) return { success: false, result: '', error: 'Missing skill_name' }
 
         try {
             const skill = await skillService.getSkillByName(skillName)
-            if (!skill) {
-                return {
-                    success: false,
-                    result: '',
-                    error: `Skill "${skillName}" not found. Check available skills in the system prompt.`,
-                }
+
+            // 精确命中：加载完整技能内容
+            if (skill) {
+                const loaded = await buildSkillLoadResult(skill)
+                return { ...loaded, meta: { ...loaded.meta, skillOutcome: 'applied', skillName: skill.name } }
             }
 
-            // skill 安装目录
-            const installPath = skill.filePath.replace(/[/\\]SKILL\.md$/i, '')
-            const isWin = platform.isWindows
-            const normalizedPath = isWin ? installPath.replace(/\//g, '\\') : installPath
-
-            // 扫描 skill 目录下的所有文件，让 AI 知道有哪些脚本可用
-            let fileTree = ''
-            try {
-                const items = await api.file.readDir(installPath)
-                if (items && items.length > 0) {
-                    const listFiles = async (dir: string, prefix: string): Promise<string[]> => {
-                        const entries = await api.file.readDir(dir)
-                        if (!entries) return []
-                        const lines: string[] = []
-                        for (const entry of entries) {
-                            if (entry.name === 'SKILL.md' || entry.name.startsWith('.') || entry.name === 'node_modules') continue
-                            const entryPath = `${dir}${isWin ? '\\' : '/'}${entry.name}`
-                            if (entry.isDirectory) {
-                                lines.push(`${prefix}${entry.name}/`)
-                                lines.push(...await listFiles(entryPath, prefix + '  '))
-                            } else {
-                                lines.push(`${prefix}${entry.name}`)
-                            }
-                        }
-                        return lines
-                    }
-                    const tree = await listFiles(installPath, '  ')
-                    if (tree.length > 0) {
-                        fileTree = `\n\n## Skill Directory Contents\n\`\`\`\n${normalizedPath}/\n${tree.join('\n')}\n\`\`\``
-                    }
-                }
-            } catch {
-                // 扫描失败不影响主流程
-            }
-
-            const scriptHint = isWin
-                ? `On Windows: use \`node\` for .js, \`python\` for .py, \`cmd /c\` for .bat/.cmd`
-                : `Use \`bash\` for .sh, \`node\` for .js, \`python\` for .py`
-
-            const result = [
-                `<skill name="${skill.name}" path="${normalizedPath}">`,
-                skill.content,
-                `</skill>`,
-                fileTree,
-                ``,
-                `## Execution Guidelines`,
-                `- **Working Directory (CRITICAL)**: Set \`cwd\` to \`${normalizedPath}\` for ALL shell commands from this skill`,
-                `- **Scripts**: If the skill references scripts or commands, execute them from the skill directory. ${scriptHint}`,
-                `- **Relative Paths**: All relative paths in the skill instructions are relative to \`${normalizedPath}\``,
-            ].join('\n')
-
-            return { success: true, result }
+            // 未安装：走降级分支，给出可执行的下一步，而不是一句「应用失败」
+            return await resolveUninstalledSkill(skillName)
         } catch (err) {
             return {
                 success: false,
@@ -4272,6 +4363,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
         }
     },
+
 
     async schedule(args, _ctx) {
         const action = args.action as string

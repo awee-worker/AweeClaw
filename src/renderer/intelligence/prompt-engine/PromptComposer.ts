@@ -572,17 +572,25 @@ function buildModeSpecificSections(modeDescriptor: ModeDescriptor): string | nul
 /**
  * 构建场景模式指令段落
  *
- * 注入当前场景模式的记忆域约束和可用技能清单，
+ * 注入当前场景模式的记忆域约束和关联技能清单，
  * 让 AI 知道当前处于哪种使用场景（work/life/study），遵循该模式的边界。
+ *
+ * @param installedSkillNames 已安装技能名（小写）集合，用于标注每个模式技能的安装状态
  */
-function buildSceneModeDirectives(profile: SceneModeProfile): string {
+function buildSceneModeDirectives(profile: SceneModeProfile, installedSkillNames: Set<string>): string {
   const parts: string[] = [
     `## ${profile.displayNameZh}场景模式`,
     `当前处于「${profile.displayNameZh}」场景模式，请遵循该模式的人设与边界。`,
     `记忆域约束：仅读写「${profile.memoryDomainTag}」与「domain:shared」共享域的记忆与知识，避免跨域污染。`,
   ]
   if (profile.modeSkills.length > 0) {
-    parts.push(`当前模式可用技能：${profile.modeSkills.join('、')}`)
+    // 模式技能是「模式声明」而非「已安装清单」：不标注安装状态的话，
+    // 模型会把未安装的名字当成可用技能去 apply_skill（表现为「技能不存在」的报错）
+    const decorated = profile.modeSkills.map(id =>
+      installedSkillNames.has(id.toLowerCase()) ? `${id}（已安装）` : `${id}（未安装）`
+    )
+    parts.push(`当前模式关联技能：${decorated.join('、')}`)
+    parts.push('注意：仅标注「已安装」的技能可以通过 apply_skill 加载；「未安装」的技能名不得用于 apply_skill，需要时提示用户前往「插件与技能市场」安装。')
   }
   return parts.join('\n')
 }
@@ -954,6 +962,9 @@ export async function buildAgentSystemPrompt(
   const modeDescriptor = modeRegistry.getOrDefault(mode)
   const sceneProfile = useSceneModeStore.getState().getActiveProfile()
 
+  // 已安装技能名集合（小写）：供场景模式技能清单标注安装状态，避免模型把未安装的技能名当作可用技能
+  const installedSkillNameSet = new Set(allSkills.map(s => s.name.toLowerCase()))
+
   // 自定义智能体（AgentSelector 选中）：其 systemPrompt 需注入到系统提示词
   const activeAgent = getActiveCustomAgent()
   logger.agent.info(
@@ -992,7 +1003,7 @@ export async function buildAgentSystemPrompt(
     isChannel,
     hasUntrustedContent: untrustedContext?.present === true,
     scenePersonaPrompt: sceneProfile.personaPrompt,
-    sceneModeDirectives: buildSceneModeDirectives(sceneProfile),
+    sceneModeDirectives: buildSceneModeDirectives(sceneProfile, installedSkillNameSet),
     // 场景工具按需暴露（致命问题 #4）：
     // - 仅当用户消息带明确的“场景数据记录/查询/管理”意图时才注入指南与上下文
     // - AI 执行开发/多步任务时任务跟踪应使用系统内置 todo_write / create_task_plan，不触碰场景工具

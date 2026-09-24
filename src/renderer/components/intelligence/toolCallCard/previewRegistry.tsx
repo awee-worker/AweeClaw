@@ -461,18 +461,34 @@ const renderApplySkill: PreviewRenderer = (ctx) => {
   const isFailed = toolCall.status === 'error'
   const stringResult = typeof toolCall.result === 'string' ? toolCall.result : ''
 
+  // 技能不存在时执行器降级返回引导（见 _meta.skillOutcome），此时并未加载任何技能内容，
+  // 不能按「已应用」呈现，否则用户会误以为技能已经生效
+  const meta = args._meta && typeof args._meta === 'object' ? args._meta as Record<string, unknown> : null
+  const outcome = typeof meta?.skillOutcome === 'string' ? meta.skillOutcome : ''
+  const notApplied = isDone && !!outcome && outcome !== 'applied' && outcome !== 'alias_applied'
+
+  const iconClass = isRunning
+    ? 'text-accent animate-pulse'
+    : notApplied
+      ? 'text-amber-400'
+      : isDone
+        ? 'text-green-400'
+        : isFailed
+          ? 'text-red-400'
+          : 'text-text-muted'
+
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-1.5 text-[12px]">
-        <Zap
-          className={`w-3 h-3 ${isRunning ? 'text-accent animate-pulse' : isDone ? 'text-green-400' : isFailed ? 'text-red-400' : 'text-text-muted'}`}
-        />
+        <Zap className={`w-3 h-3 ${iconClass}`} />
         <span className="text-text-muted">
-          {isDone
-            ? t('tool.status.applied', language as any, { name: skillName || 'Skill' })
-            : isRunning
-              ? t('tool.status.applying', language as any, { name: skillName || 'Skill' })
-              : skillName || 'Skill'}
+          {notApplied
+            ? t('tool.status.skillNotApplied', language as any, { name: skillName || 'Skill' })
+            : isDone
+              ? t('tool.status.applied', language as any, { name: skillName || 'Skill' })
+              : isRunning
+                ? t('tool.status.applying', language as any, { name: skillName || 'Skill' })
+                : skillName || 'Skill'}
         </span>
       </div>
       {stringResult ? (

@@ -7,6 +7,7 @@
  */
 
 import { api } from '../../adapters/electronBridge'
+import { browsePlugins } from '../../adapters/pluginService'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
 import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
@@ -62,6 +63,18 @@ export interface MarketplaceSuggestion extends MarketplaceResult {
     relevance: number
 }
 
+/** 技能市场检索结果（按技能名查找可安装来源） */
+export interface SkillMarketMatch {
+    /** 来源渠道：backend 后端插件市场（type=skill）, skills.sh 公共技能市场 */
+    source: 'backend' | 'skills.sh'
+    /** 展示名 */
+    name: string
+    /** 安装标识：backend 为 pluginKey，skills.sh 为 owner/repo@skill */
+    identifier: string
+    description: string
+    installs: number
+}
+
 // ============================================
 // YAML Frontmatter 解析
 // ============================================
@@ -82,6 +95,38 @@ function parseSkillMd(raw: string): { frontmatter: Record<string, unknown>; body
     }
 
     return { frontmatter, body }
+}
+
+// ============================================
+// 名称归一化与相似度
+// ============================================
+
+/** 技能名归一化：忽略大小写与 - _ . 空格 等分隔符差异 */
+function normalizeSkillName(name: string): string {
+    return String(name || '').toLowerCase().replace(/[\s\-_.]+/g, '')
+}
+
+/** 技能名分词：按分隔符切分，用于词元重合度比较 */
+function tokenizeSkillName(name: string): string[] {
+    return String(name || '').toLowerCase().split(/[\s\-_.]+/).filter(token => token.length > 1)
+}
+
+/** 编辑距离：用于评估两个技能名的字形接近程度 */
+function levenshtein(a: string, b: string): number {
+    if (a === b) return 0
+    if (!a.length) return b.length
+    if (!b.length) return a.length
+
+    let prev: number[] = Array.from({ length: b.length + 1 }, (_, i) => i)
+    for (let i = 1; i <= a.length; i++) {
+        const current: number[] = [i]
+        for (let j = 1; j <= b.length; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1
+            current[j] = Math.min(current[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
+        }
+        prev = current
+    }
+    return prev[b.length]
 }
 
 // ============================================
@@ -518,6 +563,118 @@ Add your skill instructions here.
     }
 
     /**
+     * 查找与给定名称最接近的已安装技能
+     *
+     * 技能名由模型生成，大小写、连字符/下划线、单复数、前缀等细微差异都会导致精确匹配失败。
+     * 这里做一次归一化 + 词元重合 + 编辑距离的兜底，避免把「模型轻微写错名字」
+     * 直接变成一次无意义的调用失败。
+     */
+    async findSimilarSkills(name: string, limit = 3): Promise<Array<{ skill: SkillItem; score: number }>> {
+        const target = normalizeSkillName(name)
+        if (!target) return []
+
+        const targetTokens = tokenizeSkillName(name)
+        const scored: Array<{ skill: SkillItem; score: number }> = []
+
+        for (const skill of await this.getSkills()) {
+            const candidate = normalizeSkillName(skill.name)
+            if (!candidate) continue
+
+            let score = 1 - levenshtein(target, candidate) / Math.max(target.length, candidate.length)
+
+            // 互相包含（缺少前缀/后缀）时给较高分
+            if (candidate.includes(target) || target.includes(candidate)) {
+                score = Math.max(score, 0.85)
+            }
+
+            // 词元重合（例如 work-report 与 report）
+            const shared = targetTokens.filter(token => tokenizeSkillName(skill.name).includes(token)).length
+            if (shared > 0 && targetTokens.length > 0) {
+                score = Math.max(score, 0.6 + 0.3 * (shared / targetTokens.length))
+            }
+
+            if (score >= 0.5) scored.push({ skill, score })
+        }
+
+        return scored.sort((a, b) => b.score - a.score).slice(0, Math.max(1, limit))
+    }
+
+    /**
+     * 解释「技能存在但当前加载不了」的原因
+     *
+     * getSkillByName 只返回当前可用的技能，被禁用或被场景模式过滤掉的技能会落到降级分支。
+     * 此时需要给出准确原因（禁用 / 当前模式不可用），而不是笼统地告诉模型「不存在」。
+     */
+    async explainUnavailableSkill(name: string): Promise<{ skill: SkillItem; reason: 'disabled' | 'scene-mode' } | null> {
+        const target = normalizeSkillName(name)
+        if (!target) return null
+
+        const hit = (await this.getAllSkills()).find(s => normalizeSkillName(s.name) === target)
+        if (!hit) return null
+        if (!hit.enabled) return { skill: hit, reason: 'disabled' }
+
+        const { currentSceneMode } = useSceneModeStore.getState()
+        const sceneMode = hit.metadata?.sceneMode
+        if (sceneMode && !sceneMode.split(',').map(m => m.trim()).includes(currentSceneMode)) {
+            return { skill: hit, reason: 'scene-mode' }
+        }
+        return null
+    }
+
+    /**
+     * 在技能/插件市场按名称检索可安装的技能
+     *
+     * 数据源优先级：
+     *   1. 后端插件市场（type=skill）—— 已发布技能的主渠道，需登录
+     *   2. skills.sh 公共市场 —— 未登录或后端无结果时的兜底
+     * 只做检索，不安装：安装必须由用户确认。
+     */
+    async searchSkillMarket(name: string, limit = 3): Promise<SkillMarketMatch[]> {
+        const keyword = String(name || '').trim()
+        if (!keyword) return []
+
+        const matches: SkillMarketMatch[] = []
+
+        try {
+            const result = await browsePlugins({ type: 'skill', search: keyword, limit })
+            for (const item of result.items || []) {
+                matches.push({
+                    source: 'backend',
+                    name: item.nameZh || item.name,
+                    identifier: item.pluginKey,
+                    description: item.descriptionZh || item.description,
+                    installs: item.totalDownloads || 0,
+                })
+            }
+        } catch (err) {
+            logger.agent.warn('[SkillService] Backend skill market search failed:', err)
+        }
+
+        if (matches.length === 0) {
+            try {
+                // 兜底检索在对话主链路上被触发，给一个较短上限，避免外部市场不可达时卡住
+                const external = await Promise.race([
+                    this.searchMarketplace(keyword),
+                    new Promise<MarketplaceResult[]>(resolve => setTimeout(() => resolve([]), 6000)),
+                ])
+                for (const item of external.slice(0, limit)) {
+                    matches.push({
+                        source: 'skills.sh',
+                        name: item.name,
+                        identifier: item.package,
+                        description: '',
+                        installs: item.installs,
+                    })
+                }
+            } catch {
+                // 外部市场不可达时忽略，走无来源分支
+            }
+        }
+
+        return matches.slice(0, Math.max(1, limit))
+    }
+
+    /**
      * 根据用户消息智能匹配相关 Skills
      *
      * 匹配规则（任一命中即视为相关，触发完整内容注入）：
@@ -603,7 +760,18 @@ Add your skill instructions here.
      */
     buildSkillsIndex(skills: SkillItem[]): string {
         const enabled = skills.filter(s => s.enabled)
-        if (enabled.length === 0) return ''
+
+        // 没有任何已安装技能时必须显式说明：直接留空会让模型误以为「技能只是没列出来」，
+        // 转而凭名字推测去调用 apply_skill（例如把场景模式声明的技能名当成已安装技能）。
+        if (enabled.length === 0) {
+            return `## Available Skills
+
+No skill is installed in this workspace or the global skills directory, so there is nothing for \`apply_skill\` to load.
+
+- Do NOT call \`apply_skill\`: a skill name that is not listed here does not exist.
+- Never invent, translate, reorder or guess a skill name. A name appearing elsewhere (scene-mode skill lists, plugin descriptions, marketplace pages) is NOT proof that the skill is installed.
+- If a task looks like it needs a specialised skill, finish it with the available tools, or tell the user the skill is not installed and can be installed from 「插件与技能市场」.`
+        }
 
         const index = enabled.map(s => {
             const safeName = s.name.replace(/[&"<>]/g, c => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[c] || c))
@@ -613,6 +781,8 @@ Add your skill instructions here.
         return `## Available Skills
 
 The following project-specific skills can be loaded using the \`apply_skill\` tool.
+
+**Only these exact names are loadable** — copy the name from the list verbatim. A name that does not appear below is not installed: never invent, translate or guess a skill name, and never treat a scene-mode skill name or plugin name as an installed skill.
 
 **IMPORTANT — Proactive Application**:
 Before starting any non-trivial task, review the skill list below. If a skill's description suggests it covers the task's domain (e.g. website building, UI design, testing, code review), you MUST call \`apply_skill\` to load its full instructions BEFORE writing code. Following skill instructions ensures consistency with project conventions and avoids rework.

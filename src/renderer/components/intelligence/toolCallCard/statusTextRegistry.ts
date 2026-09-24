@@ -226,9 +226,7 @@ const STATUS_BUILDERS: Record<string, StatusTextBuilder> = {
   get_document_symbols: createPathStatusBuilder(
     'tool.status.analyzing', 'tool.status.analyzed', 'tool.status.analysisFailed', 'tool.status.analyzingEllipsis',
   ),
-  apply_skill: createNamedStatusBuilder(
-    'skill_name', 'tool.status.applying', 'tool.status.applied', 'tool.status.applyFailed', 'tool.status.applyingEllipsis',
-  ),
+  apply_skill: buildApplySkillStatus,
   todo_write: createSimpleStatusBuilder(
     'tool.status.updatingTasks', 'tool.status.tasksUpdated', 'tool.status.tasksUpdateFailed',
   ),
@@ -410,6 +408,32 @@ function buildExternalAgentStatus(ctx: StatusContext): string {
       return isZh ? '外部智能体任务失败' : 'External agent task failed'
     default:
       return isZh ? '正在执行外部智能体任务…' : 'Running external agent task…'
+  }
+}
+
+/** 技能工具的专用构建器 */
+function buildApplySkillStatus(ctx: StatusContext): string {
+  const { args, phase, language } = ctx
+  const name = asString(args.skill_name)
+  if (!name) return phase === 'running' ? t('tool.status.applyingEllipsis', language as any) : ''
+
+  switch (phase) {
+    case 'running':
+      return t('tool.status.applying', language as any, { name })
+    case 'error':
+      return t('tool.status.applyFailed', language as any, { name })
+    case 'success': {
+      // 执行器在技能不存在时不会报错，而是降级给出引导（见 _meta.skillOutcome）。
+      // 这些结论都表示「本次没有加载任何技能内容」，不能显示成「已应用」。
+      const meta = args._meta && typeof args._meta === 'object' ? args._meta as Record<string, unknown> : null
+      const outcome = typeof meta?.skillOutcome === 'string' ? meta.skillOutcome : ''
+      if (outcome && outcome !== 'applied' && outcome !== 'alias_applied') {
+        return t('tool.status.skillNotApplied', language as any, { name })
+      }
+      return t('tool.status.applied', language as any, { name })
+    }
+    default:
+      return t('tool.status.applying', language as any, { name })
   }
 }
 
