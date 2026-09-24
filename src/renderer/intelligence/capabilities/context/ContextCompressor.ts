@@ -13,6 +13,7 @@ import { pruneMessages } from 'ai'
 import { countTokens, countContentTokens } from '@shared/toolkit/tokenEstimator'
 import type { ChatMessage, AssistantMessage, ToolResultMessage, UserMessage, ToolCall, MessageContent } from '@intelligence/providerTypes'
 import { type CompressionLevel } from './compressionUtils'
+import { computeCompressionBudget } from './compressionBudget'
 
 // ===== 类型 =====
 
@@ -36,6 +37,10 @@ export interface PrepareResult {
   truncatedToolCalls: number
   clearedToolResults: number
   removedMessages: number
+  /** 压缩后估算的 prompt token 数 */
+  estimatedTokens: number
+  /** 本次目标水位：高于该值说明压缩未到位，调用方应继续压缩 */
+  targetTokens: number
 }
 
 // ===== 常量 =====
@@ -53,6 +58,17 @@ const TRUNCATE_TOOLS = new Set(['write_file', 'edit_file', 'create_file_or_folde
 
 /** 受保护的工具（不清理结果） */
 const PROTECTED_TOOLS = new Set(['ask_user'])
+
+// ===== 摘要失败降级状态 =====
+
+/** 摘要失败计数与降级判定（独立模块，便于单测直接覆盖阈值） */
+export {
+  MAX_SUMMARY_FAILURES_BEFORE_RAW_ARCHIVE,
+  shouldFallbackToRawArchive,
+  noteSummaryFailure,
+  resetSummaryFailure,
+  getSummaryFailureCount,
+} from './compressionDegradation'
 
 // ===== 核心函数 =====
 
@@ -347,6 +363,8 @@ export function prepareMessages(
     truncatedToolCalls,
     clearedToolResults,
     removedMessages,
+    estimatedTokens: estimateMessagesTokens(result),
+    targetTokens: computeCompressionBudget(config.maxContextTokens).target,
   }
 }
 

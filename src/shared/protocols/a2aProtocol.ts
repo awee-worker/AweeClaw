@@ -66,6 +66,31 @@ export interface A2aAgentCard {
   defaultOutputModes?: string[]
   skills?: A2aAgentSkill[]
   preferredTransport?: string
+  /**
+   * 卡片签名
+   *
+   * 卡片本身必须保持明文可读（发现阶段不要求先握手），签名只作为附加证明，
+   * 让对端在信任卡片内容之前可以先校验它有没有被替换过。
+   */
+  signatures?: A2aAgentCardSignature[]
+}
+
+/**
+ * Agent Card 签名条目
+ *
+ * 公钥随签名一并给出：这套机制面向「防篡改」而非「防伪造身份」。
+ * 没有 PKI 时替换者可以自带一对新密钥重签，但 keyId 会随之改变，
+ * 调用方与此前记录的值比对即可发现；要校验身份本身，公钥需经可信渠道分发。
+ */
+export interface A2aAgentCardSignature {
+  /** 签名算法标识，当前支持 RS256 */
+  algorithm: string
+  /** 公钥指纹，调用方据此判断密钥是否变更 */
+  keyId: string
+  /** 对规范化载荷的签名（base64url） */
+  signature: string
+  /** 签名对应的公钥（PEM，base64url 编码） */
+  publicKey?: string
 }
 
 // ============================================
@@ -300,6 +325,10 @@ export interface A2aInboundStatus {
   url: string
   /** Agent Card 地址 */
   cardUrl: string
+  /** 本服务实现的协议版本 */
+  protocolVersion?: string
+  /** 本服务可接受的入站协议版本（协商依据） */
+  supportedProtocolVersions?: string[]
   tokenRequired: boolean
   requests: number
   errors: number

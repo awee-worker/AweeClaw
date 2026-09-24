@@ -42,8 +42,11 @@ import { TaskResultCard } from './TaskResultCard'
 import {
   parseExecutionResult,
   extractExecutionResult,
+  extractQualityMeta,
   mergeExecutionResult,
+  evaluateTaskAcceptance,
   type TaskExecutionResult,
+  type AcceptanceOutcome,
 } from '../taskQuality'
 import { buildResultRegenerationPrompt } from '../projectExecutionContext'
 import type { FileItem } from '@shared/protocols'
@@ -246,10 +249,26 @@ export function TaskExecutionView({
     prevStreamingRef.current = isStreaming
   }, [isStreaming, onStreamFinished, task, batchMode, messages, onTaskUpdated])
 
-  // ─── 标记任务完成（仅单任务模式） ─────────────────────
+  // ─── 验收核对（契约声明检查点 × 执行结果） ─────────
+  // 检查点来自任务 quality 元数据（由场景配置带入），
+  // 未通过项会在标记完成时拦住，不静默结案。
+  const acceptanceOutcome = useMemo<AcceptanceOutcome | null>(() => {
+    if (!task) return null
+    const checks = extractQualityMeta(task.metadata).acceptanceChecks
+    if (!checks || checks.length === 0) return null
+    return evaluateTaskAcceptance(checks, parsedResult, isZh ? 'zh' : 'en')
+  }, [task, parsedResult, isZh])
+
+  // ─── 标记任务完成（仅单任务模式） ──────────────
   const [markingDone, setMarkingDone] = useState(false)
+  // 验收未通过时，首次点击只提示，需再次确认才标记（避免静默结案）
+  const [markDoneConfirmed, setMarkDoneConfirmed] = useState(false)
   const handleMarkDone = useCallback(async () => {
     if (!task) return
+    if (acceptanceOutcome && !acceptanceOutcome.passed && !markDoneConfirmed) {
+      setMarkDoneConfirmed(true)
+      return
+    }
     setMarkingDone(true)
     try {
       onTaskUpdated?.(task.id, { status: 'DONE' })
@@ -257,7 +276,7 @@ export function TaskExecutionView({
     } finally {
       setMarkingDone(false)
     }
-  }, [onTaskUpdated, task])
+  }, [onTaskUpdated, task, acceptanceOutcome, markDoneConfirmed])
 
   // ── 重新执行 ──
   const handleRerun = useCallback(() => {
@@ -364,6 +383,8 @@ export function TaskExecutionView({
         <TaskResultCard
           result={parsedResult}
           isZh={isZh}
+          acceptanceOutcome={acceptanceOutcome}
+          markDoneConfirmed={markDoneConfirmed}
           onViewConversation={() => setShowResultCard(false)}
           onRerun={handleRerun}
           onMarkDone={handleMarkDone}
@@ -398,15 +419,30 @@ export function TaskExecutionView({
               </div>
               {/* 仅单任务模式且未完成时显示"标记完成"按钮 */}
               {!batchMode && task && !taskIsDone && (
-                <button
-                  onClick={handleMarkDone}
-                  disabled={markingDone}
-                  className="text-[12px] px-2 py-0.5 rounded bg-green-500/15 text-green-600 hover:bg-green-500/25 transition-colors disabled:opacity-50"
-                >
-                  {markingDone
-                    ? (isZh ? '标记中...' : 'Marking...')
-                    : (isZh ? '标记为已完成' : 'Mark as done')}
-                </button>
+                <div className="flex items-center gap-2">
+                  {markDoneConfirmed && acceptanceOutcome && !acceptanceOutcome.passed && (
+                    <span className="text-[12px] text-amber-600">
+                      {isZh
+                        ? `验收有 ${acceptanceOutcome.failedCount} 项未通过，确认要标记完成？`
+                        : `${acceptanceOutcome.failedCount} check(s) failed. Mark anyway?`}
+                    </span>
+                  )}
+                  <button
+                    onClick={handleMarkDone}
+                    disabled={markingDone}
+                    className={`text-[12px] px-2 py-0.5 rounded transition-colors disabled:opacity-50 ${
+                      markDoneConfirmed && acceptanceOutcome && !acceptanceOutcome.passed
+                        ? 'bg-amber-500/15 text-amber-600 hover:bg-amber-500/25'
+                        : 'bg-green-500/15 text-green-600 hover:bg-green-500/25'
+                    }`}
+                  >
+                    {markingDone
+                      ? (isZh ? '标记中...' : 'Marking...')
+                      : markDoneConfirmed && acceptanceOutcome && !acceptanceOutcome.passed
+                        ? (isZh ? '仍要标记完成' : 'Mark anyway')
+                        : (isZh ? '标记为已完成' : 'Mark as done')}
+                  </button>
+                </div>
               )}
             </div>
           )}

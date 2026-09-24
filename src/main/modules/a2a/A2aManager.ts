@@ -21,7 +21,7 @@
 
 import { logger } from '@shared/toolkit/LogEngine'
 import { A2A_CALL_TIMEOUT_MS, A2aClient, A2aError, extractTextFromResult } from './A2aClient'
-import { A2aServer, type A2aChatContext } from './A2aServer'
+import { A2aServer, A2A_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS, type A2aChatContext } from './A2aServer'
 import {
   getConfig,
   normalizeAgentUrl,
@@ -32,6 +32,7 @@ import {
   upsertServer as upsertServerEntry,
   validateConfig,
 } from './A2aStore'
+import { getSigningKeys } from './agentKeyStore'
 import { getConfigStore } from '../../bootstrap/stores'
 import { getMainWindow } from '../../bootstrap/windowManager'
 import { resolveRuntimeLLMConfig } from '@shared/configuration/modelConfigResolver'
@@ -115,6 +116,7 @@ export class A2aManager {
       },
       getSkills: () => INBOUND_SKILLS,
       getAuthToken: () => getConfig().inbound.token,
+      getSigningKeys: () => getSigningKeys(),
       handleChat: (text, ctx) => this.handleInboundChat(text, ctx),
     })
   }
@@ -497,6 +499,8 @@ export class A2aManager {
       url: base,
       // Agent Card 必须在根级（A2A 规范），不能带 basePath
       cardUrl: `http://${host}:${port}/.well-known/agent.json`,
+      protocolVersion: A2A_PROTOCOL_VERSION,
+      supportedProtocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
       tokenRequired: Boolean(inbound.token),
       requests: counters.requests,
       errors: counters.errors,

@@ -7,6 +7,7 @@ import { useAgentStore, type HandoffSessionResult } from '../state/IntelligenceS
 import type { ChatThread } from '@intelligence/providerTypes'
 import { getMessageText, type UserMessage } from '@intelligence/providerTypes'
 import type { HandoffDocument, StructuredSummary } from '@intelligence/providerTypes'
+import { extractDecisionPoints, extractErrorsAndFixes } from '../capabilities/context/summaryExtraction'
 
 export interface PreparedHandoffResult {
   handoff: HandoffDocument
@@ -55,9 +56,9 @@ function buildFallbackHandoffDocument(thread: ChatThread, workspacePath: string)
     completedSteps: [],
     pendingSteps: thread.pendingSteps?.length ? thread.pendingSteps : [lastUserRequest],
     todos: thread.todos || [],
-    decisions: [],
+    decisions: extractDecisionPoints(thread.messages),
     fileChanges: [],
-    errorsAndFixes: [],
+    errorsAndFixes: extractErrorsAndFixes(thread.messages),
     userInstructions: userRequests.slice(-5),
     generatedAt,
     turnRange: [0, userRequests.length],

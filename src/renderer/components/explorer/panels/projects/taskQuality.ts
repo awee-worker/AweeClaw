@@ -10,6 +10,15 @@
  * 由 parseExecutionResult 从文本中提取，前端渲染为结果卡片。
  */
 
+import {
+  evaluateAcceptanceChecks,
+  normalizeAcceptanceChecks,
+  type AcceptanceCheck,
+  type AcceptanceOutcome,
+} from '@shared/protocols/acceptanceChecks'
+
+export type { AcceptanceCheck, AcceptanceOutcome }
+
 // ─── 任务质量元数据（存入 task.metadata.quality） ──────────
 
 /**
@@ -36,6 +45,8 @@ export interface TaskQualityMeta {
   aiSuggestions?: string
   /** 提问质量评分（AI 评估，1-10，越高越清晰） */
   qualityScore?: number
+  /** 验收检查点（由场景配置声明带入，执行后逐条核对） */
+  acceptanceChecks?: AcceptanceCheck[]
 }
 
 /**
@@ -61,6 +72,9 @@ export function extractQualityMeta(metadata: unknown): TaskQualityMeta {
       : undefined,
     aiSuggestions: typeof q.aiSuggestions === 'string' ? q.aiSuggestions : undefined,
     qualityScore: typeof q.qualityScore === 'number' ? q.qualityScore : undefined,
+    acceptanceChecks: Array.isArray(q.acceptanceChecks)
+      ? normalizeAcceptanceChecks(q.acceptanceChecks)
+      : undefined,
   }
 }
 
@@ -425,3 +439,28 @@ export function hasResultBlock(text: string): boolean {
   const after = text.slice(match.index + match[0].length)
   return /###\s+(执行摘要|Summary)(?=\s|$)/im.test(after)
 }
+
+// ─── 验收核对（契约检查点 × 执行结果） ──────────────
+
+/**
+ * 核对任务的验收检查点
+ *
+ * 证据取自执行结果本身：产出路径来自 deliverables，自报对照来自 acceptanceCheck。
+ * 界面层拿不到工具调用记录，因此 tool 类规则会转人工确认；
+ * path 类规则与自报比对负责给出客观结论——这正是「自报偏高」最容易暴露的地方。
+ */
+export function evaluateTaskAcceptance(
+  checks: AcceptanceCheck[] | null | undefined,
+  result: TaskExecutionResult | null,
+  language: 'zh' | 'en' = 'zh',
+): AcceptanceOutcome {
+  return evaluateAcceptanceChecks(
+    checks,
+    {
+      writtenPaths: result?.deliverables.map((d) => d.path) ?? [],
+      claimed: result?.acceptanceCheck,
+    },
+    language,
+  )
+}
+

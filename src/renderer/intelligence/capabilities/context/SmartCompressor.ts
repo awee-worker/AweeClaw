@@ -19,6 +19,7 @@ import type {
   MessageContent,
 } from '@intelligence/providerTypes'
 import { type CompressionLevel } from './compressionUtils'
+import { computeCompressionBudget } from './compressionBudget'
 import type { PrepareResult } from './ContextCompressor'
 
 // ===== 重要性评分常量 =====
@@ -261,6 +262,8 @@ export function smartCompressMessages(
       truncatedToolCalls: 0,
       clearedToolResults: 0,
       removedMessages: 0,
+      estimatedTokens: currentTokens,
+      targetTokens: computeCompressionBudget(contextLimit).target,
     }
   }
 
@@ -411,6 +414,8 @@ export function smartCompressMessages(
     truncatedToolCalls,
     clearedToolResults,
     removedMessages,
+    estimatedTokens: result.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0),
+    targetTokens: computeCompressionBudget(contextLimit).target,
   }
 }
 

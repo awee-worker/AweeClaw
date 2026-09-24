@@ -12,6 +12,7 @@ import { useStore } from '@store'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { extractLastAssistantVisibleText } from '@intelligence/utils/assistantVisibleText'
 import type { StructuredSummary, HandoffDocument, FileChangeRecord } from './contextTypes'
+import { extractDecisionPoints, extractErrorsAndFixes } from './summaryExtraction'
 import {
   HANDOFF_SUMMARY_JSON_SCHEMA,
   getStructuredOutputErrorMessage,
@@ -609,9 +610,9 @@ export async function generateHandoffDocument(
     completedSteps: summaryResult.completedSteps,
     pendingSteps: summaryResult.pendingSteps,
     todos: summaryResult.todos,
-    decisions: [],
+    decisions: extractDecisionPoints(messages),
     fileChanges: summaryResult.fileChanges,
-    errorsAndFixes: [],
+    errorsAndFixes: extractErrorsAndFixes(messages),
     userInstructions: userRequests.slice(-5),
     generatedAt: Date.now(),
     turnRange: [0, messages.filter(m => m.role === 'user').length],

@@ -189,8 +189,8 @@ export class DeclarativeScenarioModule implements ScenarioModule {
       entryPoint: './config/scenario.json',
       dependencies: this.config.dependencies || [],
       permissions: (this.config.permissions || []) as ScenarioManifest['permissions'],
+      acceptanceChecks: this.config.acceptanceChecks,
       homepage: this.config.homepage,
-      license: this.config.license,
     }
   }
 

@@ -985,6 +985,18 @@ export function A2aSettings({ language }: A2aSettingsProps) {
                     {inbound.running ? (zh ? '监听中' : 'listening') : zh ? '未运行' : 'stopped'}
                   </span>
                   <span className="font-mono">{inbound.url}</span>
+                  {inbound.supportedProtocolVersions && inbound.supportedProtocolVersions.length > 0 ? (
+                    <span
+                      className="rounded-full border border-border/50 px-2 py-0.5 text-[11px]"
+                      title={
+                        zh
+                          ? `当前实现 ${inbound.protocolVersion ?? ''}；入站请求可用以下版本`
+                          : `Implements ${inbound.protocolVersion ?? ''}; inbound requests may use any of these`
+                      }
+                    >
+                      {zh ? '支持协议' : 'protocols'}: {inbound.supportedProtocolVersions.join(' / ')}
+                    </span>
+                  ) : null}
                   <ActionButton
                     label={zh ? '复制地址' : 'Copy'}
                     icon={<Copy className="h-3.5 w-3.5" />}
@@ -1058,8 +1070,32 @@ function AgentCardView({ card, zh }: { card: A2aAgentCard; zh: boolean }) {
         <span className="rounded-full border border-border/50 px-2 py-0.5 text-[11px] text-text-muted">
           streaming: {card.capabilities?.streaming ? 'on' : 'off'}
         </span>
+        {card.signatures && card.signatures.length > 0 ? (
+          <span
+            className="rounded-full border border-emerald-400/50 px-2 py-0.5 text-[11px] text-emerald-400"
+            title={card.signatures.map((s) => `${s.algorithm} · ${s.keyId}`).join('\n')}
+          >
+            {zh ? '已签名' : 'signed'} · {card.signatures[0].algorithm}
+          </span>
+        ) : (
+          <span
+            className="rounded-full border border-amber-400/50 px-2 py-0.5 text-[11px] text-amber-400"
+            title={
+              zh
+                ? '该卡片未携带签名，无法判断是否被中途替换'
+                : 'No signature on this card; tampering cannot be detected'
+            }
+          >
+            {zh ? '未签名' : 'unsigned'}
+          </span>
+        )}
       </div>
       {card.description ? <div className="text-xs text-text-muted">{card.description}</div> : null}
+      {card.signatures && card.signatures.length > 0 ? (
+        <div className="text-[11px] text-text-muted break-all">
+          {zh ? '密钥指纹' : 'key id'}：{card.signatures.map((s) => s.keyId).join(', ')}
+        </div>
+      ) : null}
       {card.provider?.organization ? (
         <div className="text-[11px] text-text-muted">
           {zh ? '提供方' : 'provider'}：{card.provider.organization}

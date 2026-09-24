@@ -15,6 +15,10 @@ import { joinPath, platform } from '@shared/toolkit/pathHelper'
 import { parse as parseYaml } from 'yaml'
 import { BRAND } from '@shared/brand'
 import type { CapabilityGap } from '@intelligence/capabilities/planning/capabilityGapDetector'
+import { buildSkillManifest } from './skillManifestBudget'
+
+/** 技能清单注入的 token 预算：超出即折叠，避免清单挤占技能完整内容的加载空间 */
+const SKILL_MANIFEST_BUDGET_TOKENS = 1800
 
 // ============================================
 // 类型定义
@@ -773,7 +777,14 @@ No skill is installed in this workspace or the global skills directory, so there
 - If a task looks like it needs a specialised skill, finish it with the available tools, or tell the user the skill is not installed and can be installed from 「插件与技能市场」.`
         }
 
-        const index = enabled.map(s => {
+        // 清单本身也吃预算：技能数量增长后，逐条罗列会先于技能内容挤占上下文。
+        // 超预算的条目折叠成一条提示，完整内容仍可经检索或按名加载。
+        const { included, foldedNotice } = buildSkillManifest(
+            enabled.map(s => ({ name: s.name, description: s.description })),
+            SKILL_MANIFEST_BUDGET_TOKENS
+        )
+
+        const index = included.map(s => {
             const safeName = s.name.replace(/[&"<>]/g, c => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[c] || c))
             return `- **${safeName}**: ${s.description}`
         }).join('\n')
@@ -789,7 +800,7 @@ Before starting any non-trivial task, review the skill list below. If a skill's 
 
 Skills whose keywords match the user's message are already loaded in full above — use \`apply_skill\` to load any additional skills that seem relevant.
 
-${index}`
+${index}${foldedNotice ?? ''}`
     }
 
     /**

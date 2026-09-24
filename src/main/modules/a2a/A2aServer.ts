@@ -35,6 +35,7 @@ import type {
   A2aTask,
   A2aTaskState,
 } from '@shared/protocols/a2aProtocol'
+import { signAgentCard, type AgentSigningKeys } from './agentCardSigner'
 
 // ============================================
 // 常量
@@ -54,7 +55,15 @@ const TASK_TTL_MS = 30 * 60 * 1000
 const CONTEXT_HISTORY_LIMIT = 20
 
 /** 我们的协议实现版本（写在 Card 里，便于对端判断能力） */
-const A2A_PROTOCOL_VERSION = '0.2.5'
+export const A2A_PROTOCOL_VERSION = '0.2.5'
+
+/**
+ * 可接受的入站协议版本
+ *
+ * 只声明当前版本会迫使对端在版本号不一致时直接放弃；
+ * 列出可接受的集合，让协商有据可依。
+ */
+export const SUPPORTED_PROTOCOL_VERSIONS = ['0.2.5', '0.2.0', '0.1.0'] as const
 
 // ============================================
 // 类型
@@ -77,6 +86,12 @@ export interface A2aServerDeps {
   handleChat: (text: string, ctx: A2aChatContext) => Promise<string>
   /** 读取当前要求的访问 token（空字符串 = 不校验） */
   getAuthToken: () => string
+  /**
+   * 读取卡片签名密钥；返回 null 表示以未签名形式发布
+   *
+   * 公钥随签名给出，对端据此校验卡片有没有在传递环节被替换。
+   */
+  getSigningKeys?: () => AgentSigningKeys | null
   /** 对外声明的技能清单（id/name/description） */
   getSkills: () => Array<{ id: string; name: string; description: string; tags?: string[] }>
   /** 请求计数回调（状态面板用） */
@@ -284,6 +299,7 @@ export class A2aServer {
           status: 'ok',
           name: this.deps.getCardMeta().name,
           protocolVersion: A2A_PROTOCOL_VERSION,
+          supportedProtocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
         })
         this.count(method, startedAt, true)
         return true
@@ -341,6 +357,18 @@ export class A2aServer {
 
     if (!method) {
       this.respondRpcError(res, id, A2A_RPC_ERRORS.INVALID_REQUEST, '缺少 method 字段')
+      return
+    }
+
+    // 版本协商：请求声明了版本才校验，未声明按当前版本处理（兼容早期客户端）
+    const requestedVersion = typeof params.protocolVersion === 'string' ? params.protocolVersion : ''
+    if (requestedVersion && !(SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(requestedVersion)) {
+      this.respondRpcError(
+        res,
+        id,
+        A2A_RPC_ERRORS.INVALID_REQUEST,
+        `不支持的协议版本：${requestedVersion}（本服务支持 ${SUPPORTED_PROTOCOL_VERSIONS.join(', ')}）`
+      )
       return
     }
 
@@ -528,13 +556,14 @@ export class A2aServer {
   // --------------------------------------------
 
   /** 生成 Agent Card */
+  /** 生成 Agent Card（有密钥时一并签名） */
   buildCard(): A2aAgentCard {
     const meta = this.deps.getCardMeta()
     // 用生效地址而不是自己 bind 的地址：托管到 P0-5 网关时自己没监听（port=0），
     // 回显 :0 会让对端拿到一个连不上的 url
     const { host, port, basePath } = this.getEffectiveEndpoint()
     const base = `http://${host}:${port}${basePath}`
-    return {
+    const card: A2aAgentCard = {
       name: meta.name,
       description: meta.description,
       url: base,
@@ -547,6 +576,10 @@ export class A2aServer {
       skills: this.deps.getSkills().map((s) => ({ ...s })),
       preferredTransport: 'JSONRPC',
     }
+
+    // 无密钥时保持未签名卡片：发现能力比签名更重要，不能因此让服务不可用
+    const keys = this.deps.getSigningKeys?.()
+    return keys ? signAgentCard(card, keys) : card
   }
 
   /** 校验 Bearer token；返回 null 表示通过，否则返回错误响应体 */

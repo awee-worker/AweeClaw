@@ -227,6 +227,20 @@ export class MessageAssembler {
       if (summary.todos?.length) {
         summaryLines.push(`**Task List**:\n${summary.todos.slice(-8).map(todo => `- [${todo.status}] ${todo.status === 'in_progress' ? todo.activeForm : todo.content}`).join('\n')}`)
       }
+      // 用户纠正过的方向与已修好的错误：折叠后若不带上，模型会重新提出
+      // 已被否掉的方案，或重犯已经修过的问题。
+      if (summary.decisions?.length) {
+        const decisionLines = summary.decisions
+          .slice(-6)
+          .map(decision => `- [${decision.type}] ${decision.description}`)
+        summaryLines.push(`**Decisions & Corrections**:\n${decisionLines.join('\n')}`)
+      }
+      if (summary.errorsAndFixes?.length) {
+        const fixedLines = summary.errorsAndFixes
+          .slice(-4)
+          .map(entry => `- ${entry.error} → resolved by ${entry.fix}`)
+        summaryLines.push(`**Errors Already Fixed**:\n${fixedLines.join('\n')}`)
+      }
       summaryLines.push('Treat this as background context from earlier turns. Continue naturally and do not redo completed work unless the user asks.')
       sections.push(summaryLines.join('\n'))
     }

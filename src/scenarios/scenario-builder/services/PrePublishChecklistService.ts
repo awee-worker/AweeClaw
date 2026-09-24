@@ -21,6 +21,7 @@
  *  - 检查项提供 fixSuggestionZh，供 UI 一键修复按钮使用
  */
 import type { ScenarioModuleContext } from '@shared/protocols/scenario-arch'
+import { validateAcceptanceChecks } from '@shared/protocols/acceptanceChecks'
 import type { ScenarioProject } from '../types'
 
 // ==========================================
@@ -39,7 +40,7 @@ export type ChecklistCategory =
   | 'license'
   | 'database'
   | 'structure'
-
+  | 'acceptance'
 /** 单项检查结果 */
 export interface ChecklistItem {
   /** 检查项 ID（唯一） */
@@ -229,6 +230,7 @@ export class PrePublishChecklistService {
     items.push(...this.checkLicense(project, files))
     items.push(...this.checkDatabase(project, files))
     items.push(...this.checkStructure(project, files))
+    items.push(...this.checkAcceptanceChecks(files))
 
     // 3. 汇总
     const criticalCount = items.filter((i) => i.severity === 'critical' && i.status === 'fail').length
@@ -833,6 +835,104 @@ export class PrePublishChecklistService {
           status: 'pass',
         })
       }
+    }
+
+    return items
+  }
+
+  // ==========================================
+  // 检查项：acceptance（验收检查点声明）
+  // ==========================================
+
+  /**
+   * 校验场景声明的默认验收检查点
+   *
+   * 检查点会在任务收尾时参与核对，声明写错不会立刻报错，
+   * 而是悄悄不生效——所以要在发布前把它拦下来。
+   */
+  private checkAcceptanceChecks(files: Record<string, FileReadResult>): ChecklistItem[] {
+    const items: ChecklistItem[] = []
+    const sc = files['scenario.json']
+
+    // 文件缺失或 JSON 非法已由 checkManifest 报出，此处不重复报错
+    if (!sc?.success) return items
+
+    let config: Record<string, unknown>
+    try {
+      config = JSON.parse(sc.content)
+    } catch {
+      return items
+    }
+
+    const result = validateAcceptanceChecks(config.acceptanceChecks)
+
+    // 未声明：验收检查点是可选能力，给出提示而非失败
+    if (config.acceptanceChecks === undefined || config.acceptanceChecks === null) {
+      items.push({
+        id: 'acceptance.declared',
+        category: 'acceptance',
+        label: 'Acceptance checks declared',
+        labelZh: '声明默认验收检查点',
+        severity: 'info',
+        status: 'pass',
+        detail: 'No acceptance checks declared',
+        detailZh: '未声明验收检查点，任务收尾不产生自动核对项（可选能力）',
+        fixSuggestion: 'Add "acceptanceChecks" to scenario.json to define default acceptance criteria',
+        fixSuggestionZh: '如需在任务收尾逐条核对，可在 scenario.json 添加 "acceptanceChecks"',
+      })
+      return items
+    }
+
+    // 结构错误：阻断发布
+    if (result.errors.length > 0) {
+      items.push({
+        id: 'acceptance.errors',
+        category: 'acceptance',
+        label: 'Acceptance checks are well-formed',
+        labelZh: '验收检查点结构合法',
+        severity: 'critical',
+        status: 'fail',
+        detail: result.errors.map((e) => e.message).join(' | '),
+        detailZh: result.errors
+          .map((e) => (e.index >= 0 ? `第 ${e.index + 1} 项：${e.message}` : e.message))
+          .join('；'),
+        fixSuggestion: 'Fix acceptanceChecks entries: each needs an id, a description and a valid verify rule',
+        fixSuggestionZh: '修正 acceptanceChecks：每项需有 id、description，verify 只支持 tool / expression',
+      })
+    }
+
+    // 告警项：不阻断发布，但提示声明可能不生效
+    if (result.warnings.length > 0) {
+      items.push({
+        id: 'acceptance.warnings',
+        category: 'acceptance',
+        label: 'Acceptance checks need attention',
+        labelZh: '验收检查点需留意',
+        severity: 'warning',
+        status: 'fail',
+        detail: result.warnings.map((w) => w.message).join(' | '),
+        detailZh: result.warnings
+          .map((w) => (w.index >= 0 ? `第 ${w.index + 1} 项：${w.message}` : w.message))
+          .join('；'),
+        fixSuggestion: 'Review entries that will not be evaluated automatically',
+        fixSuggestionZh: '确认这些条目在运行时会如何处理',
+      })
+    }
+
+    // 生效统计：让人一眼看出有多少项能被自动核对
+    if (result.checks.length > 0) {
+      const autoCount = result.checks.filter((c) => c.verify && c.verify.kind === 'tool').length
+      const manualCount = result.checks.length - autoCount
+      items.push({
+        id: 'acceptance.summary',
+        category: 'acceptance',
+        label: 'Acceptance checks summary',
+        labelZh: '验收检查点汇总',
+        severity: 'info',
+        status: 'pass',
+        detail: `${result.checks.length} checks (${autoCount} auto, ${manualCount} manual)`,
+        detailZh: `共 ${result.checks.length} 项，其中自动核对 ${autoCount} 项、人工确认 ${manualCount} 项`,
+      })
     }
 
     return items

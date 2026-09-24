@@ -8,6 +8,9 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { skillService, type SkillItem, type SkillTriggerType, type SkillSource } from '@intelligence/runtime/skillRepository'
+import { proceduralSkillLearner } from '@intelligence/runtime/proceduralSkillLearner'
+import { buildSkillDrafts, type SkillDraft } from '@intelligence/runtime/skillDraftProposer'
+import { logger } from '@shared/toolkit/LogEngine'
 import { api } from '../../../adapters/electronBridge'
 import { useStore } from '@store'
 import { ActionButton, TextField, OverlayDialog } from '@components/ui'
@@ -16,7 +19,7 @@ import {
     Zap, Plus, Trash2, RefreshCw, Download, Search,
     ToggleLeft, ToggleRight, ExternalLink, Github, FolderOpen,
     Sparkles, Globe, FileCode, Power, ChevronDown,
-    MoreHorizontal, Pencil, Info
+    MoreHorizontal, Pencil, Info, Wand2, Copy
 } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
 
@@ -53,6 +56,7 @@ function getSkillColor(name: string) {
 
 export function SkillRegistryPanel({ language }: SkillSettingsProps) {
     const workspacePath = useStore(s => s.workspacePath)
+    const zh = String(language).toLowerCase().startsWith('zh')
 
     const [skills, setSkills] = useState<SkillItem[]>([])
     const [loading, setLoading] = useState(true)
@@ -230,6 +234,46 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
         setEditSaving(false)
     }
 
+    // ─── 技能草稿（从成功的使用记录归纳，仅本地生成） ────
+    const [drafts, setDrafts] = useState<SkillDraft[]>([])
+    const [draftsLoading, setDraftsLoading] = useState(false)
+    const [draftsLoaded, setDraftsLoaded] = useState(false)
+
+    // 生成草稿只读取本机模板：不发起任何请求，也不自动提交市场
+    const handleGenerateDrafts = useCallback(async () => {
+        setDraftsLoading(true)
+        try {
+            const templates = await proceduralSkillLearner.getTemplates()
+            setDrafts(buildSkillDrafts(templates))
+            setDraftsLoaded(true)
+        } catch (e) {
+            logger.agent.warn('[SkillRegistryPanel] Failed to generate skill drafts:', e)
+            showInstalledMessage('error', zh ? '草稿生成失败' : 'Failed to generate drafts')
+        } finally {
+            setDraftsLoading(false)
+        }
+    }, [zh])
+
+    const handleCopyDraft = useCallback(async (draft: SkillDraft) => {
+        try {
+            await navigator.clipboard.writeText(draft.body)
+            showInstalledMessage('success', zh ? '已复制 SKILL.md' : 'SKILL.md copied')
+        } catch {
+            showInstalledMessage('error', zh ? '复制失败' : 'Copy failed')
+        }
+    }, [zh])
+
+    // 导出走浏览器下载：草稿生成时已对绝对路径脱敏，不会带出本机目录结构
+    const handleExportDraft = useCallback((draft: SkillDraft) => {
+        const blob = new Blob([draft.body], { type: 'text/markdown;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = `${draft.name}.md`
+        anchor.click()
+        URL.revokeObjectURL(url)
+    }, [])
+
     const filteredSkills = useMemo(() => {
         let result = skills
         if (filterSource !== 'all') {
@@ -261,6 +305,85 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                 </div>
             )}
 
+
+            {/* 技能草稿：从本机成功记录归纳流程，仅本地生成，不自动上架 */}
+            <section className="rounded-2xl border border-border/50 bg-surface/20 backdrop-blur-xl shadow-sm">
+                <div className="flex items-center justify-between p-5 pb-3">
+                    <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 bg-purple-500/10 rounded-md text-purple-400">
+                            <Wand2 className="w-4 h-4" />
+                        </div>
+                        <div>
+                            <h5 className="text-sm font-semibold text-text-primary">
+                                {zh ? '技能草稿' : 'Skill drafts'}
+                            </h5>
+                            <p className="text-[11px] text-text-muted mt-0.5">
+                                {zh
+                                    ? '从本机成功的使用记录归纳可复用流程，导出 SKILL.md 后自行决定是否提交'
+                                    : 'Distilled from successful local runs; export SKILL.md and decide whether to submit'}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleGenerateDrafts}
+                        disabled={draftsLoading}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] rounded-lg bg-purple-500/15 text-purple-400 hover:bg-purple-500/25 transition-colors disabled:opacity-50"
+                    >
+                        {draftsLoading
+                            ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            : <Sparkles className="w-3.5 h-3.5" />}
+                        {zh ? '从使用记录生成' : 'Generate'}
+                    </button>
+                </div>
+                <div className="px-5 pb-4 space-y-2">
+                    {drafts.length === 0 ? (
+                        <p className="text-[11px] text-text-muted">
+                            {draftsLoaded
+                                ? (zh
+                                    ? '暂无可归纳的流程：同一类任务成功执行两次以上才会形成模板。'
+                                    : 'No distillable workflow yet — a workflow must succeed at least twice.')
+                                : (zh
+                                    ? '点击右上角按钮，从本机使用记录中归纳可复用流程。'
+                                    : 'Use the button above to distil reusable workflows from local history.')}
+                        </p>
+                    ) : (
+                        drafts.map((draft) => (
+                            <div
+                                key={draft.name}
+                                className="flex items-start gap-3 rounded-lg border border-border/40 bg-background/40 p-3"
+                            >
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-xs font-medium text-text-primary break-all">{draft.name}</div>
+                                    {draft.description && (
+                                        <div className="text-[11px] text-text-muted mt-0.5">{draft.description}</div>
+                                    )}
+                                    <div className="text-[11px] text-text-muted mt-1">
+                                        {zh
+                                            ? `来源：成功 ${draft.provenance.successCount}/${draft.provenance.totalCount} 次 · 成功率 ${Math.round(draft.provenance.successRate * 100)}%`
+                                            : `From ${draft.provenance.successCount}/${draft.provenance.totalCount} runs · ${Math.round(draft.provenance.successRate * 100)}% success`}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <button
+                                        onClick={() => void handleCopyDraft(draft)}
+                                        className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-md text-text-muted hover:text-accent hover:bg-accent/10 transition-colors"
+                                    >
+                                        <Copy className="w-3 h-3" />
+                                        {zh ? '复制' : 'Copy'}
+                                    </button>
+                                    <button
+                                        onClick={() => handleExportDraft(draft)}
+                                        className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-md bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
+                                    >
+                                        <Download className="w-3 h-3" />
+                                        SKILL.md
+                                    </button>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </section>
             {/* 已安装技能 */}
             <section className="rounded-2xl border border-border/50 bg-surface/20 backdrop-blur-xl shadow-sm relative overflow-hidden group">
                 <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>

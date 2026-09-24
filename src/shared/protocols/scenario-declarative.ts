@@ -26,6 +26,7 @@
  */
 
 import type { ScenarioCategory } from './scenario'
+import type { AcceptanceCheck } from './acceptanceChecks'
 
 // ============================================
 // 声明式工具定义
@@ -172,6 +173,9 @@ export interface DeclarativeScenarioConfig {
 
   permissions?: string[]
   dependencies?: Array<{ id: string; versionRange?: string; required?: boolean }>
+  /** 默认验收检查点：随场景分发，任务收尾时逐条核对 */
+  acceptanceChecks?: AcceptanceCheck[]
+
 }
 
 // ============================================

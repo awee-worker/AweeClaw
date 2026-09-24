@@ -18,8 +18,10 @@ import { useCallback } from 'react'
 import {
   CheckCircle2, XCircle, FileText, Lightbulb,
   Package, Clock, RefreshCw, Check, MessageSquare, FileCode,
+  FileCheck2, HelpCircle, AlertTriangle,
 } from 'lucide-react'
 import type { TaskExecutionResult } from '../taskQuality'
+import type { AcceptanceOutcome } from '@shared/protocols/acceptanceChecks'
 import type { FileItem } from '@shared/protocols'
 
 interface TaskResultCardProps {
@@ -27,6 +29,10 @@ interface TaskResultCardProps {
   result: TaskExecutionResult
   /** 是否中文 */
   isZh: boolean
+  /** 契约检查点的核对结论（未声明检查点时为 null） */
+  acceptanceOutcome?: AcceptanceOutcome | null
+  /** 是否已点过一次「仍要标记完成」 */
+  markDoneConfirmed?: boolean
   /** 查看对话（切回对话流视图） */
   onViewConversation: () => void
   /** 重新执行任务 */
@@ -40,6 +46,8 @@ interface TaskResultCardProps {
 export function TaskResultCard({
   result,
   isZh,
+  acceptanceOutcome,
+  markDoneConfirmed,
   onViewConversation,
   onRerun,
   onMarkDone,
@@ -50,6 +58,11 @@ export function TaskResultCard({
   const passedCount = result.acceptanceCheck.filter(c => c.passed).length
   const totalCount = result.acceptanceCheck.length
   const allPassed = totalCount > 0 && passedCount === totalCount
+
+  // 契约声明的检查点核对结论：有未通过项时不允许静默结案
+  const acceptanceResults = acceptanceOutcome?.results ?? []
+  const acceptanceFailed = !!acceptanceOutcome && !acceptanceOutcome.passed
+
 
   const handleFileClick = useCallback(
     (path: string, description: string) => {
@@ -74,15 +87,21 @@ export function TaskResultCard({
         {/* 完成状态头 */}
         <div className="flex items-center gap-3 pb-3 border-b border-border/30">
           <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-            allPassed ? 'bg-green-500/15' : (totalCount === 0 ? 'bg-blue-500/15' : 'bg-amber-500/15')
+            acceptanceFailed ? 'bg-amber-500/15' : (allPassed ? 'bg-green-500/15' : (totalCount === 0 ? 'bg-blue-500/15' : 'bg-amber-500/15'))
           }`}>
-            <CheckCircle2 className={`w-5 h-5 ${
-              allPassed ? 'text-green-500' : (totalCount === 0 ? 'text-blue-500' : 'text-amber-500')
-            }`} />
+            {acceptanceFailed ? (
+              <XCircle className="w-5 h-5 text-amber-500" />
+            ) : (
+              <CheckCircle2 className={`w-5 h-5 ${
+                allPassed ? 'text-green-500' : (totalCount === 0 ? 'text-blue-500' : 'text-amber-500')
+              }`} />
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-[15px] font-semibold text-text-primary">
-              {t('执行完成', 'Execution Complete')}
+              {acceptanceFailed
+                ? t('执行完成，但有验收项未通过', 'Finished with failed checks')
+                : t('执行完成', 'Execution Complete')}
             </h3>
             <div className="flex items-center gap-3 text-[12px] text-text-muted mt-0.5">
               {result.durationSec != null && (
@@ -95,7 +114,7 @@ export function TaskResultCard({
               )}
               {totalCount > 0 && (
                 <span className={allPassed ? 'text-green-500' : 'text-amber-500'}>
-                  {t('验收', 'Acceptance')} {passedCount}/{totalCount}
+                  {t('自报验收', 'Self-reported')} {passedCount}/{totalCount}
                 </span>
               )}
             </div>
@@ -182,6 +201,58 @@ export function TaskResultCard({
           </section>
         )}
 
+        {/* 验收核对（契约检查点独立核对，未通过项不允许静默结案） */}
+        {acceptanceResults.length > 0 && (
+          <section>
+            <h4 className="flex items-center gap-1.5 text-[13px] font-medium text-text-secondary mb-2">
+              <FileCheck2 className="w-3.5 h-3.5" />
+              {t('验收核对', 'Acceptance Checks')}
+              <span className={acceptanceFailed ? 'text-amber-500' : 'text-green-500'}>
+                {acceptanceResults.length - (acceptanceOutcome?.failedCount ?? 0) - (acceptanceOutcome?.manualCount ?? 0)}/{acceptanceResults.length}
+              </span>
+            </h4>
+            <div className="space-y-1">
+              {acceptanceResults.map((r) => (
+                <div key={r.id} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-surface/40">
+                  {r.verdict === 'passed' ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0 mt-0.5" />
+                  ) : r.verdict === 'failed' ? (
+                    <XCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <HelpCircle className="w-3.5 h-3.5 text-text-muted flex-shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] text-text-primary">{r.description}</p>
+                    {r.detail && (
+                      <p className={`text-[12px] mt-0.5 ${r.verdict === 'failed' ? 'text-amber-500' : 'text-text-muted'}`}>
+                        {r.detail}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {acceptanceFailed && (
+              <p className="flex items-center gap-1.5 text-[12px] text-amber-600 mt-2">
+                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                {t(
+                  '存在未通过的验收项，标记完成前请先确认。',
+                  'Some checks failed. Confirm before marking the task done.',
+                )}
+              </p>
+            )}
+            {acceptanceOutcome && acceptanceOutcome.overclaimCount > 0 && (
+              <p className="flex items-center gap-1.5 text-[12px] text-amber-600 mt-1">
+                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                {t(
+                  `${acceptanceOutcome.overclaimCount} 项自报已通过，但执行记录中找不到依据。`,
+                  `${acceptanceOutcome.overclaimCount} check(s) reported as passed without evidence.`,
+                )}
+              </p>
+            )}
+          </section>
+        )}
+
         {/* 后续建议 */}
         {result.followUp && result.followUp !== '无' && result.followUp !== 'None' && (
           <section>
@@ -213,10 +284,16 @@ export function TaskResultCard({
           </button>
           <button
             onClick={onMarkDone}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-green-500/15 text-green-500 rounded-lg hover:bg-green-500/25 transition-colors ml-auto"
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-lg transition-colors ml-auto ${
+              acceptanceFailed && !markDoneConfirmed
+                ? 'bg-amber-500/15 text-amber-600 hover:bg-amber-500/25'
+                : 'bg-green-500/15 text-green-500 hover:bg-green-500/25'
+            }`}
           >
             <Check className="w-3.5 h-3.5" />
-            {t('标记完成', 'Mark Done')}
+            {acceptanceFailed && markDoneConfirmed
+              ? t('仍要标记完成', 'Mark Done Anyway')
+              : t('标记完成', 'Mark Done')}
           </button>
         </div>
       </div>

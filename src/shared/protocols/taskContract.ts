@@ -8,6 +8,7 @@
  * - TokenQuotaManager 等预算控制器是**执行层**：负责计量与中断
  * 契约不自己数 token，只回答「按声明的额度，现在该不该继续」。
  */
+import type { AcceptanceCheck } from './acceptanceChecks'
 
 /** 确认策略 */
 export type TaskApprovalPolicy = 'default' | 'strict' | 'trusted'
@@ -29,6 +30,8 @@ export interface TaskContract {
   allowUntrustedContent: boolean
   /** 是否允许写操作 */
   allowWrites: boolean
+  /** 验收检查点：任务收尾逐条核对，存在未通过项时不得按完成结案 */
+  acceptanceChecks?: AcceptanceCheck[]
   /** 契约生效起始时间 */
   issuedAt?: number
   /** 契约失效时间，缺省表示不设失效 */
@@ -118,6 +121,30 @@ export function validateTaskContract(contract: TaskContract | null | undefined):
   if (!(contract.timeLimitMs > 0)) errors.push('timeLimitMs 必须为正数')
   if (!Array.isArray(contract.allowedTools)) errors.push('allowedTools 必须是数组')
   if (!Array.isArray(contract.deniedCategories)) errors.push('deniedCategories 必须是数组')
+
+  if (contract.acceptanceChecks !== undefined) {
+    if (!Array.isArray(contract.acceptanceChecks)) {
+      errors.push('acceptanceChecks 必须是数组')
+    } else {
+      const seenCheckIds = new Set<string>()
+      for (const check of contract.acceptanceChecks) {
+        if (!check || typeof check !== 'object') {
+          errors.push('验收检查点必须是对象')
+          continue
+        }
+        if (!check.id) {
+          errors.push('验收检查点缺少 id')
+        } else if (seenCheckIds.has(check.id)) {
+          errors.push(`验收检查点 id 重复：${check.id}`)
+        } else {
+          seenCheckIds.add(check.id)
+        }
+        if (!check.description) {
+          errors.push(`验收检查点 ${String(check.id ?? '')} 缺少描述`)
+        }
+      }
+    }
+  }
 
   if (!APPROVAL_POLICIES.includes(contract.approvalPolicy)) {
     errors.push(`未知的确认策略：${String(contract.approvalPolicy)}`)
@@ -285,6 +312,14 @@ export function summarizeContract(contract: TaskContract, language: 'zh' | 'en' 
       ? `- 确认策略：${contract.approvalPolicy}`
       : `- Approval policy: ${contract.approvalPolicy}`,
   )
+
+  if (contract.acceptanceChecks && contract.acceptanceChecks.length > 0) {
+    lines.push(
+      isZh
+        ? `- 验收检查点：${contract.acceptanceChecks.length} 项`
+        : `- Acceptance checks: ${contract.acceptanceChecks.length}`,
+    )
+  }
 
   if (contract.expiresAt !== undefined) {
     lines.push(

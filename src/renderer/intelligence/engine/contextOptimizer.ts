@@ -3,7 +3,19 @@ import { useStore } from '@store'
 import { useAgentStore, type ThreadBoundStore } from '../state/IntelligenceStore'
 import { EventBus } from './EventDispatcher'
 import { generateSummary } from '../contextModel'
-import { LEVEL_NAMES, updateStats, type CompressionStats } from '../capabilities/context/ContextCompressor'
+import {
+  LEVEL_NAMES,
+  updateStats,
+  estimateMessagesTokens,
+  shouldFallbackToRawArchive,
+  noteSummaryFailure,
+  resetSummaryFailure,
+  getSummaryFailureCount,
+  type CompressionStats,
+} from '../capabilities/context/ContextCompressor'
+import { rawArchiveMessages } from '../capabilities/context/rawArchive'
+import { computeCompressionBudget } from '../capabilities/context/compressionBudget'
+import { extractDecisionPoints, extractErrorsAndFixes } from '../capabilities/context/summaryExtraction'
 import {
   RETRIEVABLE_TOOLS,
   buildRetrievalPlaceholder,
@@ -109,6 +121,43 @@ export function compressLlmMessagesInPlace(
   return { cleared }
 }
 
+/** 单轮压缩后追加清理的最大轮数：避免在同一轮内无休止地压 */
+const MAX_TARGET_ENFORCE_ROUNDS = 2
+
+/**
+ * 压缩后水位校核
+ *
+ * 回答「这次压缩够不够」：清理后仍高于目标水位、且还有压缩空间时，
+ * 逐级提高压缩等级再压，直到达标或用尽轮数。
+ *
+ * 目的不是压得越狠越好，而是避免下一轮请求立刻又触发压缩 ——
+ * 那会让模型每一轮都在处理一个刚被裁剪过的上下文。
+ */
+function enforceCompressionTarget(messages: LLMMessage[], startLevel: CompressionLevel): void {
+  if (!messages.length) return
+
+  const budget = computeCompressionBudget(getAgentConfig().maxContextTokens)
+  let remaining = estimateMessagesTokens(messages as unknown as ChatMessage[])
+  if (remaining <= budget.target) return
+
+  for (let round = 0; round < MAX_TARGET_ENFORCE_ROUNDS; round++) {
+    const nextLevel = Math.min(3, startLevel + 1 + round) as CompressionLevel
+    if (nextLevel <= startLevel) break
+
+    const { cleared } = compressLlmMessagesInPlace(messages, nextLevel)
+    const after = estimateMessagesTokens(messages as unknown as ChatMessage[])
+
+    logger.agent.info(
+      `[Compression] 水位校核: L${nextLevel} 追加清理 ${cleared} 条工具结果，` +
+        `${remaining} → ${after}（目标 ${budget.target}）`
+    )
+
+    if (cleared === 0 || after >= remaining) break
+    remaining = after
+    if (remaining <= budget.target) break
+  }
+}
+
 /** 抽取可参与关键指令识别的文本视图 */
 function toMarkableMessages(messages: LLMMessage[]): Array<{ id: string; role: string; text: string }> {
   return messages.map((message, index) => ({
@@ -208,16 +257,19 @@ function collectRecentUserRequests(messages: ChatMessage[], limit = 5): string[]
 function assembleStructuredSummary(
   summaryResult: Awaited<ReturnType<typeof generateSummary>>,
   userTurns: number,
-  userInstructions: string[] = []
+  userInstructions: string[] = [],
+  messages: ChatMessage[] = []
 ): StructuredSummary {
   return {
     objective: summaryResult.objective,
     completedSteps: summaryResult.completedSteps,
     pendingSteps: summaryResult.pendingSteps,
     todos: summaryResult.todos,
-    decisions: [],
+    // 决策点与错误修复从原始消息提取：折叠成摘要后若只剩「做了什么」，
+    // 用户纠正过的方向与试错过程就会消失，模型会重新提出已被否掉的方案。
+    decisions: extractDecisionPoints(messages),
     fileChanges: summaryResult.fileChanges,
-    errorsAndFixes: [],
+    errorsAndFixes: extractErrorsAndFixes(messages),
     userInstructions,
     generatedAt: Date.now(),
     turnRange: [0, userTurns],
@@ -259,12 +311,40 @@ async function refreshSummarySnapshot(threadId: string, threadStore: ThreadBound
 
   const userTurns = thread.messages.filter(message => message.role === 'user').length
 
-  if (isSummaryStale(thread.contextSummary, userTurns)) {
-    const recentUserRequests = collectRecentUserRequests(thread.messages)
+  if (!isSummaryStale(thread.contextSummary, userTurns)) return
+
+  // 连续失败达阈值：跳过 LLM 摘要，把待摘要的消息原文归档后返回。
+  // 此时上下文已接近上限，继续重试只会每轮重复消耗一次模型调用且必然失败，
+  // 归档保证这批内容仍可回溯，而不是随上下文清理一起消失。
+  if (shouldFallbackToRawArchive()) {
+    await rawArchiveMessages(
+      threadId,
+      thread.messages,
+      `LLM 摘要连续失败 ${getSummaryFailureCount()} 次，降级为原文归档`
+    )
+    return
+  }
+
+  const recentUserRequests = collectRecentUserRequests(thread.messages)
+
+  try {
     const summaryResult = await generateSummary(thread.messages, { type: 'detailed', todos: thread.todos })
-    const structuredSummary = assembleStructuredSummary(summaryResult, userTurns, recentUserRequests)
+    resetSummaryFailure()
+    const structuredSummary = assembleStructuredSummary(
+      summaryResult,
+      userTurns,
+      recentUserRequests,
+      thread.messages
+    )
     threadStore.setContextSummary(structuredSummary)
     EventBus.emit({ type: 'context:summary', summary: summaryResult.summary })
+  } catch (err) {
+    noteSummaryFailure()
+    logger.agent.warn(
+      `[Compression] 摘要生成失败（连续第 ${getSummaryFailureCount()} 次）:`,
+      err
+    )
+    throw err
   }
 }
 
@@ -375,6 +455,10 @@ async function executeCompressionStrategy(
     } else {
       compressLlmMessagesInPlace(messages, effectiveLevel)
       markCompressionAction(threadId)
+
+      // 压缩后校核水位：清理完仍高于目标水位时继续压，
+      // 否则下一轮请求会立刻再次触发压缩，形成每轮都压、每轮都压不够的抖动。
+      enforceCompressionTarget(messages, effectiveLevel)
     }
   }
 

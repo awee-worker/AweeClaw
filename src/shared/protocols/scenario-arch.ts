@@ -19,6 +19,7 @@
 
 import type { ScenarioPlugin, ScenarioCategory } from './scenario'
 import type { ToolDefinition, ToolExecutor } from './modelGateway'
+import type { AcceptanceCheck } from './acceptanceChecks'
 import type React from 'react'
 
 // ============================================
@@ -66,6 +67,8 @@ export interface ScenarioManifest {
   homepage?: string
   repository?: string
   license?: string
+  /** 默认验收检查点：任务收尾逐条核对，存在未通过项时不得按完成结案 */
+  acceptanceChecks?: AcceptanceCheck[]
 }
 
 // ============================================

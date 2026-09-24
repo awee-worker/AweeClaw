@@ -10,11 +10,14 @@ import { describe, it, expect } from 'vitest'
 import {
   parseExecutionResult,
   extractExecutionResult,
+  extractQualityMeta,
   mergeExecutionResult,
+  evaluateTaskAcceptance,
   stripResultBlock,
   hasResultBlock,
   type TaskExecutionResult,
 } from '../taskQuality'
+import type { AcceptanceCheck } from '@shared/protocols/acceptanceChecks'
 
 // ─── 测试夹具：完整的结构化结果块（中文 H3 子节） ─────────────
 const FULL_BLOCK_ZH = `## 执行结果
@@ -335,6 +338,104 @@ describe('mergeExecutionResult', () => {
     mergeExecutionResult(metadata, result)
     expect(metadata).toEqual({ quality: { expectedOutput: 'out' } })
     expect((metadata as Record<string, unknown>).result).toBeUndefined()
+  })
+})
+
+describe('extractQualityMeta（验收检查点解析）', () => {
+  it('解析 metadata.quality.acceptanceChecks', () => {
+    const meta = extractQualityMeta({
+      quality: {
+        acceptanceChecks: [
+          { id: 'a', description: '执行测试', verify: { kind: 'tool', payload: 'run_command' } },
+        ],
+      },
+    })
+
+    expect(meta.acceptanceChecks).toHaveLength(1)
+    expect(meta.acceptanceChecks?.[0].verify?.payload).toBe('run_command')
+  })
+
+  it('未声明时返回 undefined', () => {
+    expect(extractQualityMeta({ quality: {} }).acceptanceChecks).toBeUndefined()
+  })
+
+  it('丢弃结构残缺的检查点', () => {
+    const meta = extractQualityMeta({
+      quality: { acceptanceChecks: [{ id: 'a' }, { id: 'b', description: '有效项' }] },
+    })
+
+    expect(meta.acceptanceChecks).toHaveLength(1)
+    expect(meta.acceptanceChecks?.[0].description).toBe('有效项')
+  })
+})
+
+describe('evaluateTaskAcceptance', () => {
+  const checks: AcceptanceCheck[] = [
+    { id: 'a', description: '产出报告文件', verify: { kind: 'tool', payload: 'path:reports/' } },
+  ]
+
+  it('未声明检查点时允许结案', () => {
+    const outcome = evaluateTaskAcceptance(undefined, null)
+
+    expect(outcome.passed).toBe(true)
+    expect(outcome.results).toEqual([])
+  })
+
+  it('产出路径命中检查点时判为通过', () => {
+    const result: TaskExecutionResult = {
+      summary: '完成',
+      deliverables: [{ path: 'reports/final.md', description: '报告' }],
+      acceptanceCheck: [],
+    }
+
+    const outcome = evaluateTaskAcceptance(checks, result)
+
+    expect(outcome.passed).toBe(true)
+    expect(outcome.results[0].verdict).toBe('passed')
+  })
+
+  it('产出缺失时判为未通过，不允许结案', () => {
+    const result: TaskExecutionResult = {
+      summary: '完成',
+      deliverables: [{ path: 'src/a.ts', description: '代码' }],
+      acceptanceCheck: [],
+    }
+
+    const outcome = evaluateTaskAcceptance(checks, result)
+
+    expect(outcome.passed).toBe(false)
+    expect(outcome.failedCount).toBe(1)
+  })
+
+  it('自报已通过但无产出时标记为过度声明', () => {
+    const result: TaskExecutionResult = {
+      summary: '完成',
+      deliverables: [],
+      acceptanceCheck: [{ criteria: '产出报告文件', passed: true }],
+    }
+
+    const outcome = evaluateTaskAcceptance(checks, result)
+
+    expect(outcome.overclaimCount).toBe(1)
+    expect(outcome.results[0].overclaim).toBe(true)
+  })
+
+  it('未解析出结果时，路径类检查点判为未通过', () => {
+    const outcome = evaluateTaskAcceptance(checks, null)
+
+    expect(outcome.passed).toBe(false)
+  })
+
+  it('支持英文输出', () => {
+    const result: TaskExecutionResult = {
+      summary: 'done',
+      deliverables: [],
+      acceptanceCheck: [],
+    }
+
+    const outcome = evaluateTaskAcceptance(checks, result, 'en')
+
+    expect(outcome.summary).toContain('Acceptance')
   })
 })
 
