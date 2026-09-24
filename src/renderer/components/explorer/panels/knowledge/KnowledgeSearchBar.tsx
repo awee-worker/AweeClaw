@@ -173,18 +173,17 @@ export function EmptyList({
   hasEntries: boolean
   language: Language
 }) {
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
   return (
     <div className="flex flex-col items-center justify-center py-16 text-text-muted">
       <BookOpen className="w-10 h-10 mb-3 opacity-30" />
       <p className="text-[13px]">
         {hasEntries
-          ? t('app.nomatchingresults', language as Language)
-          : t('app.noentriesyet', language as Language)}
+          ? t('app.nomatchingresults', language)
+          : t('app.noentriesyet', language)}
       </p>
       {!hasEntries && (
         <p className="text-[12px] mt-1.5 text-text-secondary">
-          {t('app.clicktoaddor', language as Language)}
+          {t('app.clicktoaddor', language)}
         </p>
       )}
     </div>

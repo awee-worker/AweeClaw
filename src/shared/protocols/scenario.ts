@@ -105,11 +105,20 @@ export interface SidebarItemDescriptor {
    */
   hideEditor?: boolean
   /**
-   * 激活该宽模式面板时隐藏聊天窗口。
+   * 激活该宽模式面板时隐藏聊天窗口（默认隐藏，用户可手动恢复显示）。
    * 适用于需要最大化空间的面板（如画布、图纸库），
    * 让面板独占主内容区。仅对 wideMode 面板生效。
+   *
+   * 若需要"无论用户怎么切换都保持隐藏"，请用场景级 wideModeHidesChat。
    */
   hideChat?: boolean
+  /**
+   * 该宽模式面板保留聊天窗口，与面板并列展示（强制，不受 wideModeHidesChat 影响）。
+   *
+   * 用于"参考资料 + 对话"这类需要边看边问的面板（如开发助手的知识库）：
+   * 场景整体希望面板独占主区域，但个别面板必须保留对话。
+   */
+  keepChat?: boolean
   /**
    * 是否在侧边栏导航中隐藏此入口。
    *

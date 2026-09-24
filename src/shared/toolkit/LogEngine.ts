@@ -52,6 +52,7 @@ export type LogCategory =
   | 'IoT'
   | 'Proactive'
   | 'DeviceLink'
+  | 'EffectMetrics'
 
 /** 单条日志记录的不可变快照 */
 export interface LogEntry {
@@ -964,7 +965,9 @@ class LogEngineCore {
   get deviceLink(): CategoryLogger {
     return this.createCategoryLogger('DeviceLink')
   }
-
+  get effectMetrics(): CategoryLogger {
+    return this.createCategoryLogger('EffectMetrics')
+  }
   /* -------------------- 便捷方法 -------------------- */
 
   logScenario(

@@ -23,6 +23,7 @@ import { ImpactAnalysisView } from './perception/ImpactAnalysisView'
 import { SystemMonitorView } from './monitoring/SystemMonitorView'
 import { CameraPrivacyControl } from './camera/CameraPrivacyControl'
 import { FusionEnvironmentView } from './perception/FusionEnvironmentView'
+import { EffectPanel } from '../../effect-metrics/EffectPanel'
 
 interface PerceptionSettingsPanelProps {
   language: Language
@@ -142,6 +143,7 @@ export function PerceptionSettingsPanel({ language }: PerceptionSettingsPanelPro
   const [showTimelineView, setShowTimelineView] = useState(false)
   const [showImpactView, setShowImpactView] = useState(false)
   const [showMonitorView, setShowMonitorView] = useState(false)
+  const [showEffectView, setShowEffectView] = useState(false)
   const [showCameraView, setShowCameraView] = useState(false)
   const [showFusionView, setShowFusionView] = useState(false)
 
@@ -310,6 +312,14 @@ export function PerceptionSettingsPanel({ language }: PerceptionSettingsPanelPro
             >
               <Layers className="w-3.5 h-3.5" />
               {t('fusion.viewFusion', language)}
+            </button>
+            <button
+              onClick={() => setShowEffectView(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/25 transition-all"
+              title={isZh ? '查看会话效果指标' : 'View session effect metrics'}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              {isZh ? '会话效果' : 'Effect'}
             </button>
           </div>
         </div>
@@ -723,6 +733,13 @@ export function PerceptionSettingsPanel({ language }: PerceptionSettingsPanelPro
       <FusionEnvironmentView
         isOpen={showFusionView}
         onClose={() => setShowFusionView(false)}
+        language={language}
+      />
+
+      {/* 会话效果面板弹窗 */}
+      <EffectPanel
+        isOpen={showEffectView}
+        onClose={() => setShowEffectView(false)}
         language={language}
       />
     </div>

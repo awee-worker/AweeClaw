@@ -3,7 +3,7 @@ import { MessageAssembler } from '@intelligence/capabilities/message'
 import type { ChatMessage } from '@intelligence/types'
 
 describe('MessageAssembler', () => {
-  it('injects resume state as a separate runtime assistant message', () => {
+  it('attaches runtime state to the current user turn instead of a fake assistant turn', () => {
     const assembler = new MessageAssembler()
     const history: ChatMessage[] = []
 
@@ -26,15 +26,20 @@ describe('MessageAssembler', () => {
       role: 'system',
       content: 'stable system prompt',
     })
-    expect(result.messages[1]).toMatchObject({
-      role: 'assistant',
-    })
-    expect(String(result.messages[1].content)).toContain('Application runtime state snapshot.')
-    expect(String(result.messages[1].content)).toContain('## Session Resume Context')
-    expect(String(result.messages[1].content)).toContain('## Runtime Task List')
-    expect(result.messages[2]).toMatchObject({
-      role: 'user',
-      content: '继续处理上下文压缩',
-    })
+
+    // 运行时状态跟随用户消息下发：插成 assistant 轮次会让模型把状态快照当成
+    // 自己刚给出的回复，从而丢掉上一轮真正的回答。
+    expect(result.messages).toHaveLength(2)
+    const lastMessage = result.messages[1]
+    expect(lastMessage).toMatchObject({ role: 'user' })
+
+    const sent = Array.isArray(lastMessage.content)
+      ? lastMessage.content.map(part => (part as { text?: string }).text ?? '').join('')
+      : String(lastMessage.content)
+    expect(sent).toContain('## Application Runtime State')
+    expect(sent).toContain('## Session Resume Context')
+    expect(sent).toContain('## Runtime Task State')
+    expect(sent).toContain('## Open Task List')
+    expect(sent).toContain('继续处理上下文压缩')
   })
 })

@@ -26,12 +26,15 @@ import { ProjectTasksTab } from './ProjectTasksTab'
 import { ProjectAttachmentsPanel } from './ProjectAttachmentsPanel'
 import { ProjectExecutionTab } from './ProjectExecutionTab'
 import { ProjectFilesTab } from './ProjectFilesTab'
+import { BackendLoginRequired } from '../common/BackendLoginRequired'
 
 type DetailTab = 'overview' | 'files' | 'attachments' | 'tasks' | 'execution' | 'automation' | 'settings'
 
 export function ProjectsView() {
   const language = useStore(s => s.language)
   const isZh = language === 'zh'
+  // 项目数据来自云端后端：未登录时 serverUrl 为空，请求必然失败
+  const isAuthenticated = useStore(s => s.isAuthenticated)
   // 项目数量受套餐配额约束（projectsLimit），超限时引导升级
   const { requireQuota } = useFeatureGuard()
 
@@ -75,9 +78,11 @@ export function ProjectsView() {
     setLoading(false)
   }, [selectedId, isZh])
 
+  // 未登录时不发起请求（登录后 isAuthenticated 变化会自动触发加载）
   useEffect(() => {
+    if (!isAuthenticated) return
     loadProjects()
-  }, [loadProjects])
+  }, [loadProjects, isAuthenticated])
 
   // 加载选中项目的任务和自动化规则
   useEffect(() => {
@@ -204,6 +209,11 @@ export function ProjectsView() {
   }, [editingProject, isZh, requireQuota, projects.length])
 
   // ─── 渲染 ───────────────────────────────────────────
+
+  // 未登录：给出登录引导，而不是把后端 401/网络错误当作「加载失败」抛给用户
+  if (!isAuthenticated) {
+    return <BackendLoginRequired isZh={isZh} scope={isZh ? '项目' : 'Projects'} />
+  }
 
   return (
     <div className="flex h-full bg-background overflow-hidden">

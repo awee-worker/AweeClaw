@@ -193,6 +193,14 @@ export interface PersistedChatThread {
   contextItems: ContextItem[]
   messageCheckpoints?: MessageCheckpoint[]
   messageCount?: number
+  /**
+   * 运行时标记：消息体是否已载入内存
+   *
+   * 落盘前必须随线程一起透传，否则下游无法区分「消息为空」的两种含义 ——
+   * 「线程真的没有消息」与「消息还没从磁盘载入」。混淆两者会让懒加载线程被
+   * 当成空线程写回磁盘（message_count 被清成 0），此后该会话再也读不到历史。
+   */
+  messagesHydrated?: boolean
   contextSummary: StructuredSummary | null
   todos?: TodoItem[]
   handoffContext?: string
@@ -250,6 +258,11 @@ function stripRuntimeOnlyMessageFields(messages: ChatMessage[]): ChatMessage[] {
 }
 
 export function toPersistedChatThread(thread: ChatThread): PersistedChatThread {
+  // 消息体不在内存时（懒加载线程），messages 必然是空数组，用它推导条数会把
+  // message_count 清成 0：下次启动该线程会被判定为「空线程」而丢失全部历史。
+  // 因此这里只在消息已载入时以内存为准，否则保留磁盘上的既有条数。
+  const hydrated = thread.messagesHydrated !== false || thread.messages.length > 0
+
   return {
     id: thread.id,
     createdAt: thread.createdAt,
@@ -258,7 +271,8 @@ export function toPersistedChatThread(thread: ChatThread): PersistedChatThread {
     messages: stripRuntimeOnlyMessageFields(thread.messages),
     contextItems: thread.contextItems,
     messageCheckpoints: thread.messageCheckpoints ?? [],
-    messageCount: thread.messages.length,
+    messageCount: hydrated ? thread.messages.length : (thread.messageCount ?? 0),
+    messagesHydrated: thread.messagesHydrated,
     contextSummary: thread.contextSummary,
     todos: thread.todos,
     handoffContext: thread.handoffContext,
@@ -275,14 +289,19 @@ export function toPersistedChatThread(thread: ChatThread): PersistedChatThread {
 }
 
 export function fromPersistedChatThread(thread: PersistedChatThread): ChatThread {
+  // ⚠️ messageCount === 0 不能推出「线程真的没有消息」：历史版本会把懒加载线程的
+  // 条数写成 0，据此判定「已加载且为空」会让该会话永远读不到消息 —— 用户看到空
+  // 会话，AI 也拿不到任何历史，表现为「AI 不知道它刚才回复的内容」。
+  // 因此这里只认内存里确实有消息这一种「已加载」情形，其余一律按需加载。
+  const loadedMessages = thread.messages ?? []
+
   return {
     ...thread,
-    messages: thread.messages || [],
-    // 如果 messageCount > 0 但 messages 为空，说明消息还没加载（懒加载）
-    // 如果 messageCount === 0，说明线程真的没有消息，hydrated = true
-    messagesHydrated: thread.messageCount !== undefined
-      ? (thread.messageCount === 0 || (thread.messages?.length ?? 0) > 0)
-      : (thread.messages?.length ?? 0) > 0,
+    messages: loadedMessages,
+    messagesHydrated: loadedMessages.length > 0,
+    messageCount: loadedMessages.length > 0
+      ? loadedMessages.length
+      : (thread.messageCount ?? 0),
     contextItems: thread.contextItems || [],
     messageCheckpoints: thread.messageCheckpoints || [],
     ...createRuntimeThreadState(),

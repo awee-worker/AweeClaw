@@ -84,6 +84,7 @@ import { createCapabilityGuardApi } from './preload/api/capabilityGuard'
 import { createCharacterCardApi } from './preload/api/characterCard'
 import { createEmotionApi } from './preload/api/emotion'
 import { createPerfTraceApi } from './preload/api/perfTrace'
+import { createEffectMetricsApi } from './preload/api/effectMetrics'
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
  *
@@ -140,4 +141,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 套餐能力一致性收敛（渲染层提供授权快照，主进程落地关闭）
     capabilityGuard: createCapabilityGuardApi(),
     perfTrace: createPerfTraceApi(),
+    effectMetrics: createEffectMetricsApi(),
   })

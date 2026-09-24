@@ -467,7 +467,7 @@ class PluginRegistry implements IPluginRegistry {
     let guardedHost: unknown = undefined
     try {
       const fullHost = getHostServices()
-      guardedHost = createGuardedHostServices(pluginId, fullHost)
+      guardedHost = createGuardedHostServices(pluginId, fullHost, { dataDir: pluginDataDir })
     } catch {
       // HostServices 未初始化，跳过（测试环境或初始化前调用）
     }

@@ -19,6 +19,7 @@ import { pathStartsWith, joinPath, normalizePath } from '@shared/toolkit/pathHel
 import { buildToolPathPolicy } from '../toolkit/toolPathPolicy'
 import { getTrustedAppDataRoots } from '../toolkit/trustedPathRegistry'
 import { buildApprovalEntry, recordApproval } from '@intelligence/decision/approvalLedger'
+import { recordApproval as recordSessionApproval } from '@intelligence/decision/eval/sessionTrajectory'
 import { decideApprovalGateByMode, isIrreversibleTool, shouldEscalateForUntrusted } from '@intelligence/decision/approvalEscalation'
 import type { ApprovalGate } from '@intelligence/decision/approvalEscalation'
 import { collectUntrustedSignal, rememberUntrustedSignal } from '../runtime/untrustedContextTracker'
@@ -1204,15 +1205,20 @@ async function orchestrateToolBatchInternal(
     try {
       const authorizationMode = useStore.getState().authorizationMode
       for (const tc of groupToolCalls) {
+        const decision = approvalResults.get(tc.id) === false ? 'rejected' : 'approved'
         recordApproval(
           buildApprovalEntry({
             toolCall: tc,
             requestId: effectiveRequestId,
-            decision: approvalResults.get(tc.id) === false ? 'rejected' : 'approved',
+            decision,
             authorizationMode,
             untrustedSources,
           }),
         )
+        // 会话级计数：只有被拒才算人工介入 —— 批准是顺着 AI 走，未改变执行方向
+        if (context.threadId) {
+          recordSessionApproval(context.threadId, decision === 'rejected' ? 1 : 0)
+        }
       }
     } catch (ledgerError) {
       logger.agent.warn('[Tools] 审批记账失败，跳过记录:', ledgerError)

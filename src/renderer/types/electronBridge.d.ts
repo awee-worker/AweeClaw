@@ -953,6 +953,74 @@ export interface ElectronAPI {
     clearAllData: () => Promise<{ success: boolean; error?: string }>
   }
 
+  // EffectMetrics（会话效果度量）
+  effectMetrics: {
+    /** 提交一次会话的轨迹指标 */
+    recordSession: (input: {
+      sessionId: string
+      scenarioId?: string
+      startedAt: number
+      endedAt: number
+      metrics: {
+        totalSteps: number
+        futileRetries: number
+        futileRetryRatio: number
+        loopDetections: number
+        firstUsefulStep: number | null
+        compressionEvents: number
+      }
+      approvalTotal?: number
+      interventions?: number
+      inputTokens?: number
+      outputTokens?: number
+    }) => Promise<{ success: boolean; error?: string }>
+
+    /** 上报一次插件工具调用 */
+    recordToolCall: (input: {
+      pluginId: string
+      toolName: string
+      success: boolean
+      invalidArgs: boolean
+      timedOut: boolean
+      durationMs: number
+    }) => Promise<{ success: boolean; error?: string }>
+
+    /** 查询效果报告；报告结构见 EffectMetricsService 的 EffectReport */
+    query: (query: {
+      scope: 'session' | 'project' | 'period'
+      scopeId: string
+      since?: number
+      until?: number
+    }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+
+    /**
+     * 按插件或场景跑质量门
+     *
+     * 结论结构见 EffectMetricsService 的 QualityGateResult：passed 为 false 时
+     * regressions 非空，逐条给出指标名与两端取值。
+     * options.baseline 不传时自动取当前窗口前一个等长窗口作为参照。
+     */
+    qualityGate: (
+      scope: 'plugin' | 'scenario',
+      targetId: string,
+      options?: {
+        since?: number
+        until?: number
+        baseline?: unknown
+        config?: {
+          minPluginCalls?: number
+          minScenarioSessions?: number
+          tolerances?: Record<string, number>
+        }
+      },
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+
+    /** 结清未落库的插件质量窗口 */
+    flush: () => Promise<{ success: boolean; error?: string }>
+    /** 清空全部效果数据 */
+    clearAll: () => Promise<{ success: boolean; error?: string }>
+  }
+
   // Causal Reasoning（因果推理 - 阶段4）
   causal: {
     // 配置

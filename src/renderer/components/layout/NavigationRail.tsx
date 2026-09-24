@@ -34,16 +34,24 @@ const isMac = typeof navigator !== 'undefined' && (
   ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toUpperCase().indexOf('MAC') ?? -1) >= 0
 )
 
+/**
+ * 场景未声明 sidebarItems 时的兜底菜单。
+ *
+ * explorer 标记 hidden：它由「新建任务」按钮按需激活（打开工作区文件面板），
+ * 不作为常驻导航项，避免与「新建任务」的语义重复。
+ */
 const DEFAULT_ITEMS: SidebarItemDescriptor[] = [
-  { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
+  { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0, hidden: true },
   { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1 },
 ]
 
-// 导航栏隐藏的菜单项（按需求隐藏：工作区 / 知识库 / 任务）
-// 这些入口仍注册在 PanelRegistry 中，可被代码激活（如「新建任务」打开 explorer）
-const HIDDEN_NAV_ITEM_IDS = new Set<string>(['explorer', 'knowledge', 'tasks'])
-// 场景工具入口是否在导航栏显示（按需求暂时隐藏）
-const SHOW_SCENE_TOOLS_ENTRY = false
+// 场景工具入口是否在导航栏显示。
+// 面板本身始终注册在 PanelRegistry 中（可被 AI 工具调用激活），
+// 这里只控制导航项：通用助手场景不展示该入口。
+const SHOW_SCENE_TOOLS_ENTRY = true
+
+/** 不展示「场景工具」导航项的场景 */
+const SCENE_TOOLS_HIDDEN_SCENARIOS = ['general-assistant']
 
 /**
  * 菜单项未读角标
@@ -517,6 +525,14 @@ export default function NavigationRail() {
     return () => unsubscribe()
   }, [])
 
+  // 登录弹窗由本组件持有，其他面板（如未登录的后端数据面板）通过事件请求打开，
+  // 避免各面板重复实现一套登录入口。
+  useEffect(() => {
+    const handler = () => setShowLoginModal(true)
+    window.addEventListener('aweeclaw:open-login', handler)
+    return () => window.removeEventListener('aweeclaw:open-login', handler)
+  }, [])
+
   const hasUpdateAvailable = updateStatus?.status === 'available' || updateStatus?.status === 'downloaded'
 
   const scenario = scenarioRegistry.get(activeScenarioId)
@@ -531,9 +547,13 @@ export default function NavigationRail() {
   })
 
   // 合并插件贡献的侧边栏面板（来自 PluginUiRegistry）
+  // 显隐完全由 sidebarItems[].hidden 决定（上方已过滤），不再做全局硬编码屏蔽，
+  // 否则场景无法控制自己的导航项，声明的入口会静默失效。
   const { sidebarItems: pluginSidebarItems } = usePluginExtensions()
   const sidebarItems = [...scenarioSidebarItems, ...pluginSidebarItems]
-    .filter(item => !HIDDEN_NAV_ITEM_IDS.has(item.id))
+
+  // 场景工具入口按场景显隐：通用助手场景不展示该导航项
+  const showSceneToolsEntry = SHOW_SCENE_TOOLS_ENTRY && !SCENE_TOOLS_HIDDEN_SCENARIOS.includes(activeScenarioId)
 
   const p = BRAND.cssPrefix
 
@@ -1018,8 +1038,8 @@ export default function NavigationRail() {
         })}
       </div>
 
-      {/* 场景工具入口：随场景模式提供内置工具面板（按需求暂时隐藏，SHOW_SCENE_TOOLS_ENTRY 置 true 可恢复） */}
-      {SHOW_SCENE_TOOLS_ENTRY && (() => {
+      {/* 场景工具入口：随场景模式提供内置工具面板（通用助手场景不展示） */}
+      {showSceneToolsEntry && (() => {
         const isSceneToolsActive = !showWelcomePage && activeSidePanel === 'scene-tools'
         const sceneToolsLabel = t('layout.scenetools', language as Language)
         return navRailExpanded ? (

@@ -29,12 +29,15 @@ import type {
 } from '../tasks/types'
 import { RuleFormDialog } from './RuleFormDialog'
 import { RunHistoryPanel } from './RunHistoryPanel'
+import { BackendLoginRequired } from '../common/BackendLoginRequired'
 
 type DetailTab = 'config' | 'history'
 
 export function AutomationView() {
   const language = useStore(s => s.language)
   const isZh = language === 'zh'
+  // 自动化规则来自云端后端：未登录时 serverUrl 为空，请求必然失败
+  const isAuthenticated = useStore(s => s.isAuthenticated)
   // 自动化任务数量受套餐配额约束（automationTasksLimit）
   const { requireQuota } = useFeatureGuard()
 
@@ -128,11 +131,13 @@ export function AutomationView() {
     }
   }, [])
 
+  // 未登录时不发起请求（登录后 isAuthenticated 变化会自动触发加载）
   useEffect(() => {
+    if (!isAuthenticated) return
     loadRules()
     // 加载模板（用于从模板创建）
     automationApi.getTemplates().then(setTemplates).catch(() => {})
-  }, [loadRules])
+  }, [loadRules, isAuthenticated])
 
   // 加载选中规则的运行历史
   useEffect(() => {
@@ -334,6 +339,11 @@ export function AutomationView() {
   }, [editingRule, isZh, checkAutomationQuota])
 
   // ─── 渲染 ───────────────────────────────────────────
+
+  // 未登录：给出登录引导，而不是把后端 401/网络错误当作「加载失败」抛给用户
+  if (!isAuthenticated) {
+    return <BackendLoginRequired isZh={isZh} scope={isZh ? '自动化' : 'Automation'} />
+  }
 
   return (
     <div className="flex h-full bg-background overflow-hidden">

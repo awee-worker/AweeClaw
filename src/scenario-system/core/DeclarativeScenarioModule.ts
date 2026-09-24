@@ -253,9 +253,11 @@ export class DeclarativeScenarioModule implements ScenarioModule {
       }) || [
         { id: 'chat', component: 'ChatPanel', region: 'primary' as const, defaultVisible: true, resizable: false },
       ],
+      // sidebarItems 整体透传，显隐/宽模式等控制字段由场景自行声明
       sidebarItems: ui?.sidebarItems || [],
       statusBarItems: [],
       welcomeComponent: ui?.welcomeComponent,
+      wideModeHidesChat: ui?.wideModeHidesChat,
     }
 
     const scenarioDataSources: ScenarioDataSources = {

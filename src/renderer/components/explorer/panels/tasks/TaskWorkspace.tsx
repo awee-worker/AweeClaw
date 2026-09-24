@@ -28,12 +28,15 @@ import { TaskDetailDrawer } from './TaskDetailDrawer'
 import { TaskFormDialog } from './TaskFormDialog'
 import { useTaskExecution } from './useTaskExecution'
 import { CopyTaskDialog } from './CopyTaskDialog'
+import { BackendLoginRequired } from '../common/BackendLoginRequired'
 
 type ViewMode = 'kanban' | 'list'
 
 export function TaskWorkspace() {
   const language = useStore(s => s.language)
   const isZh = language === 'zh'
+  // 任务数据来自云端后端：未登录时 serverUrl 为空，请求必然失败
+  const isAuthenticated = useStore(s => s.isAuthenticated)
 
   const [tasks, setTasks] = useState<TaskItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -86,9 +89,11 @@ export function TaskWorkspace() {
     setLoading(false)
   }, [searchQuery, filterStatus, isZh])
 
+  // 未登录时不发起请求（登录后 isAuthenticated 变化会自动触发加载）
   useEffect(() => {
+    if (!isAuthenticated) return
     loadTasks(true)
-  }, [loadTasks])
+  }, [loadTasks, isAuthenticated])
 
   // ─── 操作回调 ───────────────────────────────────────
 
@@ -200,6 +205,11 @@ export function TaskWorkspace() {
   )
 
   // ─── 渲染 ───────────────────────────────────────────
+
+  // 未登录：给出登录引导，而不是把后端 401/网络错误当作「加载失败」抛给用户
+  if (!isAuthenticated) {
+    return <BackendLoginRequired isZh={isZh} scope={isZh ? '任务' : 'Tasks'} />
+  }
 
   return (
     <div className="flex h-full bg-background overflow-hidden">

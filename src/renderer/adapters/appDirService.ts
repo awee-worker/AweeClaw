@@ -952,9 +952,12 @@ class ScenarioDirectoryManager {
 
     for (const [threadId, data] of Object.entries(threads)) {
       const threadData = toPersistedChatThread(data)
-      // Messages still loading from disk should not be marked dirty yet.
-      // Otherwise shutdown can flush the placeholder thread and wipe the real JSONL payload.
-      if (data.messagesHydrated === false) {
+      // 消息体尚未从磁盘载入的线程不落盘：此时内存里的空消息数组只是「还没读」，
+      // 一旦写回会把 message_count 清成 0，并让随后的一次写入用这份不完整列表
+      // 覆盖掉磁盘上的真实历史（batchUpsertThreadMessages 是先清空再写入）。
+      // 内存里确实有消息时按已载入处理，保证本轮新消息不会因为标记滞后而丢盘。
+      const hasMessages = (data.messages?.length ?? 0) > 0
+      if (data.messagesHydrated === false && !hasMessages) {
         this.cache.threads.set(threadId, threadData)
         continue
       }

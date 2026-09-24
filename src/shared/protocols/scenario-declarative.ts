@@ -82,8 +82,20 @@ export interface DeclarativeUI {
     labelZh: string
     component: string
     position?: number
+    /** 宽模式：面板在主内容区全屏展示 */
+    wideMode?: boolean
+    /** 激活该面板时隐藏编辑器（含编辑器欢迎页） */
+    hideEditor?: boolean
+    /** 激活该宽模式面板时默认隐藏聊天（用户可手动恢复） */
+    hideChat?: boolean
+    /** 该宽模式面板强制保留聊天，与面板并列展示 */
+    keepChat?: boolean
+    /** 不在导航栏显示该入口（仍注册到 PanelRegistry，可由代码激活） */
+    hidden?: boolean
   }>
   welcomeComponent?: string
+  /** 打开宽模式面板时是否隐藏聊天，默认 true */
+  wideModeHidesChat?: boolean
 }
 
 // ============================================

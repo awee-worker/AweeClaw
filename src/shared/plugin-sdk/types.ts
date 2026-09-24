@@ -310,6 +310,8 @@ export type PluginPermission =
   | 'ui.render'            // Phase 6: 在客户端渲染 UI 组件
   | 'python.runtime'       // 复用客户端内置 Python 运行时（host.pythonRuntime）
   | 'process.spawn'        // 启动子进程（host.pythonRuntime.run 或自行 spawn）
+  | 'media.process'        // 媒体处理（host.media：探测/转码/裁剪/拼接/字幕/抽帧）
+  | 'voice.process'        // 本地语音引擎（host.asr：离线语音识别）
 
 // ============================================
 // 插件运行时接口

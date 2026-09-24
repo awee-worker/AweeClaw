@@ -149,6 +149,24 @@ export class AgentClass {
       ? (store.threads[threadId]?.contextItems || [])
       : (store.getCurrentThread()?.contextItems || [])
 
+    // 历史消息可能还停留在懒加载状态（应用刚启动、刚切换工作区或刚从历史列表进入）：
+    // 此刻内存里的消息列表是空的，直接取用会组装出「没有任何历史」的请求 —— 模型
+    // 于是不知道上一轮自己回了什么，整段会话失去连贯性。组装前先把该线程的历史补齐。
+    // 加载失败不阻塞本次发送（宁可少上下文，也不能让用户发不出消息）。
+    if (threadId) {
+      try {
+        await useAgentStore.getState().ensureThreadLoaded(threadId)
+      } catch (error) {
+        logger.agent.warn('[Agent] 历史消息加载失败，按当前内存内容继续:', error)
+      }
+    }
+
+    // 历史必须在写入本轮消息之前取：prepareExecution 会把「本轮用户消息 + 助手占位」
+    // 追加进线程，若在其之后读取，本轮用户消息会被重复投喂给模型。
+    const historyMessages = threadId
+      ? (useAgentStore.getState().threads[threadId]?.messages || [])
+      : []
+
     let persistSuspended = false
     let taskRegistered = false
     let harnessSpan: Span | null = null
@@ -161,7 +179,9 @@ export class AgentClass {
       // （尤其是“继续”等短消息），自动附加续接说明，让 AI 知道要续接什么，
       // 而不是“从头再来”。若线程已正常完成或消息与上次任务无关则返回 null 不附加。
       if (typeof userMessage === 'string' || Array.isArray(userMessage)) {
-        const resumeThread = threadId ? store.threads[threadId] : undefined
+        // 读实时状态而非函数入口的快照：历史刚被补齐，快照里可能还是空的懒加载线程，
+        // 会让「续接说明」判断失灵（明明有未完成工具/待答提问却识别不出来）。
+        const resumeThread = threadId ? useAgentStore.getState().threads[threadId] : undefined
         const incomingText = typeof userMessage === 'string'
           ? userMessage
           : userMessage.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map(p => p.text).join('')
@@ -385,7 +405,7 @@ export class AgentClass {
       const preparation = await agentExecutor.prepare(
         userMessage,
         contextItems,
-        store.threads[threadId]?.messages || [],
+        historyMessages,
         systemPrompt,
         executionConfig,
         agentContext

@@ -36,6 +36,14 @@ import type { LLMConfig, LLMCallResult, ExecutionContext, LoopCheckResult } from
 import type { AssistantPart } from '../types/conversationModel'
 import { pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { checkAndHandleCompression as runCompressionCheck } from './contextOptimizer'
+import {
+  beginSessionTrace,
+  finishSessionTrace,
+  recordCompression,
+  recordLoopInterception,
+  recordTokenUsage,
+  recordToolCall,
+} from '../decision/eval/sessionTrajectory'
 import { t, type Language } from '@renderer/i18n'
 
 function getLocalizedText(language: Language, zh: string, en: string): string {
@@ -495,6 +503,9 @@ export async function executeAgentCycle(
 
   const activeScenarioId = useStore.getState().activeScenarioId
   const activeScenario = scenarioRegistry.getActive()
+
+  // 会话轨迹采集：这里只登记缓冲，指标在会话结束时一次算出并交主进程落库
+  beginSessionTrace(threadId, activeScenarioId)
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
   const scenarioTools = activeScenario?.capabilities?.tools || []
 
@@ -991,12 +1002,14 @@ export async function executeAgentCycle(
         output: usageData.completionTokens || 0,
       }
 
+      recordTokenUsage(threadId, usage.input, usage.output)
+
       // 传入 llmMessages：压缩检查发现上下文超限（L2+）且 AI 仍要继续执行时，
       // 会就地清理较早的低价值工具结果，确保下一轮 LLM 请求不超限 ——
       // 压缩后 AI 直接基于压缩后的上下文继续执行，绝不中断主循环。
       // 压缩检查内部含摘要/上下文交接等重逻辑，失败不应中断主循环
       try {
-        await runCompressionCheck(
+        const compression = await runCompressionCheck(
           usage,
           contextLimit,
           threadStore,
@@ -1009,6 +1022,7 @@ export async function executeAgentCycle(
           (result.toolCalls?.length ?? 0) > 0,
           llmMessages
         )
+        recordCompression(threadId, compression.level)
       } catch (compressionErr) {
         logger.agent.warn('[Loop] Compression check failed, continuing main loop:', compressionErr)
       }
@@ -1020,6 +1034,8 @@ export async function executeAgentCycle(
         input: Math.floor(estimatedTokens * 0.9),
         output: Math.floor(estimatedTokens * 0.1),
       }
+
+      recordTokenUsage(threadId, usage.input, usage.output)
 
       if (assistantId) {
         store.updateMessage(assistantId, {
@@ -1036,7 +1052,7 @@ export async function executeAgentCycle(
       // 压缩后 AI 直接基于压缩后的上下文继续执行，绝不中断主循环。
       // 压缩检查内部含摘要/上下文交接等重逻辑，失败不应中断主循环
       try {
-        await runCompressionCheck(
+        const compression = await runCompressionCheck(
           usage,
           contextLimit,
           threadStore,
@@ -1049,6 +1065,7 @@ export async function executeAgentCycle(
           (result.toolCalls?.length ?? 0) > 0,
           llmMessages
         )
+        recordCompression(threadId, compression.level)
       } catch (compressionErr) {
         logger.agent.warn('[Loop] Compression check failed, continuing main loop:', compressionErr)
       }
@@ -1162,6 +1179,11 @@ export async function executeAgentCycle(
         const cycleAdvice = formatCycleMitigationAdvice(language, loopCheck)
 
         logger.agent.warn(`[Loop] Loop detected: ${loopCheck.reason}`)
+        // 被拦下的调用没有执行，但它们是绕路的直接证据，必须进轨迹
+        recordLoopInterception(
+          threadId,
+          result.toolCalls.map(tc => ({ name: tc.name, arguments: tc.arguments })),
+        )
         prunePendingToolInvocations(result.toolCalls)
         threadStore.addSystemAlertPart(assistantId, {
           alertType: 'warning',
@@ -1182,6 +1204,10 @@ export async function executeAgentCycle(
         const warningSuggestion = formatCycleMitigationAdvice(language, loopCheck)
 
         logger.agent.warn(`[Loop] Non-blocking loop warning: ${loopCheck.warning}`)
+        recordLoopInterception(
+          threadId,
+          result.toolCalls.map(tc => ({ name: tc.name, arguments: tc.arguments })),
+        )
         prunePendingToolInvocations(result.toolCalls)
         threadStore.addSystemAlertPart(assistantId, {
           alertType: 'warning',
@@ -1301,6 +1327,11 @@ export async function executeAgentCycle(
         name: toolCall.name,
         arguments: toolCall.arguments,
       }, success)
+      recordToolCall(threadId, {
+        name: toolCall.name,
+        arguments: toolCall.arguments,
+        isError: !success,
+      })
 
       const meta = toolResult.meta
       if (isFileWriteToolResult(toolCall.name, meta)) {
@@ -1442,6 +1473,9 @@ export async function executeAgentCycle(
       }
     }
   }
+
+  // 会话收尾：结算轨迹指标并交主进程落库。采集是旁路，失败不影响会话结果
+  finishSessionTrace(threadId)
 
   if (loopSpan) {
     agentHarness.observability.endSpan(loopSpan)

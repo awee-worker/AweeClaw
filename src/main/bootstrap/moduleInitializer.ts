@@ -35,6 +35,8 @@ import { initHostServices } from '../modules/plugin-sdk/hostServices'
 import { registerPerceptionIpc } from '../modules/perception/PerceptionIpc'
 import { registerPerceptionFusionIpc } from '../modules/perception/PerceptionFusionIpc'
 import { registerMonitoringIpc } from '../modules/monitoring/MonitoringIpc'
+import { registerEffectMetricsIpc } from '../modules/effect-metrics/EffectMetricsIpc'
+import { EffectMetricsService } from '../modules/effect-metrics/EffectMetricsService'
 import { MonitoringService } from '../modules/monitoring/MonitoringService'
 import { registerCausalReasoningIpc } from '../modules/causal-reasoning/CausalReasoningIpc'
 import { CausalReasoningService } from '../modules/causal-reasoning/CausalReasoningService'
@@ -194,6 +196,8 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   await safeInit('PerceptionIpc', initPerceptionIpc)
   // 注册监控层 IPC 处理器（暴露 MonitoringService 给渲染进程）
   await safeInit('MonitoringIpc', initMonitoringIpc)
+  // 注册会话效果 IPC 处理器（暴露 EffectMetricsService 给渲染进程）
+  await safeInit('EffectMetricsIpc', initEffectMetricsIpc)
   // 注册因果推理 IPC 处理器（暴露 CausalReasoningService 给渲染进程）
   await safeInit('CausalReasoningIpc', initCausalReasoningIpc)
   // 注册 IoT Bridge IPC 处理器（暴露 IoTBridge 给渲染进程）
@@ -509,6 +513,24 @@ function initMonitoringIpc(): void {
       })
   } catch (err) {
     logger.system.warn('[Main] Monitoring IPC registration failed:', errMsg(err))
+  }
+}
+
+/**
+ * 注册会话效果 IPC 处理器。
+ *
+ * 把 EffectMetricsService 的能力暴露给渲染进程：渲染层在会话结束时提交轨迹指标，
+ * 效果面板查询时读取聚合报告。数据落在本地 LanceDB，不上报、不依赖后端。
+ */
+function initEffectMetricsIpc(): void {
+  try {
+    registerEffectMetricsIpc()
+    EffectMetricsService.getInstance()
+      .initialize()
+      .then(() => logger.system.info('[Main] Effect metrics store ready'))
+      .catch((err) => logger.system.warn('[Main] Effect metrics init failed:', errMsg(err)))
+  } catch (err) {
+    logger.system.warn('[Main] Effect metrics IPC registration failed:', errMsg(err))
   }
 }
 

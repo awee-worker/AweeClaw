@@ -106,20 +106,24 @@ const GENERAL_ASSISTANT_CAPABILITIES: ScenarioCapabilities = {
 
 const GENERAL_ASSISTANT_UI: ScenarioUI = {
   layout: 'chat-centric',
+  /**
+   * 对话中心场景：打开宽模式面板时保留对话。
+   * 默认值为 true（打开面板即隐藏对话），对通用助手这种以对话为主线的场景不适用。
+   */
+  wideModeHidesChat: false,
   panels: [
     { id: 'chat', component: 'ChatPanel', region: 'primary', defaultVisible: true, resizable: false },
-    { id: 'terminal', component: 'TerminalPanel', region: 'floating', defaultVisible: false },
   ],
   sidebarItems: [
-    { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
-    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1, wideMode: true },
-    { id: 'projects', icon: 'FolderKanban', label: 'Projects', labelZh: '项目', component: 'ProjectsView', position: 2, wideMode: true },
-    { id: 'tasks', icon: 'CheckSquare', label: 'Tasks', labelZh: '任务', component: 'TaskWorkspace', position: 3, wideMode: true },
-    { id: 'automation', icon: 'Zap', label: 'Automation', labelZh: '自动化', component: 'AutomationView', position: 4, wideMode: true },
-    { id: 'plugin-market', icon: 'Store', label: 'Plugin Market', labelZh: '插件与技能市场', component: 'PluginMarketView', position: 5, wideMode: true, hideEditor: true },
+    // 工作区由「新建任务」按需激活，不作为常驻导航项（与 NavigationRail 的兜底项一致）
+    { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0, hidden: true },
+    { id: 'projects', icon: 'FolderKanban', label: 'Projects', labelZh: '项目', component: 'ProjectsView', position: 1, wideMode: true },
+    { id: 'tasks', icon: 'CheckSquare', label: 'Tasks', labelZh: '任务', component: 'TaskWorkspace', position: 2, wideMode: true },
+    { id: 'automation', icon: 'Zap', label: 'Automation', labelZh: '自动化', component: 'AutomationView', position: 3, wideMode: true },
+    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 4, wideMode: true },
+    { id: 'plugin-market', icon: 'Store', label: 'Plugin Market', labelZh: '插件与技能市场', component: 'PluginMarketView', position: 5, wideMode: true },
   ],
   statusBarItems: [],
-  welcomeComponent: 'GeneralWelcomePage',
   welcomeSuggestions: GENERAL_ASSISTANT_WELCOME_SUGGESTIONS,
   welcomeTitle: GENERAL_ASSISTANT_WELCOME_TITLE,
 }

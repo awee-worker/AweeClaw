@@ -89,25 +89,21 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
     activeSidePanel: s.activeSidePanel,
   })))
 
-  // 宽模式面板
+  // 宽模式面板（chat-centric 场景，聊天为主区域）
+  // 是否隐藏聊天由场景配置统一决定（wideModeHidesChat），不再按 panelId 硬编码特例：
+  // 通用助手这类对话中心场景声明 wideModeHidesChat: false，面板与对话并列；
+  // 未声明的场景沿用默认 true，面板独占主区域。
   if (isWideModePanel && activeSidePanel) {
-    // 知识库面板与 Chat 并列展示（参考资料 + 对话），其余面板独占主区域
-    if (activeSidePanel === 'knowledge') {
-      return (
-        <>
-          <FullPageSlot>
-            <PanelSlot><DynamicPanelView panelId="knowledge" /></PanelSlot>
-          </FullPageSlot>
-          {layoutConfig.showChat && chatVisible && <ChatSection visible mode="secondary" />}
-        </>
-      )
-    }
+    const hideChat = layoutConfig.wideModeHidesChat && !layoutConfig.keepChatPanelIds.includes(activeSidePanel)
     return (
-      <FullPageSlot>
-        <PanelSlot>
-          <DynamicPanelView panelId={activeSidePanel} />
-        </PanelSlot>
-      </FullPageSlot>
+      <>
+        <FullPageSlot>
+          <PanelSlot>
+            <DynamicPanelView panelId={activeSidePanel} />
+          </PanelSlot>
+        </FullPageSlot>
+        {layoutConfig.showChat && !hideChat && chatVisible && <ChatSection visible mode="secondary" />}
+      </>
     )
   }
 
@@ -182,14 +178,17 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
   // 用户可通过右上角按钮手动切换 chatVisible，此处仅由 chatVisible 控制显隐
   const shouldHideChat = useMemo(() => {
     if (!chatVisible) return true
-    // 全屏工作台面板（任务/项目/自动化）隐藏聊天，独占主区域
-    const fullScreenPanels = ['tasks', 'projects', 'automation', 'scenarios', 'plugin-market']
-    if (isWideModePanel && activeSidePanel !== 'knowledge' && (layoutConfig.wideModeHidesChat || fullScreenPanels.includes(activeSidePanel ?? ''))) return true
+    // 宽模式面板是否独占主区域完全由场景配置决定：
+    // - wideModeHidesChat（场景级，默认 true）控制整体行为
+    // - keepChat（面板级）为个别面板保留对话，不受场景级设置影响
+    // 需要"默认隐藏但允许用户恢复"的面板请声明 hideChat（见 AweeApp 的 autoHideChatPanelIds）
+    if (isWideModePanel && layoutConfig.wideModeHidesChat
+      && !layoutConfig.keepChatPanelIds.includes(activeSidePanel ?? '')) return true
     // 仅在非编辑器布局下隐藏 chat：编辑器布局由 EditorSlot 处理空状态（EditorWelcome），
     // 不渲染 scenarioWelcomeComponent，此时隐藏 chat 会导致用户无法与 AI 交互
     if (scenarioWelcomeComponent && !layoutConfig.showEditor && activeSidePanel === 'explorer' && !(openFiles.length > 0 && activeFilePath)) return true
     return false
-  }, [chatVisible, isWideModePanel, activeSidePanel, layoutConfig.wideModeHidesChat, layoutConfig.showEditor, scenarioWelcomeComponent, openFiles, activeFilePath])
+  }, [chatVisible, isWideModePanel, activeSidePanel, layoutConfig.wideModeHidesChat, layoutConfig.keepChatPanelIds, layoutConfig.showEditor, scenarioWelcomeComponent, openFiles, activeFilePath])
 
   // 宽模式面板
   if (isWideModePanel && activeSidePanel) {

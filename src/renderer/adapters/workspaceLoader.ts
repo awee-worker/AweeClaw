@@ -135,6 +135,19 @@ export async function hydrateThreadMessages(threadId: string): Promise<void> {
         return currentState
       }
 
+      // 读取磁盘期间线程可能已经进入新的对话轮次（用户抢先发了消息）或正在执行。
+      // 这时内存里的消息比磁盘新，用磁盘快照覆盖会把本轮内容抹掉，会话直接断掉；
+      // 因此只补标记，不动消息。
+      const isBusy = !!currentThread.streamState?.phase && currentThread.streamState.phase !== 'idle'
+      if (currentThread.messages.length > 0 || isBusy) {
+        return {
+          threads: {
+            ...currentState.threads,
+            [threadId]: { ...currentThread, messagesHydrated: true },
+          },
+        }
+      }
+
       return {
         threads: {
           ...currentState.threads,

@@ -24,6 +24,15 @@
 import { logger } from '@shared/toolkit/LogEngine'
 import type { PluginPermission } from '@shared/plugin-sdk/types'
 import type { HostServices } from './hostServices'
+import { createMediaBridge } from './MediaBridge'
+
+// ─── 类型 ──────────────────────────────────────────────────
+
+/** 创建受限代理时的附加信息 */
+export interface GuardedHostOptions {
+  /** 插件数据目录（按插件收窄路径范围的桥会用到） */
+  dataDir?: string
+}
 
 // ─── HostService 能力到权限的映射 ──────────────────────────
 
@@ -54,6 +63,9 @@ import type { HostServices } from './hostServices'
  * - pythonRuntime → python.runtime（复用内置 Python 运行时并执行脚本）
  * - shell → desktop.apps（用系统默认程序打开产物文件 / 外部链接）
  * - nativeImage → 无权限要求（基础图像工具）
+ * - media → media.process（调用内置 ffmpeg 做视频/音频的转码、拼接等重活）
+ * - asr → voice.process（调用本地离线语音引擎做识别）
+ * - tts → voice.process（调用本地离线语音引擎做合成）
  */
 const HOST_SERVICE_PERMISSION_MAP: Partial<Record<keyof HostServices, PluginPermission>> = {
   getDesktopControlManager: 'desktop.input',
@@ -74,6 +86,9 @@ const HOST_SERVICE_PERMISSION_MAP: Partial<Record<keyof HostServices, PluginPerm
   parsePptxFile: 'filesystem.read',
   pythonRuntime: 'python.runtime',
   shell: 'desktop.apps',
+  media: 'media.process',
+  asr: 'voice.process',
+  tts: 'voice.process',
 }
 
 // ─── 合法权限值列表 ────────────────────────────────────────
@@ -101,6 +116,8 @@ const VALID_PERMISSIONS: readonly PluginPermission[] = [
   'ui.render',
   'python.runtime',
   'process.spawn',
+  'media.process',
+  'voice.process',
 ] as const
 
 // ─── 运行时权限注册表 ──────────────────────────────────────
@@ -218,9 +235,18 @@ export function getPluginPermissions(pluginId: string): PluginPermission[] {
  *
  * @param pluginId 插件 ID
  * @param fullHost 完整的 HostServices 实例
+ * @param options.dataDir 插件数据目录（供需要按插件收窄范围的桥使用，如 host.media）
  * @returns 受限代理（Proxy）
  */
-export function createGuardedHostServices(pluginId: string, fullHost: HostServices): HostServices {
+export function createGuardedHostServices(
+  pluginId: string,
+  fullHost: HostServices,
+  options: GuardedHostOptions = {},
+): HostServices {
+  // 媒体桥按插件作用域单独实例化：它的路径白名单要为该插件额外放行 dataDir，
+  // 若直接返回全局单例，所有插件就共享同一份允许根了
+  let scopedMedia: HostServices['media'] | null = null
+
   return new Proxy(fullHost, {
     get(target: HostServices, prop: string | symbol, receiver: unknown): unknown {
       // 非 string 属性（Symbol.iterator 等）直接放行
@@ -243,6 +269,14 @@ export function createGuardedHostServices(pluginId: string, fullHost: HostServic
           `[PermissionGuard] Plugin ${pluginId} accessed '${prop}' without permission '${requiredPermission}'`,
         )
         throw err
+      }
+
+      // 媒体桥需要知道调用方是谁，才能把路径白名单收窄到该插件的数据目录
+      if (prop === 'media') {
+        if (!scopedMedia) {
+          scopedMedia = createMediaBridge({ pluginId, dataDir: options.dataDir })
+        }
+        return scopedMedia
       }
 
       return Reflect.get(target, prop, receiver)

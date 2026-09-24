@@ -36,6 +36,7 @@ import {
   type TaskSampleOutcome,
 } from './metrics'
 import type { EvalReport } from './types'
+import type { TrajectoryMetrics } from './trajectory'
 import type { ObservabilityBus } from '@intelligence/harness/observability'
 import {
   appendBaseline,
@@ -127,6 +128,7 @@ export function buildEvalReport(
   outcomes: TaskSampleOutcome[] = runTaskEval(),
   pruneOutcomes: PruneSampleOutcome[] = runPruneEval(),
   commandRiskOutcomes: CommandRiskOutcome[] = runCommandRiskEval(),
+  trajectory?: TrajectoryMetrics,
 ): EvalReport {
   return {
     generatedAt: new Date().toISOString(),
@@ -156,6 +158,7 @@ export function buildEvalReport(
     ],
     pruning: computePruneMetrics(pruneOutcomes),
     commandRisk: computeCommandRiskMetrics(commandRiskOutcomes),
+    ...(trajectory ? { trajectory } : {}),
   }
 }
 

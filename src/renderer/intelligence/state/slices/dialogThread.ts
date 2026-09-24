@@ -154,6 +154,19 @@ async function ensureThreadLoadedImpl(
     // 懒加载消息体
     const thread = get().threads[threadId]
     if (thread?.messagesHydrated === false) {
+        // 内存里已经有消息（新消息刚写入，或本轮正在执行）说明本地内容比磁盘新，
+        // 此时用磁盘快照覆盖会让对话断在这里，因此只补标记、不替换消息。
+        const isBusy = !!thread.streamState?.phase && thread.streamState.phase !== 'idle'
+        if (thread.messages.length > 0 || isBusy) {
+            set(s => ({
+                threads: {
+                    ...s.threads,
+                    [threadId]: { ...s.threads[threadId], messagesHydrated: true },
+                },
+            }))
+            return
+        }
+
         try {
             const messages = await agentSessionRepository.loadThreadMessages(threadId)
             set(s => ({

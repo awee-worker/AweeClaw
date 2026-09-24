@@ -3,8 +3,6 @@
  *
  * UI1：问候语随场景模式变化，多句轮换
  * UI3：当前场景模式的内置工具列表（5-6个核心工具 + 更多工具入口）
- *
- * @see {@link file:///Volumes/MacData/Ai/aweeclaw/aweeclaw-client/docs/scene-modes/06-ui-differentiation.md}
  */
 
 import { useState, useCallback, useMemo, useRef } from 'react'
@@ -143,7 +141,7 @@ export default function EmptyChatSuggestions() {
     setPendingSceneToolId(toolId)
   }, [setActiveSidePanel, setPendingSceneToolId])
 
-  // 点击"更多工具"：打开场景工具面板
+  // 点击「更多工具」：打开场景工具面板
   const handleMoreTools = useCallback(() => {
     if (activeSidePanel === 'scene-tools') {
       setActiveSidePanel(null)

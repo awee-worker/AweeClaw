@@ -53,7 +53,14 @@ async function assembleWith(task: MountedTaskInfo) {
   const userContent = assembler.assembleUserMessage('继续', '')
   const result = assembler.assemble(HISTORY, userContent, 'SYSTEM', 0, { mountedTask: task })
 
-  return result.messages.map(message => String(message.content ?? '')).join('\n')
+  // 续跑说明跟随本轮用户消息下发（内容为多段文本数组），这里把文本段拼平后再断言
+  return result.messages
+    .map(message =>
+      Array.isArray(message.content)
+        ? message.content.map(part => (part as { text?: string }).text ?? '').join('')
+        : String(message.content ?? ''),
+    )
+    .join('\n')
 }
 
 describe('挂载任务续跑上下文', () => {

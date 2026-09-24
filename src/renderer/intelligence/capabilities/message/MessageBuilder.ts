@@ -172,20 +172,30 @@ export class MessageAssembler {
       : history
 
     const llmMessages = buildLLMApiMessages(messagesToConvert, systemPrompt)
-    // 摘要仅在确实发生压缩（L2+）时注入，避免低等级/新话题把陈旧摘要混入上下文
-    const runtimeStateMessage = this.buildRuntimeStateMessage(runtimeState, compressionLevel >= 2)
-    if (runtimeStateMessage) {
-      llmMessages.push(runtimeStateMessage)
-    }
+
+    // 运行时状态（待办 / 续跑情况 / 会话摘要）跟随本轮用户消息一起发送，而不是单独
+    // 插一条 assistant 消息。插成 assistant 时，模型的「上一轮回复」会变成这份应用
+    // 状态快照 —— 历史里真正的回复被顶到更早的位置，模型于是不知道自己刚才说了什么，
+    // 整段会话失去连贯性（陈旧待办还会把话题带回早已完成的任务）。
+    // 摘要同样仅在确实发生压缩（L2+）时注入，避免低等级/新话题把陈旧摘要混入上下文。
+    const runtimeStateText = this.buildRuntimeStateText(runtimeState, compressionLevel >= 2)
+    const userMessageContent: MessageContent = runtimeStateText
+      ? [
+          { type: 'text', text: `${runtimeStateText}\n\n` },
+          ...(typeof userMessage.combined === 'string'
+            ? [{ type: 'text' as const, text: userMessage.combined }]
+            : userMessage.combined),
+        ]
+      : userMessage.combined
 
     llmMessages.push({
       role: 'user',
-      content: userMessage.combined,
+      content: userMessageContent,
     })
 
     const historyTokens = this.compressor.estimateTokens(history)
     const systemPromptTokens = countTokens(systemPrompt)
-    const runtimeTokens = runtimeStateMessage ? countTokens(String(runtimeStateMessage.content || '')) : 0
+    const runtimeTokens = runtimeStateText ? countTokens(runtimeStateText) : 0
     const estimatedTokens = historyTokens + systemPromptTokens + runtimeTokens + userMessage.estimatedTokens
 
     logger.agent.info(
@@ -200,7 +210,14 @@ export class MessageAssembler {
     }
   }
 
-  private buildRuntimeStateMessage(runtimeState?: RuntimeStateContext, injectSummary = false): LLMMessage | null {
+  /**
+   * 组装运行时状态说明（待办 / 续跑情况 / 会话摘要）
+   *
+   * 返回纯文本，由调用方拼进本轮用户消息。刻意不返回 assistant 消息：
+   * 应用状态不是模型说过的话，把它伪装成一轮 assistant 会让模型误以为那是
+   * 自己刚给出的回复，从而「忘掉」真正的上一轮回复。
+   */
+  private buildRuntimeStateText(runtimeState?: RuntimeStateContext, injectSummary = false): string | null {
     if (!runtimeState) return null
 
     const sections: string[] = []
@@ -267,22 +284,27 @@ export class MessageAssembler {
       sections.push(mountedLines.join('\n'))
     }
 
-    if (runtimeState.todos && runtimeState.todos.length > 0) {
-      const todoLines = runtimeState.todos
+    // 只带未完成的待办：已完成的清单是过期噪音，注入后会把模型拉回早已结束的
+    // 任务上（历史里 todo_write 的结果已经记录过这些条目，无需重复提醒）。
+    const openTodos = (runtimeState.todos || []).filter(todo => todo.status !== 'completed')
+    if (openTodos.length > 0) {
+      const todoLines = openTodos
         .slice(0, 12)
         .map(todo => `- [${todo.status}] ${todo.status === 'in_progress' ? todo.activeForm : todo.content}`)
         .join('\n')
-      sections.push(`## Runtime Task List\n\nThis is application state, not a fresh user request.\n${todoLines}`)
+      sections.push(`## Open Task List\n\nThis is application state, not a fresh user request.\n${todoLines}`)
     }
 
     if (sections.length === 0) {
       return null
     }
 
-    return {
-      role: 'assistant',
-      content: `Application runtime state snapshot.\nTreat this as resume context only.\n\n${sections.join('\n\n')}`,
-    }
+    return [
+      '## Application Runtime State (attached to this request, not a previous assistant reply)',
+      'Treat it as background state only — answer the user request that follows.',
+      '',
+      sections.join('\n\n'),
+    ].join('\n')
   }
 
   private estimateMessageTokens(content: MessageContent): number {

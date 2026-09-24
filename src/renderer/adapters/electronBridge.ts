@@ -569,6 +569,9 @@ function createGroupedAPI() {
     // 项目附件本地存储（本地优先，后端兜底）（自动分组：attachmentXxx → attachment.xxx）
     attachment: createGroup(raw, 'attachment'),
 
+    // 会话效果度量（preload 已按组暴露，直接透传）
+    effectMetrics: raw.effectMetrics,
+
     // LLM
     llm: {
       send: (params: Parameters<typeof raw.sendMessage>[0]) => raw.sendMessage(params),
