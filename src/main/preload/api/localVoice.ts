@@ -99,6 +99,15 @@ export function createLocalVoiceApi() {
       ipcRenderer.invoke('local-voice:delete-model', params) as Promise<IpcResponse<{ modelId: string; removed: boolean }>>,
 
     // --------------------------------------------
+    // 参考音频（ZipVoice 零样本克隆）
+    // --------------------------------------------
+    /** 打开系统文件对话框选择参考音频 */
+    selectReferenceAudio: () =>
+      ipcRenderer.invoke('local-voice:select-reference-audio') as Promise<
+        IpcResponse<{ canceled: boolean; filePath: string }>
+      >,
+
+    // --------------------------------------------
     // 事件订阅
     // --------------------------------------------
     /** 下载进度 */

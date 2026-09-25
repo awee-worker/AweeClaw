@@ -1165,6 +1165,16 @@ export const en = {
   'provider.localVoice.ttsModel': 'TTS Model',
   'provider.localVoice.ttsVoice': 'Default Voice',
   'provider.localVoice.ttsSpeed': 'Default Speed',
+  'provider.localVoice.zipvoiceRefAudio': 'Reference Audio',
+  'provider.localVoice.zipvoiceSelectAudio': 'Choose File',
+  'provider.localVoice.zipvoiceRefAudioPlaceholder': 'Choose or paste an audio file path',
+  'provider.localVoice.zipvoiceRefAudioHint':
+    'ZipVoice clones the voice from this clip; 5-15s of clean speech works best.',
+  'provider.localVoice.zipvoiceRefText': 'Reference Text',
+  'provider.localVoice.zipvoiceRefTextPlaceholder':
+    'Type exactly what is said in the reference audio',
+  'provider.localVoice.zipvoiceRefTextHint':
+    'Must match the reference audio word for word, or cloning quality drops noticeably.',
   'provider.localVoice.gptSovitsTitle': 'Voice Clone (GPT-SoVITS)',
   'provider.localVoice.gptSovitsDescription': 'Voice cloning using reference audio',
   'provider.localVoice.gptSovitsEnabled': 'Enable GPT-SoVITS',

@@ -1166,6 +1166,15 @@ export const zh = {
   'provider.localVoice.ttsModel': 'TTS 模型',
   'provider.localVoice.ttsVoice': '默认音色',
   'provider.localVoice.ttsSpeed': '默认语速',
+  'provider.localVoice.zipvoiceRefAudio': '参考音频',
+  'provider.localVoice.zipvoiceSelectAudio': '选择文件',
+  'provider.localVoice.zipvoiceRefAudioPlaceholder': '选择或粘贴音频文件路径',
+  'provider.localVoice.zipvoiceRefAudioHint':
+    'ZipVoice 用这段音频的音色来合成，建议 5~15 秒清晰人声。',
+  'provider.localVoice.zipvoiceRefText': '参考文本',
+  'provider.localVoice.zipvoiceRefTextPlaceholder': '逐字填写参考音频里说的话',
+  'provider.localVoice.zipvoiceRefTextHint':
+    '必须与参考音频内容完全一致，不一致会明显影响克隆质量。',
   'provider.localVoice.gptSovitsTitle': '声音克隆（GPT-SoVITS）',
   'provider.localVoice.gptSovitsDescription': '使用参考音频进行声音克隆',
   'provider.localVoice.gptSovitsEnabled': '启用 GPT-SoVITS',

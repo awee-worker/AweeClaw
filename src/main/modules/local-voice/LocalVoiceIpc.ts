@@ -15,7 +15,7 @@
  * @module local-voice/LocalVoiceIpc
  */
 
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, dialog, type OpenDialogOptions } from 'electron'
 import { safeIpcHandle } from '../../bridge/core/ipcGuard'
 import { logger } from '@shared/toolkit/LogEngine'
 import { LocalVoiceManager } from './LocalVoiceManager'
@@ -180,6 +180,37 @@ export function registerLocalVoiceIpc(): void {
       }
     } catch (err) {
       logger.system.error('[LocalVoice] synthesize-gpt-sovits failed:', err)
+      return fail(err)
+    }
+  })
+
+  // --------------------------------------------
+  // 参考音频选择（ZipVoice 零样本克隆）
+  // --------------------------------------------
+  safeIpcHandle('local-voice:select-reference-audio', async (event) => {
+    try {
+      // 以调用方窗口为父窗口：macOS 上不指定父窗口的对话框会脱离应用上下文弹出
+      const currentWindow = BrowserWindow.fromWebContents(event.sender)
+      const options: OpenDialogOptions = {
+        title: '选择参考音频',
+        properties: ['openFile'],
+        filters: [
+          { name: '音频文件', extensions: ['wav', 'mp3', 'flac', 'm4a', 'ogg'] },
+          { name: '全部文件', extensions: ['*'] },
+        ],
+      }
+
+      const result = currentWindow
+        ? await dialog.showOpenDialog(currentWindow, options)
+        : await dialog.showOpenDialog(options)
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: true, data: { canceled: true, filePath: '' } }
+      }
+
+      return { success: true, data: { canceled: false, filePath: result.filePaths[0] } }
+    } catch (err) {
+      logger.system.error('[LocalVoice] select-reference-audio failed:', err)
       return fail(err)
     }
   })

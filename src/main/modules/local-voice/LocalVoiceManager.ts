@@ -34,7 +34,7 @@ import type { ModelMetadata } from './ModelDownloader'
 import {
   normalizeTtsModelId,
   resolveVoiceForModel,
-  VITS_MODEL_VOICES,
+  SHERPA_TTS_MODEL_IDS,
 } from '@shared/localVoiceVoices'
 import { SherpaAsrEngine, type AsrResult } from './engines/SherpaAsrEngine'
 import { SherpaTtsEngine, type TtsResult } from './engines/SherpaTtsEngine'
@@ -243,14 +243,14 @@ export class LocalVoiceManager {
    * 按 `tts.modelName` 创建 TTS 引擎
    *
    * 早期实现硬编码 `new SherpaTtsEngine`，导致模型清单里新增的模型即使下载完成
-   * 也无法被使用。VITS 与 MOSS 的运行时、Python 依赖与音色体系完全独立，
-   * 必须按模型分派。
+   * 也无法被使用。sherpa-onnx 家族（VITS / Matcha / Kokoro / ZipVoice）与 MOSS 的
+   * 运行时、Python 依赖与音色体系完全独立，必须按模型分派。
    */
   private createTtsEngine(): SherpaTtsEngine | VitsTtsEngine {
     const modelId = normalizeTtsModelId(this.config.tts.modelName)
 
-    if (modelId in VITS_MODEL_VOICES) {
-      logger.system.info(`[LocalVoice] 使用 VITS TTS 引擎（模型: ${modelId}）`)
+    if (SHERPA_TTS_MODEL_IDS.includes(modelId)) {
+      logger.system.info(`[LocalVoice] 使用 sherpa-onnx TTS 引擎（模型: ${modelId}）`)
       return new VitsTtsEngine(this.config.tts)
     }
 

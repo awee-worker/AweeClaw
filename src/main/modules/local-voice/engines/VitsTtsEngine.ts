@@ -1,12 +1,15 @@
 /**
  * VITS TTS 引擎（离线语音合成）
+ * Sherpa-ONNX TTS 引擎（离线语音合成）
  *
- * 通过 Python sidecar 调用 sherpa-onnx 的 `OfflineTts` 完成推理。
+ * 通过 Python sidecar 调用 sherpa-onnx 的 `OfflineTts` 完成推理，承载全部由
+ * sherpa-onnx 驱动的模型；具体架构由 Python 侧按模型目录的文件特征识别：
+ * VITS / Matcha / Kokoro / ZipVoice，权重与词典均由模型仓库整体提供、按目录加载。
+ *
  * 与 SherpaTtsEngine（MOSS）的差异：
- * 1. 音色是整数 speaker id，不是音色名；
- * 2. 权重、词表与分词词典由模型仓库整体提供，按目录加载；
+ * 1. 多说话人模型的音色是整数 speaker id，不是音色名；
+ * 2. ZipVoice 没有音色表，音色由参考音频决定（见 zipvoiceReference* 配置）；
  * 3. 依赖 sherpa-onnx，与 MOSS 所需的 onnxruntime 互不重叠。
- *
  * 设计要点：
  * 1. 懒加载：首次使用时才初始化引擎，避免启动时加载重型依赖
  * 2. 异步执行：推理任务放到 sidecar 进程，不阻塞主进程
@@ -169,6 +172,9 @@ export class VitsTtsEngine {
         speed: speed || this.config.defaultSpeed,
         modelDir: this.getModelPath(),
         threadCount: this.config.numThreads,
+        // 仅供 ZipVoice 使用，其他架构的 Python 侧会忽略这两个字段
+        referenceAudio: this.config.zipvoiceReferenceAudio || '',
+        referenceText: this.config.zipvoiceReferenceText || '',
       },
       SYNTHESIZE_TIMEOUT_MS,
     )

@@ -121,7 +121,8 @@ const GENERAL_ASSISTANT_UI: ScenarioUI = {
     { id: 'tasks', icon: 'CheckSquare', label: 'Tasks', labelZh: '任务', component: 'TaskWorkspace', position: 2, wideMode: true },
     { id: 'automation', icon: 'Zap', label: 'Automation', labelZh: '自动化', component: 'AutomationView', position: 3, wideMode: true },
     { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 4, wideMode: true },
-    { id: 'plugin-market', icon: 'Store', label: 'Plugin Market', labelZh: '插件与技能市场', component: 'PluginMarketView', position: 5, wideMode: true },
+    // 插件市场以浏览/安装为主线，进入时自动隐藏对话窗口让面板独占主区域（用户可手动恢复显示）
+    { id: 'plugin-market', icon: 'Store', label: 'Plugin Market', labelZh: '插件与技能市场', component: 'PluginMarketView', position: 5, wideMode: true, hideChat: true },
   ],
   statusBarItems: [],
   welcomeSuggestions: GENERAL_ASSISTANT_WELCOME_SUGGESTIONS,

@@ -76,6 +76,27 @@ export const VITS_MODEL_IDS = {
 } as const
 
 /**
+ * Matcha 模型 ID（中文单音色，22050Hz）
+ *
+ * 声学模型与声码器分离：声码器在下载阶段作为附加文件单独获取。
+ */
+export const MATCHA_MODEL_ID = 'sherpa-tts-matcha-zh-baker'
+
+/**
+ * Kokoro 模型 ID（中英混读，103 音色，24000Hz）
+ *
+ * 音色带官方语义化名称（sid → name），与 VITS 的纯编号音色不同。
+ */
+export const KOKORO_MODEL_ID = 'sherpa-tts-kokoro-multi-lang-v1-1'
+
+/**
+ * ZipVoice 模型 ID（中英零样本克隆，24000Hz）
+ *
+ * 音色来自用户提供的参考音频，模型本身不含音色表。
+ */
+export const ZIPVOICE_MODEL_ID = 'sherpa-tts-zipvoice-zh-en'
+
+/**
  * 历史模型名 → 模型 ID
  *
  * `tts.modelName` 早期直接存 MOSS 的模型目录名，为兼容已落盘的配置保留映射。
@@ -125,10 +146,85 @@ export const VITS_MODEL_VOICES: Record<string, readonly BuiltinVoice[]> = {
   ],
 }
 
+// ============================================
+// 多架构模型（Matcha / Kokoro / ZipVoice）
+// ============================================
+
+/**
+ * Kokoro v1.1 的音色名（数组下标即 speaker id）
+ *
+ * 顺序与名称取自模型发布方的 sid → name 映射表，不可重排：
+ * 一旦错位，选项就会与实际合成出的音色对不上。
+ * 前缀含义：af 美式女声 / bf 英式女声 / zf 中文女声 / zm 中文男声。
+ */
+const KOKORO_SPEAKER_NAMES = [
+  'af_maple', 'af_sol', 'bf_vale',
+  'zf_001', 'zf_002', 'zf_003', 'zf_004', 'zf_005', 'zf_006', 'zf_007', 'zf_008',
+  'zf_017', 'zf_018', 'zf_019', 'zf_021', 'zf_022', 'zf_023', 'zf_024', 'zf_026',
+  'zf_027', 'zf_028', 'zf_032', 'zf_036', 'zf_038', 'zf_039', 'zf_040', 'zf_042',
+  'zf_043', 'zf_044', 'zf_046', 'zf_047', 'zf_048', 'zf_049', 'zf_051', 'zf_059',
+  'zf_060', 'zf_067', 'zf_070', 'zf_071', 'zf_072', 'zf_073', 'zf_074', 'zf_075',
+  'zf_076', 'zf_077', 'zf_078', 'zf_079', 'zf_083', 'zf_084', 'zf_085', 'zf_086',
+  'zf_087', 'zf_088', 'zf_090', 'zf_092', 'zf_093', 'zf_094', 'zf_099',
+  'zm_009', 'zm_010', 'zm_011', 'zm_012', 'zm_013', 'zm_014', 'zm_015', 'zm_016',
+  'zm_020', 'zm_025', 'zm_029', 'zm_030', 'zm_031', 'zm_033', 'zm_034', 'zm_035',
+  'zm_037', 'zm_041', 'zm_045', 'zm_050', 'zm_052', 'zm_053', 'zm_054', 'zm_055',
+  'zm_056', 'zm_057', 'zm_058', 'zm_061', 'zm_062', 'zm_063', 'zm_064', 'zm_065',
+  'zm_066', 'zm_068', 'zm_069', 'zm_080', 'zm_081', 'zm_082', 'zm_089', 'zm_091',
+  'zm_095', 'zm_096', 'zm_097', 'zm_098', 'zm_100',
+] as const
+
+/**
+ * 由 Kokoro 的 sid → name 映射构造选项
+ *
+ * 发布方没有提供风格描述，只有编号与语种/性别前缀，
+ * 因此展示名按前缀归类生成，不额外编造风格标签。
+ */
+function buildKokoroVoices(): BuiltinVoice[] {
+  return KOKORO_SPEAKER_NAMES.map((name, sid) => {
+    if (name.startsWith('zf_')) {
+      return { voice: String(sid), displayName: `中文女声 ${name.slice(3)}`, group: '中文 · 女声' }
+    }
+    if (name.startsWith('zm_')) {
+      return { voice: String(sid), displayName: `中文男声 ${name.slice(3)}`, group: '中文 · 男声' }
+    }
+    if (name.startsWith('bf_')) {
+      return { voice: String(sid), displayName: `英式女声 ${name.slice(3)}`, group: '英文 · 女声' }
+    }
+    return { voice: String(sid), displayName: `美式女声 ${name.slice(3)}`, group: '英文 · 女声' }
+  })
+}
+
+/** Matcha / Kokoro / ZipVoice 的音色清单 */
+export const SHERPA_EXTRA_MODEL_VOICES: Record<string, readonly BuiltinVoice[]> = {
+  [MATCHA_MODEL_ID]: [
+    { voice: '0', displayName: '默认音色（中文女声）', group: '中文 · 单音色' },
+  ],
+  [KOKORO_MODEL_ID]: buildKokoroVoices(),
+  // 零样本克隆的音色由参考音频决定，此处仅作占位，保证音色校验不会因清单为空而回退到 MOSS
+  [ZIPVOICE_MODEL_ID]: [
+    { voice: '0', displayName: '零样本克隆（使用参考音频）', group: '零样本 · 参考音频' },
+  ],
+}
+
+/**
+ * 由 sherpa-onnx 驱动的 TTS 模型
+ *
+ * VITS / Matcha / Kokoro / ZipVoice 共用同一个 Python sidecar 与同一套依赖，
+ * MOSS 走另一套运行时（onnxruntime + sentencepiece），不在此列。
+ */
+export const SHERPA_TTS_MODEL_IDS: readonly string[] = [
+  ...Object.values(VITS_MODEL_IDS),
+  MATCHA_MODEL_ID,
+  KOKORO_MODEL_ID,
+  ZIPVOICE_MODEL_ID,
+]
+
 /** 模型 ID → 音色清单（含 MOSS） */
 export const MODEL_VOICE_CATALOG: Record<string, readonly BuiltinVoice[]> = {
   [MOSS_MODEL_ID]: MOSS_BUILTIN_VOICES,
   ...VITS_MODEL_VOICES,
+  ...SHERPA_EXTRA_MODEL_VOICES,
 }
 
 /**

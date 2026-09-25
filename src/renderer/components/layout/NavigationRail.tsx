@@ -586,9 +586,20 @@ export default function NavigationRail() {
   // 仪表盘（欢迎页）选中态
   const isDashboardActive = showWelcomePage
 
-  // 仪表盘界面时，不显示历史会话的高亮选中（用户未实际处于某个会话中，
-  // 避免"进入应用在仪表盘，但历史列表某条仍被高亮"的误选感）
+  /**
+   * 声明了 hideChat 的侧边栏面板：激活时会接管主内容区并隐藏对话窗口，
+   * 此时用户已经离开会话视图，历史会话列表不应再保持选中高亮；
+   * 点击历史会话时也据此退出该面板、恢复对话窗口（见 handleSelectThread）。
+   */
+  const hideChatPanelIds = useMemo(() => {
+    const items = scenarioRegistry.get(activeScenarioId)?.ui?.sidebarItems ?? []
+    return new Set(items.filter(item => item.hideChat).map(item => item.id))
+  }, [activeScenarioId])
+
+  // 仪表盘界面、或停留在接管主区域的 hideChat 面板时，不显示历史会话的高亮选中
+  //（用户未实际处于某个会话中，避免"界面已切走、但历史列表某条仍被高亮"的误选感）
   const threadHighlightEnabled = !showWelcomePage
+    && !(activeSidePanel && hideChatPanelIds.has(activeSidePanel))
 
   // 新建任务不参与高亮：它是动作入口（打开工作区文件面板 + 新建会话），
   // 当前会话的选中态统一由下方历史会话列表体现（currentThreadId === thread.id）。
@@ -685,6 +696,16 @@ export default function NavigationRail() {
     }
     setRenamingThreadId(null)
   }, [renamingThreadId, renameValue, renameThread])
+
+  // 点击历史会话：若当前停留在接管主区域的 hideChat 面板（如插件与技能市场），
+  // 先退出该面板并恢复对话窗口，再切换会话，确保用户真正回到会话界面
+  const handleSelectThread = useCallback((threadId: string) => {
+    if (activeSidePanel && hideChatPanelIds.has(activeSidePanel)) {
+      setActiveSidePanel(null)
+      setChatVisible(true)
+    }
+    void switchThread(threadId)
+  }, [activeSidePanel, hideChatPanelIds, setActiveSidePanel, setChatVisible, switchThread])
 
   const userInitial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
   const userDisplayName = formatUserDisplayName(cloudUser?.username || cloudUser?.email || cloudUser?.phone || '')
@@ -1185,7 +1206,7 @@ export default function NavigationRail() {
                       thread={thread}
                        isActive={threadHighlightEnabled && currentThreadId === thread.id}
                       language={language}
-                      onSelect={() => switchThread(thread.id)}
+                      onSelect={() => handleSelectThread(thread.id)}
                       onDelete={() => deleteThread(thread.id)}
                       onRename={handleRenameThread}
                     />
@@ -1215,7 +1236,7 @@ export default function NavigationRail() {
                   delay={400}
                 >
                   <button
-                    onClick={() => switchThread(thread.id)}
+                    onClick={() => handleSelectThread(thread.id)}
                     className={`relative w-[30px] h-[30px] rounded-md flex items-center justify-center transition-all ${
                       threadHighlightEnabled && currentThreadId === thread.id
                         ? 'bg-accent/10 text-accent'

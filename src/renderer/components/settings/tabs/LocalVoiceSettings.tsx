@@ -43,6 +43,7 @@ import {
   getBuiltinVoicesForModel,
   normalizeTtsModelId,
   resolveVoiceForModel,
+  ZIPVOICE_MODEL_ID,
 } from '@shared/localVoiceVoices'
 
 /** 引擎状态 */
@@ -72,6 +73,10 @@ interface LocalVoiceConfig {
     numThreads: number
     defaultVoice: string
     defaultSpeed: number
+    /** ZipVoice 零样本克隆的参考音频（绝对路径），仅 ZipVoice 模型下生效 */
+    zipvoiceReferenceAudio?: string
+    /** ZipVoice 参考音频对应的文本，需与音频内容一致 */
+    zipvoiceReferenceText?: string
   }
   gptSovits: {
     enabled: boolean
@@ -415,6 +420,24 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
       return { ...prev, tts: { ...prev.tts, modelName: modelId, defaultVoice: voice } }
     })
   }, [])
+
+  // 选择 ZipVoice 参考音频
+  // 路径必须由系统对话框产生：桌面端让用户手抄绝对路径几乎不可行
+  const handleSelectReferenceAudio = useCallback(async () => {
+    try {
+      const res = await api.localVoice.selectReferenceAudio()
+      if (!res?.success) {
+        throw new Error(res?.error || '打开文件对话框失败')
+      }
+      const filePath = res.data?.filePath || ''
+      if (filePath) {
+        updateConfig('tts.zipvoiceReferenceAudio', filePath)
+      }
+    } catch (error) {
+      console.warn('[LocalVoiceSettings] 选择参考音频失败:', error)
+      toast.error(error instanceof Error ? error.message : '选择参考音频失败')
+    }
+  }, [updateConfig])
 
   // 测试引擎
   const handleTest = useCallback(async (engineType: 'asr' | 'tts' | 'gpt-sovits') => {
@@ -864,6 +887,59 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
                       ))}
                     </select>
                   </div>
+
+                  {/* ZipVoice 是零样本克隆：音色由参考音频决定，必须额外提供音频与对应文本 */}
+                  {normalizeTtsModelId(config.tts.modelName) === ZIPVOICE_MODEL_ID && (
+                    <div className="p-3 rounded-md border border-border/50 bg-surface/40 space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-text-primary mb-1">
+                          {t('provider.localVoice.zipvoiceRefAudio', language)}
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={config.tts.zipvoiceReferenceAudio || ''}
+                            onChange={(e) =>
+                              updateConfig('tts.zipvoiceReferenceAudio', e.target.value)
+                            }
+                            placeholder={t(
+                              'provider.localVoice.zipvoiceRefAudioPlaceholder',
+                              language,
+                            )}
+                            className="flex-1 min-w-0 p-2 border border-border rounded-md text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleSelectReferenceAudio}
+                            className="shrink-0 px-3 py-2 rounded-md border border-border text-sm hover:bg-surface"
+                          >
+                            {t('provider.localVoice.zipvoiceSelectAudio', language)}
+                          </button>
+                        </div>
+                        <p className="text-xs text-text-muted mt-1">
+                          {t('provider.localVoice.zipvoiceRefAudioHint', language)}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-text-primary mb-1">
+                          {t('provider.localVoice.zipvoiceRefText', language)}
+                        </label>
+                        <input
+                          type="text"
+                          value={config.tts.zipvoiceReferenceText || ''}
+                          onChange={(e) =>
+                            updateConfig('tts.zipvoiceReferenceText', e.target.value)
+                          }
+                          placeholder={t('provider.localVoice.zipvoiceRefTextPlaceholder', language)}
+                          className="w-full p-2 border border-border rounded-md text-sm"
+                        />
+                        <p className="text-xs text-text-muted mt-1">
+                          {t('provider.localVoice.zipvoiceRefTextHint', language)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-text-primary mb-1">

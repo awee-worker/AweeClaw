@@ -70,6 +70,14 @@ export interface TtsEngineConfig {
   defaultVoice: string
   /** 默认语速 */
   defaultSpeed: number
+  /**
+   * ZipVoice 参考音频（绝对路径）
+   *
+   * 零样本克隆的音色由这段音频决定，仅在 ZipVoice 模型下生效。
+   */
+  zipvoiceReferenceAudio?: string
+  /** ZipVoice 参考音频对应的文本，须与音频内容一致，否则克隆质量明显下降 */
+  zipvoiceReferenceText?: string
 }
 
 /** GPT-SoVITS 引擎配置 */
@@ -131,6 +139,9 @@ export const DEFAULT_LOCAL_VOICE_CONFIG: LocalVoiceConfig = {
     numThreads: 4,
     defaultVoice: 'Junhao',
     defaultSpeed: 1.0,
+    // ZipVoice 零样本克隆的参考音频：留空时合成会明确报错并给出设置指引
+    zipvoiceReferenceAudio: '',
+    zipvoiceReferenceText: '',
   },
   gptSovits: {
     enabled: false,

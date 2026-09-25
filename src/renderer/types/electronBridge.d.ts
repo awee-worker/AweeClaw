@@ -3859,6 +3859,12 @@ export interface ElectronAPI {
     getModelDir: (params: { modelId: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>
     /** 删除已下载模型 */
     deleteModel: (params: { modelId: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 打开系统文件对话框选择 ZipVoice 参考音频 */
+    selectReferenceAudio: () => Promise<{
+      success: boolean
+      data?: { canceled: boolean; filePath: string }
+      error?: string
+    }>
     /** 订阅下载进度 */
     onDownloadProgress: (callback: (progress: unknown) => void) => () => void
   }

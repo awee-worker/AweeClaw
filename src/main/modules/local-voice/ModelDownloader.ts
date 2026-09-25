@@ -20,6 +20,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as crypto from 'crypto'
+import { execFile } from 'child_process'
 import { logger } from '@shared/toolkit/LogEngine'
 import type { LocalVoiceConfig } from './LocalVoiceStore'
 import { isErrorPageContent } from './modelFileValidator'
@@ -60,6 +61,22 @@ export interface RepoDownloadSource {
   excludeFiles?: string[]
 }
 
+/**
+ * 仓库快照之外的附加文件
+ *
+ * 用于「主体权重在模型仓库、声码器单独发布」的模型：Matcha 与 ZipVoice 的
+ * 声码器只在 sherpa-onnx 的 GitHub Releases 提供，不属于任何仓库快照。
+ */
+export interface ExtraDownloadItem extends DownloadItem {
+  /**
+   * 目标子目录名（相对模型根目录）
+   *
+   * 与 `repos[].dirName` 对齐——仓库快照模型（如 Matcha）需写入同一层；
+   * 单文件模型（如 ZipVoice）省略该字段表示直接落在模型根目录。
+   */
+  dirName?: string
+}
+
 export interface ModelMetadata {
   /** 模型 ID */
   id: string
@@ -81,6 +98,13 @@ export interface ModelMetadata {
   downloadItemsBySource?: Record<'modelscope' | 'huggingface', DownloadItem[]>
   /** 仓库级下载源（整仓快照，优先级高于 downloadItems） */
   repos?: RepoDownloadSource[]
+  /**
+   * 仓库快照之外的附加文件（如 Matcha / ZipVoice 的声码器）
+   *
+   * 独立于 `repos` 与 `downloadItems`：无论主体走哪种方式，完成后统一追加下载。
+   * 注意不要把它计入「是否带下载项」的判断——ZipVoice 靠该判断让目标目录带上模型名。
+   */
+  extraItems?: ExtraDownloadItem[]
   /** 关键文件（相对模型根目录）：全部存在才视为已下载完成 */
   criticalFiles?: string[]
   /** 文件校验和（MD5 或 SHA256） */
@@ -184,6 +208,9 @@ const SNIFF_MAX_BYTES = 64 * 1024
 /** 单次请求超时（毫秒） */
 const REQUEST_TIMEOUT_MS = 30 * 60 * 1000
 
+/** 归档解压超时（毫秒）：几百 MB 的 tar.bz2 在慢盘上解压需要较长时间 */
+const ARCHIVE_EXTRACT_TIMEOUT_MS = 10 * 60 * 1000
+
 /** 下载被用户取消（与失败区分：取消不重试、不报错、不留残文件） */
 export class DownloadCancelledError extends Error {
   constructor() {
@@ -198,6 +225,29 @@ function isCancelledError(err: unknown, signal?: AbortSignal): boolean {
   if (signal?.aborted) return true
   return (err as { name?: string } | null)?.name === 'AbortError'
 }
+
+/** 判断是否为 GitHub 的文件下载地址（Releases 附件或 raw 内容） */
+function isGithubFileUrl(url: string): boolean {
+  return /^https?:\/\/(?:objects\.)?github(?:usercontent)?\.com\//i.test(url)
+}
+
+/**
+ * 构建 GitHub 下载的公共镜像候选
+ *
+ * sherpa-onnx 的声码器只发布在 GitHub Releases，无法通过 HuggingFace 镜像获得，
+ * 而直连在国内网络下时通时断。这里在直连之后追加公共加速镜像作为降级通道，
+ * 逐个尝试、失败自动落到下一个；镜像不可用时行为与只有直连一致。
+ */
+function buildGithubMirrorUrls(url: string): string[] {
+  return GITHUB_MIRROR_PREFIXES.map((prefix) => `${prefix}${url}`)
+}
+
+/** GitHub 加速镜像前缀（第三方运营，仅作降级通道） */
+const GITHUB_MIRROR_PREFIXES = [
+  'https://ghfast.top/',
+  'https://gh-proxy.com/',
+  'https://ghproxy.net/',
+]
 
 /**
  * 合并两个中断信号（取先触发者）
@@ -323,12 +373,16 @@ export class ModelDownloader {
     expectedSize?: number,
     signal?: AbortSignal,
   ): Promise<void> {
-    // 构建候选 URL 列表
-    // HuggingFace 直连在国内网络下通常长时间挂起（不是立即失败），因此镜像优先、直连兜底
+    // 构建候选 URL 列表。
+    // HuggingFace 直连在国内网络下通常长时间挂起（不是立即失败），因此镜像优先、直连兜底；
+    // GitHub Releases 用于分发声码器等大文件，直连优先、公共镜像兜底。
     const candidateUrls: string[] = []
     if (url.includes('huggingface.co')) {
       candidateUrls.push(url.replace('huggingface.co', 'hf-mirror.com'))
       candidateUrls.push(url)
+    } else if (isGithubFileUrl(url)) {
+      candidateUrls.push(url)
+      candidateUrls.push(...buildGithubMirrorUrls(url))
     } else {
       candidateUrls.push(url)
     }
@@ -618,6 +672,101 @@ export class ModelDownloader {
           'sherpa-tts-vits-melo-zh-en/lexicon.txt',
         ],
         needExtract: false,
+        platforms: ['darwin', 'linux', 'win32'],
+        source: 'huggingface',
+      },
+      {
+        id: 'sherpa-tts-matcha-zh-baker',
+        name: 'Matcha-TTS 中文女声（单音色）',
+        type: 'tts',
+        version: '1.0.0',
+        description: '中文离线语音合成，22050Hz 采样率，中文自然度优于 VITS 系列。含 jieba 分词词典与声码器，下载约 354MB',
+        // 主权重约 288MB + 词典与 fst 规则约 14MB + 声码器 51MB（以平台 API 返回的实际大小为准）
+        size: 354_000_000,
+        repos: [
+          {
+            // 该系列仅在 HuggingFace 发布，ModelScope 无镜像，故不配置 modelscopeRepo。
+            // dirName 必须与模型 id 一致：引擎按 id 定位该子目录
+            dirName: 'sherpa-tts-matcha-zh-baker',
+            huggingfaceRepo: 'csukuangfj/matcha-icefall-zh-baker',
+          },
+        ],
+        // Matcha 的声码器不在模型仓库内，只在 sherpa-onnx 的 Releases 单独发布
+        extraItems: [
+          {
+            dirName: 'sherpa-tts-matcha-zh-baker',
+            url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos-22khz-univ.onnx',
+            filename: 'vocos-22khz-univ.onnx',
+          },
+        ],
+        criticalFiles: [
+          'sherpa-tts-matcha-zh-baker/model-steps-3.onnx',
+          'sherpa-tts-matcha-zh-baker/tokens.txt',
+          'sherpa-tts-matcha-zh-baker/lexicon.txt',
+          'sherpa-tts-matcha-zh-baker/dict/jieba.dict.utf8',
+          'sherpa-tts-matcha-zh-baker/vocos-22khz-univ.onnx',
+        ],
+        needExtract: false,
+        platforms: ['darwin', 'linux', 'win32'],
+        source: 'huggingface',
+      },
+      {
+        id: 'sherpa-tts-kokoro-multi-lang-v1-1',
+        name: 'Kokoro 中英混读（103 音色）',
+        type: 'tts',
+        version: '1.0.0',
+        description: '中英双语离线语音合成，103 个音色（中文女声 55 / 中文男声 45 / 英文女声 3），24000Hz 采样率。下载约 745MB',
+        // 整仓约 744MB：权重 310MB + 音色库 26MB + espeak-ng 音素库与中英词典约 400MB
+        size: 743_945_795,
+        repos: [
+          {
+            dirName: 'sherpa-tts-kokoro-multi-lang-v1-1',
+            huggingfaceRepo: 'csukuangfj/kokoro-multi-lang-v1_1',
+          },
+        ],
+        // espeak-ng-data 必检：缺失时中英音素转换失败，表现为「能加载但一合成即报错」
+        criticalFiles: [
+          'sherpa-tts-kokoro-multi-lang-v1-1/model.onnx',
+          'sherpa-tts-kokoro-multi-lang-v1-1/voices.bin',
+          'sherpa-tts-kokoro-multi-lang-v1-1/tokens.txt',
+          'sherpa-tts-kokoro-multi-lang-v1-1/lexicon-zh.txt',
+          'sherpa-tts-kokoro-multi-lang-v1-1/espeak-ng-data/en_dict',
+        ],
+        needExtract: false,
+        platforms: ['darwin', 'linux', 'win32'],
+        source: 'huggingface',
+      },
+      {
+        id: 'sherpa-tts-zipvoice-zh-en',
+        name: 'ZipVoice 零样本克隆（中英）',
+        type: 'tts',
+        version: '1.0.0',
+        description: '中英双语零样本声音克隆，提供一段参考音频与对应文本即可合成任意音色，24000Hz 采样率。下载约 420MB',
+        // 权重归档约 370MB + 声码器 51MB（以平台 API 返回的实际大小为准）
+        size: 420_000_000,
+        // 主体权重以 tar.bz2 整包发布在 sherpa-onnx 的 Releases，解压后拍平到模型目录
+        downloadUrl:
+          'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2',
+        filename: 'sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2',
+        // extractDir 与模型 id 一致，同时让目标目录带上模型名（引擎按 id 定位）
+        extractDir: 'sherpa-tts-zipvoice-zh-en',
+        needExtract: true,
+        extraItems: [
+          {
+            // 单文件模型：声码器直接落在模型根目录
+            url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx',
+            filename: 'vocos_24khz.onnx',
+            checksum: 'bcb3b970e384161c4d634f0bb9e999ff1c471b34c9bc0b1049a5014065ed3cc0',
+            checksumType: 'sha256',
+          },
+        ],
+        criticalFiles: [
+          'encoder.int8.onnx',
+          'decoder.int8.onnx',
+          'tokens.txt',
+          'lexicon.txt',
+          'vocos_24khz.onnx',
+        ],
         platforms: ['darwin', 'linux', 'win32'],
         source: 'huggingface',
       },
@@ -941,6 +1090,9 @@ export class ModelDownloader {
         throw new Error('没有配置下载地址')
       }
 
+      // 主体下载完成后追加声码器等额外文件（Matcha / ZipVoice 依赖）
+      await this.downloadExtraItems(task, signal)
+
       logger.system.info(`[ModelDownloader] 模型下载完成: ${metadata.id}`)
     } catch (error) {
       // 取消属于用户意图，不按失败记日志
@@ -1213,6 +1365,67 @@ export class ModelDownloader {
     })
   }
 
+  /**
+   * 下载仓库快照之外的附加文件
+   *
+   * Matcha / ZipVoice 的声码器由 sherpa-onnx 单独发布在 GitHub Releases，
+   * 既不属于模型仓库快照，HuggingFace 上也没有镜像，只能作为独立文件下载。
+   * 与主体权重分开推进：任一附加文件失败即整体失败，避免留下「权重齐了但合成报错」的状态。
+   */
+  private async downloadExtraItems(task: DownloadTask, signal?: AbortSignal): Promise<void> {
+    const { metadata, targetDir, onProgress } = task
+    const items = metadata.extraItems
+    if (!items || items.length === 0) return
+
+    logger.system.info(`[ModelDownloader] 下载附加文件 ${items.length} 个: ${metadata.id}`)
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (signal?.aborted) throw new DownloadCancelledError()
+
+      const filePath = item.dirName
+        ? path.join(targetDir, item.dirName, item.filename)
+        : path.join(targetDir, item.filename)
+      const fileLabel = item.dirName ? `${item.dirName}/${item.filename}` : item.filename
+
+      // 声码器同样是几十 MB 级的文件，重试时不应重新拉取
+      if (this.getUsableExistingFileSize(filePath) > 0) {
+        logger.system.info(`[ModelDownloader] 复用已存在附加文件: ${fileLabel}`)
+        continue
+      }
+
+      logger.system.info(`[ModelDownloader] 下载附加文件 ${i + 1}/${items.length}: ${fileLabel}`)
+
+      await this.downloadFile(
+        item.url,
+        filePath,
+        (downloaded, total) => {
+          onProgress?.({
+            modelId: metadata.id,
+            downloaded,
+            total,
+            percentage: total > 0 ? Number(((downloaded / total) * 100).toFixed(1)) : 0,
+            speed: 0,
+            eta: 0,
+            status: 'downloading',
+            currentFile: fileLabel,
+            fileIndex: i + 1,
+            fileCount: items.length,
+          })
+        },
+        undefined,
+        signal,
+      )
+
+      if (item.checksum) {
+        const isValid = await this.verifyFile(filePath, item.checksum, item.checksumType || 'md5')
+        if (!isValid) {
+          throw new Error(`附加文件 ${item.filename} 校验失败，下载可能不完整`)
+        }
+      }
+    }
+  }
+
   /** 列出仓库文件（选定源失败时自动回退到另一源） */
   private async listRepoFiles(
     repo: RepoDownloadSource,
@@ -1470,9 +1683,56 @@ export class ModelDownloader {
     })
   }
 
-  /** 解压文件（待实现） */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private async extractFile(_filePath: string, _targetDir: string): Promise<void> {
-    throw new Error('解压功能未实现')
+  /**
+   * 解压下载的归档（当前用于 ZipVoice 的 tar.bz2）
+   *
+   * 系统 tar 已够用：macOS / Linux / Windows 10+ 自带 bsdtar，均可解 bzip2，
+   * 无需为此引入额外的解压依赖（原生模块在 Electron 下还要额外重编译）。
+   * 归档内若只有一个顶层目录，则把其内容上移一层——解压结果必须与
+   * 「引擎按模型 id 定位文件」的约定一致，多套一层目录会让引擎找不到权重。
+   */
+  private async extractFile(filePath: string, targetDir: string): Promise<void> {
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`待解压文件不存在: ${filePath}`)
+    }
+
+    // 先解压到临时目录，全部成功后再原子搬入目标目录：
+    // 直接解到目标目录时，中途失败会留下半套文件，被后续「关键文件齐全」误判为已完成
+    const staging = `${targetDir}.extract_tmp`
+    fs.rmSync(staging, { recursive: true, force: true })
+    fs.mkdirSync(staging, { recursive: true })
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        execFile(
+          'tar',
+          ['-xf', filePath, '-C', staging],
+          { timeout: ARCHIVE_EXTRACT_TIMEOUT_MS, windowsHide: true },
+          (error, _stdout, stderr) => {
+            if (error) {
+              const detail = String(stderr || '').trim()
+              reject(new Error(`解压失败: ${error.message}${detail ? ` （${detail}）` : ''}`))
+            } else {
+              resolve()
+            }
+          },
+        )
+      })
+
+      const entries = fs.readdirSync(staging)
+      const first = entries.length === 1 ? path.join(staging, entries[0]) : null
+      const sourceDir = first && fs.statSync(first).isDirectory() ? first : staging
+
+      fs.mkdirSync(targetDir, { recursive: true })
+      for (const entry of fs.readdirSync(sourceDir)) {
+        const dest = path.join(targetDir, entry)
+        fs.rmSync(dest, { recursive: true, force: true })
+        fs.renameSync(path.join(sourceDir, entry), dest)
+      }
+
+      logger.system.info(`[ModelDownloader] 解压完成: ${filePath}`)
+    } finally {
+      fs.rmSync(staging, { recursive: true, force: true })
+    }
   }
 }

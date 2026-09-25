@@ -205,10 +205,21 @@ function AppContent() {
 
   // 切换到声明了 hideChat 的面板时自动隐藏聊天窗口（用户可通过右上角按钮手动切换显示）
   // 与 hideChat 强制隐藏不同，这里是"默认隐藏"：用户点击切换按钮后聊天可正常显示
+  //
+  // autoHiddenChatRef 记录"这次隐藏是面板自动触发的"，离开该面板时据此恢复；
+  // 若隐藏是用户手动所为，则不恢复，避免覆盖用户的选择。
+  const autoHiddenChatRef = useRef(false)
   useEffect(() => {
-    if (!activeSidePanel) return
-    if (layoutConfig.autoHideChatPanelIds.includes(activeSidePanel)) {
-      setChatVisible(false)
+    if (activeSidePanel && layoutConfig.autoHideChatPanelIds.includes(activeSidePanel)) {
+      if (useStore.getState().chatVisible) {
+        setChatVisible(false)
+        autoHiddenChatRef.current = true
+      }
+      return
+    }
+    if (autoHiddenChatRef.current) {
+      setChatVisible(true)
+      autoHiddenChatRef.current = false
     }
   }, [activeSidePanel, layoutConfig.autoHideChatPanelIds, setChatVisible])
 
