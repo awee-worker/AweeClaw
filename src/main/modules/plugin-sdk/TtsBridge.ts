@@ -2,7 +2,7 @@
  * 语音合成桥（TtsBridge）
  *
  * 把客户端的本地离线语音合成收敛成一个受控出口，供插件把文本转成音频。
- * 合成仍是「设置 → 本地语音」里那套 MOSS-TTS-Nano（ONNX）：
+ * 合成走「设置 → 本地语音」选定的离线 TTS 模型（MOSS-TTS-Nano 或 VITS）：
  * 跑在受管 Python sidecar 中，模型与依赖由客户端统一管理。
  *
  * 为什么不让插件各自去合成：
@@ -22,7 +22,7 @@
  */
 
 import { logger } from '@shared/toolkit/LogEngine'
-import { MOSS_BUILTIN_VOICES, resolveBuiltinVoice } from '@shared/localVoiceVoices'
+import { getBuiltinVoicesForModel, resolveVoiceForModel } from '@shared/localVoiceVoices'
 import { LocalVoiceManager } from '../local-voice/LocalVoiceManager'
 
 // ─── 常量 ──────────────────────────────────────────────────
@@ -30,7 +30,7 @@ import { LocalVoiceManager } from '../local-voice/LocalVoiceManager'
 /**
  * 单次合成的文本上限（字符）。
  *
- * MOSS-TTS-Nano 是 100M 量级的小模型，生成速度按字符数线性增长。
+ * 离线 TTS 模型都是百 M 量级的小模型，生成速度按字符数线性增长。
  * 5000 字已经接近一分钟的成片时长，再长就该由调用方自行切段，
  * 否则一个工具调用会长时间占住合成引擎。
  */
@@ -60,7 +60,7 @@ export interface TtsSynthesizeResult {
   engine: string
   /** 实际生效的音色 */
   voice: string
-  /** 请求的音色不是内置音色、已被回退替换 */
+  /** 请求的音色不属于当前模型、已被回退替换 */
   voiceSubstituted: boolean
   /** 调用方请求的音色（用于排查回退原因） */
   requestedVoice: string
@@ -94,13 +94,13 @@ export interface TtsVoiceInfo {
   voice: string
   /** 展示名 */
   displayName: string
-  /** 分组（中文 · 男声 / 英文 · 女声 ……） */
+  /** 分组（中文 · 男声 / 中文 · 音色 ……） */
   group: string
 }
 
 /** synthesize 选项 */
 export interface TtsSynthesizeOptions {
-  /** 音色；不是内置音色时回退到配置音色 */
+  /** 音色（须属于当前模型）；不合法时回退到配置音色 */
   voice?: string
   /** 语速，默认取配置值 */
   speed?: number
@@ -144,7 +144,10 @@ export class TtsBridgeService {
 
     const config = manager.getConfig()
     const speed = this.resolveSpeed(options.speed ?? config.tts.defaultSpeed)
-    const { voice, substituted, requested } = resolveBuiltinVoice(
+    // 音色必须按当前模型解析：不同模型的音色 ID 体系不同
+    // （MOSS 用音色名，VITS 用整数 speaker id），跨模型取值会合成失败
+    const { voice, substituted, requested } = resolveVoiceForModel(
+      config.tts.modelName,
       options.voice,
       config.tts.defaultVoice,
     )
@@ -213,7 +216,9 @@ export class TtsBridgeService {
    * 与「设置 → 本地语音」的音色下拉同源，避免插件自己写死一份会漂移的清单。
    */
   listVoices(): TtsVoiceInfo[] {
-    return MOSS_BUILTIN_VOICES.map((item) => ({
+    // 随当前模型变化：切换模型后可用音色集合完全不同
+    const config = LocalVoiceManager.getInstance().getConfig()
+    return getBuiltinVoicesForModel(config.tts.modelName).map((item) => ({
       voice: item.voice,
       displayName: item.displayName,
       group: item.group,

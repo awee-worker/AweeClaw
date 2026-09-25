@@ -63,10 +63,10 @@ const CODE_TOOL_PACK: ToolPack = {
   descriptionZh: '文件操作、代码搜索、终端和 LSP 工具',
   icon: 'Code2',
   category: 'code',
-  // 与 toolCategoryDefs.CORE_TOOLS 保持对齐（默认 agent 模式的工具集），
-  // 避免「场景声明 code 包」反而比默认模式少工具
+  // 内置工具已由 getToolsForContext() 全量下发（不按模式 / 场景裁剪），
+  // 本包只作为「场景追加工具」的便捷入口，与 CORE_TOOLS 保持内容对齐
   tools: [
-    // 文件读取（extract_document 为系统强制注入工具，不属于任何包，见 getToolsForContext）
+    // 文件读取（extract_document 由系统全量注入，不属于任何包，见 getToolsForContext）
     'read_file',
     'list_directory',
     'search_files',

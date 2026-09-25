@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { GIT_TOOL_NAMES, getToolsForContext } from '@configuration/toolCategoryDefs'
+import {
+  GIT_READ_TOOL_NAMES,
+  GIT_TOOL_NAMES,
+  GIT_WRITE_TOOL_NAMES,
+  getToolsForContext,
+} from '@configuration/toolCategoryDefs'
 
 const gitToolsIn = (tools: string[]) => tools.filter((tool) => GIT_TOOL_NAMES.includes(tool))
 
@@ -32,13 +37,28 @@ describe('Git 工具按需暴露', () => {
     }
   })
 
-  it('chat 模式即使放行也不暴露写入类工具', () => {
-    const tools = getToolsForContext({ mode: 'chat', gitToolsEnabled: true })
-    expect(tools).toContain('git_status')
-    expect(tools).toContain('git_diff')
-    expect(tools).not.toContain('git_commit')
-    expect(tools).not.toContain('git_branch')
-    expect(tools).not.toContain('git_sync')
+  it('授权后三种模式都下发只读工具', () => {
+    for (const mode of ['chat', 'agent', 'plan'] as const) {
+      const tools = getToolsForContext({ mode, gitToolsEnabled: true })
+      for (const name of GIT_READ_TOOL_NAMES) {
+        expect(tools, `${mode} 模式缺少 ${name}`).toContain(name)
+      }
+    }
+  })
+
+  it('授权后写入类工具仅下发给 agent / plan，快速模式不暴露', () => {
+    // 唯一一处按模式裁剪：chat 为免审批通道，授权后也不给写仓库能力
+    const chat = getToolsForContext({ mode: 'chat', gitToolsEnabled: true })
+    for (const name of GIT_WRITE_TOOL_NAMES) {
+      expect(chat, `chat 模式不应下发 ${name}`).not.toContain(name)
+    }
+
+    for (const mode of ['agent', 'plan'] as const) {
+      const tools = getToolsForContext({ mode, gitToolsEnabled: true })
+      for (const name of GIT_WRITE_TOOL_NAMES) {
+        expect(tools, `${mode} 模式缺少 ${name}`).toContain(name)
+      }
+    }
   })
 
   it('门控只作用于 git_*，不影响其他工具', () => {

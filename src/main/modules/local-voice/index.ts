@@ -43,6 +43,7 @@ export {
 // 引擎实现
 export { SherpaAsrEngine, type AsrResult, type EngineStatus } from './engines/SherpaAsrEngine'
 export { SherpaTtsEngine, type TtsResult } from './engines/SherpaTtsEngine'
+export { VitsTtsEngine } from './engines/VitsTtsEngine'
 export { GptSovitsEngine } from './engines/GptSovitsEngine'
 
 // 模型下载器

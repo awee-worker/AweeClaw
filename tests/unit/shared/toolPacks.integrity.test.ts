@@ -26,12 +26,6 @@ const SRC = path.join(ROOT, 'src')
  */
 const SCENARIO_PROVIDED_PACKS = new Set(['education', 'store-diagnosis'])
 
-/** 系统无条件注入、不属于任何工具包的工具（见 getToolsForContext） */
-const SYSTEM_INJECTED_TOOLS = new Set(['extract_document'])
-
-/** 已在 CORE_TOOLS 中保留、但无工具定义亦无执行器的历史遗留名 */
-const LEGACY_TOOL_NAMES = new Set(['get_dir_tree', 'read_multiple_files', 'replace_file_content'])
-
 /** 从 toolExecutors.ts 静态提取 `name(args, ...)` 形式的执行器名 */
 function extractBuiltinExecutorNames(): Set<string> {
   const file = path.join(SRC, 'renderer/intelligence/toolkit/toolExecutors.ts')
@@ -150,18 +144,24 @@ describe('ToolPack 完整性', () => {
     ).toEqual([])
   })
 
-  it('声明 code 包不应比默认 agent 模式少工具', () => {
-    const defaultTools = getToolsForContext({ mode: 'agent' })
-    const codeTools = new Set(toolPackRegistry.resolveTools(['code']))
+  it('场景声明工具包只追加、不减少内置工具', () => {
+    // 内置工具全量放行：场景不再裁剪内置工具，只做追加
+    const baseline = new Set(getToolsForContext({ mode: 'agent' }))
+    const packsToTry: string[][] = [
+      ['code'], ['data'], ['web'], ['media'], ['office'],
+      ['education'], ['store-diagnosis'],
+    ]
 
-    const missing = defaultTools.filter(
-      t => !codeTools.has(t) && !SYSTEM_INJECTED_TOOLS.has(t) && !LEGACY_TOOL_NAMES.has(t)
-    )
-
-    expect(
-      missing,
-      `以下工具在默认 agent 模式下可用，但未被 code 工具包覆盖：\n  ${missing.join('\n  ')}`
-    ).toEqual([])
+    for (const packs of packsToTry) {
+      const withScenario = new Set(
+        getToolsForContext({ mode: 'agent', scenarioToolPacks: packs })
+      )
+      const missing = Array.from(baseline).filter(t => !withScenario.has(t))
+      expect(
+        missing,
+        `声明工具包 ${packs.join(',')} 后丢失内置工具：\n  ${missing.join('\n  ')}`
+      ).toEqual([])
+    }
   })
 
   it('resolveReservedTools 能完整列出预留工具', () => {

@@ -1,10 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 
 import {
-  Bot, Plus, Edit2, Trash2, X, Sparkles, Zap,
+  Bot, Plus, Edit2, Trash2, X, Sparkles,
   Search, Check, Plug, RefreshCw,
   AlertCircle, Settings2, ArrowLeft, Upload, Trash2 as TrashIcon,
-  Crown, Lock,
 } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
 import { TextField, ToggleSwitch, AgentIcon, AgentIconPreview, AGENT_PRESET_ICONS } from '@components/ui'
@@ -13,7 +12,6 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { useFeatureGuard } from '@hooks/useFeatureGuard'
-import type { CapabilityGroupStatus } from '@services/featureGuardService'
 
 // ─── 系统提示词最大长度 ───
 const SYSTEM_PROMPT_MAX = 10000
@@ -74,8 +72,8 @@ export function CustomAgentPanel({ agentConfig, setAgentConfig, language, onNewA
   const { mcpServers } = useStore(useShallow(s => ({
     mcpServers: s.mcpServers,
   })))
-  // 套餐能力拦截：自定义智能体数量上限 + 工具能力组授权态
-  const { requireQuota, capabilityGroups } = useFeatureGuard()
+  // 套餐能力拦截：自定义智能体数量上限
+  const { requireQuota } = useFeatureGuard()
 
   const connectedMcpNames = useMemo(() =>
     mcpServers.filter(s => s.status === 'connected').map(s => ({ id: s.id, name: s.config.name })),
@@ -226,7 +224,6 @@ export function CustomAgentPanel({ agentConfig, setAgentConfig, language, onNewA
         <AgentEditor
           profile={selectedProfile}
           connectedMcpServers={connectedMcpNames}
-          capabilityGroups={capabilityGroups}
           language={language as Language}
           onUpdate={(updates) => handleUpdate(updates, isEditingNew)}
           isNew={isEditingNew}
@@ -389,23 +386,17 @@ function AgentCard({
 function AgentEditor({
   profile,
   connectedMcpServers,
-  capabilityGroups = [],
   language,
   onUpdate,
   isNew,
 }: {
   profile: CustomAgent
   connectedMcpServers: Array<{ id: string; name: string }>
-  /** 套餐工具能力组授权态：未授权的组置灰并提示升级解锁 */
-  capabilityGroups?: CapabilityGroupStatus[]
   language: Language
   onUpdate: (updates: Partial<CustomAgent>) => void
   isNew: boolean
 }) {
   const isZh = language === 'zh'
-  const setShowUserProfilePage = useStore(s => s.setShowUserProfilePage)
-  // 未授权的工具能力组 → 跳转用户中心升级套餐
-  const handleUpgrade = () => setShowUserProfilePage(true)
   const [localName, setLocalName] = useState(profile.name)
   const [localIdentifier, setLocalIdentifier] = useState(profile.identifier || '')
   const [localDescription, setLocalDescription] = useState(profile.description)
@@ -693,57 +684,20 @@ function AgentEditor({
         </div>
       </section>
 
-      {/* 内置工具能力（按套餐能力组授权；未授权的组置灰并提供升级入口） */}
-      <section>
-        <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
-          <Zap className="w-3 h-3" />
-          {t('agent.tools', language as Language)}
-          <span className="text-text-muted font-normal normal-case text-[10px]">({t('agent.toolsDesc', language as Language)})</span>
-        </h4>
-        <div className="space-y-1.5">
-          {capabilityGroups.map(group => {
-            const label = isZh ? group.name : group.nameEn
-            return group.allowed ? (
-              <div
-                key={group.id}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/30 bg-surface-active/30 text-xs"
-              >
-                <Check className="w-3 h-3 flex-shrink-0 text-accent" />
-                <span className="text-text-primary truncate">{label}</span>
-              </div>
-            ) : (
-              <button
-                key={group.id}
-                onClick={handleUpgrade}
-                title={isZh
-                  ? `「${label}」能力组未包含在当前套餐中，点击升级解锁`
-                  : `The "${label}" group is not included in your current plan. Click to upgrade.`}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border/40 bg-surface-active/10 text-xs text-text-muted/60 hover:border-accent/40 hover:text-accent transition-colors"
-              >
-                <Lock className="w-3 h-3 flex-shrink-0" />
-                <span className="truncate line-through decoration-1">{label}</span>
-                <span className="ml-auto flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-accent/10 text-accent text-[10px] font-medium">
-                  <Crown className="w-2.5 h-2.5" />
-                  {isZh ? '升级解锁' : 'Upgrade'}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-        <p className="text-[11px] text-text-muted mt-2 leading-relaxed">
-          {isZh
-            ? '内置工具按套餐能力组授权，未包含的组需升级套餐解锁；如需扩展 MCP 插件与技能，请在下方配置。'
-            : 'Built-in tools are granted by plan capability groups. Groups not included require a plan upgrade. Connect MCP plugins & skills below for more capabilities.'}
-        </p>
-      </section>
+      {/* 插件与技能（MCP 服务）
+          内置工具无需勾选：智能体直接可用全部内置工具，此处只授予额外的 MCP 插件与技能 */}
 
-      {/* 插件与技能（MCP 服务） */}
       <section>
         <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
           <Plug className="w-3 h-3" />
           {isZh ? '插件与技能' : 'Plugins & Skills'}
           <span className="text-text-muted font-normal normal-case text-[10px]">({isZh ? 'MCP 插件和技能' : 'MCP plugins & skills'})</span>
         </h4>
+        <p className="text-[11px] text-text-muted mb-2 leading-relaxed">
+          {isZh
+            ? '内置工具无需在此配置：智能体可直接使用全部内置工具（文件读写、终端命令、代码智能、网络检索、任务与自动化等）。'
+            : 'Built-in tools need no configuration here: the agent can use all built-in tools (file access, terminal, code intelligence, web search, tasks & automation, etc.).'}
+        </p>
         {connectedMcpServers.length === 0 ? (
           <div className="flex items-center gap-2 px-3 py-2.5 bg-surface-active/30 rounded-lg border border-border/30 text-xs text-text-muted">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />

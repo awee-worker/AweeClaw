@@ -3,15 +3,18 @@
  * 
  * 架构设计：
  * - 工具组：按功能分组的工具集合
- * - 模式工具：不同工作模式（agent/chat）加载不同工具
- * - 角色工具：不同角色（模板）可以扩展额外工具
- * - 场景工具：不同场景加载不同的 ToolPack
+ * - 内置工具：全量放行，不按工作模式或场景裁剪
+ * - 角色工具：不同角色（模板）可以追加额外工具
+ * - 场景工具：场景声明的 ToolPack / 自定义工具，只做追加
  * 
  * 加载规则：
- * - chat 模式：core 工具组（或场景指定的 ToolPack），免审批
- * - agent 模式：core 工具组（或场景指定的 ToolPack），需审批
- * - 角色扩展：在模式基础上添加角色专属工具组
- * - 场景扩展：场景声明 toolPacks，自动解析依赖
+ * - chat / agent / plan 三种模式：同一份全量内置工具（ALL_BUILTIN_TOOLS），
+ *   模式差异只体现在审批策略上，不再体现在可用工具上
+ * - 角色扩展：在全量内置工具基础上追加角色专属工具组
+ * - 场景扩展：追加场景声明的 toolPacks（自动解析依赖）与直接声明的工具
+ * - 按需暴露（与模式 / 场景无关）：git_*（需用户指令授权）、scene_tools_*、
+ *   external_agent_*；另有套餐能力组白名单作为最后一道过滤
+ * - 唯一例外：快速模式（chat）为免审批通道，授权后也不暴露 Git 写入类工具
  */
 
 import type { WorkMode } from '@protocols/workModeProtocol'
@@ -44,7 +47,12 @@ export interface ToolLoadingContext {
   scenarioTools?: string[]
   /** 是否为消息渠道会话（飞书/微信等），仅渠道会话才注入 send_file_to_channel 等渠道工具 */
   isChannel?: boolean
-  /** 自定义智能体允许的内置工具名白名单（已解析为真实工具名；存在时内置工具仅保留白名单内） */
+  /**
+   * 自定义智能体的工具白名单（兼容历史配置）
+   *
+   * 内置工具不受其约束 —— 全部内置工具无条件保留；该白名单只约束场景 / MCP 等
+   * 追加来源。当前 UI 与 getAgentToolLoadingFields() 均不再下发此字段。
+   */
   agentBuiltinTools?: string[]
   /** 自定义智能体允许的 MCP 服务 ID 白名单（存在时仅暴露白名单内 MCP 服务器的工具） */
   agentMcpServices?: string[]
@@ -69,6 +77,10 @@ export interface ToolLoadingContext {
    * 仅当用户最新消息带有明确的版本控制指令（提交 / 分支 / 合并 / 差异 / 历史 /
    * 拉取推送 / 工作树 / 审计封存等）时，由上层（loopDetector / AgentSubLoop /
    * voiceToolLoop / PromptComposer）计算后置为 true，即由用户在指令中授权。
+   *
+   * 置为 true 后三种模式一致下发只读工具；写入类工具（commit / branch / sync /
+   * worktree / audit）仅下发给 agent / plan —— 快速模式（chat）为免审批通道，
+   * 即便授权也不暴露写仓库能力。
    */
   gitToolsEnabled?: boolean
   /**
@@ -184,8 +196,13 @@ const GIT_WRITE_TOOLS: string[] = [
 ]
 
 /**
- * 全部 Git 工具名（含只读与写入），供「按需暴露」门控与执行层兜底校验共用
+ * Git 工具名（供「按需暴露」门控与执行层兜底校验共用）
+ *
+ * - `GIT_READ_TOOL_NAMES`：只读，授权后三种模式一致下发
+ * - `GIT_WRITE_TOOL_NAMES`：写入，授权后仅下发给 agent / plan
  */
+export const GIT_READ_TOOL_NAMES: readonly string[] = [...GIT_READ_TOOLS]
+export const GIT_WRITE_TOOL_NAMES: readonly string[] = [...GIT_WRITE_TOOLS]
 export const GIT_TOOL_NAMES: readonly string[] = [...GIT_READ_TOOLS, ...GIT_WRITE_TOOLS]
 
 /** UI/UX 工具 - uiux-designer 角色专用 */
@@ -225,6 +242,34 @@ const PLAN_EXPLORATION_TOOLS: string[] = [
   'get_document_symbols',
   'get_file_info',
 ]
+
+/**
+ * 全量内置工具 —— 三种工作模式与所有场景共用同一份内置工具集
+ *
+ * 语义：内置工具是平台能力，不按工作模式或场景裁剪。
+ * 选择「快速（chat）/ 思考（agent）/ 专家（plan）」或激活任何场景，都不会减少
+ * 可用内置工具；模式与场景只做「追加」——渠道工具、场景声明的工具包与自定义工具、
+ * 角色专属工具组、MCP 插件、场景工具桥接、外部智能体桥接。
+ *
+ * 仅保留两类与「模式 / 场景」无关的门控（见 getToolsForContext）：
+ * - `git_*`：需用户当轮指令授权后才下发（工作区并非都是 Git 仓库）
+ * - `scene_tools_*` / `external_agent_*`：按需暴露
+ * 另有套餐能力组白名单作为最后一道统一过滤。
+ *
+ * 例外：本集合包含 Git 写入类工具，但快速模式（chat）在 git 门控处会再剔除它们
+ * —— 见 getToolsForContext 第 6 步。该例外不改变本集合「全量」的语义。
+ */
+const ALL_BUILTIN_TOOLS: string[] = Array.from(new Set([
+  ...CORE_TOOLS,
+  ...GIT_WRITE_TOOLS,
+  ...UIUX_TOOLS,
+  ...PLAN_PLANNING_TOOLS,
+  ...PLAN_EXECUTION_CONTROL_TOOLS,
+  ...PLAN_EXPLORATION_TOOLS,
+  // 系统强制注入：文档提取与交互提问（不依赖任何工具包）
+  'extract_document',
+  'ask_user',
+]))
 
 /** 外部编码智能体 AI 桥接工具名（external_agent_*，按需暴露：externalAgentEnabled === true 时附加） */
 export const EXTERNAL_AGENT_TOOL_NAMES: readonly string[] = [
@@ -453,133 +498,85 @@ export function getToolGroup(id: string): string[] | undefined {
 /**
  * 根据上下文获取工具列表
  *
- * 加载规则：
- * - chat: core 工具组（或场景 ToolPack），免审批
- * - agent: core 工具组（或场景 ToolPack），需审批
- * - plan: plan 规划工具组（ask_user, create_task_plan, update_task_plan）
- * - 角色: 在模式基础上 + 角色专属工具组
- * - 场景: 场景声明 toolPacks，自动解析依赖
+ * 内置工具全量放行：快速（chat）/ 思考（agent）/ 专家（plan）三种模式、以及所有
+ * 场景，都能使用全部内置工具（ALL_BUILTIN_TOOLS）。模式与场景只做追加：
+ * - 渠道会话追加渠道工具（send_file_to_channel）
+ * - 场景追加 toolPacks（自动解析依赖）与直接声明的工具名
+ * - 角色追加专属工具组
+ *
+ * 仍保留的过滤 / 门控：
+ * - git_*：需用户当轮指令授权后才下发（工作区并非都是 Git 仓库）；授权后
+ *   快速模式（chat）仍不暴露写入类工具 —— 唯一一处按模式裁剪，且只作用于 Git 门控层
+ * - scene_tools_* / external_agent_*：按需暴露
+ * - 套餐能力组白名单：最后一道统一过滤
  */
 export function getToolsForContext(context: ToolLoadingContext): string[] {
-  let tools = new Set<string>()
+  // 1. 内置工具全量放行（不按工作模式或场景裁剪）
+  let tools = new Set<string>(ALL_BUILTIN_TOOLS)
 
-  const scenarioPacks = context.scenarioToolPacks
-  const scenarioTools = context.scenarioTools
-  if (scenarioPacks && scenarioPacks.length > 0) {
-    const packTools = toolPackRegistry.resolveTools(scenarioPacks)
-    for (const tool of packTools) {
-      tools.add(tool)
-    }
-  }
-  // 声明式场景直接声明的工具名（无需 toolPack 注册）
-  if (scenarioTools && scenarioTools.length > 0) {
-    for (const tool of scenarioTools) {
-      tools.add(tool)
-    }
-  }
-
-  // 文档提取工具在所有模式、所有场景下都无条件可用
-  // （用户上传 PDF/Word/Excel 等二进制文档时必须能用 extract_document 提取）
-  tools.add('extract_document')
-
-  // 渠道工具仅在消息渠道会话中可用（飞书/微信等），普通聊天不可用
+  // 2. 渠道工具：环境能力，仅消息渠道会话（飞书/微信等）可调用
   if (context.isChannel) {
     for (const tool of CHANNEL_TOOLS) {
       tools.add(tool)
     }
   }
 
-  if (context.mode === 'chat') {
-    if (!scenarioPacks || scenarioPacks.length === 0) {
-      for (const tool of CORE_TOOLS) {
-        tools.add(tool)
-      }
-    }
-    if (context.templateId) {
-      const templateConfig = TEMPLATE_TOOLS[context.templateId]
-      if (templateConfig) {
-        for (const groupId of templateConfig.toolGroups) {
-          const groupTools = TOOL_GROUPS[groupId]
-          if (groupTools) {
-            for (const tool of groupTools) {
-              tools.add(tool)
-            }
-          }
-        }
-      }
-    }
-  } else if (context.mode === 'plan') {
-    // plan 模式：专家模式拥有最大权限，所有阶段均可使用全部工具
-    if (!scenarioPacks || scenarioPacks.length === 0) {
-      for (const tool of CORE_TOOLS) {
-        tools.add(tool)
-      }
-    }
-    for (const tool of TOOL_GROUPS['plan'] || []) {
+  // 3. 场景追加：工具包（自动解析依赖）与声明式场景直接声明的工具名
+  //    只增不减 —— 场景不再影响内置工具的可用性
+  const scenarioPacks = context.scenarioToolPacks
+  if (scenarioPacks && scenarioPacks.length > 0) {
+    for (const tool of toolPackRegistry.resolveTools(scenarioPacks)) {
       tools.add(tool)
     }
-    for (const tool of PLAN_EXECUTION_CONTROL_TOOLS) {
+  }
+  const scenarioTools = context.scenarioTools
+  if (scenarioTools && scenarioTools.length > 0) {
+    for (const tool of scenarioTools) {
       tools.add(tool)
     }
-    for (const tool of PLAN_EXPLORATION_TOOLS) {
-      tools.add(tool)
-    }
-  } else {
-    // 1. Agent 模式：core 工具（如果场景已提供工具包则跳过默认 core）
-    if (!scenarioPacks || scenarioPacks.length === 0) {
-      for (const tool of CORE_TOOLS) {
-        tools.add(tool)
-      }
-    }
+  }
 
-    // 2. 添加角色专属工具
-    if (context.templateId) {
-      const templateConfig = TEMPLATE_TOOLS[context.templateId]
-      if (templateConfig) {
-        for (const groupId of templateConfig.toolGroups) {
-          const groupTools = TOOL_GROUPS[groupId]
-          if (groupTools) {
-            for (const tool of groupTools) {
-              tools.add(tool)
-            }
+  // 4. 角色专属工具组（含第三方 registerToolGroup 注册的自定义组）
+  if (context.templateId) {
+    const templateConfig = TEMPLATE_TOOLS[context.templateId]
+    if (templateConfig) {
+      for (const groupId of templateConfig.toolGroups) {
+        const groupTools = TOOL_GROUPS[groupId]
+        if (groupTools) {
+          for (const tool of groupTools) {
+            tools.add(tool)
           }
         }
       }
     }
   }
 
-  // 2.5 Git 写入类工具：仅 agent / plan 模式纳入候选（chat 为免审批通道，
-  //     不暴露写仓库能力）。放在白名单过滤之前，使智能体工具白名单同样能约束它们；
-  //     最终是否下发仍由下面 3.5 的 gitToolsEnabled 门控决定。
-  if (context.mode !== 'chat') {
-    for (const tool of GIT_WRITE_TOOLS) {
-      tools.add(tool)
-    }
-  }
-
-  // 3. 自定义智能体白名单过滤：激活了智能体且配置了 builtinTools 时，
-  //    内置工具仅保留白名单内的（extract_document 为系统必需工具，始终保留）
-  //    空数组表示不允许任何内置工具
+  // 5. 智能体白名单兜底（兼容历史配置）：智能体不限制内置工具 —— 全部内置工具
+  //    无条件保留，该白名单只约束场景 / MCP 等追加来源
   if (context.agentBuiltinTools !== undefined) {
     const allow = new Set(context.agentBuiltinTools)
-    allow.add('extract_document')
+    for (const tool of ALL_BUILTIN_TOOLS) {
+      allow.add(tool)
+    }
     tools = new Set(Array.from(tools).filter((tool) => allow.has(tool)))
   }
 
-  // 3.5 Git 工具（git_*）为「按需暴露」：
+  // 6. Git 工具（git_*）为「按需暴露」：
   //     - 默认不下发给 LLM：工作区并非都是 Git 仓库，AI 自行「探路」
   //       （先跑一遍 git_status / git_log）会稳定失败，只会污染上下文；
   //     - 仅当用户本轮明确要求版本控制操作（提交 / 分支 / 差异 / 历史 / 拉取推送 …）时，
   //       由上层计算 gitToolsEnabled=true 后下发；
-  //     - 即便放行，chat 模式（免审批通道）仍不暴露写入类工具，
-  //       避免未经审阅 diff 就改到仓库（其审批门禁由 approvalType='terminal' 驱动）。
+  //     - 即便授权，快速模式（chat）作为免审批通道仍不暴露写入类工具
+  //       （commit / branch / sync / worktree / audit），避免未经审阅 diff 就改到仓库。
+  //       这是「按模式裁剪」的唯一例外，且位于 Git 门控层，不改变内置工具集本身；
+  //       写入操作另由 approvalType='terminal' 强制审批，两道门禁互为补充。
   if (context.gitToolsEnabled !== true) {
     tools = new Set(Array.from(tools).filter((tool) => !GIT_TOOL_NAMES.includes(tool)))
   } else if (context.mode === 'chat') {
     tools = new Set(Array.from(tools).filter((tool) => !GIT_WRITE_TOOLS.includes(tool)))
   }
 
-  // 4. 场景工具（scene_tools_*）为“按需暴露”：
+  // 7. 场景工具（scene_tools_*）为“按需暴露”：
   //    - 仅当 sceneToolsEnabled === true 时附加（上层根据用户消息意图判定）
   //    - 不再无条件对所有对话/任务可见（致命问题 #4）：
   //      AI 执行任务时不得自动调用场景工具，任务跟踪应使用系统内置 todo_write 等
@@ -589,7 +586,7 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
     }
   }
 
-  // 5. 外部编码智能体工具（external_agent_*）为“按需暴露”：
+  // 8. 外部编码智能体工具（external_agent_*）为“按需暴露”：
   //    仅当 externalAgentEnabled === true（用户在设置面板开启“向 AI 暴露”）时附加
   if (context.externalAgentEnabled === true) {
     for (const tool of EXTERNAL_AGENT_TOOL_NAMES) {
@@ -597,7 +594,7 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
     }
   }
 
-  // 6. 套餐能力组白名单过滤（置于最后一道，对全部来源的工具统一生效）
+  // 9. 套餐能力组白名单过滤（置于最后一道，对全部来源的工具统一生效）
   //    未配置（undefined）→ 全放行；目录未登记的工具（MCP / 场景 / 插件）不受此限制
   if (context.allowedToolGroups !== undefined) {
     tools = new Set(
@@ -609,6 +606,7 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
 
   return Array.from(tools)
 }
+
 
 /**
  * 检查工具是否在上下文中可用

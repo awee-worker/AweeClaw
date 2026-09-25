@@ -47,8 +47,13 @@ export interface DownloadItem {
 export interface RepoDownloadSource {
   /** 目标子目录名（相对模型根目录） */
   dirName: string
-  /** ModelScope 仓库 ID（namespace/model） */
-  modelscopeRepo: string
+  /**
+   * ModelScope 仓库 ID（namespace/model）
+   *
+   * 可缺省：部分模型仅在 HuggingFace 发布（如 sherpa-onnx 的 VITS 中文多音色系列），
+   * ModelScope 无镜像。缺省时该源被跳过，直接走 HuggingFace 镜像。
+   */
+  modelscopeRepo?: string
   /** HuggingFace 仓库 ID（owner/model） */
   huggingfaceRepo: string
   /** 额外排除的文件名（默认已排除 README / LICENSE / 图片等） */
@@ -539,6 +544,82 @@ export class ModelDownloader {
         needExtract: false,
         platforms: ['darwin', 'linux', 'win32'],
         source: 'modelscope',
+      },
+      {
+        id: 'sherpa-tts-vits-zh-theresa',
+        name: 'VITS 中文多音色（804 音色）',
+        type: 'tts',
+        version: '1.0.0',
+        description: '中文离线语音合成，804 个可选音色，22050Hz 采样率。含 jieba 分词词典，下载约 132MB',
+        // 主权重 116.3MB + 词典与 fst 规则约 16MB（进度以平台 API 返回的实际大小为准）
+        size: 138_654_504,
+        repos: [
+          {
+            dirName: 'sherpa-tts-vits-zh-theresa',
+            // 该系列仅在 HuggingFace 发布，ModelScope 无镜像，故不配置 modelscopeRepo
+            huggingfaceRepo: 'csukuangfj/vits-zh-hf-theresa',
+          },
+        ],
+        // 关键文件：缺任一即视为未下载完成。词典目录必检——
+        // 缺失时权重能加载但中文分词会失败，属于典型的「半包被判完成」
+        criticalFiles: [
+          'sherpa-tts-vits-zh-theresa/theresa.onnx',
+          'sherpa-tts-vits-zh-theresa/tokens.txt',
+          'sherpa-tts-vits-zh-theresa/lexicon.txt',
+          'sherpa-tts-vits-zh-theresa/dict/jieba.dict.utf8',
+        ],
+        needExtract: false,
+        platforms: ['darwin', 'linux', 'win32'],
+        source: 'huggingface',
+      },
+      {
+        id: 'sherpa-tts-vits-zh-fanchen-c',
+        name: 'VITS 中文多音色（187 音色）',
+        type: 'tts',
+        version: '1.0.0',
+        description: '中文离线语音合成，187 个可选音色，男女声覆盖全，16000Hz 采样率。下载约 131MB',
+        size: 137_706_453,
+        repos: [
+          {
+            dirName: 'sherpa-tts-vits-zh-fanchen-c',
+            huggingfaceRepo: 'csukuangfj/vits-zh-hf-fanchen-C',
+          },
+        ],
+        criticalFiles: [
+          'sherpa-tts-vits-zh-fanchen-c/vits-zh-hf-fanchen-C.onnx',
+          'sherpa-tts-vits-zh-fanchen-c/tokens.txt',
+          'sherpa-tts-vits-zh-fanchen-c/lexicon.txt',
+          'sherpa-tts-vits-zh-fanchen-c/dict/jieba.dict.utf8',
+        ],
+        needExtract: false,
+        platforms: ['darwin', 'linux', 'win32'],
+        source: 'huggingface',
+      },
+      {
+        id: 'sherpa-tts-vits-melo-zh-en',
+        name: 'VITS 中英混读（单音色）',
+        type: 'tts',
+        version: '1.0.0',
+        description: '中英混读最自然的离线语音合成，44100Hz 采样率。仅保留 int8 量化权重，下载约 70MB',
+        // int8 权重 51MB + 词典与 fst 规则（以平台 API 返回的实际大小为准）
+        size: 73_600_000,
+        repos: [
+          {
+            dirName: 'sherpa-tts-vits-melo-zh-en',
+            huggingfaceRepo: 'csukuangfj/vits-melo-tts-zh_en',
+            // 同一仓库同时提供 int8（51MB）与 fp32（162MB）权重，
+            // 按体积诉求只保留前者，否则快照会把两份都拉下来
+            excludeFiles: ['model.onnx'],
+          },
+        ],
+        criticalFiles: [
+          'sherpa-tts-vits-melo-zh-en/model.int8.onnx',
+          'sherpa-tts-vits-melo-zh-en/tokens.txt',
+          'sherpa-tts-vits-melo-zh-en/lexicon.txt',
+        ],
+        needExtract: false,
+        platforms: ['darwin', 'linux', 'win32'],
+        source: 'huggingface',
       },
     ]
   }
@@ -1137,12 +1218,20 @@ export class ModelDownloader {
     repo: RepoDownloadSource,
     source: 'modelscope' | 'huggingface',
   ): Promise<RepoFile[]> {
+    // 未配置 ModelScope 仓库的模型（ModelScope 无镜像）直接走 HuggingFace，
+    // 否则会先发一次注定失败的请求再回退，白等一个超时窗口
+    const preferred: 'modelscope' | 'huggingface' =
+      source === 'modelscope' && !repo.modelscopeRepo ? 'huggingface' : source
+
     const order: Array<'modelscope' | 'huggingface'> =
-      source === 'huggingface' ? ['huggingface', 'modelscope'] : ['modelscope', 'huggingface']
+      preferred === 'huggingface' ? ['huggingface', 'modelscope'] : ['modelscope', 'huggingface']
 
     let lastError: Error | null = null
 
     for (const trySource of order) {
+      // 该源未配置时跳过，避免无意义的失败请求
+      if (trySource === 'modelscope' && !repo.modelscopeRepo) continue
+
       try {
         const files =
           trySource === 'modelscope'
@@ -1165,10 +1254,15 @@ export class ModelDownloader {
     )
   }
 
-  /** 列出 ModelScope 仓库文件 */
+  /** 列出 ModelScope 仓库文件（未配置该源时抛错，交由调用方回退另一源） */
   private async listModelscopeRepoFiles(repo: RepoDownloadSource): Promise<RepoFile[]> {
-    const apiUrl = `https://modelscope.cn/api/v1/models/${repo.modelscopeRepo}/repo/files?Revision=master&Recursive=true`
-    logger.system.info(`[ModelDownloader] 获取 ModelScope 仓库文件列表: ${repo.modelscopeRepo}`)
+    const repoId = repo.modelscopeRepo
+    if (!repoId) {
+      throw new Error('该模型未提供 ModelScope 仓库')
+    }
+
+    const apiUrl = `https://modelscope.cn/api/v1/models/${repoId}/repo/files?Revision=master&Recursive=true`
+    logger.system.info(`[ModelDownloader] 获取 ModelScope 仓库文件列表: ${repoId}`)
 
     const resp = await fetch(apiUrl, {
       headers: { 'User-Agent': 'AweeClaw/1.0' },
@@ -1188,7 +1282,7 @@ export class ModelDownloader {
       .map((f) => ({
         path: f.Path,
         size: f.Size,
-        url: `https://modelscope.cn/models/${repo.modelscopeRepo}/resolve/master/${f.Path}`,
+        url: `https://modelscope.cn/models/${repoId}/resolve/master/${f.Path}`,
       }))
   }
 

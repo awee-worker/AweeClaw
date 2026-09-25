@@ -40,9 +40,9 @@ import { t, type Language } from '@renderer/i18n'
 import { isConfigPrimitive } from '@utils/configValueGuard'
 import { invalidateLocalVoiceRuntime } from '@renderer/services/localVoiceEngine'
 import {
-  MOSS_BUILTIN_VOICES,
-  DEFAULT_BUILTIN_VOICE,
-  isBuiltinVoice,
+  getBuiltinVoicesForModel,
+  normalizeTtsModelId,
+  resolveVoiceForModel,
 } from '@shared/localVoiceVoices'
 
 /** 引擎状态 */
@@ -133,7 +133,7 @@ const DEFAULT_CONFIG: LocalVoiceConfig = {
   tts: {
     enabled: false,
     engine: 'sherpa-tts',
-    modelName: 'MOSS-TTS-Nano-100M-ONNX',
+    modelName: 'moss-tts-nano',
     modelDir: '',
     numThreads: 4,
     defaultVoice: 'Junhao',
@@ -160,8 +160,6 @@ const DEFAULT_STATUS: LocalVoiceStatus = {
   gptSovits: { status: 'uninitialized', enabled: false },
 }
 
-/** 内置音色分组（保持清单中的出现顺序，供 optgroup 渲染） */
-const VOICE_GROUPS: string[] = Array.from(new Set(MOSS_BUILTIN_VOICES.map((item) => item.group)))
 
 /**
  * TTS 测试文本。
@@ -272,12 +270,21 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
         // 历史遗留：早期面板只提供 Junhao / Xiaoxiao 两个选项，而 Xiaoxiao 并不在
         // MOSS 内置音色表中，合成会直接失败。主进程启动时已纠正磁盘配置，
         // 这里再兜一层，避免下拉框出现「空值」让用户以为配置丢了。
-        if (plain.tts && !isBuiltinVoice(plain.tts.defaultVoice)) {
-          console.warn(
-            '[LocalVoiceSettings] 配置中的 TTS 音色不在内置列表中，已回退:',
+        // 模型名同时归一化：旧配置存的是 MOSS 目录名，与模型清单的 id 不一致，
+        // 不归一化会导致下拉框匹配不到选项而显示为空。
+        if (plain.tts) {
+          const modelName = normalizeTtsModelId(plain.tts.modelName)
+          const { voice, substituted, requested } = resolveVoiceForModel(
+            modelName,
             plain.tts.defaultVoice,
           )
-          plain.tts = { ...plain.tts, defaultVoice: DEFAULT_BUILTIN_VOICE }
+          if (substituted) {
+            console.warn(
+              '[LocalVoiceSettings] 配置中的 TTS 音色不属于当前模型，已回退:',
+              requested,
+            )
+          }
+          plain.tts = { ...plain.tts, modelName, defaultVoice: voice }
         }
         setConfig(plain)
       }
@@ -388,10 +395,37 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
     })
   }, [])
 
+  // 切换 TTS 模型
+  // 音色 ID 体系随模型变化，旧音色在新模型下必然非法，
+  // 必须在同一次更新里一并纠正，否则会留下「模型已切换、音色仍是旧值」的坏配置。
+  const handleTtsModelChange = useCallback((modelId: string) => {
+    setConfig((prev) => {
+      const { voice, substituted, requested } = resolveVoiceForModel(
+        modelId,
+        prev.tts.defaultVoice,
+      )
+      if (substituted) {
+        console.warn(
+          '[LocalVoiceSettings] 切换模型后原音色不适用，已自动调整:',
+          requested,
+          '→',
+          voice,
+        )
+      }
+      return { ...prev, tts: { ...prev.tts, modelName: modelId, defaultVoice: voice } }
+    })
+  }, [])
+
   // 测试引擎
   const handleTest = useCallback(async (engineType: 'asr' | 'tts' | 'gpt-sovits') => {
     setTesting(engineType)
     try {
+
+      // 先同步配置：模型 / 音色 / 开关可能刚改过但尚未保存。
+      // 不同步会「测的是主进程里的旧配置」——切换 TTS 模型后尤其明显：
+      // 界面已选 VITS，实际初始化的却是 MOSS，测试结果与界面完全对不上。
+      await api.localVoice.updateConfig(toPlain(config))
+      invalidateLocalVoiceRuntime()
       let result
       if (engineType === 'asr') {
         result = await api.localVoice.initializeAsr()
@@ -442,7 +476,7 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
     } finally {
       setTesting(null)
     }
-  }, [language, config.tts.defaultVoice, config.tts.defaultSpeed])
+  }, [language, config])
 
   // 下载模型
   const handleDownloadModel = useCallback(async (modelId: string, source?: 'modelscope' | 'huggingface') => {
@@ -586,6 +620,12 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
     }
   }, [language])
 
+
+  // 音色清单随当前模型变化：不同模型的音色 ID 体系不同（MOSS 用音色名，
+  // VITS 用整数 speaker id），不可跨模型复用，因此按当前模型实时求取。
+  const builtinVoices = getBuiltinVoicesForModel(config.tts.modelName)
+  const voiceGroups: string[] = Array.from(new Set(builtinVoices.map((item) => item.group)))
+  const ttsModels = availableModels.filter((model) => model.type === 'tts')
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -784,12 +824,18 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
                     </label>
                     <select
                       value={config.tts.modelName}
-                      onChange={(e) => updateConfig('tts.modelName', e.target.value)}
+                      onChange={(e) => handleTtsModelChange(e.target.value)}
                       className="w-full p-2 border border-border rounded-md"
                     >
-                      <option value="MOSS-TTS-Nano-100M-ONNX">
-                        MOSS TTS Nano (轻量级)
-                      </option>
+                      {/* 选项来自主进程的模型清单，新增模型无需改前端 */}
+                      {ttsModels.length === 0 && (
+                        <option value={config.tts.modelName}>{config.tts.modelName}</option>
+                      )}
+                      {ttsModels.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name}（{formatSize(model.size)}）
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -802,15 +848,18 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
                       onChange={(e) => updateConfig('tts.defaultVoice', e.target.value)}
                       className="w-full p-2 border border-border rounded-md"
                     >
-                      {/* 选项必须来自 MOSS 内置音色清单：
-                          过去写死的 Xiaoxiao 并不在清单中，选中后合成直接失败 */}
-                      {VOICE_GROUPS.map((group) => (
+                      {/* 选项必须来自当前模型的音色清单：
+                          不同模型的音色 ID 体系不同（MOSS 用音色名，VITS 用整数 sid），
+                          跨模型取值会在 Python 侧被回退或直接失败 */}
+                      {voiceGroups.map((group) => (
                         <optgroup key={group} label={group}>
-                          {MOSS_BUILTIN_VOICES.filter((item) => item.group === group).map((item) => (
-                            <option key={item.voice} value={item.voice}>
-                              {item.displayName}
-                            </option>
-                          ))}
+                          {builtinVoices
+                            .filter((item) => item.group === group)
+                            .map((item) => (
+                              <option key={item.voice} value={item.voice}>
+                                {item.displayName}
+                              </option>
+                            ))}
                         </optgroup>
                       ))}
                     </select>

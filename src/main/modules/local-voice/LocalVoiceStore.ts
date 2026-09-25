@@ -60,7 +60,7 @@ export interface TtsEngineConfig {
   enabled: boolean
   /** 引擎类型 */
   engine: EngineType
-  /** 模型名称（如 MOSS-TTS-Nano-100M-ONNX） */
+  /** 模型 ID（与 ModelDownloader 的模型清单对齐，如 moss-tts-nano） */
   modelName: string
   /** 模型目录（绝对路径） */
   modelDir: string
@@ -126,7 +126,7 @@ export const DEFAULT_LOCAL_VOICE_CONFIG: LocalVoiceConfig = {
   tts: {
     enabled: false,
     engine: 'sherpa-tts',
-    modelName: 'MOSS-TTS-Nano-100M-ONNX',
+    modelName: 'moss-tts-nano',
     modelDir: path.join(DEFAULT_MODEL_DIR, 'sherpa-tts'),
     numThreads: 4,
     defaultVoice: 'Junhao',
@@ -147,6 +147,10 @@ export const DEFAULT_LOCAL_VOICE_CONFIG: LocalVoiceConfig = {
 // ============================================
 // 路径工具
 // ============================================
+
+// 说明：`tts.modelName` 存的是 ModelDownloader 的模型 ID。
+// 早期版本存 MOSS 的目录名（MOSS-TTS-Nano-100M-ONNX），
+// 读取时由 `normalizeTtsModelId()` 兼容为当前 ID，无需数据迁移。
 
 /** 模块数据目录（<userData>/local-voice） */
 export function getLocalVoiceDataDir(): string {

@@ -43,6 +43,18 @@ export const TTS_DEPENDENCIES: SidecarDependencySpec = {
   importProbe: 'onnxruntime, sentencepiece, soundfile, numpy, scipy',
 }
 
+/**
+ * VITS TTS 依赖：sherpa-onnx 已自带 onnxruntime
+ *
+ * 与 MOSS 的 TTS_DEPENDENCIES 分开声明：两者互不依赖对方的重型包，
+ * 合在一起会让只用其中一种模型的用户白装上百 MB 的无用依赖。
+ */
+export const VITS_TTS_DEPENDENCIES: SidecarDependencySpec = {
+  label: '离线语音合成（VITS）',
+  packages: ['sherpa-onnx', 'soundfile', 'numpy'],
+  importProbe: 'sherpa_onnx, soundfile, numpy',
+}
+
 /** 探测指定模块是否都能导入 */
 function probeImports(pythonPath: string, importProbe: string): Promise<boolean> {
   return new Promise((resolve) => {

@@ -31,9 +31,14 @@ import {
 } from './LocalVoiceStore'
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type { ModelMetadata } from './ModelDownloader'
-import { resolveBuiltinVoice } from '@shared/localVoiceVoices'
+import {
+  normalizeTtsModelId,
+  resolveVoiceForModel,
+  VITS_MODEL_VOICES,
+} from '@shared/localVoiceVoices'
 import { SherpaAsrEngine, type AsrResult } from './engines/SherpaAsrEngine'
 import { SherpaTtsEngine, type TtsResult } from './engines/SherpaTtsEngine'
+import { VitsTtsEngine } from './engines/VitsTtsEngine'
 import { GptSovitsEngine } from './engines/GptSovitsEngine'
 import { ModelDownloader, type DownloadProgress } from './ModelDownloader'
 
@@ -46,7 +51,8 @@ export class LocalVoiceManager {
 
   private config: LocalVoiceConfig
   private asrEngine: SherpaAsrEngine | null = null
-  private ttsEngine: SherpaTtsEngine | null = null
+  /** TTS 引擎实例：具体实现由 `tts.modelName` 决定（MOSS / VITS） */
+  private ttsEngine: SherpaTtsEngine | VitsTtsEngine | null = null
   private gptSovitsEngine: GptSovitsEngine | null = null
   private modelDownloader: ModelDownloader
 
@@ -69,16 +75,20 @@ export class LocalVoiceManager {
    * 纠正历史遗留的非法 TTS 音色并写回磁盘。
    *
    * 背景：早期设置面板只提供 Junhao / Xiaoxiao 两个选项，而 Xiaoxiao 并不在
-   * MOSS 内置音色表中。一旦被存进配置，离线合成会在 Python 侧直接报
-   * 「Built-in voice not found: Xiaoxiao」，与「仅本地」优先级叠加后
-   * 就表现为「播报没有任何反应」。
+   * MOSS 内置音色表中。一旦被存进配置，离线合成会在 Python 侧直接失败，
+   * 与「仅本地」优先级叠加后就表现为「播报没有任何反应」。
+   * 引入多模型后校验维度从「是否内置」变为「是否属于当前模型」：
+   * 例如 `Junhao` 对 MOSS 合法，切到 VITS 后即非法（VITS 音色是整数 sid）。
    */
   private repairTtsVoice(): void {
-    const { voice, substituted, requested } = resolveBuiltinVoice(this.config.tts.defaultVoice)
+    const { voice, substituted, requested } = resolveVoiceForModel(
+      this.config.tts.modelName,
+      this.config.tts.defaultVoice,
+    )
     if (!substituted) return
 
     logger.system.warn(
-      `[LocalVoice] 配置中的 TTS 音色「${requested || '(空)'}」不在内置音色表中，已纠正为「${voice}」`,
+      `[LocalVoice] 配置中的 TTS 音色「${requested || '(空)'}」不属于模型「${this.config.tts.modelName}」，已纠正为「${voice}」`,
     )
     this.config = updateLocalVoiceConfig({ tts: { ...this.config.tts, defaultVoice: voice } })
   }
@@ -98,15 +108,24 @@ export class LocalVoiceManager {
 
   /** 更新配置 */
   updateConfig(patch: Partial<LocalVoiceConfig>): LocalVoiceConfig {
-    // 保存前先纠正非法音色：否则设置面板一保存，离线播报就被打回「没反应」
-    if (patch.tts && !resolveBuiltinVoice(patch.tts.defaultVoice).substituted) {
-      this.config = updateLocalVoiceConfig(patch)
-    } else if (patch.tts) {
-      const { voice, requested } = resolveBuiltinVoice(patch.tts.defaultVoice)
-      logger.system.warn(
-        `[LocalVoice] 保存的 TTS 音色「${requested || '(空)'}」不在内置音色表中，已纠正为「${voice}」`,
+    // 保存前先按目标模型纠正非法音色：否则设置面板一保存，离线播报就被打回「没反应」。
+    // 模型与音色可能在同一次保存中一起变更，因此用合并后的最终值去校验，
+    // 而不是分别取 patch 与当前配置（否则切换模型时会残留旧模型的音色）。
+    if (patch.tts) {
+      const nextTts = { ...this.config.tts, ...patch.tts }
+      const { voice, requested, substituted } = resolveVoiceForModel(
+        nextTts.modelName,
+        nextTts.defaultVoice,
       )
-      this.config = updateLocalVoiceConfig({ ...patch, tts: { ...patch.tts, defaultVoice: voice } })
+      if (substituted) {
+        logger.system.warn(
+          `[LocalVoice] 保存的 TTS 音色「${requested || '(空)'}」不属于模型「${nextTts.modelName}」，已纠正为「${voice}」`,
+        )
+      }
+      this.config = updateLocalVoiceConfig({
+        ...patch,
+        tts: { ...nextTts, defaultVoice: voice },
+      })
     } else {
       this.config = updateLocalVoiceConfig(patch)
     }
@@ -204,9 +223,9 @@ export class LocalVoiceManager {
     this.ttsStatus = 'loading'
 
     try {
-      if (!this.ttsEngine) {
-        this.ttsEngine = new SherpaTtsEngine(this.config.tts)
-      }
+      // 按当前配置重建实例：引擎对象本身很轻，真正的开销（Python 进程、模型）
+      // 在 initialize() 里。复上一轮残留的实例会沿用旧模型配置。
+      this.ttsEngine = this.createTtsEngine()
 
       await this.ttsEngine.initialize()
       this.ttsStatus = 'ready'
@@ -218,6 +237,25 @@ export class LocalVoiceManager {
       logger.system.error('[LocalVoice] TTS 引擎初始化失败:', errorMessage)
       throw error
     }
+  }
+
+  /**
+   * 按 `tts.modelName` 创建 TTS 引擎
+   *
+   * 早期实现硬编码 `new SherpaTtsEngine`，导致模型清单里新增的模型即使下载完成
+   * 也无法被使用。VITS 与 MOSS 的运行时、Python 依赖与音色体系完全独立，
+   * 必须按模型分派。
+   */
+  private createTtsEngine(): SherpaTtsEngine | VitsTtsEngine {
+    const modelId = normalizeTtsModelId(this.config.tts.modelName)
+
+    if (modelId in VITS_MODEL_VOICES) {
+      logger.system.info(`[LocalVoice] 使用 VITS TTS 引擎（模型: ${modelId}）`)
+      return new VitsTtsEngine(this.config.tts)
+    }
+
+    logger.system.info(`[LocalVoice] 使用 MOSS TTS 引擎（模型: ${modelId}）`)
+    return new SherpaTtsEngine(this.config.tts)
   }
 
   /** 初始化 GPT-SoVITS 引擎 */
