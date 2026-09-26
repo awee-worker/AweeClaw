@@ -17,6 +17,8 @@
 
 import { useEffect } from 'react'
 import { useAgentCommands } from '@hooks/useAgent'
+import { useAgentStore } from '@intelligence/state/IntelligenceStore'
+import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { PLUGIN_CHAT_SEND_EVENT, type PluginChatSendDetail } from './PluginHostApi'
 
@@ -25,6 +27,43 @@ const READY_FLAG = '__AWEECLAW_PLUGIN_HOST_READY__'
 
 /** 设备联动 AI 任务事件名（来自 authSlice 的 onAiTask/onRunScenario） */
 const DEVICE_LINK_AI_TASK_EVENT = 'aweeclaw:device-link:ai-task'
+
+/** 补报结果正文上限（只做留痕，避免撑大事件 payload） */
+const REPORT_OUTPUT_LIMIT = 4000
+
+/** 取当前线程最后一条助手消息的纯文本（AI 任务结果上报用） */
+function collectLastAssistantReply(): string {
+  try {
+    const state = useAgentStore.getState()
+    const thread = state.currentThreadId
+      ? state.threads[state.currentThreadId]
+      : state.getCurrentThread?.()
+    if (!thread) return ''
+    const last = [...thread.messages].reverse().find((m) => m.role === 'assistant')
+    if (!last) return ''
+    const parts = (last as { parts?: Array<{ type: string; text?: string }> }).parts || []
+    return parts
+      .filter((p) => p.type === 'text' && p.text)
+      .map((p) => p.text)
+      .join('\n')
+      .trim()
+  } catch {
+    return ''
+  }
+}
+
+/** 从任务输出中提取工作区文件路径，作为产物上报（最多 10 条） */
+function extractArtifactPaths(text: string): Array<{ type: string; title: string; path: string }> {
+  const matches = text.match(/[\w./\\-]+\.\w{1,5}\b/g) || []
+  const seen = new Set<string>()
+  const out: Array<{ type: string; title: string; path: string }> = []
+  for (const m of matches) {
+    if (seen.has(m) || out.length >= 10) continue
+    seen.add(m)
+    out.push({ type: 'file', title: m.split(/[\\/]/).pop() || m, path: m })
+  }
+  return out
+}
 
 export function PluginHostBridge() {
   const { sendMessage } = useAgentCommands()
@@ -44,15 +83,38 @@ export function PluginHostBridge() {
       }
     }
 
-    /** 处理设备联动 AI 任务请求（来自移动端远程触发） */
+    /**
+     * 处理设备联动 AI 任务请求（来自移动端远程触发）。
+     *
+     * RPC 通道只回了 queued，任务真正的完成结果与产物在此补报：
+     * 按 requestId 上报 task-complete / task-error，后端任务中心据此归档。
+     */
     const handleDeviceLinkAiTask = async (event: Event) => {
-      const detail = (event as CustomEvent<{ text: string; scenarioId?: string }>).detail
+      const detail = (event as CustomEvent<{ text: string; scenarioId?: string; requestId?: string }>).detail
       if (!detail?.text) return
+      const { requestId } = detail
       try {
         await sendMessage(detail.text)
-        logger.system.info('[PluginHostBridge] Device-link AI task sent to agent')
+        logger.system.info('[PluginHostBridge] Device-link AI task completed, reporting result')
+        if (requestId) {
+          const reply = collectLastAssistantReply()
+          api.deviceLink.reportEvent('task-complete', {
+            requestId,
+            success: true,
+            result: reply.slice(0, REPORT_OUTPUT_LIMIT),
+            summary: reply.slice(0, 120),
+            artifacts: extractArtifactPaths(reply),
+          })
+        }
       } catch (err) {
         logger.system.error('[PluginHostBridge] Device-link AI task failed:', err)
+        if (requestId) {
+          api.deviceLink.reportEvent('task-error', {
+            requestId,
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
       }
     }
 

@@ -2104,10 +2104,11 @@ export interface ElectronAPI {
   httpReadUrl: (url: string, timeout?: number) => Promise<{
     success: boolean; content?: string; title?: string; error?: string; contentType?: string; statusCode?: number
   }>
-  httpWebSearch: (query: string, maxResults?: number, timeout?: number) => Promise<{
+  /** page 从 1 开始，用于「加载更多」翻页 */
+  httpWebSearch: (query: string, maxResults?: number, timeout?: number, page?: number) => Promise<{
     success: boolean; results?: Array<{ title: string; url: string; snippet: string; content?: string; publishedDate?: string; engine?: string; score?: number }>; error?: string
   }>
-  httpSmartSearch: (query: string, maxResults?: number) => Promise<{
+  httpSmartSearch: (query: string, maxResults?: number, domain?: string, page?: number) => Promise<{
     success: boolean
     domain: string
     domainClassification: { primary: string; secondary: string | null; hits: Array<{ domain: string; count: number; matchedKeywords: string[] }>; isVertical: boolean }
@@ -2128,11 +2129,15 @@ export interface ElectronAPI {
     sources: string[]
     error?: string
   }>
-  httpImageSearch: (query: string, maxResults?: number, timeout?: number) => Promise<{
+  httpImageSearch: (query: string, maxResults?: number, timeout?: number, page?: number) => Promise<{
     success: boolean; results?: Array<{ title: string; url: string; imgSrc: string; thumbnailSrc?: string; source?: string; imgSize?: string }>; error?: string
   }>
-  httpVideoSearch: (query: string, maxResults?: number, timeout?: number) => Promise<{
+  httpVideoSearch: (query: string, maxResults?: number, timeout?: number, page?: number) => Promise<{
     success: boolean; results?: Array<{ title: string; url: string; thumbnail?: string; length?: string; author?: string; source?: string; publishedDate?: string }>; error?: string
+  }>
+  /** 下载远程文件：主进程拉取二进制后弹出系统保存对话框；canceled 表示用户在对话框取消 */
+  httpDownloadFile: (url: string, suggestedName?: string, referer?: string) => Promise<{
+    success: boolean; path?: string; error?: string; canceled?: boolean
   }>
   httpSetSearchEngineState: (state: unknown) => Promise<{ success: boolean }>
 
@@ -3300,11 +3305,13 @@ export interface ElectronAPI {
     replyResult: (
       requestId: string,
       result: {
-        success: boolean
-        output?: string
-        error?: string
+        success: boolean;
+        output?: string;
+        error?: string;
       },
     ) => void
+    /** 补报任务事件（task-complete / task-error 等，带 requestId 与产物） */
+    reportEvent: (type: string, payload: Record<string, unknown>) => void
 
     // ===== 方向4：场景模式跨端协同 =====
     /** 推送场景模式切换到移动端（PC→移动端） */

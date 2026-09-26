@@ -1021,7 +1021,8 @@ export default function WorkbenchHome() {
               const meta = MODE_META[mode]
               const ModeIcon = meta.icon
               const profile = sceneModeRegistry.getOrDefault(mode)
-              const label = isZh ? profile.displayNameZh : profile.displayName
+              // 仪表盘上以「XX助手」呈现，强调该模式是面向用户的助手入口
+              const label = isZh ? `${profile.displayNameZh}助手` : `${profile.displayName} Assistant`
               const selected = currentSceneMode === mode
               return (
                 <button
@@ -1710,8 +1711,8 @@ function CardLibrary({
   const scenarioCards = useScenarioWidgetCards()
   const modeMeta = MODE_META[mode]
   const modeLabel = isZh
-    ? sceneModeRegistry.getOrDefault(mode).displayNameZh
-    : sceneModeRegistry.getOrDefault(mode).displayName
+    ? `${sceneModeRegistry.getOrDefault(mode).displayNameZh}助手`
+    : `${sceneModeRegistry.getOrDefault(mode).displayName} Assistant`
 
   const renderItem = (item: { id: string; icon: LucideIcon; titleZh: string; titleEn: string; color: string }) => {
     const added = addedIds.includes(item.id)

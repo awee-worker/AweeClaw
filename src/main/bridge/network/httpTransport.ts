@@ -10,7 +10,11 @@ import { logger } from '@shared/toolkit/LogEngine'
 import { safeIpcHandle } from '../core/ipcGuard'
 import { AWEECLAW_SEARXNG_BASE_URL, AWEECLAW_SEARXNG_API_KEY } from '@shared/configuration/searchProviders'
 import { smartSearchDispatcher } from './verticalSearch/smartSearchDispatcher'
+import type { SearchDomain } from './verticalSearch/domainClassifier'
 import { extractRelevantContent } from './verticalSearch/contentExtractor'
+import { isRelevantItem } from './verticalSearch/resultRanker'
+import { BrowserWindow, dialog } from 'electron'
+import * as fs from 'fs'
 import * as https from 'https'
 import * as http from 'http'
 import * as zlib from 'zlib'
@@ -518,8 +522,21 @@ function getEngineConfig(engineId: string): { apiKey?: string; extraValues?: Rec
     }
     return cfg || {}
 }
+/**
+ * 结果相关性准入（统一收口）
+ *
+ * 各引擎的结果结构一致（title/url/snippet），统一用 isRelevantItem 判定，
+ * 避免各引擎实现自行其是、过滤覆盖不一致。
+ */
+function filterResultsByRelevance(
+    results: SearchResult[] | RichSearchResult[],
+    query: string,
+): SearchResult[] | RichSearchResult[] {
+    return results.filter(r => isRelevantItem(r.title, r.snippet || '', query))
+}
 
-async function webSearch(query: string, maxResults = 5, timeout?: number): Promise<WebSearchResult> {
+
+async function webSearch(query: string, maxResults = 5, timeout?: number, page = 1): Promise<WebSearchResult> {
     const engineOrder = getEnabledEngineOrder()
     // 0 = 不限制超时
     const globalTimeout = timeout !== undefined && timeout !== null
@@ -530,13 +547,24 @@ async function webSearch(query: string, maxResults = 5, timeout?: number): Promi
         : 0
 
     const errors: string[] = []
-
     for (const engineId of engineOrder) {
         try {
-            const result = await executeSearch(engineId, query, maxResults, perEngineTimeout)
+            const result = await executeSearch(engineId, query, maxResults, perEngineTimeout, page)
             if (result.success && result.results && result.results.length > 0) {
-                logger.ipc.info(`[HTTP] Search succeeded with engine: ${engineId}, results: ${result.results.length}`)
-                return result
+                // 相关性准入：所有引擎的结果都要过这一关
+                //
+                // 此前只有 SearXNG 系引擎在自己的实现里做了过滤，其余引擎（必应、搜狗、
+                // 博查等）的结果直接返回；用户把主引擎切到其中一个，搜索质量就退回未过滤
+                // 状态。这里统一收口，过滤后为空则继续尝试下一个引擎。
+                const filtered = filterResultsByRelevance(result.results, query)
+                if (filtered.length > 0) {
+                    logger.ipc.info(`[HTTP] Search succeeded with engine: ${engineId}, results: ${filtered.length}/${result.results.length}`)
+                    return { ...result, results: filtered }
+                }
+                const allFiltered = `all ${result.results.length} results filtered out as irrelevant`
+                errors.push(`${engineId}: ${allFiltered}`)
+                logger.ipc.warn(`[HTTP] Search engine ${engineId}: ${allFiltered}`)
+                continue
             }
             // 失败原因：优先使用 result.error，否则标注"返回 0 条结果"
             const reason = result.error || 'returned 0 results'
@@ -557,10 +585,11 @@ async function webSearch(query: string, maxResults = 5, timeout?: number): Promi
     }
 }
 
-async function executeSearch(engineId: string, query: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
+async function executeSearch(engineId: string, query: string, maxResults: number, timeout: number, page = 1): Promise<WebSearchResult> {
     const cfg = getEngineConfig(engineId)
     const engineTimeout = cfg.timeout ? cfg.timeout * 1000 : timeout
 
+    // 仅 SearXNG 系支持 pageno 翻页；其余引擎忽略 page，由上层去重兜底
     switch (engineId) {
         case 'google': return searchWithGoogle(query, cfg.apiKey || '', cfg.extraValues?.cx || '', maxResults, engineTimeout)
         case 'duckduckgo': return searchWithDuckDuckGo(query, maxResults, engineTimeout)
@@ -573,7 +602,7 @@ async function executeSearch(engineId: string, query: string, maxResults: number
         case 'sogou': return searchWithSogou(query, cfg.apiKey || '', maxResults, engineTimeout)
         case 'bocha': return searchWithBocha(query, cfg.apiKey || '', maxResults, engineTimeout)
         case 'aweeclaw-searxng':
-        case 'searxng': return searchWithSearXNG(query, cfg.extraValues?.baseUrl || cfg.customBaseUrl || '', maxResults, engineTimeout, cfg.apiKey)
+        case 'searxng': return searchWithSearXNG(query, cfg.extraValues?.baseUrl || cfg.customBaseUrl || '', maxResults, engineTimeout, cfg.apiKey, page)
         case 'yandex': return searchWithYandex(query, cfg.apiKey || '', maxResults, engineTimeout)
         default: {
             if (cfg.customBaseUrl) return searchWithCustom(engineId, cfg.customBaseUrl, cfg.apiKey, query, maxResults, engineTimeout)
@@ -899,6 +928,7 @@ function isRelevantResults(query: string, results: RichSearchResult[]): boolean 
  * - yandex.com/search
  * - sogou.com/web
  * - so.com/s
+ * - ai.so.com/search (360 系聚合跳转页：标题看似正常，点开是二次跳转)
  *
  * 这些页面 robots.txt 禁止抓取，且对用户无价值
  */
@@ -912,6 +942,7 @@ function filterSearchEngineUrls(results: RichSearchResult[]): RichSearchResult[]
         /yandex\.\w+\/search\?/i,
         /sogou\.com\/web/i,
         /so\.com\/s\?/i,
+        /\.so\.com\/search\//i,
         /duckduckgo\.com\//i,
     ]
 
@@ -981,7 +1012,17 @@ function simplifyQuery(query: string, level: number = 1): string {
     return result
 }
 
-async function searchWithSearXNG(query: string, baseUrl: string, maxResults: number, timeout: number, apiKey?: string): Promise<WebSearchResult> {
+/**
+ * 按查询语言锁定结果集
+ *
+ * 中文查询显式限定 zh-CN，SearXNG 会据此跳过不支持中文的引擎，从源头减少
+ * 「中文查询返回英文页面」这类无关结果；非中文查询交给 SearXNG 自动识别。
+ */
+function resolveSearchLanguage(query: string): string {
+    return /[\u4e00-\u9fa5]/.test(query) ? 'zh-CN' : 'auto'
+}
+
+async function searchWithSearXNG(query: string, baseUrl: string, maxResults: number, timeout: number, apiKey?: string, page = 1): Promise<WebSearchResult> {
     if (!baseUrl) return { success: false, error: 'SearXNG instance URL not configured' }
 
     const cleanBase = baseUrl.replace(/\/+$/, '')
@@ -990,11 +1031,14 @@ async function searchWithSearXNG(query: string, baseUrl: string, maxResults: num
 
     /**
      * 执行单次 SearXNG 搜索
+     *
+     * page 直接映射到 pageno，用于「加载更多」翻页；
+     * 相关性重试沿用同一页，避免重试时跳页丢结果。
      */
     const doSearch = async (q: string): Promise<RichSearchResult[]> => {
         const encoded = encodeURIComponent(q)
         const { status, data } = await makeJsonRequest(
-            `${cleanBase}/search?q=${encoded}&format=json&categories=general&pageno=1`,
+            `${cleanBase}/search?q=${encoded}&format=json&categories=general&pageno=${page}&language=${resolveSearchLanguage(q)}`,
             headers,
             timeout,
         )
@@ -1045,22 +1089,18 @@ async function searchWithSearXNG(query: string, baseUrl: string, maxResults: num
             }
         }
 
-        // 最终兜底：如果结果仍然不相关，尝试过滤掉不相关的，只保留相关的
-        if (results.length > 0 && !isRelevantResults(query, results)) {
-            // 提取查询实体
-            const entityMatch = query.match(/[\u4e00-\u9fa5]{2,8}/g) || []
-            const entities = [...new Set(entityMatch.filter((e: string) => e.length >= 2))].slice(0, 5)
-
-            if (entities.length > 0) {
-                const relevantOnly = results.filter(r => {
-                    const text = (r.title + ' ' + r.snippet).toLowerCase()
-                    return entities.some(e => text.includes(e.toLowerCase()))
-                })
-                if (relevantOnly.length > 0) {
-                    results = relevantOnly
-                    logger.ipc.info(`[SearXNG] Post-filter: kept ${results.length} relevant results from ${results.length + relevantOnly.length}`)
-                }
+        // 最终准入：逐条剔除与查询无关的结果
+        //
+        // 此前的做法是「整批判定 + 仅当整批不合格时才过滤」，只要靠前的结果里有
+        // 一条命中实体，其余无关结果就会原样返回。改为对每条结果单独判定，相关性
+        // 不达标的一律丢弃；若全部不达标则返回空，交由上层告知用户未找到相关结果，
+        // 而不是用无关内容填充。
+        if (results.length > 0) {
+            const relevantOnly = results.filter(r => isRelevantItem(r.title, r.snippet || '', query))
+            if (relevantOnly.length < results.length) {
+                logger.ipc.info(`[SearXNG] Relevance filter: kept ${relevantOnly.length}/${results.length}`)
             }
+            results = relevantOnly
         }
 
         // 并行预取 top 3 结果的网页摘要
@@ -1079,7 +1119,7 @@ async function searchWithSearXNG(query: string, baseUrl: string, maxResults: num
  *
  * 请求 categories=images，解析 img_src / thumbnail_src 等图片特有字段。
  */
-async function searchImagesWithSearXNG(query: string, baseUrl: string, maxResults: number, timeout: number, apiKey?: string): Promise<ImageSearchResult> {
+async function searchImagesWithSearXNG(query: string, baseUrl: string, maxResults: number, timeout: number, apiKey?: string, page = 1): Promise<ImageSearchResult> {
     if (!baseUrl) return { success: false, error: 'SearXNG instance URL not configured' }
     try {
         const cleanBase = baseUrl.replace(/\/+$/, '')
@@ -1087,7 +1127,7 @@ async function searchImagesWithSearXNG(query: string, baseUrl: string, maxResult
         const headers: Record<string, string> = { 'Accept': 'application/json' }
         if (apiKey) headers['X-API-Key'] = apiKey
         const { status, data } = await makeJsonRequest(
-            `${cleanBase}/search?q=${encoded}&format=json&categories=images&pageno=1`,
+            `${cleanBase}/search?q=${encoded}&format=json&categories=images&pageno=${page}&language=${resolveSearchLanguage(query)}`,
             headers,
             timeout,
         )
@@ -1119,7 +1159,7 @@ async function searchImagesWithSearXNG(query: string, baseUrl: string, maxResult
  *
  * 请求 categories=videos，解析 thumbnail / length / author 等视频特有字段。
  */
-async function searchVideosWithSearXNG(query: string, baseUrl: string, maxResults: number, timeout: number, apiKey?: string): Promise<VideoSearchResult> {
+async function searchVideosWithSearXNG(query: string, baseUrl: string, maxResults: number, timeout: number, apiKey?: string, page = 1): Promise<VideoSearchResult> {
     if (!baseUrl) return { success: false, error: 'SearXNG instance URL not configured' }
     try {
         const cleanBase = baseUrl.replace(/\/+$/, '')
@@ -1127,7 +1167,7 @@ async function searchVideosWithSearXNG(query: string, baseUrl: string, maxResult
         const headers: Record<string, string> = { 'Accept': 'application/json' }
         if (apiKey) headers['X-API-Key'] = apiKey
         const { status, data } = await makeJsonRequest(
-            `${cleanBase}/search?q=${encoded}&format=json&categories=videos&pageno=1`,
+            `${cleanBase}/search?q=${encoded}&format=json&categories=videos&pageno=${page}&language=${resolveSearchLanguage(query)}`,
             headers,
             timeout,
         )
@@ -1152,6 +1192,7 @@ async function searchVideosWithSearXNG(query: string, baseUrl: string, maxResult
         return { success: false, error: `SearXNG video search failed: ${error}` }
     }
 }
+
 
 async function searchWithYandex(query: string, apiKey: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
     if (!apiKey) return { success: false, error: 'Yandex API Key not configured' }
@@ -1546,7 +1587,7 @@ function decodeHtmlEntities(text: string): string {
  * 当前仅支持 SearXNG（categories=images）。
  * 非 SearXNG 引擎返回不支持错误，后续可按需扩展。
  */
-async function imageSearch(query: string, maxResults = 5, timeout?: number): Promise<ImageSearchResult> {
+async function imageSearch(query: string, maxResults = 5, timeout?: number, page = 1): Promise<ImageSearchResult> {
     const engineOrder = getEnabledEngineOrder()
     const globalTimeout = timeout !== undefined && timeout !== null
         ? timeout
@@ -1565,7 +1606,7 @@ async function imageSearch(query: string, maxResults = 5, timeout?: number): Pro
 
         try {
             const result = await searchImagesWithSearXNG(
-                query, baseUrl, maxResults, engineTimeout, cfg.apiKey,
+                query, baseUrl, maxResults, engineTimeout, cfg.apiKey, page,
             )
             if (result.success && result.results && result.results.length > 0) {
                 logger.ipc.info(`[HTTP] Image search succeeded with engine: ${engineId}, results: ${result.results.length}`)
@@ -1585,7 +1626,7 @@ async function imageSearch(query: string, maxResults = 5, timeout?: number): Pro
  *
  * 当前仅支持 SearXNG（categories=videos）。
  */
-async function videoSearch(query: string, maxResults = 5, timeout?: number): Promise<VideoSearchResult> {
+async function videoSearch(query: string, maxResults = 5, timeout?: number, page = 1): Promise<VideoSearchResult> {
     const engineOrder = getEnabledEngineOrder()
     const globalTimeout = timeout !== undefined && timeout !== null
         ? timeout
@@ -1603,7 +1644,7 @@ async function videoSearch(query: string, maxResults = 5, timeout?: number): Pro
 
         try {
             const result = await searchVideosWithSearXNG(
-                query, baseUrl, maxResults, engineTimeout, cfg.apiKey,
+                query, baseUrl, maxResults, engineTimeout, cfg.apiKey, page,
             )
             if (result.success && result.results && result.results.length > 0) {
                 logger.ipc.info(`[HTTP] Video search succeeded with engine: ${engineId}, results: ${result.results.length}`)
@@ -1618,29 +1659,263 @@ async function videoSearch(query: string, maxResults = 5, timeout?: number): Pro
     return { success: false, error: '没有支持视频搜索的搜索引擎（需要 SearXNG 系引擎）' }
 }
 
+// ===== 远程文件下载（图片 / 视频 / 附件） =====
+
+/** 单文件下载体积上限：500MB，防止大文件把内存打满 */
+const MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024
+
+/** 建连/首包超时；流式接收期间不重置，避免大文件被误杀 */
+const DOWNLOAD_REQUEST_TIMEOUT = 60000
+
+/** 体积文案（错误提示用） */
+function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes}B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)}GB`
+}
+
+/** 常见 MIME → 扩展名：URL 路径没有扩展名时，用服务端 Content-Type 兜底 */
+const DOWNLOAD_EXT_BY_MIME: Record<string, string> = {
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/png': '.png',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+    'image/avif': '.avif',
+    'image/bmp': '.bmp',
+    'image/svg+xml': '.svg',
+    'image/x-icon': '.ico',
+    'image/vnd.microsoft.icon': '.ico',
+    'video/mp4': '.mp4',
+    'video/webm': '.webm',
+    'video/quicktime': '.mov',
+    'video/x-matroska': '.mkv',
+    'video/x-msvideo': '.avi',
+    'audio/mpeg': '.mp3',
+    'audio/mp4': '.m4a',
+    'audio/flac': '.flac',
+    'audio/ogg': '.ogg',
+    'audio/wav': '.wav',
+    'application/pdf': '.pdf',
+    'application/zip': '.zip',
+}
+
+/** 取 URL 路径最后一段的扩展名（命中才返回，形如 `.jpg`） */
+function extensionFromUrl(url: string): string {
+    try {
+        const segment = new URL(url).pathname.split('/').filter(Boolean).pop() || ''
+        const matched = segment.match(/\.[A-Za-z0-9]{1,8}$/)
+        return matched ? matched[0].toLowerCase() : ''
+    } catch {
+        return ''
+    }
+}
+
+/** 文件名是否已带扩展名 */
+function hasExtension(name: string): boolean {
+    return /\.[A-Za-z0-9]{1,8}$/.test(name)
+}
+
+/**
+ * 推导落地文件名
+ *
+ * 优先用调用方给的 suggestedName（通常是结果标题），否则取 URL 最后一段路径；
+ * 统一去掉查询串并替换文件系统非法字符，避免保存到非预期目录。
+ *
+ * 标题类建议名几乎不带扩展名，落地后系统无法识别文件类型（图片打不开），
+ * 因此缺扩展名时依次用 URL 路径、服务端 Content-Type 补全。
+ */
+function resolveDownloadName(url: string, suggestedName?: string, contentType?: string): string {
+    let name = (suggestedName || '').trim()
+    if (!name) {
+        try {
+            const pathname = new URL(url).pathname
+            name = decodeURIComponent(pathname.split('/').filter(Boolean).pop() || '')
+        } catch {
+            name = ''
+        }
+    }
+    name = name.split(/[?#]/)[0].replace(/[\\/:*?"<>|]/g, '_').trim()
+
+    if (name && !hasExtension(name)) {
+        const mime = (contentType || '').split(';')[0].trim().toLowerCase()
+        const ext = extensionFromUrl(url) || DOWNLOAD_EXT_BY_MIME[mime] || ''
+        if (ext) name += ext
+    }
+
+    return name || 'download'
+}
+
+/**
+ * 流式抓取远程二进制内容到内存
+ *
+ * - 携带浏览器 UA，并按需附加 Referer，绕过常见图片/视频防盗链
+ * - 声明 Accept-Encoding: identity，二进制原样落地、不做解压
+ * - 接收过程中累计超过体积上限立即中断连接
+ */
+function fetchRemoteBuffer(
+    url: string,
+    referer: string | undefined,
+    maxBytes: number,
+    redirectDepth = 0,
+): Promise<{ success: boolean; data?: Buffer; error?: string; contentType?: string }> {
+    return new Promise((resolve) => {
+        let settled = false
+        const done = (r: { success: boolean; data?: Buffer; error?: string; contentType?: string }) => {
+            if (settled) return
+            settled = true
+            resolve(r)
+        }
+
+        let parsed: URL
+        try {
+            parsed = new URL(url)
+        } catch {
+            done({ success: false, error: `无效的下载地址: ${url}` })
+            return
+        }
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            done({ success: false, error: `仅支持 http/https 下载，当前为 ${parsed.protocol}` })
+            return
+        }
+
+        const lib = parsed.protocol === 'https:' ? https : http
+        const headers: Record<string, string> = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Encoding': 'identity',
+        }
+        if (referer) headers['Referer'] = referer
+
+        const req = lib.get(
+            {
+                hostname: parsed.hostname,
+                port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+                path: parsed.pathname + parsed.search,
+                headers,
+            },
+            (res) => {
+                const status = res.statusCode || 0
+
+                // 跟随重定向（最多 5 跳，防止死循环）
+                if (status >= 300 && status < 400 && res.headers.location) {
+                    res.resume()
+                    if (redirectDepth >= 5) {
+                        done({ success: false, error: '重定向次数过多，已放弃下载' })
+                        return
+                    }
+                    const nextUrl = new URL(res.headers.location, parsed).toString()
+                    fetchRemoteBuffer(nextUrl, referer, maxBytes, redirectDepth + 1).then(done)
+                    return
+                }
+
+                if (status < 200 || status >= 300) {
+                    res.resume()
+                    done({ success: false, error: `下载失败：HTTP ${status}` })
+                    return
+                }
+
+                const contentType = String(res.headers['content-type'] || '')
+                const contentLength = Number(res.headers['content-length'] || 0)
+                if (contentLength > maxBytes) {
+                    res.destroy()
+                    done({ success: false, error: `文件体积 ${formatBytes(contentLength)} 超过上限 ${formatBytes(maxBytes)}` })
+                    return
+                }
+
+                const chunks: Buffer[] = []
+                let received = 0
+                res.on('data', (chunk: Buffer) => {
+                    received += chunk.length
+                    if (received > maxBytes) {
+                        res.destroy()
+                        done({ success: false, error: `文件体积超过上限 ${formatBytes(maxBytes)}，已中断下载` })
+                        return
+                    }
+                    chunks.push(chunk)
+                })
+                res.on('end', () => done({ success: true, data: Buffer.concat(chunks), contentType }))
+                res.on('error', (err: Error) => done({ success: false, error: err.message }))
+            },
+        )
+
+        req.on('error', (err: Error) => done({ success: false, error: err.message }))
+        req.setTimeout(DOWNLOAD_REQUEST_TIMEOUT, () => {
+            req.destroy()
+            done({ success: false, error: '下载超时，请检查网络或换用其它来源' })
+        })
+    })
+}
+
+/**
+ * 下载远程文件
+ *
+ * 流程：流式抓取到内存（带体积上限）→ 系统保存对话框选路径 → 写盘。
+ * 先抓取再弹框：直链失效 / 防盗链时直接返回错误，不弹出无意义的保存对话框。
+ */
+async function downloadRemoteFile(
+    url: string,
+    suggestedName?: string,
+    referer?: string,
+    parentWindow?: BrowserWindow,
+): Promise<{ success: boolean; path?: string; error?: string; canceled?: boolean }> {
+    if (!url || typeof url !== 'string') {
+        return { success: false, error: '缺少下载地址' }
+    }
+
+    const fetched = await fetchRemoteBuffer(url, referer, MAX_DOWNLOAD_BYTES)
+    if (!fetched.success || !fetched.data) {
+        return { success: false, error: fetched.error || '下载失败' }
+    }
+
+    const options = {
+        title: '保存文件',
+        defaultPath: resolveDownloadName(url, suggestedName, fetched.contentType),
+        filters: [{ name: '所有文件', extensions: ['*'] }],
+    }
+    const saveResult = parentWindow
+        ? await dialog.showSaveDialog(parentWindow, options)
+        : await dialog.showSaveDialog(options)
+
+    if (saveResult.canceled || !saveResult.filePath) {
+        return { success: false, canceled: true }
+    }
+
+    try {
+        await fs.promises.writeFile(saveResult.filePath, fetched.data)
+        logger.ipc.info(`[HTTP] Remote file saved: ${saveResult.filePath} (${formatBytes(fetched.data.length)})`)
+        return { success: true, path: saveResult.filePath }
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        logger.ipc.warn('[HTTP] Failed to save remote file:', msg)
+        return { success: false, error: `保存失败：${msg}` }
+    }
+}
+
 // ===== 注册 IPC Handlers =====
 
 export function registerHttpHandlers() {
     // 注入搜索函数到智能搜索分发器（避免循环依赖）
     smartSearchDispatcher.injectSearchFunctions({
-        generalSearch: async (query, maxResults, timeout?) => {
-            const result = await webSearch(query, maxResults, timeout)
+        generalSearch: async (query, maxResults, timeout?, page?) => {
+            const result = await webSearch(query, maxResults, timeout, page)
             return {
                 success: result.success,
                 results: result.results as Array<{ title: string; url: string; snippet: string; content?: string; publishedDate?: string; engine?: string; score?: number }> | undefined,
                 error: result.error,
             }
         },
-        imageSearch: async (query, maxResults, timeout?) => {
-            const result = await imageSearch(query, maxResults, timeout)
+        imageSearch: async (query, maxResults, timeout?, page?) => {
+            const result = await imageSearch(query, maxResults, timeout, page)
             return {
                 success: result.success,
                 results: result.results as Array<{ title: string; url: string; imgSrc: string; thumbnailSrc?: string; source?: string }> | undefined,
                 error: result.error,
             }
         },
-        videoSearch: async (query, maxResults, timeout?) => {
-            const result = await videoSearch(query, maxResults, timeout)
+        videoSearch: async (query, maxResults, timeout?, page?) => {
+            const result = await videoSearch(query, maxResults, timeout, page)
             return {
                 success: result.success,
                 results: result.results as Array<{ title: string; url: string; thumbnail?: string; length?: string; author?: string; source?: string; publishedDate?: string }> | undefined,
@@ -1655,28 +1930,36 @@ export function registerHttpHandlers() {
         return fetchUrl(url, timeout)
     })
 
-    // 网络搜索
-    safeIpcHandle('http:webSearch', async (_event, query: string, maxResults?: number, timeout?: number) => {
-        logger.ipc.info('[HTTP] Web search:', query, 'timeout:', timeout)
-        return webSearch(query, maxResults, timeout)
+    // 网络搜索（page 用于「加载更多」翻页，从 1 开始）
+    safeIpcHandle('http:webSearch', async (_event, query: string, maxResults?: number, timeout?: number, page?: number) => {
+        logger.ipc.info('[HTTP] Web search:', query, 'timeout:', timeout, 'page:', page)
+        return webSearch(query, maxResults, timeout, page)
     })
 
-    // 智能搜索（领域识别 + 垂直源分发）
-    safeIpcHandle('http:smartSearch', async (_event, query: string, maxResults?: number) => {
-        logger.ipc.info('[HTTP] Smart search:', query, 'maxResults:', maxResults)
-        return smartSearchDispatcher.search(query, maxResults || 8)
+    // 智能搜索（领域识别 + 垂直源分发）；domain 可选用于强制指定领域，page 用于翻页
+    safeIpcHandle('http:smartSearch', async (_event, query: string, maxResults?: number, domain?: string, page?: number) => {
+        logger.ipc.info('[HTTP] Smart search:', query, 'maxResults:', maxResults, 'domain:', domain, 'page:', page)
+        return smartSearchDispatcher.search(query, maxResults || 8, domain as SearchDomain | undefined, page)
     })
 
     // 图片搜索
-    safeIpcHandle('http:imageSearch', async (_event, query: string, maxResults?: number, timeout?: number) => {
-        logger.ipc.info('[HTTP] Image search:', query, 'timeout:', timeout)
-        return imageSearch(query, maxResults, timeout)
+    safeIpcHandle('http:imageSearch', async (_event, query: string, maxResults?: number, timeout?: number, page?: number) => {
+        logger.ipc.info('[HTTP] Image search:', query, 'timeout:', timeout, 'page:', page)
+        return imageSearch(query, maxResults, timeout, page)
     })
 
     // 视频搜索
-    safeIpcHandle('http:videoSearch', async (_event, query: string, maxResults?: number, timeout?: number) => {
-        logger.ipc.info('[HTTP] Video search:', query, 'timeout:', timeout)
-        return videoSearch(query, maxResults, timeout)
+    safeIpcHandle('http:videoSearch', async (_event, query: string, maxResults?: number, timeout?: number, page?: number) => {
+        logger.ipc.info('[HTTP] Video search:', query, 'timeout:', timeout, 'page:', page)
+        return videoSearch(query, maxResults, timeout, page)
+    })
+
+    // 下载远程文件（图片/视频/附件）：拉取二进制后由用户选择保存位置
+    safeIpcHandle('http:downloadFile', async (event, url: string, suggestedName?: string, referer?: string) => {
+        logger.ipc.info('[HTTP] Download file:', url)
+        // 以发起窗口为父窗口，macOS 上保存对话框会以 sheet 形式附着在其上
+        const parentWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined
+        return downloadRemoteFile(url, suggestedName, referer, parentWindow)
     })
 
     // 配置搜索引擎状态

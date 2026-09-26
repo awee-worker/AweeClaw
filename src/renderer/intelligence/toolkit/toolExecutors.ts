@@ -3472,6 +3472,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             /google\.\w+\/search\?/i, /google\.\w+\/url\?/i,
             /bing\.com\/search\?/i, /yandex\.\w+\/search\?/i,
             /sogou\.com\/web/i, /so\.com\/s\?/i,
+            /\.so\.com\/search\//i,
         ]
         if (searchEnginePatterns.some(p => p.test(url))) {
             return {

@@ -578,8 +578,9 @@ export default function NavigationRail() {
       setActiveSidePanel('explorer')
     }
     closeAllFullPages()
-    setChatVisible(true)
+    // 先关闭内部浏览器（其关闭逻辑会回写"打开前"的聊天显隐），再显式显示聊天窗口，避免被回写覆盖
     closeInternalBrowser()
+    setChatVisible(true)
     createThread()
   }, [setActiveSidePanel, closeAllFullPages, setChatVisible, closeInternalBrowser, createThread])
 

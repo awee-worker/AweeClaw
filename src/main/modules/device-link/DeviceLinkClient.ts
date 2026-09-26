@@ -34,6 +34,11 @@ import {
   handleTaskTransferDeliver,
   handleKnowledgeExport,
   handleChatExport,
+  handlePermissionState,
+  handlePermissionRequest,
+  preferenceKeyForScope,
+  tempGrantDurationMs,
+  type PermissionScope,
   type DeviceHandlerContext,
   type DeviceLinkPreferences,
 } from './DeviceLinkHandlers'
@@ -47,6 +52,8 @@ const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_BACKOFF_FACTOR = 1.5
 
 const PREFERENCES_KEY = 'deviceLink'
+/** 各权限范围的临时授权到期时间戳（scope → expiresAt） */
+const TEMP_GRANTS_KEY = 'deviceLinkTempGrants'
 
 /**
  * 设备联动客户端
@@ -398,6 +405,15 @@ class DeviceLinkClient {
         case 'chat.export.req':
           payload = await handleChatExport(ctx)
           break
+        case 'permission.state.req':
+          payload = handlePermissionState(ctx)
+          break
+        case 'permission.request':
+          payload = await handlePermissionRequest(ctx, {
+            scope: String(req.scope ?? 'shell'),
+            reason: String(req.reason ?? ''),
+          })
+          break
         default:
           throw new Error(`unsupported_rpc_type: ${req.type}`)
       }
@@ -430,26 +446,48 @@ class DeviceLinkClient {
     }
   }
 
-  // ===========================================================================
-  // 上下文与工具
-  // ===========================================================================
-
   private buildHandlerContext(): DeviceHandlerContext {
     return {
       resolveWorkspaceRoot: this.resolveWorkspaceRoot,
       preferences: () => this.loadPreferences(),
       getMainWindow: this.getMainWindow,
+      tempGrantRemaining: (scope) => this.tempGrantRemaining(scope),
+      applyPermission: (scope, mode) => this.applyPermission(scope, mode),
     }
   }
 
   private loadPreferences(): DeviceLinkPreferences {
     const data = this.configStore.get(PREFERENCES_KEY) as DeviceLinkPreferences | undefined
+    const temp = this.loadTempGrants()
+    const active = (scope: PermissionScope) => (temp[scope] || 0) > Date.now()
     return {
-      allowRemoteCommand: data?.allowRemoteCommand ?? false,
-      allowClipboardPush: data?.allowClipboardPush ?? true,
-      allowScreenshot: data?.allowScreenshot ?? true,
-      allowPowerControl: data?.allowPowerControl ?? false,
+      // 临时授权有效期内视为开启，到期自动回落到本机设置值
+      allowRemoteCommand: (data?.allowRemoteCommand ?? false) || active('shell'),
+      allowClipboardPush: (data?.allowClipboardPush ?? true) || active('clipboard'),
+      allowScreenshot: (data?.allowScreenshot ?? true) || active('screenshot'),
+      allowPowerControl: (data?.allowPowerControl ?? false) || active('power'),
     }
+  }
+
+  private loadTempGrants(): Partial<Record<PermissionScope, number>> {
+    return (this.configStore.get(TEMP_GRANTS_KEY) as Partial<Record<PermissionScope, number>>) || {}
+  }
+
+  /** 某范围临时授权剩余毫秒 */
+  private tempGrantRemaining(scope: PermissionScope): number {
+    const until = this.loadTempGrants()[scope] || 0
+    return Math.max(0, until - Date.now())
+  }
+
+  /** 落地权限决策：temp 写 10 分钟到期时间，always 永久写入偏好 */
+  private applyPermission(scope: PermissionScope, mode: 'temp' | 'always'): void {
+    if (mode === 'temp') {
+      const temp = { ...this.loadTempGrants(), [scope]: Date.now() + tempGrantDurationMs() }
+      this.configStore.set(TEMP_GRANTS_KEY, temp)
+      logger.deviceLink.info(`[Client] Temp permission granted: ${scope} (10m)`)
+      return
+    }
+    this.updatePreferences({ [preferenceKeyForScope(scope)]: true })
   }
 
   /** 更新偏好（设置界面调用） */

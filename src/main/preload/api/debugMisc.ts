@@ -71,14 +71,18 @@ export function createDebugMiscApi() {
     // ── HTTP API ──
     httpReadUrl: (url: string, timeout?: number) =>
       invoke('http:readUrl')(url, timeout),
-    httpWebSearch: (query: string, maxResults?: number, timeout?: number) =>
-      invoke('http:webSearch')(query, maxResults, timeout),
-    httpSmartSearch: (query: string, maxResults?: number) =>
-      invoke('http:smartSearch')(query, maxResults),
-    httpImageSearch: (query: string, maxResults?: number, timeout?: number) =>
-      invoke('http:imageSearch')(query, maxResults, timeout),
-    httpVideoSearch: (query: string, maxResults?: number, timeout?: number) =>
-      invoke('http:videoSearch')(query, maxResults, timeout),
+    // page 从 1 开始，用于「加载更多」翻页
+    httpWebSearch: (query: string, maxResults?: number, timeout?: number, page?: number) =>
+      invoke('http:webSearch')(query, maxResults, timeout, page),
+    httpSmartSearch: (query: string, maxResults?: number, domain?: string, page?: number) =>
+      invoke('http:smartSearch')(query, maxResults, domain, page),
+    httpImageSearch: (query: string, maxResults?: number, timeout?: number, page?: number) =>
+      invoke('http:imageSearch')(query, maxResults, timeout, page),
+    httpVideoSearch: (query: string, maxResults?: number, timeout?: number, page?: number) =>
+      invoke('http:videoSearch')(query, maxResults, timeout, page),
+    // 下载远程文件：主进程拉取二进制后弹出系统保存对话框
+    httpDownloadFile: (url: string, suggestedName?: string, referer?: string) =>
+      invoke('http:downloadFile')(url, suggestedName, referer),
     httpSetSearchEngineState: (state: unknown) =>
       invoke('http:setSearchEngineState')(state),
   }

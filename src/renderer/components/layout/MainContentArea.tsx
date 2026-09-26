@@ -346,8 +346,11 @@ export default function MainContentArea(props: MainContentAreaProps) {
   // chatVisible 为 true 时右侧恢复聊天窗口，浏览器让出空间
   const internalBrowserUrl = useStore((s) => s.internalBrowserUrl)
   const chatVisible = useStore((s) => s.chatVisible)
+  const activeSidePanel = useStore((s) => s.activeSidePanel)
 
-  if (internalBrowserUrl) {
+  // AI 浏览器自行承载内部浏览器（见 AIBrowserView）：面板保持挂载，
+  // 浏览网页后关闭浏览器不会丢失检索结果。其余场景仍由主区域整体接管。
+  if (internalBrowserUrl && activeSidePanel !== 'ai-browser') {
     return (
       <div className="flex-1 flex min-h-0 overflow-hidden">
         <InternalBrowserSlot />

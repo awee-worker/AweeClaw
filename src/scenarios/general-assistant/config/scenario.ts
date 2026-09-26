@@ -121,8 +121,11 @@ const GENERAL_ASSISTANT_UI: ScenarioUI = {
     { id: 'tasks', icon: 'CheckSquare', label: 'Tasks', labelZh: '任务', component: 'TaskWorkspace', position: 2, wideMode: true },
     { id: 'automation', icon: 'Zap', label: 'Automation', labelZh: '自动化', component: 'AutomationView', position: 3, wideMode: true },
     { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 4, wideMode: true },
+    // AI 浏览器：用设置里配置的搜索引擎检索网页 / 图片 / 视频，结果在内置浏览器中打开。
+    // 检索 + 浏览需要整块主区域，因此声明 hideChat（进入时自动隐藏对话，可手动恢复）。
+    { id: 'ai-browser', icon: 'Compass', label: 'AI Browser', labelZh: 'AI浏览器', component: 'AIBrowserView', position: 5, wideMode: true, hideChat: true },
     // 插件市场以浏览/安装为主线，进入时自动隐藏对话窗口让面板独占主区域（用户可手动恢复显示）
-    { id: 'plugin-market', icon: 'Store', label: 'Plugin Market', labelZh: '插件与技能市场', component: 'PluginMarketView', position: 5, wideMode: true, hideChat: true },
+    { id: 'plugin-market', icon: 'Store', label: 'Plugin Market', labelZh: '插件与技能市场', component: 'PluginMarketView', position: 6, wideMode: true, hideChat: true },
   ],
   statusBarItems: [],
   welcomeSuggestions: GENERAL_ASSISTANT_WELCOME_SUGGESTIONS,

@@ -1,5 +1,5 @@
 /**
- * 查询优化器（参考 DeepSeek 查询改写策略）
+ * 查询优化器
  *
  * 职责：
  * - 意图识别：判断查询类型（事实型/时效型/导航型/研究型）
@@ -63,8 +63,10 @@ const NAVIGATIONAL_KEYWORDS: RegExp[] = [
     /官网|官方网站|登录|注册|入口/g,
 ]
 
-// ===== 实体提取：中文实体（2-6字连续中文+数字+英文）=====
-const ENTITY_PATTERN = /[\u4e00-\u9fa5]{2,8}[0-9A-Za-z]*|[A-Z][a-z]+(?:[A-Z][a-z]+)*|[0-9]{4}/g
+// ===== 实体提取：完整连续中文串 / 英文词 / 年份 =====
+// 中文串不限长度：截断会切出「跨境电商选品策略分」这类半截词，既无法展示，
+// 也不能作为短语匹配的依据。
+const ENTITY_PATTERN = /[\u4e00-\u9fa5]{2,}[0-9A-Za-z]*|[A-Za-z]{2,}|[0-9]{4}/g
 
 /**
  * 检测查询意图
@@ -146,6 +148,26 @@ function detectTimeRange(query: string): { start?: string; end?: string; needsFr
     return { needsFresh: false }
 }
 
+
+/**
+ * 变体保真度校验：变体需覆盖主查询的大部分有效字符
+ *
+ * 用于拦截「拼接实体时丢掉关键限定」的变体。例如主查询「上海二手房交易流程」
+ * 若只截出「二手房」，检索面会从「流程」漂移到「房源」，带回大量无关结果。
+ */
+function isFaithfulVariant(primary: string, variant: string): boolean {
+    const normalize = (s: string) => s.replace(/[^\u4e00-\u9fa5A-Za-z0-9]/g, '').toLowerCase()
+    const base = normalize(primary)
+    const kept = normalize(variant)
+    if (!base || !kept) return false
+
+    const baseChars = new Set(base)
+    let hit = 0
+    for (const ch of new Set(kept)) {
+        if (baseChars.has(ch)) hit++
+    }
+    return hit / baseChars.size >= 0.6
+}
 /**
  * 生成查询变体
  *
@@ -163,10 +185,13 @@ function generateVariants(
     const variants: string[] = []
     const currentYear = new Date().getFullYear()
 
-    // 变体1：实体精简版（如果主查询较长且实体≥2个）
+    // 变体1：核心实体精简版（主查询较长且含多个实体时）
+    //
+    // 拼接结果必须覆盖主查询的绝大部分字符，否则说明丢掉的不只是修饰词，而是
+    // 检索意图本身 —— 这类偏离原意的变体只会带回无关结果。
     if (entities.length >= 2 && primary.length > 10) {
         const entityQuery = entities.slice(0, 5).join(' ')
-        if (entityQuery !== primary) {
+        if (entityQuery !== primary && isFaithfulVariant(primary, entityQuery)) {
             variants.push(entityQuery)
         }
     }

@@ -35,7 +35,7 @@ import { searchEncyclopedia, type EncyclopediaResult } from './encyclopediaSearc
 import { searchAcademic, type AcademicResult } from './academicSearch'
 import { searchImageStock, type ImageStockResult } from './imageStockSearch'
 import { optimizeQuery } from './queryOptimizer'
-import { rankAndDedup } from './resultRanker'
+import { rankAndDedup, filterByRelevance } from './resultRanker'
 
 /** 通用搜索结果（由外部注入，避免与 httpTransport 循环依赖） */
 export interface GeneralSearchResult {
@@ -82,12 +82,12 @@ export interface VideoSearchResult {
 
 /** 外部搜索函数注入（避免循环依赖） */
 export interface SearchFunctions {
-  /** 通用网页搜索（SearXNG） */
-  generalSearch: (query: string, maxResults: number, timeout?: number) => Promise<GeneralSearchResult>
-  /** 图片搜索（SearXNG images） */
-  imageSearch: (query: string, maxResults: number, timeout?: number) => Promise<ImageSearchResult>
-  /** 视频搜索（SearXNG videos） */
-  videoSearch: (query: string, maxResults: number, timeout?: number) => Promise<VideoSearchResult>
+  /** 通用网页搜索（SearXNG）；page 从 1 开始，仅 SearXNG 系引擎支持翻页 */
+  generalSearch: (query: string, maxResults: number, timeout?: number, page?: number) => Promise<GeneralSearchResult>
+  /** 图片搜索（SearXNG images）；page 从 1 开始 */
+  imageSearch: (query: string, maxResults: number, timeout?: number, page?: number) => Promise<ImageSearchResult>
+  /** 视频搜索（SearXNG videos）；page 从 1 开始 */
+  videoSearch: (query: string, maxResults: number, timeout?: number, page?: number) => Promise<VideoSearchResult>
   /** 图库 API Keys（可选） */
   imageStockKeys?: { unsplashAccessKey?: string; pexelsApiKey?: string }
   /** 学术 API Key（可选） */
@@ -163,8 +163,11 @@ class SmartSearchDispatcher {
    *
    * @param query 用户查询
    * @param maxResults 最大结果数（默认 8）
+   * @param forcedDomain 强制领域（可选；'general' 等同不指定，交给分类器自动识别）
+   * @param page 页码（从 1 开始）；page > 1 视为翻页，跳过变体搜索等重活，
+   *             只跑「主查询通用搜索 + 该领域的可翻页垂直源」，降低一次翻页的开销
    */
-  async search(query: string, maxResults = 8): Promise<SmartSearchResult> {
+  async search(query: string, maxResults = 8, forcedDomain?: SearchDomain, page = 1): Promise<SmartSearchResult> {
     if (!this.searchFns) {
       return {
         success: false,
@@ -180,46 +183,59 @@ class SmartSearchDispatcher {
     const optimized = optimizeQuery(query)
     logger.ipc.info(`[SmartSearch] query="${query.slice(0, 50)}" → intent=${optimized.intent}, entities=[${optimized.entities.join(',')}], variants=${optimized.variants.length}`)
 
-    // 领域识别（基于优化后的主查询）
+    // 领域识别（基于优化后的主查询）；调用方强制指定领域时以其为准，'general' 视为不指定
     const classification = classifyDomain(optimized.primary)
-    const domain = classification.primary
-    logger.ipc.info(`[SmartSearch] domain=${domain}, needsFresh=${optimized.needsFreshContent}`)
+    const domain = forcedDomain && forcedDomain !== 'general' ? forcedDomain : classification.primary
+    logger.ipc.info(`[SmartSearch] domain=${domain}${forcedDomain ? ' (forced)' : ''}, needsFresh=${optimized.needsFreshContent}`)
 
     // ===== 阶段 2：多源并行检索 =====
+    // 翻页（page > 1）时只保留「主查询 + 可翻页垂直源」：变体搜索是主要的额外网络开销，
+    // 且变体结果与首页高度重合，翻页时跳过它能让「加载更多」更快返回新内容
+    const isPaging = page > 1
     const sources: string[] = []
     const tasks: Promise<UnifiedSearchResultItem[]>[] = []
 
-    // 主查询通用搜索
+    // 主查询通用搜索（携带页码，SearXNG 系引擎据此翻页）
     tasks.push(
-      this.searchGeneral(optimized.primary, maxResults).then(items => {
+      this.searchGeneral(optimized.primary, maxResults, page).then(items => {
         if (items.length > 0) sources.push('通用搜索(SearXNG)')
         return items
       }),
     )
 
-    // 变体查询并行搜索（提升召回率）
-    for (const variant of optimized.variants) {
-      tasks.push(
-        this.searchGeneral(variant, Math.ceil(maxResults / 2)).then(items => {
-          if (items.length > 0) {
-            // 截断显示用：按词边界截断，避免截断中文词
-            const display = variant.length > 25 ? variant.slice(0, 25) + '…' : variant
-            sources.push(`变体搜索(${display})`)
-          }
-          return items
-        }),
-      )
+    // 变体查询并行搜索（提升召回率；仅首页执行）
+    //
+    // 变体只负责「多召回」：搜索引擎对不同措辞的召回面不同，用变体能捞回主查询
+    // 漏掉的相关页面。但变体本身可能偏离原意（机械拼接实体、中英混排），因此其
+    // 结果必须通过主查询的相关性校验才能进入结果池，避免变体变成无关内容的入口。
+    if (!isPaging) {
+      for (const variant of optimized.variants) {
+        tasks.push(
+          this.searchGeneral(variant, Math.ceil(maxResults / 2)).then(items => {
+            const admitted = filterByRelevance(items, optimized)
+            if (admitted.length > 0) {
+              // 截断显示用：按词边界截断，避免截断中文词
+              const display = variant.length > 25 ? variant.slice(0, 25) + '…' : variant
+              sources.push(`变体搜索(${display})`)
+            }
+            return admitted
+          }),
+        )
+      }
     }
 
     // 垂直搜索：根据领域分发
+    // 说明：百科 / 学术 / 图库 API 不支持翻页，翻页时继续调用只会拿回与首页相同的条目，
+    // 既浪费一次网络往返，又会在排序阶段挤占前面的名额；因此这些源只在首页参与。
     switch (domain) {
       case 'auto':
       case 'realestate':
       case 'travel':
       case 'tech':
       case 'news':
+        // 垂直门户走 site: 限定的通用搜索，SearXNG 系引擎支持翻页
         tasks.push(
-          this.searchVerticalSite(optimized.primary, domain, Math.ceil(maxResults / 2)).then(items => {
+          this.searchVerticalSite(optimized.primary, domain, Math.ceil(maxResults / 2), page).then(items => {
             if (items.length > 0) sources.push(`垂直门户(${getSiteNames(domain, 2).join('/')})`)
             return items
           }),
@@ -227,33 +243,39 @@ class SmartSearchDispatcher {
         break
 
       case 'encyclopedia':
-        tasks.push(
-          this.searchEncyclopediaSource(optimized.primary, Math.ceil(maxResults / 2)).then(items => {
-            if (items.length > 0) sources.push('百科(维基+百度)')
-            return items
-          }),
-        )
+        if (!isPaging) {
+          tasks.push(
+            this.searchEncyclopediaSource(optimized.primary, Math.ceil(maxResults / 2)).then(items => {
+              if (items.length > 0) sources.push('百科(维基+百度)')
+              return items
+            }),
+          )
+        }
         break
 
       case 'academic':
-        tasks.push(
-          this.searchAcademicSource(optimized.primary, Math.ceil(maxResults / 2)).then(items => {
-            if (items.length > 0) sources.push('学术(Semantic Scholar)')
-            return items
-          }),
-        )
+        if (!isPaging) {
+          tasks.push(
+            this.searchAcademicSource(optimized.primary, Math.ceil(maxResults / 2)).then(items => {
+              if (items.length > 0) sources.push('学术(Semantic Scholar)')
+              return items
+            }),
+          )
+        }
         break
 
       case 'image':
+        if (!isPaging) {
+          tasks.push(
+            this.searchImageStockSource(optimized.primary, Math.ceil(maxResults / 2)).then(items => {
+              if (items.length > 0) sources.push('图库(Unsplash+Pexels)')
+              return items
+            }),
+          )
+        }
+        // SearXNG images 支持翻页，翻页时仍参与
         tasks.push(
-          this.searchImageStockSource(optimized.primary, Math.ceil(maxResults / 2)).then(items => {
-            if (items.length > 0) sources.push('图库(Unsplash+Pexels)')
-            return items
-          }),
-        )
-        // 图库无结果时补充 SearXNG images
-        tasks.push(
-          this.searchImageSearchSource(optimized.primary, Math.ceil(maxResults / 2)).then(items => {
+          this.searchImageSearchSource(optimized.primary, Math.ceil(maxResults / 2), page).then(items => {
             if (items.length > 0) sources.push('图片搜索(SearXNG)')
             return items
           }),
@@ -262,7 +284,7 @@ class SmartSearchDispatcher {
 
       case 'video':
         tasks.push(
-          this.searchVideoSource(optimized.primary, maxResults).then(items => {
+          this.searchVideoSource(optimized.primary, maxResults, page).then(items => {
             if (items.length > 0) sources.push('视频搜索(SearXNG)')
             return items
           }),
@@ -285,7 +307,7 @@ class SmartSearchDispatcher {
     // 使用综合评分：域名权威度(30%) + 时效性(20%) + 相关性(50%)
     const ranked = rankAndDedup(allItems, optimized)
 
-    // 保留来源类型优先级（百科/学术 > 垂直 > 通用），但分数相同时垂直源优先
+    // 来源类型偏好（百科/学术 > 垂直 > 通用），仅用于相关度相当时的次序调整
     const sourcePriority: Record<string, number> = {
       'encyclopedia': 0,
       'academic': 1,
@@ -296,13 +318,19 @@ class SmartSearchDispatcher {
       'general': 6,
     }
 
-    // 二次排序：先按来源类型优先级，同类型内按综合分数
+    // 二次排序：先比综合分，分数接近时才让更专业的来源类型占先
+    //
+    // 此处不再让「来源类型优先于一切」。原先的做法会让垂直源无条件压过通用结果，
+    // 而垂直源依赖领域识别：查询一旦被误判领域（如「手机壳批发」命中科技词），
+    // 整批 site: 限定的无关结果就会顶到最前面。改为分数主导后，来源偏好只在
+    // 两者得分差距很小（5 分以内）时生效。
+    const SOURCE_PREFERENCE_TOLERANCE = 5
     const finalSorted = [...ranked].sort((a, b) => {
+      const diff = b.score - a.score
+      if (Math.abs(diff) > SOURCE_PREFERENCE_TOLERANCE) return diff
       const pa = sourcePriority[a.sourceType ?? 'general'] ?? 9
       const pb = sourcePriority[b.sourceType ?? 'general'] ?? 9
-      // 百科/学术/垂直源永远排在通用结果前面（优先展示专业源）
-      if (pa !== pb) return pa - pb
-      return b.score - a.score
+      return pa - pb
     })
 
     const finalResults = finalSorted.slice(0, maxResults).map(r => ({
@@ -332,10 +360,10 @@ class SmartSearchDispatcher {
 
   // ===== 各搜索源适配器 =====
 
-  /** 通用搜索（SearXNG） */
-  private async searchGeneral(query: string, maxResults: number): Promise<UnifiedSearchResultItem[]> {
+  /** 通用搜索（SearXNG）；page 从 1 开始，用于翻页 */
+  private async searchGeneral(query: string, maxResults: number, page?: number): Promise<UnifiedSearchResultItem[]> {
     if (!this.searchFns) return []
-    const result = await this.searchFns.generalSearch(query, maxResults, SEARCH_TIMEOUT)
+    const result = await this.searchFns.generalSearch(query, maxResults, SEARCH_TIMEOUT, page)
     if (!result.success || !result.results) return []
     return result.results.map(r => ({
       title: r.title,
@@ -349,14 +377,14 @@ class SmartSearchDispatcher {
     }))
   }
 
-  /** 垂直门户搜索（site: 限定） */
-  private async searchVerticalSite(query: string, domain: SearchDomain, maxResults: number): Promise<UnifiedSearchResultItem[]> {
+  /** 垂直门户搜索（site: 限定）；page 从 1 开始，用于翻页 */
+  private async searchVerticalSite(query: string, domain: SearchDomain, maxResults: number, page?: number): Promise<UnifiedSearchResultItem[]> {
     if (!this.searchFns) return []
     const siteQuery = buildSiteQuery(query, domain, 3)
     if (!siteQuery) return []
 
     // 用 site: 限定查询走通用搜索
-    const result = await this.searchFns.generalSearch(siteQuery.query, maxResults, SEARCH_TIMEOUT)
+    const result = await this.searchFns.generalSearch(siteQuery.query, maxResults, SEARCH_TIMEOUT, page)
     if (!result.success || !result.results) return []
 
     const siteNames = siteQuery.sites.map(s => s.name).join('/')
@@ -417,10 +445,10 @@ class SmartSearchDispatcher {
     }))
   }
 
-  /** SearXNG 图片搜索 */
-  private async searchImageSearchSource(query: string, maxResults: number): Promise<UnifiedSearchResultItem[]> {
+  /** SearXNG 图片搜索；page 从 1 开始，用于翻页 */
+  private async searchImageSearchSource(query: string, maxResults: number, page?: number): Promise<UnifiedSearchResultItem[]> {
     if (!this.searchFns) return []
-    const result = await this.searchFns.imageSearch(query, maxResults, SEARCH_TIMEOUT)
+    const result = await this.searchFns.imageSearch(query, maxResults, SEARCH_TIMEOUT, page)
     if (!result.success || !result.results) return []
     return result.results.map(r => ({
       title: r.title,
@@ -433,10 +461,10 @@ class SmartSearchDispatcher {
     }))
   }
 
-  /** SearXNG 视频搜索 */
-  private async searchVideoSource(query: string, maxResults: number): Promise<UnifiedSearchResultItem[]> {
+  /** SearXNG 视频搜索；page 从 1 开始，用于翻页 */
+  private async searchVideoSource(query: string, maxResults: number, page?: number): Promise<UnifiedSearchResultItem[]> {
     if (!this.searchFns) return []
-    const result = await this.searchFns.videoSearch(query, maxResults, SEARCH_TIMEOUT)
+    const result = await this.searchFns.videoSearch(query, maxResults, SEARCH_TIMEOUT, page)
     if (!result.success || !result.results) return []
     return result.results.map(r => ({
       title: r.title,

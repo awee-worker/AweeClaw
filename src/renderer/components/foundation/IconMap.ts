@@ -1,5 +1,5 @@
 import {
-  Files, Search, GitBranch, Settings, Sparkles, AlertCircle, ListTree, History,
+  Files, Search, GitBranch, Settings, Sparkles, AlertCircle, ListTree, History, Compass,
   Brain, Terminal, Database, BarChart3, Users, FolderTree, Code2, PenTool, PenLine,
   Globe, Cpu, Layers, Zap, BookOpen, FileText, Image, Music, Video, Mail,
   Calendar, Map, PieChart, TrendingUp, Activity, Shield, Key, Cloud,
@@ -21,7 +21,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 
 export const LUCIDE_ICON_MAP: Record<string, LucideIcon> = {
-  Files, Search, GitBranch, Settings, Sparkles, AlertCircle, ListTree, History,
+  Files, Search, GitBranch, Settings, Sparkles, AlertCircle, ListTree, History, Compass,
   Brain, Terminal, Database, BarChart3, Users, FolderTree, Code2, PenTool, PenLine,
   Globe, Cpu, Layers, Zap, BookOpen, FileText, Image, Music, Video, Mail,
   Calendar, Map, PieChart, TrendingUp, Activity, Shield, Key, Cloud,

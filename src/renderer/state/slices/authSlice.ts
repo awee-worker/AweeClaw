@@ -669,8 +669,9 @@ api.deviceLink.onAiTask((payload) => {
   }
 
   // 通过 window event 派发给 PluginHostBridge（复用插件发送消息的机制）
+  // requestId 一并透传：任务真正跑完后由 bridge 补报 task-complete（含产物）
   const event = new CustomEvent('aweeclaw:device-link:ai-task', {
-    detail: { text: prompt },
+    detail: { text: prompt, requestId },
   })
   window.dispatchEvent(event)
 
@@ -698,7 +699,7 @@ api.deviceLink.onRunScenario((payload) => {
 
   if (prompt) {
     const event = new CustomEvent('aweeclaw:device-link:ai-task', {
-      detail: { text: prompt, scenarioId },
+      detail: { text: prompt, scenarioId, requestId },
     })
     window.dispatchEvent(event)
   }

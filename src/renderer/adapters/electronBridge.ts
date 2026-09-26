@@ -1220,6 +1220,8 @@ function createGroupedAPI() {
         raw.deviceLink.onRunScenario(callback),
       replyResult: (requestId: string, result: { success: boolean; output?: string; error?: string }) =>
         raw.deviceLink.replyResult(requestId, result),
+      reportEvent: (type: string, payload: Record<string, unknown>) =>
+        raw.deviceLink.reportEvent(type, payload),
 
       // 方向4：场景模式跨端协同
       pushSceneMode: (mode: string) => raw.deviceLink.pushSceneMode(mode),

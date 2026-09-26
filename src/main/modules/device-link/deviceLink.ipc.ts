@@ -149,6 +149,25 @@ function registerIpcHandlers(client: ReturnType<typeof initDeviceLinkClient>): v
     return client.getDeviceId()
   })
 
+  // ── 任务事件补报（AI 任务完成 / 失败时带 requestId + artifacts） ──
+  ipcMain.on(
+    'device-link:report-event',
+    (_event, payload: { type?: string; payload?: Record<string, unknown> }) => {
+      const type = payload?.type
+      if (!type || typeof type !== 'string') return
+      // 白名单：只允许任务类事件，避免 renderer 伪造任意事件类型
+      if (!['task-complete', 'task-error', 'task-progress', 'command-result'].includes(type)) {
+        logger.deviceLink.warn(`[IPC] Rejected report-event type: ${type}`)
+        return
+      }
+      try {
+        client.reportEvent(type, payload.payload || {})
+      } catch (err) {
+        logger.deviceLink.error(`[IPC] report-event failed: ${(err as Error).message}`)
+      }
+    },
+  )
+
   // ── 方向4：场景模式跨端同步 ──────────────────────────────
   // PC→移动端：renderer 调用 pushSceneMode，通过 WS 推送 event.scene_mode.sync 到后端
   ipcMain.handle(

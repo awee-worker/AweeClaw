@@ -16,7 +16,7 @@
  * - run-command 默认拒绝，需用户在 settings 中开启 deviceLink.allowRemoteCommand
  * - 所有操作记录到 audit 日志
  */
-import { clipboard, ipcMain, type BrowserWindow } from 'electron'
+import { clipboard, dialog, ipcMain, type BrowserWindow } from 'electron'
 import * as fs from 'fs/promises'
 import * as fsSync from 'fs'
 import * as path from 'path'
@@ -49,6 +49,10 @@ export interface DeviceHandlerContext {
   preferences: () => DeviceLinkPreferences
   /** 获取主窗口（用于向 renderer 发送 IPC） */
   getMainWindow: () => BrowserWindow | null
+  /** 某权限范围的临时授权剩余毫秒（无临时授权返回 0） */
+  tempGrantRemaining?: (scope: PermissionScope) => number
+  /** 落地权限决策：temp = 10 分钟临时授权，always = 永久开启 */
+  applyPermission?: (scope: PermissionScope, mode: 'temp' | 'always') => void
 }
 
 // ============================================================================
@@ -688,6 +692,113 @@ export async function handleChatExport(
     logger.deviceLink.error('[ChatExport] Failed to export chats:', err?.message)
     throw new Error('chat_export_failed')
   }
+}
+
+// ============================================================================
+// 远程权限（权限中心）
+// ============================================================================
+
+/** 可由移动端申请的远程权限范围 */
+export type PermissionScope = 'shell' | 'screenshot' | 'clipboard' | 'power'
+
+export const PERMISSION_SCOPES: PermissionScope[] = ['shell', 'screenshot', 'clipboard', 'power']
+
+const SCOPE_LABELS: Record<PermissionScope, string> = {
+  shell: '远程执行命令',
+  screenshot: '远程截屏',
+  clipboard: '远程剪贴板推送',
+  power: '远程休眠/唤醒',
+}
+
+const SCOPE_PREFERENCE_KEYS: Record<PermissionScope, keyof DeviceLinkPreferences> = {
+  shell: 'allowRemoteCommand',
+  screenshot: 'allowScreenshot',
+  clipboard: 'allowClipboardPush',
+  power: 'allowPowerControl',
+}
+
+/** 临时授权时长 */
+const TEMP_GRANT_MS = 10 * 60 * 1000
+
+function toScope(raw: string): PermissionScope {
+  return (PERMISSION_SCOPES as string[]).includes(raw) ? (raw as PermissionScope) : 'shell'
+}
+
+export interface PermissionSnapshot {
+  allowRemoteCommand: boolean
+  allowClipboardPush: boolean
+  allowScreenshot: boolean
+  allowPowerControl: boolean
+  /** 各范围临时授权剩余毫秒（0 = 无） */
+  tempRemaining: Partial<Record<PermissionScope, number>>
+}
+
+/** permission.state.req → 桌面端当前开关快照 */
+export function handlePermissionState(ctx: DeviceHandlerContext): PermissionSnapshot {
+  const prefs = ctx.preferences()
+  return {
+    allowRemoteCommand: !!prefs.allowRemoteCommand,
+    allowClipboardPush: prefs.allowClipboardPush ?? true,
+    allowScreenshot: prefs.allowScreenshot ?? true,
+    allowPowerControl: !!prefs.allowPowerControl,
+    tempRemaining: Object.fromEntries(
+      PERMISSION_SCOPES.map((s) => [s, ctx.tempGrantRemaining?.(s) ?? 0]),
+    ) as Partial<Record<PermissionScope, number>>,
+  }
+}
+
+export type PermissionDecisionMode = 'denied' | 'temp' | 'always'
+
+export interface PermissionDecision {
+  scope: PermissionScope
+  granted: boolean
+  mode: PermissionDecisionMode
+}
+
+/** permission.request → 弹系统确认框，同意后写入开关或 10 分钟临时授权 */
+export async function handlePermissionRequest(
+  ctx: DeviceHandlerContext,
+  payload: { scope?: string; reason?: string },
+): Promise<PermissionDecision> {
+  const scope = toScope(payload.scope || 'shell')
+  const reason = (payload.reason || '').trim()
+  const options = {
+    type: 'warning' as const,
+    title: '移动端申请远程权限',
+    message: `允许移动端「${SCOPE_LABELS[scope]}」？`,
+    detail: [
+      reason || '来自已登录的移动端设备申请。',
+      '选择「允许 10 分钟」到期后自动关闭，选择「始终允许」写入本机设置。',
+    ].join('\n'),
+    buttons: ['拒绝', '允许 10 分钟', '始终允许'],
+    defaultId: 1,
+    cancelId: 0,
+    noLink: true,
+  }
+  const win = ctx.getMainWindow()
+  const { response } = win && !win.isDestroyed()
+    ? await dialog.showMessageBox(win, options)
+    : await dialog.showMessageBox(options)
+
+  if (response === 1) {
+    ctx.applyPermission?.(scope, 'temp')
+    return { scope, granted: true, mode: 'temp' }
+  }
+  if (response === 2) {
+    ctx.applyPermission?.(scope, 'always')
+    return { scope, granted: true, mode: 'always' }
+  }
+  return { scope, granted: false, mode: 'denied' }
+}
+
+/** 由权限决策反查对应的偏好开关名（供上层写入设置） */
+export function preferenceKeyForScope(scope: PermissionScope): keyof DeviceLinkPreferences {
+  return SCOPE_PREFERENCE_KEYS[scope]
+}
+
+/** 本次临时授权的时长（ms） */
+export function tempGrantDurationMs(): number {
+  return TEMP_GRANT_MS
 }
 
 // ============================================================================

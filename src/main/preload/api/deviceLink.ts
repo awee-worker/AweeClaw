@@ -156,6 +156,16 @@ export function createDeviceLinkApi() {
     replyResult: (requestId: string, result: DeviceLinkReplyResult) =>
       send(`device-link:renderer-reply:${requestId}`)(result),
 
+    /**
+     * 主动上报任务事件给后端（task-complete / task-error 等）。
+     *
+     * AI 任务在 renderer 异步执行，RPC 通道只能先回 queued；
+     * 真正的完成结果与产物（artifacts）通过此通道补报，
+     * 后端任务中心按 requestId 关联到对应任务记录。
+     */
+    reportEvent: (type: string, payload: Record<string, unknown>) =>
+      send('device-link:report-event')({ type, payload }),
+
     // ===== 方向4：场景模式跨端协同 =====
 
     /**

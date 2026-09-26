@@ -118,6 +118,32 @@ function matchDomain(query: string, domain: Exclude<SearchDomain, 'general'>): {
 }
 
 /**
+ * 领域置信度门槛：命中词需在查询里占住足够份量
+ *
+ * 满足任一即通过：
+ * - 命中 ≥ 2 个领域词：多个词同时出现，领域指向明确
+ * - 命中词总字数 / 查询有效字符数 ≥ 比例阈值
+ *
+ * 例：「手机壳批发」只命中「手机」一词、占比 2/5，不达标 → 退回通用搜索，
+ * 避免追加 site:36氪 之类的垂直检索，回来一整批无关的技术资讯。
+ *
+ * 阈值取 0.5 是准确率优先的取舍：像「北京房价走势」这类命中词被其它成分
+ * 包围的查询（2/6）也会退回通用搜索，代价是少用一个垂直源；而通用搜索本身
+ * 足以覆盖这类查询，误判领域却会直接带进一批无关内容。宁可少用，不可误用。
+ */
+const MIN_DOMAIN_COVERAGE = 0.5
+
+function passesConfidence(query: string, matchedKeywords: string[]): boolean {
+  if (matchedKeywords.length >= 2) return true
+
+  const effectiveLength = query.replace(/[^\u4e00-\u9fa5A-Za-z0-9]/g, '').length
+  if (effectiveLength === 0) return false
+
+  const matchedLength = matchedKeywords.reduce((sum, kw) => sum + kw.length, 0)
+  return matchedLength / effectiveLength >= MIN_DOMAIN_COVERAGE
+}
+
+/**
  * 识别查询所属领域
  *
  * @param query 用户查询文本
@@ -148,6 +174,18 @@ export function classifyDomain(query: string): DomainClassification {
 
   // 按命中词数降序排序
   hits.sort((a, b) => b.count - a.count)
+
+  // 置信度门槛：只有主领域命中的词在查询中占住足够份量，才认定查询属于该领域。
+  // 否则退回通用搜索 —— 领域误判会追加 site: 限定的垂直检索，带出一整批无关结果，
+  // 而这类结果此前还会因来源优先级被排到通用结果之前。宁可少用垂直源，也不误判。
+  if (!passesConfidence(trimmed, hits[0].matchedKeywords)) {
+    return {
+      primary: 'general',
+      secondary: null,
+      hits,
+      isVertical: false,
+    }
+  }
 
   const primary = hits[0].domain
   const secondary = hits.length > 1 ? hits[1].domain : null

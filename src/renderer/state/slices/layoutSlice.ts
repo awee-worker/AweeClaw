@@ -39,6 +39,7 @@ export type SidePanel =
   | 'benchmarks'
   | 'schedule'
   | 'plugin-market'
+  | 'ai-browser'
   | 'scene-tools'
   | null
 
@@ -358,6 +359,8 @@ export interface LayoutSlice {
   internalBrowserTitle: string
   /** 当前激活的自定义菜单 ID（导航栏高亮用，null 表示未激活自定义菜单） */
   activeCustomMenuId: string | null
+  /** 打开内部浏览器前的聊天窗口显隐（关闭时恢复，避免覆盖面板 / 用户的意图） */
+  chatVisibleBeforeInternalBrowser: boolean | null
   /** 打开内部浏览器 */
   openInternalBrowser: (url: string, title?: string, menuId?: string) => void
   /** 关闭内部浏览器 */
@@ -398,6 +401,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   internalBrowserUrl: null,
   internalBrowserTitle: '',
   activeCustomMenuId: null,
+  chatVisibleBeforeInternalBrowser: null,
 
   /* ----- 工作台自定义初始状态（优先恢复上次保存的配置） ----- */
   workbenchWidgets: {
@@ -615,21 +619,25 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
 
   /* ----- 内部浏览器操作 ----- */
   openInternalBrowser: (url, title, menuId) =>
-    set({
+    set((state) => ({
       internalBrowserUrl: url,
       internalBrowserTitle: title ?? '',
       activeCustomMenuId: menuId ?? null,
-      // 打开自定义菜单时自动隐藏聊天窗口，内部浏览器占据其位置；
-      // 用户可随时通过「显示聊天窗口」重新显示
+      // 仅在「由未打开变为打开」时记录打开前的显隐，连续打开其它链接不覆盖首次快照
+      chatVisibleBeforeInternalBrowser: state.internalBrowserUrl
+        ? state.chatVisibleBeforeInternalBrowser
+        : state.chatVisible,
+      // 打开内部浏览器时隐藏聊天窗口，浏览器占据其位置；用户可随时手动恢复显示
       chatVisible: false,
-    }),
+    })),
   closeInternalBrowser: () =>
-    set({
+    set((state) => ({
       internalBrowserUrl: null,
       internalBrowserTitle: '',
       activeCustomMenuId: null,
-      // 关闭内部浏览器后恢复聊天窗口显示
-      chatVisible: true,
-    }),
+      // 关闭后恢复到打开前的显隐：面板自动隐藏的聊天不会被唤起，用户手动开的聊天仍然保留
+      chatVisible: state.chatVisibleBeforeInternalBrowser ?? true,
+      chatVisibleBeforeInternalBrowser: null,
+    })),
   }
 }

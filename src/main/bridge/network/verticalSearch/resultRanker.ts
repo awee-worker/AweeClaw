@@ -1,5 +1,5 @@
 /**
- * 结果排序去重器（参考 DeepSeek 结果排序策略）
+ * 结果排序去重器
  *
  * 职责：
  * - 域名权威度评分：权威网站得分更高
@@ -72,9 +72,16 @@ const DOMAIN_AUTHORITY: Record<string, number> = {
     'unsplash.com': 8, 'pexels.com': 8,
     // 通用搜索
     'bing.com': 5, 'baidu.com': 5,
-    // 社交（低权威，容易有噪音）
+    // 社交与内容平台（低权威，噪音较多）
     'zhihu.com': 5, 'weibo.com': 4, 'douyin.com': 4,
-    'toutiao.com': 5, 'jianshu.com': 4, 'csdn.net': 5,
+    'jianshu.com': 4, 'csdn.net': 3, 'toutiao.com': 2,
+
+    // 内容农场与聚合分发页：标题党、二次搬运集中，降权避免挤占前排
+    'baijiahao.baidu.com': 2, 'mbd.baidu.com': 1,
+    'zhidao.baidu.com': 2, 'jingyan.baidu.com': 2, 'wenku.baidu.com': 1,
+    '163.com': 2, 'sohu.com': 2, 'qq.com': 2, 'sina.com.cn': 2,
+    'ifeng.com': 2, '360doc.com': 1, 'docin.com': 1,
+    'book118.com': 1, 'jb51.net': 1, 'php.cn': 1,
 }
 
 /**
@@ -103,7 +110,8 @@ function getDomainAuthority(url: string): number {
 
     // 子域名匹配（如 auto.autohome.com.cn → autohome.com.cn）
     for (const [knownDomain, score] of Object.entries(DOMAIN_AUTHORITY)) {
-        if (domain.endsWith(knownDomain) || domain.includes(knownDomain)) {
+        // 按完整域名边界匹配：includes 会让近似域名误命中（如 my163.com 命中 163.com）
+        if (domain === knownDomain || domain.endsWith('.' + knownDomain)) {
             return score
         }
     }
@@ -146,52 +154,129 @@ function getFreshnessScore(
     return publishedDate ? 6 : 5
 }
 
+/** 中文功能字：不承载检索语义，落在二字组合里会制造假命中，直接丢弃 */
+const CN_STOP_CHARS = new Set(
+    '的了是在有和与及或而且但因所以之为这那哪什么怎样吗呢吧啊呀哦嗯'.split(''),
+)
+
+/** 相关性判定所需的词项集合 */
+export interface RelevanceTerms {
+    /** 覆盖率计算的词项：中文二字组合 + 英文/数字词 */
+    terms: string[]
+    /** 完整短语：命中表示整段语义吻合，而非只命中一个碎片 */
+    phrases: string[]
+}
+
+/** 相关性准入阈值（低于此分视为与查询无关） */
+export const MIN_RELEVANCE_THRESHOLD = 2
+
 /**
- * 计算相关性分数
+ * 媒体类来源：由搜索引擎按查询直接召回（SearXNG 的 images/videos 类别），
+ * 其标题多为页面原名或文件描述、未必含查询词，用文本覆盖率判定会整体误杀，
+ * 因此跳过文本准入。
  */
-function getRelevanceScore(
-    title: string,
-    snippet: string,
-    entities: string[],
-    queryKeywords: string[],
-): number {
-    let score = 0
-    const titleLower = title.toLowerCase()
+const MEDIA_SOURCE_TYPES = new Set(['image-search', 'image-stock', 'video-search'])
+/**
+ * 构建相关性词项集合
+ *
+ * 中文没有词间空格，按空白切分只会得到整句一项，使关键词匹配对中文查询
+ * 形同虚设。这里改用二字组合切分：既可覆盖任意长度的中文查询，又能抑制
+ * 短词误命中（查询「手机壳批发」与科技资讯即便都含「手机」，覆盖率也只有
+ * 四分之一，不足以通过准入）。含功能字的组合直接丢弃，避免虚词贡献覆盖率。
+ *
+ * 英文与数字仍按非字母数字边界切分。完整短语单独保留，用于奖励「整段语义
+ * 命中」而非「只命中碎片」。
+ */
+export function buildRelevanceTerms(query: string): RelevanceTerms {
+    const text = (query || '').trim()
+    if (!text) return { terms: [], phrases: [] }
+
+    const terms = new Set<string>()
+    const phrases: string[] = []
+
+    // 中文：二字组合 + 完整连续串
+    for (const run of text.match(/[\u4e00-\u9fa5]+/g) || []) {
+        if (run.length >= 2) phrases.push(run)
+        for (let i = 0; i < run.length - 1; i++) {
+            const gram = run.slice(i, i + 2)
+            if (CN_STOP_CHARS.has(gram[0]) || CN_STOP_CHARS.has(gram[1])) continue
+            terms.add(gram)
+        }
+    }
+
+    // 英文与数字：按非字母数字边界切分，保留长度 ≥ 2 的非纯数字词
+    for (const word of text.match(/[A-Za-z0-9]+/g) || []) {
+        if (word.length < 2 || /^\d+$/.test(word)) continue
+        terms.add(word.toLowerCase())
+        phrases.push(word)
+    }
+
+    return { terms: [...terms], phrases: [...new Set(phrases)] }
+}
+
+/**
+ * 计算相关性分数（覆盖率驱动）
+ *
+ * 旧实现是「命中即累加」，只命中一个碎片也能堆到可观的分数；并且
+ * 「排行榜/数据/报告」这类与检索意图无关的标题特征会被无条件加分，是低质
+ * 聚合页排到前列的推手。改为：
+ * - 以「命中词项数 / 查询词项总数」的覆盖率衡量，命中越全面分越高
+ * - 完整短语命中单独奖励，区分「命中整段语义」与「只命中一个碎片」
+ * - 不再为与查询无关的标题特征加分
+ */
+function getRelevanceScore(title: string, snippet: string, terms: RelevanceTerms): number {
+    if (terms.terms.length === 0) return 0
+
+    const titleLower = (title || '').toLowerCase()
     const snippetLower = (snippet || '').toLowerCase()
 
-    // 1. 标题实体匹配（权重最高）
-    let titleEntityMatches = 0
-    for (const entity of entities) {
-        if (title.includes(entity)) {
-            titleEntityMatches++
-            score += 3
-        }
+    let titleHits = 0
+    let snippetHits = 0
+    for (const term of terms.terms) {
+        if (titleLower.includes(term)) titleHits++
+        else if (snippetLower.includes(term)) snippetHits++
     }
 
-    // 2. 摘要实体匹配
-    for (const entity of entities) {
-        if (snippet.includes(entity)) {
-            score += 1.5
-        }
+    // 标题覆盖率主导（0-6），摘要覆盖率次之（0-2.5）
+    let score = (titleHits / terms.terms.length) * 6 + (snippetHits / terms.terms.length) * 2.5
+
+    // 完整短语命中：最多 +1.5
+    if (terms.phrases.length > 0) {
+        const phraseHits = terms.phrases.filter(p => titleLower.includes(p.toLowerCase())).length
+        score += Math.min(1.5, phraseHits * 0.75)
     }
 
-    // 3. 关键词匹配
-    for (const kw of queryKeywords) {
-        const kwLower = kw.toLowerCase()
-        if (titleLower.includes(kwLower)) score += 2
-        if (snippetLower.includes(kwLower)) score += 1
-    }
-
-    // 4. 标题长度惩罚（太短可能信息不足，太长可能标题党）
+    // 标题长度惩罚（太短信息不足，太长多为标题党）
     if (title.length < 8) score *= 0.8
     if (title.length > 60) score *= 0.9
 
-    // 5. 特殊格式加分（排行榜、数据表格等）
-    if (/排行榜|排名|TOP|榜单|对比|数据|统计|报告/.test(title)) {
-        score += 2
-    }
-
     return Math.min(10, score)
+}
+
+/**
+ * 单条相关性判定：判断一条结果是否与查询相关
+ *
+ * 供没有 OptimizedQuery 的调用方使用（通用搜索路径只有原始查询文本）。
+ * 查询提不出有效词项时一律判为相关，避免误杀。
+ */
+export function isRelevantItem(title: string, snippet: string, query: string): boolean {
+    const terms = buildRelevanceTerms(query)
+    if (terms.terms.length === 0) return true
+    return getRelevanceScore(title, snippet, terms) >= MIN_RELEVANCE_THRESHOLD
+}
+
+/**
+ * 相关性准入过滤：仅保留与查询相关的条目
+ *
+ * 供智能搜索分发器使用 —— 变体查询只负责「多召回」，其返回结果必须通过
+ * 主查询的相关性校验才能进入结果池，否则变体会把无关内容一并带进来。
+ */
+export function filterByRelevance<T extends { title: string; snippet?: string }>(
+    results: T[],
+    optimizedQuery: OptimizedQuery,
+): T[] {
+    if (results.length === 0) return []
+    return results.filter(r => isRelevantItem(r.title, r.snippet || '', optimizedQuery.primary))
 }
 
 /**
@@ -281,14 +366,17 @@ export function rankAndDedup<T extends {
 }>(results: T[], optimizedQuery: OptimizedQuery): RankedResult[] {
     if (results.length === 0) return []
 
-    const { entities, intent, needsFreshContent, primary } = optimizedQuery
-    const queryKeywords = primary.split(/\s+/).filter(k => k.length >= 2)
+    const { intent, needsFreshContent, primary } = optimizedQuery
+    const relevanceTerms = buildRelevanceTerms(primary)
 
     // 1. 评分
     const ranked: RankedResult[] = results.map(r => {
         const authority = getDomainAuthority(r.url)
         const freshness = getFreshnessScore(r.publishedDate, intent, needsFreshContent)
-        const relevance = getRelevanceScore(r.title, r.snippet, entities, queryKeywords)
+        // 摘要位合并预取正文：正文命中说明页面确实在讲查询主题；
+        // 只取 snippet 会低估部分来源（百科条目摘要极短，命中信息多在正文）
+        const bodyText = [r.snippet, r.content].filter(Boolean).join(' ')
+        const relevance = getRelevanceScore(r.title, bodyText, relevanceTerms)
 
         // 综合分（加权）
         // 相关性 50%，权威度 30%，时效性 20%
@@ -305,33 +393,27 @@ export function rankAndDedup<T extends {
         }
     })
 
-    // 2. 相关性阈值过滤：丢弃与查询完全不相关的结果
-    // relevance < 2 表示标题和摘要几乎没有匹配任何查询实体/关键词
-    // 这类结果（如 CSDN、GitHub、恶意网站列表）会污染搜索质量
-    const MIN_RELEVANCE_THRESHOLD = 2
-    const filtered = ranked.filter(r => r.scoreBreakdown.relevance >= MIN_RELEVANCE_THRESHOLD)
-
-    // 安全兜底：过滤后结果太少时，放宽阈值确保返回足够结果
-    // 优先用过滤后的结果；不足 3 条时用全部结果补齐
-    // 绝不会返回空数组，避免 AI 告诉用户"无相关内容"
-    let finalPool: typeof ranked
-    if (filtered.length >= 3) {
-        finalPool = filtered
-    } else if (filtered.length > 0) {
-        // 有少量相关结果，补充不相关的结果凑够 3 条
-        const filteredUrls = new Set(filtered.map(r => r.url))
-        const supplement = ranked.filter(r => !filteredUrls.has(r.url)).slice(0, 3 - filtered.length)
-        finalPool = [...filtered, ...supplement]
-    } else {
-        // 全部不相关 → 取分数最高的前 5 条（总比没有强）
-        finalPool = ranked.slice(0, Math.min(5, ranked.length))
-    }
+    // 2. 相关性准入：与查询无关的结果直接丢弃
+    //
+    // 此处刻意不做「凑够 N 条」的兜底。此前的实现会在相关结果不足时补入不相关结果，
+    // 全不相关时更会取「总分最高的前 N 条」，而总分里权威度的权重（×3）足以让一条
+    // relevance 为 0 的高权威页面排到真正相关的普通站点之前 —— 这正是搜索出现
+    // 「完全不相关的内容且排在前列」的直接原因。宁可返回空数组，由调用方明确告知
+    // 用户「未找到相关结果」，也不要塞入无关内容。
+    //
+    // 查询本身提不出有效词项时（如纯语气词）不做判定，保留原始结果，避免误杀。
+    const relevant = relevanceTerms.terms.length > 0
+        ? ranked.filter(r =>
+            MEDIA_SOURCE_TYPES.has(r.sourceType ?? '')
+            || r.scoreBreakdown.relevance >= MIN_RELEVANCE_THRESHOLD,
+        )
+        : ranked
+    if (relevant.length === 0) return []
 
     // 3. 按分数降序排序
-    finalPool.sort((a, b) => b.score - a.score)
+    relevant.sort((a, b) => b.score - a.score)
 
     // 4. 去重
-    const deduped = markDuplicates(finalPool)
-
-    return deduped
+    return markDuplicates(relevant)
 }
+
