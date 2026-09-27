@@ -38,6 +38,9 @@ export function createFileOpsApi() {
     readDir: (path: string) => invoke('file:readDir')(path),
     getFileTree: (path: string, maxDepth?: number) => invoke('file:getTree')(path, maxDepth),
     readFile: (path: string) => invoke('file:read')(path),
+    /** 按行起点 + 字节上限读取文件窗口（AI 读大文件时使用，避免整文件跨进程传输） */
+    readFileWindow: (path: string, options?: { startLine?: number; maxBytes?: number }) =>
+      invoke('file:readWindow')(path, options),
     readBinaryFile: (path: string) => invoke('file:readBinary')(path),
     writeFile: (path: string, content: string) => invoke('file:write')(path, content),
     writeBinaryFile: (path: string, base64Data: string) => invoke('file:writeBinary')(path, base64Data),

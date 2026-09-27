@@ -1715,6 +1715,18 @@ export interface ElectronAPI {
   readDir: (path: string) => Promise<FileItem[]>
   getFileTree: (path: string, maxDepth?: number) => Promise<string>
   readFile: (path: string) => Promise<string | null>
+  /**
+   * 按行起点 + 字节上限读取文件窗口
+   *
+   * 供 AI 读取大文件使用：只把策略需要的一段内容取回渲染进程，
+   * 避免整文件读取与跨进程传输导致界面卡顿。
+   */
+  readFileWindow: (path: string, options?: { startLine?: number; maxBytes?: number }) => Promise<{
+    content: string | null
+    truncated: boolean
+    totalBytes: number
+    startLine: number
+  }>
   readBinaryFile: (path: string) => Promise<string | null>
   extractDocText: (path: string) => Promise<string | null>
   extractPptText: (path: string) => Promise<string | null>

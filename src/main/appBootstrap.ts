@@ -2,12 +2,12 @@
  * AweeClaw 主进程入口
  *
  * 仅负责应用生命周期编排与模块间协调，具体职责委托到 bootstrap/ 下的子模块：
+ * - schemeRegistry.ts     自定义协议特权注册（必须在 ready 前一次性完成）
  * - stores.ts             Store 初始化
  * - appConfig.ts          应用配置文件首次创建
- * - localPreviewProtocol.ts  local-preview 协议
+ * - localPreviewProtocol.ts / scenarioBundleProtocol.ts / pluginBundleProtocol.ts
+ *                         自定义协议处理器（ready 后挂载）
  * - windowManager.ts      窗口创建与生命周期
- * - shutdownCoordinator.ts   渲染进程关闭协调
- * - globalCleanup.ts      退出时全局清理
  * - moduleInitializer.ts  后台模块初始化
  */
 import { app } from 'electron'
@@ -19,18 +19,10 @@ import {
 } from './modules/lifecycle/GracefulShutdownController'
 import { initStores, getConfigStore } from './bootstrap/stores'
 import { ensureAppConfig } from './bootstrap/appConfig'
-import {
-  registerLocalPreviewScheme,
-  registerLocalPreviewHandler,
-} from './bootstrap/localPreviewProtocol'
-import {
-  registerScenarioBundleScheme,
-  registerScenarioBundleHandler,
-} from './bootstrap/scenarioBundleProtocol'
-import {
-  registerPluginBundleScheme,
-  registerPluginBundleHandler,
-} from './bootstrap/pluginBundleProtocol'
+import { registerLocalPreviewHandler } from './bootstrap/localPreviewProtocol'
+import { registerScenarioBundleHandler } from './bootstrap/scenarioBundleProtocol'
+import { registerPluginBundleHandler } from './bootstrap/pluginBundleProtocol'
+import { registerPrivilegedSchemes } from './bootstrap/schemeRegistry'
 import {
   createWindow,
   loadWindowContent,
@@ -46,7 +38,6 @@ import { requestRendererShutdown } from './bootstrap/shutdownCoordinator'
 import { performGlobalCleanup, performFastCleanup, withTimeout } from './bootstrap/globalCleanup'
 import { initializeModules } from './bootstrap/moduleInitializer'
 import { FloatingAvatarManager } from './modules/floating-avatar/FloatingAvatarManager'
-import { registerVrmAssetScheme } from './modules/vrm-companion/VrmCompanionStore'
 
 // 重新导出 Language 类型，保持向后兼容（menu 模块从 appBootstrap 导入）
 export type { Language } from './bootstrap/moduleInitializer'
@@ -124,17 +115,9 @@ if (!app.requestSingleInstanceLock()) {
 // 注入退出状态控制器
 setQuitStateController(quitStateController)
 
-// 注册 local-preview 协议为 privileged（必须在 app ready 之前）
-registerLocalPreviewScheme()
-
-// 注册 scenario-bundle 协议为 privileged（用于编程式场景 ESM bundle 加载）
-registerScenarioBundleScheme()
-
-// 注册 plugin-bundle 协议为 privileged（用于插件 UI ESM bundle 加载）
-registerPluginBundleScheme()
-
-// 注册 vrm-asset 协议为 privileged（VRM 桌面伴侣的模型资源加载，必须 ready 前注册）
-registerVrmAssetScheme()
+// 注册全部自定义协议特权（local-preview / scenario-bundle / plugin-bundle /
+// vrm-asset 必须合并为一次调用，必须在 app ready 之前完成）
+registerPrivilegedSchemes()
 
 // ==========================================
 // 全局异常处理

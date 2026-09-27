@@ -17,8 +17,11 @@ type MonacoContext = import('monaco-editor').languages.InlineCompletionContext
 type MonacoToken = import('monaco-editor').CancellationToken
 type MonacoDisposable = import('monaco-editor').IDisposable
 
-export function useAICompletion(activeFilePath: string | null) {
+export function useAICompletion(activeFilePath: string | null, enabled: boolean = true) {
   const providerRef = useRef<MonacoDisposable | null>(null)
+  // 用 ref 传递开关：大文件档位变化时无需重建 provider
+  const enabledRef = useRef(enabled)
+  enabledRef.current = enabled
 
   const registerProvider = useCallback((monaco: MonacoEditor) => {
     // 清理旧的 provider
@@ -33,6 +36,8 @@ export function useAICompletion(activeFilePath: string | null) {
           _context: MonacoContext,
           token: MonacoToken,
         ) => {
+          // 大文件模式下直接返回空：补全上下文需要整份文件内容，开销随文件体积线性增长
+          if (!enabledRef.current) return { items: [] }
           if (!getEditorConfig().ai?.completionEnabled) return { items: [] }
 
           // Debounce

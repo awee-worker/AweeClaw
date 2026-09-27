@@ -16,12 +16,12 @@
  *   <userData>/vrm/companion_config.json 伴侣窗口配置
  *   <resources>/vrm/models/*.vrm         内置默认模型（打包后位于 process.resourcesPath）
  */
-
 import { app, protocol, net } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { pathToFileURL } from 'url'
 import { logger } from '@shared/toolkit/LogEngine'
+import type { PrivilegedScheme } from '../../bootstrap/schemeRegistry'
 
 // ============================================
 // 类型定义
@@ -272,30 +272,22 @@ function writeJsonFile(filePath: string, data: unknown): void {
 // ============================================
 
 /**
- * 注册自定义协议特权（必须在 app ready 之前调用）。
+ * vrm-asset 协议特权定义（由 bootstrap/schemeRegistry.ts 统一注册，必须在 app ready 前）。
  *
  * standard:  让 URL 具备标准语义（host/path 可解析），GLTFLoader 的 URL 拼接依赖此点
  * supportFetchAPI: 允许 fetch 加载（loader 内部使用）
  * bypassCSP:  避免页面 CSP 拦截自定义协议
  */
-export function registerVrmAssetScheme(): void {
-  try {
-    protocol.registerSchemesAsPrivileged([
-      {
-        scheme: VRM_ASSET_SCHEME,
-        privileges: {
-          standard: true,
-          secure: true,
-          supportFetchAPI: true,
-          stream: true,
-          bypassCSP: true,
-          corsEnabled: true,
-        },
-      },
-    ])
-  } catch (err) {
-    logger.system.warn('[VrmCompanion] registerSchemesAsPrivileged failed:', err)
-  }
+export const VRM_ASSET_SCHEME_DEF: PrivilegedScheme = {
+  scheme: VRM_ASSET_SCHEME,
+  privileges: {
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    stream: true,
+    bypassCSP: true,
+    corsEnabled: true,
+  },
 }
 
 /**

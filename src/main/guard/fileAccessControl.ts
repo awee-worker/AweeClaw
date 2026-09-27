@@ -173,6 +173,161 @@ export async function readLargeFile(
   }
 }
 
+/** 单次窗口读取的默认字节上限（避免把超大文件整体读入内存并跨进程传输） */
+export const DEFAULT_READ_WINDOW_BYTES = 512 * 1024
+
+/** 窗口读取的换行扫描分块大小 */
+const NEWLINE_SCAN_CHUNK = 64 * 1024
+
+/** 换行符字节 */
+const LF = 0x0a
+
+/** 窗口读取结果 */
+export interface FileReadWindow {
+  /** 读取到的文本内容；读取失败为 null */
+  content: string | null
+  /** 是否因为字节上限被截断（未读到文件结尾） */
+  truncated: boolean
+  /** 文件总字节数 */
+  totalBytes: number
+  /** 返回内容对应的起始行号（1-based） */
+  startLine: number
+}
+
+/**
+ * 定位指定行在文件中的字节偏移
+ *
+ * 逐块扫描换行符，避免一次性把整个文件读入内存。
+ *
+ * @param fd 已打开的文件句柄
+ * @param totalBytes 文件总字节数
+ * @param targetLine 目标行号（1-based）
+ * @returns 该行起始字节偏移；行号超出文件范围返回 -1
+ */
+async function findLineOffset(
+  fd: fsPromises.FileHandle,
+  totalBytes: number,
+  targetLine: number,
+): Promise<number> {
+  const buffer = Buffer.alloc(NEWLINE_SCAN_CHUNK)
+  let position = 0
+  let line = 1
+
+  while (position < totalBytes) {
+    const { bytesRead } = await fd.read(buffer, 0, NEWLINE_SCAN_CHUNK, position)
+    if (bytesRead <= 0) break
+
+    for (let i = 0; i < bytesRead; i++) {
+      if (buffer[i] === LF) {
+        line++
+        if (line === targetLine) {
+          return position + i + 1
+        }
+      }
+    }
+
+    position += bytesRead
+  }
+
+  return -1
+}
+
+/**
+ * 按「起始行 + 字节上限」读取文件窗口
+ *
+ * 用于 AI 读取文件：只把策略真正需要的一段内容读出来并跨进程传递，
+ * 避免大文件整体读入导致内存峰值与主线程卡顿。
+ *
+ * 行为约定：
+ * - 文件从第一行起且不超过字节上限时，走常规编码检测读取，结果与旧逻辑一致；
+ * - 指定起始行时按字节扫描跳过前面的行，再读取至多 maxBytes 字节；
+ * - 被字节上限截断时回退到最后一个完整换行，避免把一行切成两半。
+ *
+ * @param filePath 文件路径
+ * @param options 读取选项
+ * @returns 窗口读取结果；读取失败时 content 为 null
+ */
+export async function readFileWindow(
+  filePath: string,
+  options: { startLine?: number; maxBytes?: number } = {},
+): Promise<FileReadWindow> {
+  const startLine = Math.max(1, Math.floor(options.startLine ?? 1))
+  const maxBytes = Math.max(1024, Math.floor(options.maxBytes ?? DEFAULT_READ_WINDOW_BYTES))
+
+  let fd: fsPromises.FileHandle | null = null
+  try {
+    fd = await fsPromises.open(filePath, 'r')
+    const stats = await fd.stat()
+    const totalBytes = stats.size
+
+    // 小文件且从第一行开始：沿用通用读取（含编码检测），结果与旧行为保持一致
+    if (startLine === 1 && totalBytes <= maxBytes) {
+      const content = await readFileWithEncoding(filePath)
+      return { content, truncated: false, totalBytes, startLine: 1 }
+    }
+
+    // UTF-16 文本无法按字节定位换行，退化为受上限保护的整文件读取
+    const bom = Buffer.alloc(2)
+    const { bytesRead: bomRead } = await fd.read(bom, 0, 2, 0)
+    const isUtf16 =
+      bomRead === 2 &&
+      ((bom[0] === 0xff && bom[1] === 0xfe) || (bom[0] === 0xfe && bom[1] === 0xff))
+
+    if (isUtf16) {
+      const full = await readFileWithEncoding(filePath)
+      if (full === null) {
+        return { content: null, truncated: false, totalBytes, startLine: 1 }
+      }
+      const bounded = full.slice(0, maxBytes)
+      return {
+        content: bounded,
+        truncated: bounded.length < full.length,
+        totalBytes,
+        startLine: 1,
+      }
+    }
+
+    let offset = 0
+    if (startLine > 1) {
+      offset = await findLineOffset(fd, totalBytes, startLine)
+      if (offset < 0) {
+        // 请求的行号超出文件范围，返回空内容而非整文件
+        return { content: '', truncated: false, totalBytes, startLine }
+      }
+    }
+
+    const readLength = Math.min(maxBytes, totalBytes - offset)
+    const buffer = Buffer.alloc(readLength)
+    let filled = 0
+
+    while (filled < readLength) {
+      const { bytesRead } = await fd.read(buffer, filled, readLength - filled, offset + filled)
+      if (bytesRead <= 0) break
+      filled += bytesRead
+    }
+
+    let content = buffer.toString('utf-8', 0, filled)
+    const truncated = offset + filled < totalBytes
+
+    if (truncated) {
+      // 回退到最后一个完整换行，避免返回被切断的半行
+      const lastNewline = content.lastIndexOf('\n')
+      if (lastNewline > 0) {
+        content = content.slice(0, lastNewline)
+      }
+    }
+
+    return { content, truncated, totalBytes, startLine }
+  } catch (err) {
+    logger.file.debug('[fileAccessControl] 读取文件窗口失败', { path: filePath, error: String(err) })
+    return { content: null, truncated: false, totalBytes: 0, startLine }
+  } finally {
+    if (fd) {
+      await fd.close().catch(() => {})
+    }
+  }
+}
+
 /** 文件统计信息 */
 export interface FileStats {
   size: number

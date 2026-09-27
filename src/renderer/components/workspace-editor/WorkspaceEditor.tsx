@@ -17,7 +17,7 @@ import { toast } from '@components/foundation/NotificationProvider'
 import { getFileName, normalizePath } from '@shared/toolkit/pathHelper'
 import { api } from '../../adapters/electronBridge'
 import { didChangeDocument } from '@services/languageServerAdapter'
-import { getFileInfo } from '@services/largeFileAdapter'
+import { getFileInfo, type EditorSizeProfile } from '@services/largeFileAdapter'
 import { getMonacoEditorOptions } from '@renderer/config/monacoSetup'
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
 import { keybindingService } from '@services/keybindingAdapter'
@@ -89,8 +89,26 @@ function getPlanIdFromPlanFilePath(filePath: string): string {
   return getFileName(filePath).replace(/\.json$/i, '')
 }
 
+/** 需要「外部写入时自动滚动到底部」的文档类扩展名 */
+const DOCUMENT_EXTENSIONS = new Set([
+  'md', 'mdx', 'txt', 'rst', 'adoc', 'asciidoc',
+  'html', 'htm', 'css', 'json', 'yaml', 'yml', 'xml',
+  'csv', 'tsv', 'log', 'ini', 'conf', 'config',
+  'dockerfile', 'makefile', 'gitignore', 'gitattributes',
+  'env', 'properties', 'toml',
+])
+
+/** 是否为文档类文件（提升到模块级，避免每次渲染都重建扩展名集合） */
+function isDocumentFile(filePath: string): boolean {
+  const lowerPath = filePath.toLowerCase()
+  const baseName = lowerPath.split(/[/\\]/).pop() || ''
+  if (DOCUMENT_EXTENSIONS.has(baseName)) return true
+  const ext = lowerPath.split('.').pop() || ''
+  return DOCUMENT_EXTENSIONS.has(ext)
+}
+
 // Hooks
-import { useEditorActions, useAICompletion, useEditorEvents, useComposerInlineDiff } from './DevAssistantBridge'
+import { useEditorActions, useAICompletion, useEditorEvents, useComposerInlineDiff } from './hooks'
 import { getLanguage } from './utils/langIdMapper'
 import { defineMonacoTheme } from './utils/editorTheme'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'
@@ -195,6 +213,12 @@ export default function Editor() {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null)
   const cursorDebounceRef = useRef<NodeJS.Timeout | null>(null)
+  // 滚动状态持久化定时器：滚动是高频事件，只在停止滚动后写一次 store
+  const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // LSP 文档同步定时器：避免每次按键都把整份文件内容通过 IPC 发往语言服务
+  const lspSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 记录最近一次「用户输入」写入的内容：大文件走非受控模式时用它区分内外来源
+  const lastLocalEditRef = useRef<string | null>(null)
   const setFileScrollPosition = useStore((state) => state.setFileScrollPosition)
 
   // Hooks
@@ -272,17 +296,98 @@ export default function Editor() {
     setTabContextMenu({ x: e.clientX, y: e.clientY, filePath: path })
   }, [])
 
+  /**
+   * 当前文件的大文件档位（仅 isLarge / isVeryLarge）
+   *
+   * 不能直接依赖 activeFile.content 做 useMemo：用户在大文件里每敲一个字，content 都会产生新引用，
+   * 重算不仅要对整段文本再做一次线性扫描（analyzeDocumentProfile 会遍历全部字符统计行数），
+   * 还会让 monacoOptions 引用变化，从而触发 editor.updateOptions() —— 两者叠加正是
+   * 「大文件里打字卡成幻灯片」的直接原因。
+   * 这里改为按路径缓存：文件首次拿到内容时判定一次，之后 content 持续变化也复用同一结果。
+   */
+  const largeFileInfoCache = useRef(new Map<string, EditorSizeProfile | null>())
+  const activeFileHasContent = Boolean(activeFile?.content)
+  const activeFileInfo = useMemo<EditorSizeProfile | null>(() => {
+    if (!activeFile) return null
+    const cached = largeFileInfoCache.current.get(activeFile.path)
+    if (cached !== undefined) return cached
+    // 打开文件时（safeOpenFile）已算好并写入 store，优先复用；否则做一次兜底判定
+    const info: EditorSizeProfile | null =
+      activeFile.largeFileInfo ??
+      (activeFile.content ? getFileInfo(activeFile.path, activeFile.content) : null)
+    // content 尚未加载（被 LRU 淘汰过）时先不落缓存，等补载完成后再判定
+    if (info !== null || activeFile.content) {
+      largeFileInfoCache.current.set(activeFile.path, info)
+    }
+    return info
+    // 只依赖路径与「是否已有内容」：content 本身不进依赖，避免每次输入都重算
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFile?.path, activeFileHasContent])
+
+  /** 当前文件是否走「大文件」降级（非受控编辑器 + 跳过 LSP 同步） */
+  const isLargeActiveFile = Boolean(activeFileInfo?.isLarge)
+
+  /**
+   * 大文件外部内容同步
+   *
+   * 大文件下编辑器用 defaultValue 非受控挂载，用户输入不再回流到 value，
+   * 从而省掉 @monaco-editor/react 受控模式对每次按键执行的一次 model.getValue() 全量比较。
+   * 代价是外部写入（AI 编辑、磁盘重载）需要显式同步：这里只在内容并非
+   * 「本地上一次输入」时才回写模型 —— 用户输入时是 O(1) 短路，只有确属外部变更才会
+   * 真正读取一次模型内容做比对。
+   */
+  useEffect(() => {
+    if (!isLargeActiveFile || !activeFile) return
+    const content = activeFile.content ?? ''
+    if (lastLocalEditRef.current !== null && content === lastLocalEditRef.current) return
+    const model = editorRef.current?.getModel()
+    if (model && model.getValue() !== content) {
+      model.setValue(content)
+    }
+    // 与 isLargeActiveFile 同一档位，不会频繁触发；content 变化时靠上面的短路保护
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLargeActiveFile, activeFile?.path, activeFile?.content])
+
+  /**
+   * 防抖地把文档变更同步给语言服务
+   *
+   * didChangeDocument 会把整份文件文本经 IPC 发送给 LSP；逐键发送意味着大文件下
+   * 每次按键都要序列化几 MB 字符串，是打字卡顿与高 CPU 的重要来源。
+   * 这里做 400ms 防抖；大文件直接跳过（编辑器层本就未为其开启语义分析）。
+   */
+  const scheduleLspSync = useCallback((filePath: string, content: string) => {
+    if (lspSyncTimerRef.current) clearTimeout(lspSyncTimerRef.current)
+    lspSyncTimerRef.current = setTimeout(() => {
+      lspSyncTimerRef.current = null
+      void didChangeDocument(filePath, content)
+    }, 400)
+  }, [])
+
+  // 卸载时清理待触发的定时器，避免对已销毁的编辑器 / 已关闭的文件继续写入
+  useEffect(() => {
+    return () => {
+      if (lspSyncTimerRef.current) clearTimeout(lspSyncTimerRef.current)
+      if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
+    }
+  }, [])
+
   useComposerInlineDiff(isPreviewDocument ? null : activeFilePath, editorRef.current, monacoRef.current)
 
   const { registerActions } = useEditorActions(setInlineEditState)
-  const { registerProvider: registerAIProvider } = useAICompletion(isPreviewDocument ? null : activeFilePath)
+  // 大文件禁用 AI 补全：补全上下文需要整份文件内容（buildContext 会取 model.getValue），
+  // 每次触发都要复制一遍几 MB 的文本，会让编辑器持续掉帧。
+  const { registerProvider: registerAIProvider } = useAICompletion(
+    isPreviewDocument ? null : activeFilePath,
+    !activeFileInfo?.isLarge,
+  )
 
   const activeLanguage = activeFile && !isPreviewDocument ? getLanguage(activeFile.path) : 'plaintext'
   const activeFileType = activeFile && !isPreviewDocument ? getFileType(activeFile.path) : 'text'
-  const activeFileInfo = useMemo(
-    () => (activeFile && activeFile.content != null) ? getFileInfo(activeFile.path, activeFile.content) : null,
-    [activeFile?.path, activeFile?.content]
-  )
+  /**
+   * 超大文件降级为纯文本：Monaco 的分词（tokenization）要逐行跑语言规则，
+   * 几 MB 的文件即使只渲染可视区，滚动时也会持续补分词。降级后编辑器只做纯文本渲染。
+   */
+  const editorLanguage = activeFileInfo?.isVeryLarge ? 'plaintext' : activeLanguage
 
   /** 视图模式切换（markdown / html），与 Tab 栏共用稳定引用 */
   const handleViewModeChange = useCallback((mode: 'edit' | 'preview' | 'split') => {
@@ -334,10 +439,17 @@ export default function Editor() {
   // 同时检查是否有跨文件 Go-to-Definition 待处理的跳转定位
   useEffect(() => {
     clearLintErrors()
-    if (activeFile && activeFile.content != null && !isPreviewDocument) {
-      notifyFileOpened(activeFile.path, activeFile.content)
+    const file = activeFilePath
+      ? useStore.getState().openFiles.find((f) => f.path === activeFilePath)
+      : undefined
+    if (file && file.content != null && !isPreviewDocument) {
+      // 大文件不通知 LSP：didOpenDocument 会让语言服务对整个文档建索引并做语义分析，
+      // 几 MB 的文件足以同时拖住主进程与渲染进程，是打开大文件后持续掉帧的主因之一。
+      if (!activeFileInfo?.isLarge) {
+        notifyFileOpened(file.path, file.content)
+      }
       // 检查是否有跨文件跳转定义的待定位请求
-      const nav = consumePendingNavigation(activeFile.path)
+      const nav = consumePendingNavigation(file.path)
       if (nav && editorRef.current) {
         setTimeout(() => {
           editorRef.current?.setPosition({ lineNumber: nav.line, column: nav.col })
@@ -346,7 +458,9 @@ export default function Editor() {
         }, 80)
       }
     }
-  }, [activeFilePath, activeFile, clearLintErrors, notifyFileOpened, isPreviewDocument])
+    // activeFilePath + activeFileInfo 已是「文件切换」的稳定依赖：
+    // 不订阅 activeFile 本体，避免每次输入都重跑本 effect
+  }, [activeFilePath, activeFileInfo, clearLintErrors, notifyFileOpened, isPreviewDocument])
 
   // 补载被 LRU 淘汰过的文件内容
   // 打开文件数超过上限时 fileSlice 会清空最久未访问的非活跃文件内容以释放内存
@@ -429,41 +543,24 @@ export default function Editor() {
 
   // 文档类型文件流式预览时自动滚动到底部
   useEffect(() => {
-    if (!editorRef.current || !activeFile || isPreviewDocument) return
+    // 用户手动编辑（isDirty）时不滚动：提前返回，避免每次按键都做一次路径/扩展名判定
+    if (!editorRef.current || !activeFile || isPreviewDocument || activeFile.isDirty) return
     if (!activeFile.content) return
-
     // 仅对文档类型文件启用自动滚动
-    const isDocumentFile = (filePath: string): boolean => {
-      const DOCUMENT_EXTENSIONS = new Set([
-        'md', 'mdx', 'txt', 'rst', 'adoc', 'asciidoc',
-        'html', 'htm', 'css', 'json', 'yaml', 'yml', 'xml',
-        'csv', 'tsv', 'log', 'ini', 'conf', 'config',
-        'dockerfile', 'makefile', 'gitignore', 'gitattributes',
-        'env', 'properties', 'toml',
-      ])
-      const lowerPath = filePath.toLowerCase()
-      const baseName = lowerPath.split(/[/\\]/).pop() || ''
-      if (DOCUMENT_EXTENSIONS.has(baseName)) return true
-      const ext = lowerPath.split('.').pop() || ''
-      return DOCUMENT_EXTENSIONS.has(ext)
-    }
-
     if (!isDocumentFile(activeFile.path)) return
 
     // 文件内容被外部更新（非用户手动编辑）时滚动到底部
-    if (!activeFile.isDirty) {
-      const editor = editorRef.current
-      const model = editor.getModel()
-      if (!model) return
+    const editor = editorRef.current
+    const model = editor.getModel()
+    if (!model) return
 
-      const lineCount = model.getLineCount()
-      if (lineCount > 0) {
-        // 使用 requestAnimationFrame 确保在内容渲染完成后滚动
-        requestAnimationFrame(() => {
-          editor.revealLine(lineCount, 1) // 1 = monaco.editor.ScrollType.Smooth
-          editor.setPosition({ lineNumber: lineCount, column: model.getLineMaxColumn(lineCount) })
-        })
-      }
+    const lineCount = model.getLineCount()
+    if (lineCount > 0) {
+      // 使用 requestAnimationFrame 确保在内容渲染完成后滚动
+      requestAnimationFrame(() => {
+        editor.revealLine(lineCount, 1) // 1 = monaco.editor.ScrollType.Smooth
+        editor.setPosition({ lineNumber: lineCount, column: model.getLineMaxColumn(lineCount) })
+      })
     }
   }, [activeFile?.content, activeFile?.path, activeFile?.isDirty, isPreviewDocument])
 
@@ -505,13 +602,29 @@ export default function Editor() {
     }
 
     // 监听滚动变化并保存视图状态
+    // 滚动是高频事件（可达每帧），逐帧写 store 会让 openFiles 反复重建、
+    // 驱动侧栏与会话面板重渲染，是滚动卡顿与高 CPU 的主因之一。
+    // 改为「停止滚动 400ms 后写一次」，并在编辑器销毁时补写最后一帧视图状态。
+    let pendingScrollState: unknown = null
     const scrollDisposable = editor.onDidScrollChange(() => {
-      if (currentFilePath && typeof editor.saveViewState === 'function') {
-        const state = editor.saveViewState()
-        setFileScrollPosition(currentFilePath, state as any)
-      }
+      if (!currentFilePath || typeof editor.saveViewState !== 'function') return
+      pendingScrollState = editor.saveViewState()
+      if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
+      scrollSaveTimerRef.current = setTimeout(() => {
+        scrollSaveTimerRef.current = null
+        if (pendingScrollState) setFileScrollPosition(currentFilePath, pendingScrollState as any)
+      }, 400)
     })
     disposables.push(scrollDisposable)
+    disposables.push({
+      dispose: () => {
+        if (scrollSaveTimerRef.current) {
+          clearTimeout(scrollSaveTimerRef.current)
+          scrollSaveTimerRef.current = null
+        }
+        if (pendingScrollState) setFileScrollPosition(currentFilePath, pendingScrollState as any)
+      },
+    })
 
     // 监听内容变化，基于版本号更新 dirty 状态
     const model = editor.getModel()
@@ -526,16 +639,10 @@ export default function Editor() {
       }
 
       const contentDisposable = editor.onDidChangeModelContent(() => {
-        const currentVersionId = model.getAlternativeVersionId()
-        const editorContent = editor.getValue()
-        const { openFiles: currentFiles } = useStore.getState()
-        const currentFile = currentFiles.find(f => f.path === currentFilePath)
-
-        if (currentFile && editorContent === currentFile.content) {
-          markFileSaved(currentFilePath, currentVersionId)
-        } else {
-          updateFileDirtyState(currentFilePath, currentVersionId)
-        }
+        // 只用版本号判断脏状态：Monaco 的 alternativeVersionId 在「撤销回保存点」时会回到原值，
+        // 语义上等价于原先的整文件字符串比较，但省掉了每次按键对整份文件做一次
+        // getValue() + 全等比较（大文件下这是两笔 O(n) 开销，也是打字卡顿的来源之一）。
+        updateFileDirtyState(currentFilePath, model.getAlternativeVersionId())
       })
       disposables.push(contentDisposable)
     }
@@ -775,7 +882,7 @@ export default function Editor() {
                     onChange={(value) => {
                       if (value !== undefined) {
                         updateFileContent(activeFile.path, value)
-                        didChangeDocument(activeFile.path, value)
+                        if (!isLargeActiveFile) scheduleLspSync(activeFile.path, value)
                       }
                     }}
                     loading={<CodeSkeleton lines={12} />}
@@ -803,7 +910,7 @@ export default function Editor() {
                     onChange={(value) => {
                       if (value !== undefined) {
                         updateFileContent(activeFile.path, value)
-                        didChangeDocument(activeFile.path, value)
+                        if (!isLargeActiveFile) scheduleLspSync(activeFile.path, value)
                       }
                     }}
                     loading={<CodeSkeleton lines={12} />}
@@ -831,19 +938,23 @@ export default function Editor() {
                 options={{ fontSize: getEditorConfig().fontSize, fontFamily: getEditorConfig().fontFamily, fontLigatures: true, renderSideBySide: true, readOnly: false, minimap: { enabled: false }, scrollBeyondLastLine: false }}
               />
             ) : (
+              /* 大文件走非受控模式（defaultValue）：不再把 store 内容作为受控 value 传回，
+                 避免 @monaco-editor/react 每次按键都对整份文件执行一次 getValue() 全量比较；
+                 外部写入由上方的大文件同步 effect 负责回填。小文件保持受控，行为不变。 */
               <MonacoEditor
                 height="100%"
                 key={activeFile.path}
                 path={monaco.Uri.file(activeFile.path).toString()}
-                language={activeLanguage}
-                value={activeFile.content}
+                language={editorLanguage}
+                {...(isLargeActiveFile ? { defaultValue: activeFile.content } : { value: activeFile.content })}
                 theme="aweeclaw-dynamic"
                 beforeMount={handleBeforeMount}
                 onMount={handleEditorMount}
                 onChange={(value) => {
                   if (value !== undefined) {
+                    lastLocalEditRef.current = value
                     updateFileContent(activeFile.path, value)
-                    didChangeDocument(activeFile.path, value)
+                    if (!isLargeActiveFile) scheduleLspSync(activeFile.path, value)
                     triggerAutoSave(activeFile.path)
                   }
                 }}

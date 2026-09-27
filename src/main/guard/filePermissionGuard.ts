@@ -27,7 +27,7 @@ import Store from 'electron-store'
 import { securityManager, OperationType } from './securityPolicyEngine'
 
 // 导入拆分的模块
-import { readFileWithEncoding, readLargeFile } from './fileAccessControl'
+import { readFileWithEncoding, readLargeFile, readFileWindow } from './fileAccessControl'
 import {
   setupFileWatcher,
   cleanupFileWatcher,
@@ -339,6 +339,59 @@ export function registerSecureFileHandlers(
       return null
     }
   })
+
+  // 读取文件窗口（供 AI 读取大文件时按行起点 + 字节上限取用，避免整文件跨进程传输）
+  ipcMain.handle(
+    'file:readWindow',
+    async (
+      event,
+      filePath: string,
+      options?: { startLine?: number; maxBytes?: number },
+    ) => {
+      if (!filePath) return { content: null, truncated: false, totalBytes: 0, startLine: 1 }
+
+      // 跳过虚拟协议路径（如 git-diff://、diff:// 等），这些不是真实文件路径
+      if (/^[a-zA-Z][\w-]*:\/\//.test(filePath) && !(/^[a-zA-Z]:\\/.test(filePath))) {
+        return { content: null, truncated: false, totalBytes: 0, startLine: 1 }
+      }
+
+      const workspace = getWorkspaceSessionFn(event)
+
+      if (!isReadableOutsideWorkspace(filePath, workspace)) {
+        securityManager.logOperation(OperationType.FILE_READ, filePath, false, {
+          reason: '安全底线：超出工作区边界',
+        })
+        return { content: null, truncated: false, totalBytes: 0, startLine: 1 }
+      }
+
+      if (securityManager.isSensitivePath(filePath)) {
+        securityManager.logOperation(OperationType.FILE_READ, filePath, false, {
+          reason: '安全底线：敏感路径',
+        })
+        return { content: null, truncated: false, totalBytes: 0, startLine: 1 }
+      }
+
+      try {
+        const result = await readFileWindow(filePath, {
+          startLine: options?.startLine,
+          maxBytes: options?.maxBytes,
+        })
+
+        securityManager.logOperation(OperationType.FILE_READ, filePath, true, {
+          size: result.totalBytes,
+          windowed: true,
+        })
+        return result
+      } catch (err) {
+        if (toAppError(err).code === ErrorCode.FILE_NOT_FOUND || (err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+          logger.security.debug('[File] not found:', filePath)
+        } else {
+          logger.security.error('[File] read window failed:', toAppError(err).message)
+        }
+        return { content: null, truncated: false, totalBytes: 0, startLine: 1 }
+      }
+    },
+  )
 
   // 读取二进制文件为 base64
   ipcMain.handle('file:readBinary', async (event, filePath: string) => {
@@ -1121,4 +1174,4 @@ export { securityManager }
 // 重新导出拆分模块的类型和函数，方便外部使用
 export type { FileWatcherEvent, WindowManagerContext }
 export { setupFileWatcher, cleanupFileWatcher } from './fileSystemObserver'
-export { readFileWithEncoding, readLargeFile } from './fileAccessControl'
+export { readFileWithEncoding, readLargeFile, readFileWindow } from './fileAccessControl'

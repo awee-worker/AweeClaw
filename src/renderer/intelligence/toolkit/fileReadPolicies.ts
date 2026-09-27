@@ -165,3 +165,20 @@ export function buildReadTruncationMessage(strategy: ReadStrategy, visibleLines:
     'To read more: use search_files to find the target location, then call read_file with start_line/end_line'
   )
 }
+
+/**
+ * 构造「文件过大、按读取窗口截断」的提示。
+ *
+ * 与 buildReadTruncationMessage 的区别：窗口截断发生在读取阶段，
+ * 此时并不知道文件的真实总行数，因此只提示已展示的行数与继续读取的方式。
+ */
+export function buildReadWindowTruncationMessage(strategy: ReadStrategy, visibleLines: number): string {
+  if (!strategy.includeLineNumbers) {
+    return '\n\n⚠️ FILE TOO LARGE — only the leading portion was read. Use search_files to locate the section you need, then call read_file with start_line/end_line.'
+  }
+
+  return (
+    `\n\n⚠️ FILE TOO LARGE — this window covers only ${visibleLines} lines of the file\n` +
+    'To read more: use search_files to find the target location, then call read_file with start_line/end_line'
+  )
+}

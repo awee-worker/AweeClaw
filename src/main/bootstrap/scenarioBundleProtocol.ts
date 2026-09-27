@@ -8,6 +8,9 @@
  * - secure: true — 允许在 HTTPS 页面中加载
  * - corsEnabled: true — 允许跨域请求
  *
+ * 协议特权在 schemeRegistry.ts 中与其他协议一起一次性注册（原因见该文件说明），
+ * 本模块只负责协议处理器：把 scenario-bundle:// 请求映射到本地文件。
+ *
  * 协议 URL 格式：
  *   scenario-bundle:///absolute/path/to/bundle.js
  *   scenario-bundle://localhost/absolute/path/to/bundle.js
@@ -16,13 +19,11 @@
  * - 仅允许访问 scenarios 目录及其子目录
  * - 阻止访问敏感系统目录
  * - 返回正确的 MIME 类型（application/javascript）
- *
- * 必须在 app.whenReady() 之前调用 registerScheme()，
- * 在 whenReady() 之后调用 registerHandler()。
  */
 import { protocol } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
+import type { PrivilegedScheme } from './schemeRegistry'
 
 const SCHEME = 'scenario-bundle'
 
@@ -30,26 +31,22 @@ const SCHEME = 'scenario-bundle'
 const SENSITIVE_PATHS = ['/etc', '/proc', '/sys', '/dev', 'C:\\Windows\\System32']
 
 /**
- * 注册协议为 privileged（必须在 app ready 之前调用）
+ * scenario-bundle 协议特权定义（由 schemeRegistry 统一注册）
  *
  * standard: true 是让 dynamic import() 正常工作的关键。
  * 没有 standard: true 的自定义协议无法被 import() 使用。
  */
-export function registerScenarioBundleScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: SCHEME,
-      privileges: {
-        bypassCSP: true,
-        allowServiceWorkers: false,
-        supportFetchAPI: true,
-        stream: true,
-        standard: true,
-        secure: true,
-        corsEnabled: true,
-      },
-    },
-  ])
+export const SCENARIO_BUNDLE_SCHEME: PrivilegedScheme = {
+  scheme: SCHEME,
+  privileges: {
+    bypassCSP: true,
+    allowServiceWorkers: false,
+    supportFetchAPI: true,
+    stream: true,
+    standard: true,
+    secure: true,
+    corsEnabled: true,
+  },
 }
 
 /**

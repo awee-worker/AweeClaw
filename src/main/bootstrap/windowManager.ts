@@ -371,12 +371,20 @@ function registerCsp(win: BrowserWindow): void {
       responseHeaders: {
         ...details.responseHeaders,
         // 注意：Monaco Editor 在 Electron 中硬性依赖 unsafe-eval，无法移除
+        //
+        // blob: 在 script-src 中不可省略：编程式场景与插件 UI 的 ESM bundle 都是
+        // 先经 scenario-bundle:// / plugin-bundle:// 取出、重写 bare specifier，
+        // 再包成 Blob URL 做 dynamic import()（见 rewriteBareSpecifiers）。
+        // 缺 blob: 时该 import 会被 CSP 拦下，报「Failed to fetch dynamically imported module」，
+        // 表现为场景/插件安装成功但加载失败。
         'Content-Security-Policy': [
           "default-src 'self'",
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval' local-preview: scenario-bundle: plugin-bundle:",
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: local-preview: scenario-bundle: plugin-bundle:",
           "style-src 'self' 'unsafe-inline' local-preview: scenario-bundle: plugin-bundle:",
           "img-src 'self' data: https: blob: local-preview:",
-          "connect-src 'self' https: wss: http://127.0.0.1:* http://localhost:*",
+          // connect-src 需显式放行两个 bundle 协议：bundle 内容与样式均由渲染进程 fetch 取回。
+          // 虽然协议注册时带了 bypassCSP，但显式声明可避免后续调整协议权限后此处静默失效。
+          "connect-src 'self' https: wss: blob: scenario-bundle: plugin-bundle: http://127.0.0.1:* http://localhost:*",
           // 支付宝收银台：电脑网站支付用 qr_pay_mode=4 将二维码内嵌到客户端 iframe
           // 收银台涉及 openapi / excashier / mclient 等多个子域，统一放行 *.alipay.com
           "frame-src 'self' http://127.0.0.1:* http://localhost:* https://*.alipay.com",

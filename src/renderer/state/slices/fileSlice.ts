@@ -500,11 +500,18 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
     })),
 
   updateFileDirtyState: (path, currentVersionId) =>
-    set((state) => ({
-      openFiles: state.openFiles.map((f) =>
-        f.path === path ? { ...f, isDirty: currentVersionId !== f.savedVersionId } : f,
-      ),
-    })),
+    set((state) => {
+      const target = state.openFiles.find((f) => f.path === path)
+      const nextDirty = target ? currentVersionId !== target.savedVersionId : false
+      // 脏状态未变化（连续输入时 isDirty 一直为 true）时返回原 state：
+      // 既不重建 openFiles 数组，也不触发 store 订阅者，彻底避免连续输入时的无谓开销。
+      if (!target || target.isDirty === nextDirty) return state
+      return {
+        openFiles: state.openFiles.map((f) =>
+          f.path === path ? { ...f, isDirty: nextDirty } : f,
+        ),
+      }
+    }),
 
   markFileSaved: (path, versionId) =>
     set((state) => ({

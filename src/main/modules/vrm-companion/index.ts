@@ -7,7 +7,7 @@
  * - VrmCompanionIpc：渲染进程 ↔ 主进程 IPC
  *
  * 初始化时机：
- * 1. registerVrmAssetScheme() 必须在 app ready 之前调用（appBootstrap 顶部）
+ * 1. VRM_ASSET_SCHEME_DEF 由 bootstrap/schemeRegistry.ts 在 app ready 前统一注册
  * 2. initVrmCompanion() 在 ready 之后、后台异步阶段调用（不阻塞启动）
  */
 
@@ -19,7 +19,7 @@ import { handleVrmAssetProtocol, getConfig } from './VrmCompanionStore'
 export { VrmCompanionManager, getVrmCompanionManager } from './VrmCompanionManager'
 export { registerVrmCompanionIpc } from './VrmCompanionIpc'
 export {
-  registerVrmAssetScheme,
+  VRM_ASSET_SCHEME_DEF,
   handleVrmAssetProtocol,
   getConfig as getVrmCompanionConfig,
   updateConfig as updateVrmCompanionConfig,

@@ -1,10 +1,16 @@
 /**
  * 编辑器事件监听 Hook
  */
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 import { useStore } from '@store'
 import { logger } from '@toolkit/LogEngine'
 import type { editor } from 'monaco-editor'
+
+/** 选区文本同步防抖：拖选会连续触发选区变化事件，逐帧写入全局 store 会驱动 ChatPanel 等订阅方反复重渲染 */
+const SELECTION_SYNC_DELAY_MS = 150
+
+/** 写入 store 的选区文本上限：避免全选大文件时把整份内容塞进全局状态 */
+const SELECTED_CODE_MAX_CHARS = 50_000
 
 export function useEditorEvents(editorRef: React.RefObject<editor.IStandaloneCodeEditor | null>) {
   // 跳转到行事件
@@ -74,6 +80,9 @@ export function useEditorEvents(editorRef: React.RefObject<editor.IStandaloneCod
     return () => window.removeEventListener('editor:replace-selection', handleReplaceSelection as EventListener)
   }, [editorRef])
 
+  // 选区同步防抖定时器（拖选时只在选区稳定后读取一次文本）
+  const selectionDebounceRef = useRef<NodeJS.Timeout | null>(null)
+
   // 光标位置追踪
   const setupCursorTracking = useCallback((
     editor: editor.IStandaloneCodeEditor,
@@ -90,12 +99,28 @@ export function useEditorEvents(editorRef: React.RefObject<editor.IStandaloneCod
 
     editor.onDidChangeCursorSelection((e) => {
       const model = editor.getModel()
-      if (model && e.selection && !e.selection.isEmpty()) {
-        const selectedText = model.getValueInRange(e.selection)
-        setSelectedCode(selectedText)
-      } else {
-        setSelectedCode('')
+      if (selectionDebounceRef.current) clearTimeout(selectionDebounceRef.current)
+
+      if (!model || !e.selection || e.selection.isEmpty()) {
+        selectionDebounceRef.current = setTimeout(() => setSelectedCode(''), SELECTION_SYNC_DELAY_MS)
+        return
       }
+
+      const selection = e.selection
+      selectionDebounceRef.current = setTimeout(() => {
+        // 拖选会逐帧触发该事件：等选区稳定后再读取文本，
+        // 并对超大选区截断，避免把整份文件内容写进全局 store。
+        try {
+          const selectedText = model.getValueInRange(selection)
+          setSelectedCode(
+            selectedText.length > SELECTED_CODE_MAX_CHARS
+              ? selectedText.slice(0, SELECTED_CODE_MAX_CHARS)
+              : selectedText,
+          )
+        } catch {
+          // 延迟期间内容变化可能导致 range 失效，忽略即可
+        }
+      }, SELECTION_SYNC_DELAY_MS)
     })
   }, [])
 

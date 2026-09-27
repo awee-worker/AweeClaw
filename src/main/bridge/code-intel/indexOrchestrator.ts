@@ -22,6 +22,43 @@ import { ok, failFromError, Result } from '@shared/protocols/outcomeProtocol'
 import Store from 'electron-store'
 import { BRAND } from '@shared/brand'
 
+/**
+ * 调用图解析的内容长度上限
+ *
+ * 超过该长度直接跳过解析：tree-sitter 是同步解析，超大内容会让主进程长时间
+ * 无法处理其他 IPC，进而拖慢整个界面。
+ */
+const AST_PARSE_MAX_CHARS = 1_000_000
+
+/** AST 解析器对外暴露的最小能力约定 */
+interface AstParserLike {
+  init(): Promise<void>
+  parseCallGraph(filePath: string, content: string): Promise<unknown[]>
+}
+
+/** 复用的 AST 解析器实例（缓存 Promise，避免每次调用都重新初始化 tree-sitter 与语言包） */
+let astParserInstance: Promise<AstParserLike> | null = null
+
+/**
+ * 获取 AST 解析器（单例）
+ *
+ * 初始化失败时清空缓存，避免失败的 Promise 被后续调用永久复用。
+ */
+function getAstParser(): Promise<AstParserLike> {
+  if (!astParserInstance) {
+    astParserInstance = (async () => {
+      const { ASTParser } = await import('../../search-engine/engineCore')
+      const parser = new ASTParser()
+      await parser.init()
+      return parser as unknown as AstParserLike
+    })().catch((err) => {
+      astParserInstance = null
+      throw err
+    })
+  }
+  return astParserInstance
+}
+
 let _configStore: Store | null = null
 
 function getSavedConfig(): Partial<IndexConfig> | undefined {
@@ -263,9 +300,11 @@ export function registerIndexingHandlers(getMainWindow: () => BrowserWindow | nu
   // AST 解析调用图
   ipcMain.handle('index:parseCallGraph', async (_, filePath: string, content: string) => {
     try {
-      const { ASTParser } = await import('../../search-engine/engineCore')
-      const parser = new ASTParser()
-      await parser.init()
+      // 超大内容不做解析：既无必要，也会长时间占用主进程
+      if (typeof content !== 'string' || content.length > AST_PARSE_MAX_CHARS) {
+        return []
+      }
+      const parser = await getAstParser()
       return await parser.parseCallGraph(filePath, content)
     } catch (e) {
       logger.ipc.error('[Index] Parse Call Graph failed:', e)

@@ -437,6 +437,8 @@ function createGroupedAPI() {
       readDir: (path: string) => raw.readDir(path),
       getTree: (path: string, maxDepth?: number) => raw.getFileTree(path, maxDepth),
       read: (path: string) => raw.readFile(path),
+      readWindow: (path: string, options?: { startLine?: number; maxBytes?: number }) =>
+        raw.readFileWindow(path, options),
       readBinary: (path: string) => raw.readBinaryFile(path),
       extractDocText: (path: string) => raw.extractDocText(path),
       extractPptText: (path: string) => raw.extractPptText(path),

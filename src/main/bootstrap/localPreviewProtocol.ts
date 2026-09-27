@@ -8,13 +8,14 @@
  * 3. 支持 HTTP Range 请求（视频播放必需，返回 206 Partial Content）
  * 4. 根据文件扩展名设置正确的 Content-Type
  *
- * 必须在 app.whenReady() 之前调用 registerScheme()，
- * 在 whenReady() 之后调用 registerHandler()。
+ * 协议特权在 schemeRegistry.ts 中与其他协议一起一次性注册（原因见该文件说明），
+ * 本模块只负责协议处理器：构造 URL → 读文件 → 返回带正确 MIME 的响应。
  */
 import { app, protocol } from 'electron'
 import * as path from 'node:path'
 import { statSync, createReadStream } from 'node:fs'
 import { Readable } from 'node:stream'
+import type { PrivilegedScheme } from './schemeRegistry'
 
 const SCHEME = 'local-preview'
 
@@ -74,22 +75,18 @@ function getMimeType(filePath: string): string {
   return MIME_TYPES[ext] || 'application/octet-stream'
 }
 
-/** 注册协议为 privileged（必须在 app ready 之前调用） */
-export function registerLocalPreviewScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: SCHEME,
-      privileges: {
-        bypassCSP: true,
-        allowServiceWorkers: false,
-        supportFetchAPI: true,
-        stream: true,
-        standard: false,
-        secure: true,
-        corsEnabled: false,
-      },
-    },
-  ])
+/** local-preview 协议特权定义（由 schemeRegistry 统一注册） */
+export const LOCAL_PREVIEW_SCHEME: PrivilegedScheme = {
+  scheme: SCHEME,
+  privileges: {
+    bypassCSP: true,
+    allowServiceWorkers: false,
+    supportFetchAPI: true,
+    stream: true,
+    standard: false,
+    secure: true,
+    corsEnabled: false,
+  },
 }
 
 /**

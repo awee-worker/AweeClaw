@@ -129,6 +129,18 @@ export interface LargeFileInfo {
     scenarioPolicy?: string
 }
 
+/**
+ * 编辑器约束所需的最小体积档位
+ *
+ * 只关心「大 / 超大」两个布尔量，不绑定具体阈值来源：
+ * 既能接收本模块的 LargeFileInfo，也能接收 fileSlice 在打开文件时算好并存入
+ * store 的大文件信息（字段更少、引用稳定），避免编辑器层重新做一次体积分析。
+ */
+export type EditorSizeProfile = {
+    isLarge: boolean
+    isVeryLarge: boolean
+}
+
 function approximateLineCount(content: string): number {
     let count = 1
     for (let i = 0; i < content.length; i++) {
@@ -275,21 +287,39 @@ export function getLineContext(
     return { content: getLineRange(content, startLine, endLine), startLine, endLine }
 }
 
-export function computeEditorConstraints(fileInfo: LargeFileInfo): Record<string, unknown> {
+export function computeEditorConstraints(fileInfo: EditorSizeProfile): Record<string, unknown> {
     const options: Record<string, unknown> = {}
 
     if (fileInfo.isLarge) {
+        // 视觉类特性：每一项都要在可视行上做额外的一到多趟处理，
+        // 大文件下开销随行宽/行数线性放大，全部关闭。
         options.minimap = { enabled: false }
         options.folding = false
+        options.foldingHighlight = false
         options.wordWrap = 'off'
         options.renderWhitespace = 'none'
         options.renderLineHighlight = 'none'
         options.guides = { indentation: false, bracketPairs: false }
         options.matchBrackets = 'never'
+        options.bracketPairColorization = { enabled: false }
         options.occurrencesHighlight = 'off'
         options.selectionHighlight = false
         options.links = false
         options.colorDecorators = false
+        options.stickyScroll = { enabled: false }
+        options.codeLens = false
+
+        // 语义/语法类特性：语义高亮依赖语言服务对整个文档的分析结果，
+        // 打开大文件后持续重算，是滚动掉帧的主要来源之一。
+        options['semanticHighlighting.enabled'] = false
+        options.inlineSuggest = { enabled: false }
+        options.linkedEditing = false
+        options.renameOnType = false
+        options.wordBasedSuggestions = 'off'
+        options.suggestOnTriggerCharacters = false
+
+        // 显式表达意图：Monaco 内置的大文件优化（超阈值时跳过部分分词/装饰）
+        options.largeFileOptimizations = true
     }
 
     if (fileInfo.isVeryLarge) {
@@ -301,9 +331,9 @@ export function computeEditorConstraints(fileInfo: LargeFileInfo): Record<string
         options.hideCursorInOverviewRuler = true
         options.overviewRulerBorder = false
         options.scrollbar = { vertical: 'auto', horizontal: 'auto', useShadows: false, verticalHasArrows: false, horizontalHasArrows: false }
-        options.suggestOnTriggerCharacters = false
         options.quickSuggestions = false
         options.parameterHints = { enabled: false }
+        options.inlayHints = { enabled: 'off' }
     }
 
     return options

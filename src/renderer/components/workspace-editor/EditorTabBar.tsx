@@ -6,6 +6,7 @@ import { memo, useEffect, useMemo, useRef } from 'react'
 import { X, AlertCircle, AlertTriangle, RefreshCw, FileX, FileDiff, Globe, Eye, Edit, Columns, PenLine } from 'lucide-react'
 import { getFileName, normalizePath } from '@shared/toolkit/pathHelper'
 import { useStore } from '@store'
+import { useShallow } from 'zustand/react/shallow'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { t, type Language } from '@renderer/i18n'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'
@@ -155,7 +156,20 @@ export const EditorTabs = memo(function EditorTabs({
   onOnlyOfficeEdit,
 }: EditorTabsProps) {
   // 获取数据
-  const openFiles = useStore(state => state.openFiles)
+  // Tab 只依赖「路径 / 类型 / 脏标记 / 删除标记 / 标题」等元信息，不依赖文件内容。
+  // 若直接订阅 openFiles 数组，编辑时每次按键都会重建数组并让整条标签栏重渲染（Tab 一多就卡）；
+  // 这里改为订阅元信息签名列表（按值比较），仅当标签真正变化时才重渲染，渲染时再从 store 取最新数据。
+  useStore(
+    useShallow((s) =>
+      s.openFiles.map(
+        (f) =>
+          `${f.path}\u0000${f.kind ?? ''}\u0000${f.isDirty ? 1 : 0}\u0000${f.isDeleted ? 1 : 0}\u0000${
+            f.preview?.title ?? ''
+          }\u0000${f.pptPreview?.meta?.title ?? ''}\u0000${f.ooEdit?.title ?? ''}`,
+      ),
+    ),
+  )
+  const openFiles = useStore.getState().openFiles
   const language = useStore(state => state.language)
   const plans = useAgentStore(state => state.plans)
 

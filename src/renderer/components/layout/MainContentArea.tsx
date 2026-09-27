@@ -74,11 +74,13 @@ function PanelSlot({ children }: { children: React.ReactNode }) {
 // ====== Primary 布局（chatPosition=primary）======
 
 function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaProps) {
-  const { chatVisible, openFiles, activeFilePath,
+  const { chatVisible, hasOpenFiles, activeFilePath,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage,
     activeSidePanel } = useStore(useShallow((s) => ({
     chatVisible: s.chatVisible,
-    openFiles: s.openFiles,
+    // 只订阅「是否存在打开的文件」这一布尔量：openFiles 数组会随编辑内容逐键重建，
+    // 直接订阅数组会让主内容区（连同编辑器与对话区）在打字时全程重渲染。
+    hasOpenFiles: s.openFiles.length > 0,
     activeFilePath: s.activeFilePath,
     showSettingsPage: s.showSettingsPage,
     showWelcomePage: s.showWelcomePage,
@@ -130,7 +132,7 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
   // 始终渲染 ChatSection，避免 activeFilePath 变化时卸载/重新挂载
   // 有文件时：EditorSlot 在左，ChatSection 在右固定宽度
   // 无文件时：只渲染 ChatSection，flex:1 占满整个主区域
-  const hasFile = openFiles.length > 0 && activeFilePath !== null
+  const hasFile = hasOpenFiles && activeFilePath !== null
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden">
       {hasFile && <EditorSlot />}
@@ -146,11 +148,13 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
 // ====== Secondary 布局（chatPosition !== primary）======
 
 function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeComponent }: MainContentAreaProps) {
-  const { chatVisible, openFiles, activeFilePath,
+  const { chatVisible, hasOpenFiles, activeFilePath,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage,
     activeSidePanel } = useStore(useShallow((s) => ({
     chatVisible: s.chatVisible,
-    openFiles: s.openFiles,
+    // 只订阅「是否存在打开的文件」这一布尔量：openFiles 数组会随编辑内容逐键重建，
+    // 直接订阅数组会让主内容区（连同编辑器与对话区）在打字时全程重渲染。
+    hasOpenFiles: s.openFiles.length > 0,
     activeFilePath: s.activeFilePath,
     showSettingsPage: s.showSettingsPage,
     showWelcomePage: s.showWelcomePage,
@@ -186,9 +190,9 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
       && !layoutConfig.keepChatPanelIds.includes(activeSidePanel ?? '')) return true
     // 仅在非编辑器布局下隐藏 chat：编辑器布局由 EditorSlot 处理空状态（EditorWelcome），
     // 不渲染 scenarioWelcomeComponent，此时隐藏 chat 会导致用户无法与 AI 交互
-    if (scenarioWelcomeComponent && !layoutConfig.showEditor && activeSidePanel === 'explorer' && !(openFiles.length > 0 && activeFilePath)) return true
+    if (scenarioWelcomeComponent && !layoutConfig.showEditor && activeSidePanel === 'explorer' && !(hasOpenFiles && activeFilePath)) return true
     return false
-  }, [chatVisible, isWideModePanel, activeSidePanel, layoutConfig.wideModeHidesChat, layoutConfig.keepChatPanelIds, layoutConfig.showEditor, scenarioWelcomeComponent, openFiles, activeFilePath])
+  }, [chatVisible, isWideModePanel, activeSidePanel, layoutConfig.wideModeHidesChat, layoutConfig.keepChatPanelIds, layoutConfig.showEditor, scenarioWelcomeComponent, hasOpenFiles, activeFilePath])
 
   // 宽模式面板
   if (isWideModePanel && activeSidePanel) {
@@ -259,7 +263,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     return (
       <>
         <FullPageSlot>
-          {openFiles.length > 0 && activeFilePath ? (
+          {hasOpenFiles && activeFilePath ? (
             <PanelSlot><Editor /></PanelSlot>
           ) : (
             <PanelSlot><DataDashboard /></PanelSlot>
@@ -283,7 +287,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     return (
       <>
         <FullPageSlot>
-          {openFiles.length > 0 && activeFilePath ? (
+          {hasOpenFiles && activeFilePath ? (
             <PanelSlot><Editor /></PanelSlot>
           ) : scenarioWelcomeComponent ? (
             <PanelSlot>{(() => { const W = scenarioWelcomeComponent; return <W /> })()}</PanelSlot>
@@ -302,7 +306,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     return (
       <>
         <FullPageSlot>
-          {openFiles.length > 0 && activeFilePath ? (
+          {hasOpenFiles && activeFilePath ? (
             <PanelSlot><Editor /></PanelSlot>
           ) : (
             <PanelSlot><ScenarioDashboard /></PanelSlot>

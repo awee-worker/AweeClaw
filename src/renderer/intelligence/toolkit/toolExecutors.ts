@@ -31,7 +31,7 @@ import { smartReplace, normalizeLineEndings, checkLineReplaceWarnings } from '@u
 import { resolveAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { BRAND } from '@shared/brand'
 import { fileCacheService } from '../runtime/fileCacheManager'
-import { getReadStrategy, buildReadTruncationMessage } from './fileReadPolicies'
+import { getReadStrategy, buildReadTruncationMessage, buildReadWindowTruncationMessage } from './fileReadPolicies'
 import { lintService } from '../runtime/codeAnalysisService'
 import { memoryService } from '../runtime/recallService'
 import { knowledgeService } from '../runtime/knowledgeService'
@@ -1159,6 +1159,25 @@ async function resolveUninstalledSkill(skillName: string): Promise<ToolExecution
     }
 }
 
+/** read_file 单次读取的字节上限：防止把超大文件整体读入渲染进程 */
+const READ_WINDOW_MAX_BYTES = 512 * 1024
+/** read_file 单次读取的字节下限：保证小文件与短区间读取不缺内容 */
+const READ_WINDOW_MIN_BYTES = 64 * 1024
+/** 由字符预算换算字节上限的倍率，覆盖多字节字符与行号前缀的额外开销 */
+const READ_WINDOW_BYTE_FACTOR = 4
+/** 超过该字符数时跳过 AST 调用图解析，避免大内容再次跨进程传输并阻塞主进程 */
+const AST_SUMMARY_MAX_CHARS = 200_000
+
+/**
+ * 由读取策略的字符预算换算出实际需要的字节上限
+ */
+function resolveReadWindowBytes(maxChars: number): number {
+    return Math.min(
+        READ_WINDOW_MAX_BYTES,
+        Math.max(READ_WINDOW_MIN_BYTES, maxChars * READ_WINDOW_BYTE_FACTOR),
+    )
+}
+
 const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: ToolExecutionContext) => Promise<ToolExecutionResult>> = {
     async read_file(args, ctx) {
         const BINARY_EXT_SET = new Set([
@@ -1188,6 +1207,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 如果是多个文件，使用并行读取
         if (paths.length > 1) {
             const limit = pLimit(5)
+            const multiConfig = resolveAgentConfig()
 
             const results = await Promise.all(
                 paths.map(p => limit(async () => {
@@ -1197,12 +1217,27 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                             const ext = validPath.split('.').pop()?.toUpperCase() || 'BINARY'
                             return `\n--- File: ${p} ---\n[Binary file: ${ext} format. Cannot read as text.]\n`
                         }
-                        const content = await api.file.read(validPath)
-                        if (content !== null && content !== undefined) {
-                            fileCacheService.markFileAsRead(validPath, content)
-                            let graphContent = ''
+
+                        const strategy = getReadStrategy({
+                            path: validPath,
+                            baseMaxChars: multiConfig.maxSingleFileChars,
+                            hasExplicitLineRange: false,
+                        })
+
+                        // 每个文件按各自策略只取所需窗口，避免并行读取多个大文件时内存与耗时叠加
+                        const window = await api.file.readWindow(validPath, {
+                            maxBytes: resolveReadWindowBytes(strategy.maxChars),
+                        })
+                        if (!window || window.content === null || window.content === undefined) {
+                            return `\n--- File: ${p} ---\n[File not found]\n`
+                        }
+
+                        fileCacheService.markFileAsRead(validPath, window.content)
+
+                        let graphContent = ''
+                        if (window.content.length <= AST_SUMMARY_MAX_CHARS) {
                             try {
-                                const nodes = await api.index.parseCallGraph(validPath, content)
+                                const nodes = await api.index.parseCallGraph(validPath, window.content)
                                 if (nodes && nodes.length > 0) {
                                     graphContent = '\n--- AST Call Graph Summary ---\n'
                                     const defs = nodes.filter(n => n.type === 'definition')
@@ -1214,9 +1249,20 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                                     }
                                 }
                             } catch (e) { logger.tool.warn('Failed to parse call graph for file:', e) }
-                            return `\n--- File: ${p} ---\n${content}\n${graphContent}\n`
                         }
-                        return `\n--- File: ${p} ---\n[File not found]\n`
+
+                        // 单个文件同样受字符预算约束，避免一个大文件挤占整体上下文
+                        let body = window.content
+                        const bodyLines = body.split('\n').length
+                        let notice = ''
+                        if (body.length > strategy.maxChars) {
+                            body = body.slice(0, strategy.maxChars)
+                            notice = buildReadTruncationMessage(strategy, bodyLines, bodyLines)
+                        } else if (window.truncated) {
+                            notice = buildReadWindowTruncationMessage(strategy, bodyLines)
+                        }
+
+                        return `\n--- File: ${p} ---\n${body}${notice}\n${graphContent}\n`
                     } catch (e: unknown) {
                         return `\n--- File: ${p} ---\n[Error: ${(e as Error).message}]\n`
                     }
@@ -1238,30 +1284,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
         }
 
-        const content = await api.file.read(path)
-        if (content === null || content === undefined) return { success: false, result: '', error: `File not found: ${path}` }
-
-        fileCacheService.markFileAsRead(path, content)
-
-        let graphContent = ''
-        try {
-            const nodes = await api.index.parseCallGraph(path, content)
-            if (nodes && nodes.length > 0) {
-                graphContent = '\n\n--- AST Call Graph Summary ---\n'
-                const defs = nodes.filter(n => n.type === 'definition')
-                const calls = nodes.filter(n => n.type === 'call')
-                for (const def of defs) {
-                    const relatedCalls = calls.filter(c => c.callerName === def.name).map(c => c.name)
-                    const callStr = relatedCalls.length > 0 ? ` (calls: ${Array.from(new Set(relatedCalls)).join(', ')})` : ''
-                    graphContent += `- func ${def.name}() [Line ${def.startLine}-${def.endLine}]${callStr}\n`
-                }
-            }
-        } catch (e) { logger.tool.warn('Failed to build call graph:', e) }
-
-        // 将文件内容拆分为行数组
-        const lines = content.split('\n')
-
-        // 根据文件类型获取读取策略
+        // 先确定读取策略，再按策略所需窗口读取，避免把整个大文件读入渲染进程
         const hasExplicitLineRange = resolution.mode === 'single' && (
             typeof resolution.args.start_line === 'number' || typeof resolution.args.end_line === 'number'
         )
@@ -1273,25 +1296,64 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         })
 
         const startLine = resolution.mode === 'single' && typeof resolution.args.start_line === 'number'
-            ? Math.max(1, resolution.args.start_line)
+            ? Math.max(1, Math.floor(resolution.args.start_line))
             : 1
-        const endLine = resolution.mode === 'single' && typeof resolution.args.end_line === 'number'
-            ? Math.min(lines.length, resolution.args.end_line)
+
+        const window = await api.file.readWindow(path, {
+            startLine,
+            maxBytes: resolveReadWindowBytes(strategy.maxChars),
+        })
+        if (!window || window.content === null || window.content === undefined) {
+            return { success: false, result: '', error: `File not found: ${path}` }
+        }
+
+        const content = window.content
+
+        fileCacheService.markFileAsRead(path, content)
+
+        // 内容过大时跳过 AST 摘要：避免大内容再次跨进程传输并阻塞主进程解析
+        let graphContent = ''
+        if (content.length <= AST_SUMMARY_MAX_CHARS) {
+            try {
+                const nodes = await api.index.parseCallGraph(path, content)
+                if (nodes && nodes.length > 0) {
+                    graphContent = '\n\n--- AST Call Graph Summary ---\n'
+                    const defs = nodes.filter(n => n.type === 'definition')
+                    const calls = nodes.filter(n => n.type === 'call')
+                    for (const def of defs) {
+                        const relatedCalls = calls.filter(c => c.callerName === def.name).map(c => c.name)
+                        const callStr = relatedCalls.length > 0 ? ` (calls: ${Array.from(new Set(relatedCalls)).join(', ')})` : ''
+                        graphContent += `- func ${def.name}() [Line ${def.startLine}-${def.endLine}]${callStr}\n`
+                    }
+                }
+            } catch (e) { logger.tool.warn('Failed to build call graph:', e) }
+        }
+
+        // 内容从窗口起始行开始，因此按本地行索引切片
+        const lines = content.split('\n')
+
+        const localStartLine = window.startLine
+        const localEnd = resolution.mode === 'single' && typeof resolution.args.end_line === 'number'
+            ? Math.min(lines.length, Math.max(0, resolution.args.end_line - localStartLine + 1))
             : lines.length
+        const slicedLines = lines.slice(0, Math.max(0, localEnd))
 
         // 根据策略决定是否添加行号
         let displayContent: string
         if (strategy.includeLineNumbers) {
-            displayContent = lines.slice(startLine - 1, endLine).map((line: string, i: number) => `${startLine + i}: ${line}`).join('\n')
+            displayContent = slicedLines.map((line: string, i: number) => `${localStartLine + i}: ${line}`).join('\n')
         } else {
-            displayContent = lines.slice(startLine - 1, endLine).join('\n')
+            displayContent = slicedLines.join('\n')
         }
 
         // 使用策略中的 maxChars 限制输出大小
+        const visibleLines = slicedLines.length
         if (displayContent.length > strategy.maxChars) {
-            const visibleLines = endLine - startLine + 1
             displayContent = displayContent.slice(0, strategy.maxChars) +
                 buildReadTruncationMessage(strategy, visibleLines, lines.length)
+        } else if (window.truncated) {
+            // 读取阶段即被字节上限截断，此时无法得知文件真实总行数
+            displayContent += buildReadWindowTruncationMessage(strategy, visibleLines)
         }
 
         // 根据策略决定是否附加 AST 摘要

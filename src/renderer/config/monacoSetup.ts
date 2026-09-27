@@ -5,13 +5,17 @@
 
 import type { editor } from 'monaco-editor'
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
-import { LargeFileInfo, getLargeFileEditorOptions } from '@services/largeFileAdapter'
+import { EditorSizeProfile, getLargeFileEditorOptions } from '@services/largeFileAdapter'
 
 /**
  * 获取 Monaco 编辑器的完整配置选项
+ *
+ * @param largeFileInfo 当前文件的体积档位（仅 isLarge / isVeryLarge）。
+ *   传入时会在基础配置之上叠加一组「大文件降级」选项（关闭小地图、折叠、
+ *   语义高亮、内联提示等重开销特性）。
  */
 export function getMonacoEditorOptions(
-  largeFileInfo?: LargeFileInfo | null
+  largeFileInfo?: EditorSizeProfile | null
 ): editor.IStandaloneEditorConstructionOptions {
   const config = getEditorConfig()
 

@@ -12,36 +12,33 @@
  * - 阻止路径穿越（.. 越狱）
  * - 返回正确的 MIME 类型（application/javascript）
  *
- * 必须在 app.whenReady() 之前调用 registerPluginBundleScheme()，
- * 在 whenReady() 之后调用 registerPluginBundleHandler()。
+ * 协议特权在 schemeRegistry.ts 中与其他协议一起一次性注册（原因见该文件说明），
+ * 本模块只负责协议处理器：把 plugin-bundle:// 请求映射到本地文件。
  */
 import { protocol, app } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
+import type { PrivilegedScheme } from './schemeRegistry'
 
 const SCHEME = 'plugin-bundle'
 
 /**
- * 注册协议为 privileged（必须在 app ready 之前调用）
+ * plugin-bundle 协议特权定义（由 schemeRegistry 统一注册）
  *
  * standard: true 是让 dynamic import() 正常工作的关键。
  * bypassCSP: true 允许绕过 CSP 加载插件 bundle。
  */
-export function registerPluginBundleScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: SCHEME,
-      privileges: {
-        bypassCSP: true,
-        allowServiceWorkers: false,
-        supportFetchAPI: true,
-        stream: true,
-        standard: true,
-        secure: true,
-        corsEnabled: true,
-      },
-    },
-  ])
+export const PLUGIN_BUNDLE_SCHEME: PrivilegedScheme = {
+  scheme: SCHEME,
+  privileges: {
+    bypassCSP: true,
+    allowServiceWorkers: false,
+    supportFetchAPI: true,
+    stream: true,
+    standard: true,
+    secure: true,
+    corsEnabled: true,
+  },
 }
 
 /**
