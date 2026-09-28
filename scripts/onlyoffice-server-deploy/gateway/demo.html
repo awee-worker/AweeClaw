@@ -30,12 +30,45 @@
       toastTimer = setTimeout(() => el.classList.remove('show'), 2200)
     }
 
+    // 关闭拼写检查。DS 把拼写检查结果直接画在文档 canvas 上，中文与专业术语会被
+    // 英文词典判定为错词，整篇显示红色波浪线。服务端 config 已带
+    // customization.spellcheck=false；这里在文档就绪后再调一次编辑器内部开关
+    // （asc_setSpellCheck → Spelling.Use），兜住部分版本忽略该配置项的情况。
+    // 编辑器与宿主页同源，可跨 iframe 访问；跨域或内部结构变化时静默跳过。
+    function disableSpellCheck() {
+      try {
+        const frames = document.querySelectorAll('iframe')
+        for (const frame of frames) {
+          const editor = frame.contentWindow && frame.contentWindow.Asc && frame.contentWindow.Asc.editor
+          const logicDoc = editor && editor.WordControl && editor.WordControl.m_oLogicDocument
+          if (logicDoc && typeof editor.asc_setSpellCheck === 'function') {
+            editor.asc_setSpellCheck(false)
+            return true
+          }
+        }
+      } catch (_) { /* 跨域 / 内部结构变化：忽略 */ }
+      return false
+    }
+
+    // 文档对象异步就绪，短轮询重试直到关闭成功（上限 10s）
+    function scheduleDisableSpellCheck() {
+      let tries = 0
+      const timer = setInterval(() => {
+        tries += 1
+        if (disableSpellCheck() || tries >= 20) clearInterval(timer)
+      }, 500)
+    }
+
     function bootEditor() {
       if (!window.DocsAPI) { toast('DocsAPI 未就绪'); return }
       const docEditor = new DocsAPI.DocEditor('placeholder', {
         ...CONFIG,
         events: {
-          onAppReady: () => toast('编辑器就绪，可直接编辑，保存自动回写'),
+          onAppReady: () => {
+            toast('编辑器就绪，可直接编辑，保存自动回写')
+            scheduleDisableSpellCheck()
+          },
+          onDocumentReady: () => scheduleDisableSpellCheck(),
           onDocumentStateChange: (e) => { if (e.data) toast('有未保存的修改…') },
           onError: (e) => toast('编辑器错误: ' + JSON.stringify(e)),
           onRequestClose: () => { try { docEditor.destroyEditor() } catch (_) {} },

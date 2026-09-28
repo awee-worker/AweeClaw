@@ -107,6 +107,8 @@ curl https://onlyoffice.aweeclaw.com/oo-gw/files/sample.xlsx -o /tmp/check.xlsx
 - 网关端口仅绑定 `127.0.0.1`，公网只能经 `{GW_BASE_PATH}` 反代访问；若想收紧，可在网关上再做一层路径鉴权（Nginx Basic Auth 或业务网关）。
 - 上传白名单仅 office 文档扩展名；上传大小默认 50MB（环境变量 `MAX_UPLOAD_BYTES`）。
 - 保存回写采用「临时文件 + 原子改名」，不会写坏正在编辑的文件。
+- 编辑器默认关闭拼写检查（`gateway/server.js` 的 `customization.spellcheck=false`，叠加 `gateway/demo.html` 的运行时兜底）：DS 内置词典以英文为主，中文与专业术语会被整篇判定为错词并画上红色波浪线；如需恢复，可在编辑器菜单中手动开启，或移除该配置项。
+- 改动生效方式：`gateway/server.js` 是进程入口，改动后须 `docker compose restart oo-gateway`；`gateway/demo.html` 每次请求现读现渲染，改完刷新页面即生效（响应已带 `Cache-Control: no-store`，无需清缓存）。
 - 常用命令：
 ```bash
 ./deploy.sh            # 部署/更新（--no-pull 仅用本地镜像）

@@ -333,7 +333,8 @@ const server = http.createServer(async (req, res) => {
       if (!EXT_TYPE[path.extname(file).slice(1).toLowerCase()]) return sendJson(res, 400, { error: '不支持的文件类型' })
       if (!fs.existsSync(path.join(DATA_DIR, file))) return sendJson(res, 404, { error: `文件不存在: ${file}，请先上传` })
       const title = String(u.searchParams.get('title') || '').trim().slice(0, 200) || null
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      // 禁止缓存宿主页：config 由服务端每次现签，缓存会导致改动（如拼写检查开关）不生效
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
       return res.end(renderDemo(file, title))
     }
 
