@@ -442,6 +442,55 @@ async function resolveProducedFilePath(
 }
 
 /**
+ * MCP 只读工具名判定
+ *
+ * MCP 工具名格式为 mcp_<serverId>__<toolName>，按最后一段工具名判断。
+ * 以读取 / 查询动词开头的工具只消费文件、不产出文件；若不排除，
+ * resolveProducedFilePath 会把参数里的输入路径（read_file 的 path、
+ * read_data_from_excel 的 filepath 等）当成产出路径，表现为
+ * 「AI 读一下文件就弹编辑预览，产物栏还凭空多出一条新建记录」。
+ */
+const MCP_READONLY_TOOL_PATTERN =
+  /^(read|get|list|find|query|fetch|load|describe|inspect|check|status|info|metadata|structure|health|detect|preview|scan|count|stat|analyze|analysis|lookup|exists|validate|compare|test|measure|diagnose|report)/i
+
+/** 该 MCP 工具是否只读（只消费文件，不产出文件） */
+function isMcpReadonlyTool(toolName: string): boolean {
+  const bareName = toolName.split('__').pop() ?? toolName
+  return MCP_READONLY_TOOL_PATTERN.test(bareName)
+}
+
+/**
+ * 执行前快照 MCP 工具参数里已存在的候选产出路径
+ *
+ * MCP 生成类工具落盘后目标文件必然存在，届时再判断只能一律得到「编辑」，
+ * 无法区分「覆盖工作区已有文件」与「新建文件」。因此必须在执行前先确认参数
+ * 给出的输出路径是否已存在，产物标识据此判定为编辑还是新建。
+ */
+async function snapshotExistingProducedPaths(
+  args: Record<string, unknown> | undefined,
+  workspacePath: string | null,
+): Promise<Set<string>> {
+  const existed = new Set<string>()
+  if (!args) return existed
+
+  const docExtRegex = new RegExp(`\\.(${DOCUMENT_EXT_PATTERN})$`, 'i')
+
+  for (const key of PRODUCED_PATH_ARG_KEYS) {
+    const value = args[key]
+    if (typeof value !== 'string' || !docExtRegex.test(value.trim())) continue
+    for (const resolved of expandPathCandidates(value.trim(), workspacePath)) {
+      try {
+        if (await api.file.exists(resolved)) existed.add(normalizePath(resolved))
+      } catch {
+        // 路径非法或不可访问，跳过
+      }
+    }
+  }
+
+  return existed
+}
+
+/**
  * 审批判定所需的最小工具信息（结构化类型，兼容 ToolCall / CollectedToolCall 等）
  */
 export interface ApprovalGateToolInfo {
@@ -693,6 +742,14 @@ async function invokeToolInvocation(
     data: toolCall.arguments,
   })
 
+  // MCP 生成类工具的产出标识需要在执行前确定（见 snapshotExistingProducedPaths）
+  const mcpExistedPaths = isMcpTool(toolCall.name) && !isMcpReadonlyTool(toolCall.name)
+    ? await snapshotExistingProducedPaths(
+        toolCall.arguments as Record<string, unknown> | undefined,
+        workspacePath,
+      )
+    : null
+
   const toolHandler = async (): Promise<AgentToolExecutionResult> => {
     try {
       const result = await toolManager.execute(
@@ -811,7 +868,11 @@ async function invokeToolInvocation(
 
         // MCP 工具（Word / Excel 生成等）在自己的进程里写文件，不经过内置写入通道，
         // 因此既不会记录产物，也不会刷新工作区文件树。这里补上这条链路。
-        if (isMcpTool(toolCall.name)) {
+        //
+        // 只读类 MCP 工具（read_file / get_* / list_* 等）只消费文件、不产出文件，
+        // 必须排除：否则参数里的输入路径会被误判成产物，表现为「AI 读一下文件
+        // 就弹编辑预览，产物栏还凭空多出一条新建记录」。
+        if (isMcpTool(toolCall.name) && !isMcpReadonlyTool(toolCall.name)) {
           const producedPath = await resolveProducedFilePath(
             content,
             toolCall.arguments as Record<string, unknown> | undefined,
@@ -819,14 +880,12 @@ async function invokeToolInvocation(
           )
           if (producedPath) {
             logger.agent.info(`[Tools] ${toolCall.name} produced file: ${producedPath}`)
-            const artifactStore = useStore.getState()
-            const known = artifactStore.artifacts.some(
-              item => normalizePath(item.path) === normalizePath(producedPath),
-            )
-            artifactStore.recordArtifact({
+            // 「覆盖工作区已有文件」与「新建文件」以执行前的存在性快照为准
+            const isEdit = mcpExistedPaths?.has(normalizePath(producedPath)) ?? false
+            useStore.getState().recordArtifact({
               path: producedPath,
               workspacePath: context.workspacePath || '',
-              action: known ? 'edit' : 'create',
+              action: isEdit ? 'edit' : 'create',
             })
             // 与内置写入保持一致：先发预览事件（是否打开受「实时预览」开关控制），再刷新文件树
             EventBus.emit({
@@ -837,7 +896,7 @@ async function invokeToolInvocation(
             notifyWorkspaceTreeChange({
               workspacePath: context.workspacePath || '',
               targetPath: producedPath,
-              changeType: known ? 'modify' : 'create',
+              changeType: isEdit ? 'modify' : 'create',
             })
           }
         }

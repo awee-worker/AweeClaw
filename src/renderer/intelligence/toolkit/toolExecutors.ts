@@ -2110,6 +2110,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         }
 
         const originalContent = await api.file.read(path) ?? null
+        // 落盘前确认目标是否已存在：产物标识据此区分「新建」与「编辑」，
+        // 工作区本来就有的文件属于编辑，只有真正新建的文件才算新建。
+        const existedBefore = await api.file.exists(path)
         const content = (args.content as string) || ''
         const guardedWrite = await guardedWriteFile({
             path,
@@ -2138,7 +2141,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         if (!guardedWrite.success) return guardedWrite.result
 
         // 发送文件编写完成事件
-        EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content, action: 'create' })
+        EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content, action: existedBefore ? 'edit' : 'create' })
 
         return {
             success: true,
