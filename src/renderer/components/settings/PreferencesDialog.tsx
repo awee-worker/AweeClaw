@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback, useEffect, useRef, useSyncExternalStore, useState } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send, Lock, GitBranch } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send, Lock, GitBranch, UserCog } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -137,6 +137,10 @@ const GitSettingsPanel = lazy(() =>
     import('./tabs/GitSettingsPanel').then(m => ({ default: m.GitSettingsPanel })),
 )
 
+const RoleLibraryPanel = lazy(() =>
+    import('./tabs/RoleLibraryPanel').then(m => ({ default: m.RoleLibraryPanel })),
+)
+
 function SettingsTabFallback({ language }: { language: Language }) {
     return (
         <div className="min-h-[320px] flex items-center justify-center rounded-2xl border border-border/40 bg-surface/70">
@@ -164,7 +168,7 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         state, dispatch, isDirty, handleSave,
         language, setProvider,
         setShowSettings, setShowSettingsPage,
-        applyLanguageImmediately,
+        applyLanguageImmediately, commitProviderConfigs,
     } = useSettingsLocalState(embedded)
 
     // 设置面板打开意图：用于「创建智能体」等入口定位到指定 Tab / 子 Tab
@@ -268,39 +272,41 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
     const tabs = useMemo(() => [
         { id: 'provider', label: t('settings.provider', language as Language), icon: <Cpu className="w-4 h-4" /> },
         { id: 'agent', label: t('settings.agent', language as Language), icon: <Settings2 className="w-4 h-4" /> },
+        { id: 'search', label: t('settings.searchEngine', language as Language), icon: <Search className="w-4 h-4" /> },
         { id: 'appearance', label: t('settings.appearance', language as Language), icon: <Palette className="w-4 h-4" /> },
-            { id: 'search', label: t('settings.searchEngine', language as Language), icon: <Search className="w-4 h-4" /> },
-            { id: 'git', label: t('settings.git', language as Language), icon: <GitBranch className="w-4 h-4" /> },
+        { id: 'system', label: t('settings.system', language as Language), icon: <Monitor className="w-4 h-4" /> },
+        { id: 'sceneMode', label: '场景模式', icon: <Layers className="w-4 h-4" /> },
+        { id: 'roleLibrary', label: '角色库', icon: <UserCog className="w-4 h-4" /> },
         { id: 'voice', label: t('settings.voiceSettings', language as Language), icon: <Mic className="w-4 h-4" /> },
         { id: 'local-voice', label: language === 'zh' ? '本地语音' : 'Local Voice', icon: <Mic className="w-4 h-4" /> },
         { id: 'vision', label: t('settings.visionSettings', language as Language), icon: <ScanEye className="w-4 h-4" /> },
-        { id: 'rules', label: t('settings.rules', language as Language), icon: <FileText className="w-4 h-4" /> },
-        { id: 'memory', label: t('settings.memory', language as Language), icon: <Brain className="w-4 h-4" /> },
         { id: 'skills', label: t('settings.skills', language as Language), icon: <Zap className="w-4 h-4" /> },
         { id: 'mcp', label: t('settings.mcp', language as Language), icon: <Plug className="w-4 h-4" /> },
-        { id: 'email', label: t('settings.email', language as Language), icon: <Mail className="w-4 h-4" /> },
-        { id: 'channel', label: t('settings.channels', language as Language), icon: <Radio className="w-4 h-4" /> },
+        { id: 'memory', label: t('settings.memory', language as Language), icon: <Brain className="w-4 h-4" /> },
         { id: 'security', label: t('settings.security', language as Language), icon: <Shield className="w-4 h-4" /> },
         { id: 'privacy', label: t('settings.privacy', language as Language), icon: <Eye className="w-4 h-4" /> },
+        { id: 'rules', label: t('settings.rules', language as Language), icon: <FileText className="w-4 h-4" /> },
+        { id: 'channel', label: t('settings.channels', language as Language), icon: <Radio className="w-4 h-4" /> },
+        { id: 'email', label: t('settings.email', language as Language), icon: <Mail className="w-4 h-4" /> },
         { id: 'perception', label: t('settings.perception', language as Language) || '感知预测', icon: <Activity className="w-4 h-4" />, featureKey: 'perception' as ClientCapabilityKey },
         { id: 'causal', label: t('settings.causal', language as Language) || '因果推理', icon: <Network className="w-4 h-4" />, featureKey: null },
-        { id: 'iot', label: t('settings.iot', language as Language) || 'IoT 集成', icon: <Cable className="w-4 h-4" />, featureKey: 'iot' as ClientCapabilityKey },
-        { id: 'system', label: t('settings.system', language as Language), icon: <Monitor className="w-4 h-4" /> },
         { id: 'desktop', label: t('settings.desktop', language as Language) || '电脑控制', icon: <MonitorSmartphone className="w-4 h-4" /> },
         { id: 'proactive', label: t('settings.proactive', language as Language) || '主动助手', icon: <Sparkles className="w-4 h-4" />, featureKey: 'proactive' as ClientCapabilityKey },
-        { id: 'sceneMode', label: '场景模式', icon: <Layers className="w-4 h-4" /> },
+        { id: 'iot', label: t('settings.iot', language as Language) || 'IoT 集成', icon: <Cable className="w-4 h-4" />, featureKey: 'iot' as ClientCapabilityKey },
         { id: 'externalAgents', label: '外部智能体', icon: <Puzzle className="w-4 h-4" /> },
         { id: 'companion', label: language === 'zh' ? '桌面伴侣' : 'Companion', icon: <Bot className="w-4 h-4" /> },
         { id: 'overlay', label: language === 'zh' ? '字幕弹幕层' : 'Overlay', icon: <Monitor className="w-4 h-4" /> },
         { id: 'live', label: language === 'zh' ? '直播互动' : 'Live', icon: <RadioTower className="w-4 h-4" />, featureKey: 'liveInteraction' as ClientCapabilityKey },
         { id: 'vts', label: language === 'zh' ? 'VTS 联动' : 'VTS', icon: <Smile className="w-4 h-4" />, featureKey: 'vts' as ClientCapabilityKey },
         { id: 'a2a', label: language === 'zh' ? 'A2A 协议' : 'A2A', icon: <Network className="w-4 h-4" />, featureKey: 'a2a' as ClientCapabilityKey },
+        { id: 'vmc', label: language === 'zh' ? 'VMC 协议' : 'VMC Protocol', icon: <Send className="w-4 h-4" />, featureKey: 'vmc' as ClientCapabilityKey },
         { id: 'openapi', label: language === 'zh' ? '对外 API' : 'External API', icon: <Cable className="w-4 h-4" />, featureKey: 'externalApi' as ClientCapabilityKey },
         { id: 'powerGuard', label: language === 'zh' ? '防休眠' : 'Sleep Guard', icon: <Coffee className="w-4 h-4" /> },
+        { id: 'git', label: t('settings.git', language as Language), icon: <GitBranch className="w-4 h-4" /> },
         { id: 'sandbox', label: language === 'zh' ? '代码沙箱' : 'Code Sandbox', icon: <Box className="w-4 h-4" /> },
-        { id: 'vmc', label: language === 'zh' ? 'VMC 协议' : 'VMC Protocol', icon: <Send className="w-4 h-4" />, featureKey: 'vmc' as ClientCapabilityKey },
 
     ], [language])
+
 
     // ── 插件贡献的设置页 Tab（动态加载） ──
     const pluginSettingsTabs = useSyncExternalStore(
@@ -346,6 +352,7 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                         providers={providers}
                         language={language}
                         setProvider={setProvider}
+                        commitProviderConfigs={commitProviderConfigs}
                     />
                 )
             case 'appearance':
@@ -500,6 +507,8 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                 return <ProactiveSettingsPanel language={language} />
             case 'sceneMode':
                 return <SceneModeSettingsPanel />
+            case 'roleLibrary':
+                return <RoleLibraryPanel />
             case 'externalAgents':
                 return <ExternalAgentPanel language={language} />
             case 'companion':

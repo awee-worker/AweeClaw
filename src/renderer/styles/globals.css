@@ -54,6 +54,10 @@
   --surface-active: 39 39 42;
   --surface-muted: 63 63 70;
 
+  /* Inputs：暗色下比弹窗抬升一档；亮色下由 applyTheme 覆盖为纯白底 + 主题浅灰描边 */
+  --input-bg: 39 39 42;
+  --input-border: 82 82 91;
+
   /* Borders */
   --border: 39 39 42;
   --border-subtle: 24 24 27;
@@ -323,6 +327,52 @@ textarea,
 
 .tool-card-appear {
   animation: tool-card-appear 0.15s ease-out;
+}
+
+/* 运行中工具卡片的扫光与文字微光
+ * 工具执行期间用它表达「正在进行」：卡片内横向扫光 + 标题文字亮带。
+ * 两个动画周期刻意放慢，任一时刻只有少数正在执行的卡片参与动画，
+ * 因此不会随卡片数量放大重绘开销。 */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes text-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.tool-text-shimmer {
+  background: linear-gradient(90deg,
+      rgb(var(--text-secondary)) 0%,
+      rgb(var(--text-secondary)) 35%,
+      rgb(var(--accent) / 0.9) 47%,
+      rgb(var(--text-primary)) 50%,
+      rgb(var(--accent) / 0.9) 53%,
+      rgb(var(--text-secondary)) 65%,
+      rgb(var(--text-secondary)) 100%);
+  background-size: 400% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 3.5s linear infinite;
+}
+
+.tool-card-sweep {
+  animation: shimmer 14s linear infinite;
+  background-size: 240% 100%;
+  opacity: 0.55;
 }
 
 /* Scroll shadow for thinking block */

@@ -226,6 +226,16 @@ function invokeModePostProcessor(
   }
 }
 
+/**
+ * 主循环轮次硬上限
+ *
+ * 正常收敛依赖「AI 主动收尾 + 循环检测 + 异常自动续接」，其中循环检测允许被
+ * 用户在设置里关闭。三者同时失效时，模型可能持续「调用工具但无实质进展」而不收尾。
+ * 这里保留一个足够宽松、正常任务几乎不会触及的硬上限作为最后兜底，到顶即强制
+ * 走一次收尾（产出结论并停止继续调用工具），避免无终止地消耗额度。
+ */
+const MAX_LOOP_ITERATIONS = 200
+
 async function invokeModelCall(
   config: LLMConfig,
   messages: LLMMessage[],
@@ -343,7 +353,9 @@ async function invokeModelCallWithRetry(
       async () => {
         if (abortSignal?.aborted) throw new Error('Aborted')
 
-        let snapshot: { content: string; parts: AssistantPart[]; toolCalls: ToolCall[] } | null = null
+        // 快照需覆盖本次请求期间会被流式改写的全部字段：只恢复 content/parts/toolCalls
+        // 会把 reasoning 留在流式后的状态，导致消息上的推理文本与推理分段不一致。
+        let snapshot: { content: string; parts: AssistantPart[]; toolCalls: ToolCall[]; reasoning?: string } | null = null
         if (assistantId) {
           const msg = threadStore.getMessages().find(m => m.id === assistantId)
           if (msg?.role === 'assistant') {
@@ -352,6 +364,7 @@ async function invokeModelCallWithRetry(
               content: assistantMsg.content,
               parts: [...(assistantMsg.parts || [])],
               toolCalls: [...(assistantMsg.toolCalls || [])],
+              reasoning: assistantMsg.reasoning,
             }
           }
         }
@@ -650,12 +663,27 @@ export async function executeAgentCycle(
   //    条件会直接失败退出循环 —— 既不调用 concludeAsAborted()，也不发 loop:end，
   //    表现为「AI 无任何提示自行中断」且 loopState 卡在 running。
   //    中止判定统一放在循环体内（模型调用前后、工具执行后），确保总能收尾。
-  // 轮次不再有工具调用次数上限：循环由 AI 主动收尾（无工具调用即结束）、
-  // 循环检测（CycleDetector）、用户中止与异常中断自动续接机制共同收敛，不再硬性截断轮次。
+  // 轮次不设「工具调用次数」意义上的正常上限：循环主要由 AI 主动收尾（无工具调用即结束）、
+  // 循环检测（CycleDetector）、用户中止与异常中断自动续接机制收敛；另设一个宽松的
+  // MAX_LOOP_ITERATIONS 硬上限作为兜底（见循环体开头），防止软机制同时失效时无界循环。
   while (shouldContinue) {
     iteration++
     shouldContinue = false
     EventBus.emit({ type: 'loop:iteration', count: iteration, threadId, assistantId, requestId, planTaskId: context.planTaskId })
+
+    // 硬上限兜底：软性收敛机制（循环检测）可被关闭，到顶即强制收尾，防止无界循环
+    if (iteration > MAX_LOOP_ITERATIONS) {
+      const { language } = useStore.getState()
+      const limitTitle = getLocalizedText(language, '已达执行轮次上限', 'Iteration Limit Reached')
+      const limitDetail = getLocalizedText(
+        language,
+        `本次执行已连续进行 ${MAX_LOOP_ITERATIONS} 轮，为安全起见停止继续调用工具。`,
+        `This execution reached ${MAX_LOOP_ITERATIONS} consecutive rounds; tool calls were stopped for safety.`,
+      )
+      logger.agent.warn('[Loop] Hard iteration limit reached', { iteration, limit: MAX_LOOP_ITERATIONS })
+      await concludeWithThresholdIntervention(limitTitle, limitDetail)
+      break
+    }
 
     if (context.abortSignal?.aborted) {
       concludeAsAborted()
@@ -1322,7 +1350,8 @@ export async function executeAgentCycle(
         content: toolResult.content,
       })
 
-      const success = !toolResult.content.startsWith('Error:')
+      // 与界面口径一致：命令/脚本跑完但报错属于业务结果，不算工具调用失败
+      const success = !(toolResult.callFailed ?? toolResult.content.startsWith('Error:'))
       loopDetector.recordExecutedTool({
         name: toolCall.name,
         arguments: toolCall.arguments,

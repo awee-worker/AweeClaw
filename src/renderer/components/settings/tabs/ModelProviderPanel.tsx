@@ -24,7 +24,8 @@ import { toast } from '@components/foundation/NotificationProvider'
 import { ActionButton, TextField, DropdownSelector, ToggleSwitch } from '@components/ui'
 import { ProviderIcon } from '@components/ui/ProviderIcon'
 import { ProviderSettingsProps } from '../preferencesTypes'
-import { isCustomProvider, type ModelConfig, type ModelGenerationParams } from '@renderer/types/modelProvider'
+import { isCustomProvider, inferCapabilities, type ModelConfig, type ModelGenerationParams } from '@renderer/types/modelProvider'
+import type { LLMConfig } from '@shared/configuration/providerTypes'
 import { ModelCardGrid } from './ModelCardGrid'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -734,6 +735,7 @@ export function ModelProviderPanel({
   selectedProvider,
   providers,
   language,
+  commitProviderConfigs,
 }: ProviderSettingsProps) {
   const [newModelName, setNewModelName] = useState('')
   const [isAddingCustom, setIsAddingCustom] = useState(false)
@@ -742,6 +744,24 @@ export function ModelProviderPanel({
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null)
   const [editingProviderName, setEditingProviderName] = useState('')
   const previousProviderRef = useRef(localConfig.provider)
+
+  /**
+   * 结构性变更（增删服务商 / 增删模型）立即落库的出口
+   *
+   * 设置面板常规字段是「先编辑、后保存」，但这类操作只改本地编辑态会丢：
+   * 新加的模型回聊天界面看不到、删掉的服务商下次打开设置又会出现。
+   * 未注入回调时降级为仅更新本地状态，保证组件仍可独立使用。
+   */
+  const commitConfigs = useCallback(
+    (
+      configs: ProviderSettingsProps['localProviderConfigs'],
+      nextLlmConfig?: LLMConfig,
+    ) => {
+      if (!commitProviderConfigs) return
+      return commitProviderConfigs(configs, nextLlmConfig)
+    },
+    [commitProviderConfigs],
+  )
 
   const {
     cloudMode,
@@ -1001,18 +1021,36 @@ export function ModelProviderPanel({
     const newModels = models.filter(n => !currentModels.includes(n))
     if (newModels.length === 0) return
 
+    // 新增模型默认启用：模型选择器只展示 modelConfigs[id].enabled === true 的条目，
+    // 不加这个标记的话模型虽然进了列表，聊天界面里依旧选不到。
+    const updatedModelConfigs = { ...(currentConfig.modelConfigs || {}) }
+    for (const m of newModels) {
+      const existing = updatedModelConfigs[m]
+      updatedModelConfigs[m] = {
+        ...(existing || {}),
+        // 能力为空时按模型名推断，避免落到列表里没有任何能力标签
+        capabilities: existing?.capabilities?.length ? existing.capabilities : inferCapabilities(m),
+        enabled: true,
+      }
+    }
+
     const updatedConfigs = {
       ...localProviderConfigs,
       [localConfig.provider]: {
         ...currentConfig,
-        customModels: [...currentModels, ...newModels]
+        // 服务商本身也必须处于启用态，否则模型依旧不会进聊天界面的模型选择器
+        enabled: true,
+        customModels: [...currentModels, ...newModels],
+        modelConfigs: updatedModelConfigs,
       }
     }
 
     setLocalProviderConfigs(updatedConfigs)
+    // 立即落库：否则用户不点「保存」就回聊天界面，模型选择器读到的仍是旧配置。
+    void commitConfigs(updatedConfigs)
 
     toast.success(t('provider.addedModels', language as Language, { count: newModels.length }))
-  }, [language, localConfig.provider, localProviderConfigs, setLocalProviderConfigs])
+  }, [commitConfigs, language, localConfig.provider, localProviderConfigs, setLocalProviderConfigs])
 
   // 删除模型从本地配置
   const handleRemoveModel = async (model: string) => {
@@ -1046,20 +1084,26 @@ export function ModelProviderPanel({
 
     setLocalProviderConfigs(updatedConfigs)
 
+    // 删除的正好是当前选中的模型时，把当前模型一并切走，
+    // 否则持久化后 providerConfigs 里还挂着已被删除的模型名。
+    let nextLlmConfig: LLMConfig | undefined
     if (models.includes(localConfig.model || '')) {
       const remaining = (currentConfig.customModels || []).filter(m => !models.includes(m))
-      setLocalConfig({
+      nextLlmConfig = {
         ...localConfig,
         model: remaining.length > 0 ? remaining[0] : '',
-      })
+      }
+      setLocalConfig(nextLlmConfig)
     }
+
+    void commitConfigs(updatedConfigs, nextLlmConfig)
 
     if (models.length === 1) {
       toast.success(t('provider.removedModel', language as Language, { name: models[0] }))
     } else {
       toast.success(t('provider.clearedModels', language as Language, { count: models.length }))
     }
-  }, [language, localConfig.model, localConfig.provider, localProviderConfigs, setLocalConfig, setLocalProviderConfigs])
+  }, [commitConfigs, language, localConfig, localProviderConfigs, setLocalConfig, setLocalProviderConfigs])
 
   const handleUpdateModelConfig = useCallback((model: string, config: ModelConfig) => {
     const currentConfig = localProviderConfigs[localConfig.provider]
@@ -1076,6 +1120,9 @@ export function ModelProviderPanel({
       },
     }
 
+    // 只改本地编辑态，由底部「保存」按钮统一提交：
+    // 模型卡片的启用开关、能力、生成参数属于配置项编辑，需要一次明确的保存动作，
+    // 顺带让底部保存条出现，用户能确认改动已被接收。
     setLocalProviderConfigs(updatedConfigs)
   }, [localConfig.provider, localProviderConfigs, setLocalProviderConfigs])
 
@@ -1100,7 +1147,7 @@ export function ModelProviderPanel({
   }, [localConfig])
 
   // 选择内置 Provider
-  const handleSelectBuiltinProvider = (providerId: string, skipSaveCurrent = false) => {
+  const handleSelectBuiltinProvider = (providerId: string, skipSaveCurrent = false): LLMConfig => {
     // 保存当前配置（仅当当前 provider 未被删除时）
     let updatedConfigs = localProviderConfigs
     if (!skipSaveCurrent && (localProviderConfigs[localConfig.provider] || BUILTIN_PROVIDER_IDS.includes(localConfig.provider))) {
@@ -1124,7 +1171,7 @@ export function ModelProviderPanel({
     // 加载新 Provider 配置
     const nextConfig = updatedConfigs[providerId] || {}
     const providerInfo = PROVIDERS[providerId]
-    setLocalConfig({
+    const nextLocalConfig: LLMConfig = {
       ...localConfig,
       provider: providerId,
       apiKey: nextConfig.apiKey || '',
@@ -1138,8 +1185,10 @@ export function ModelProviderPanel({
         nextConfig.openAICompatibilityProfile,
       ),
       protocol: nextConfig.protocol || providerInfo?.protocol || 'openai',
-    })
+    }
+    setLocalConfig(nextLocalConfig)
     setIsAddingCustom(false)
+    return nextLocalConfig
   }
 
   // 选择自定义 Provider
@@ -1185,6 +1234,20 @@ export function ModelProviderPanel({
   // 添加自定义 Provider（只更新本地状态）
   const handleAddCustomProvider = (config: { displayName: string; baseUrl: string; apiKey: string; protocol: string; model: string; customModels: string[] }) => {
     const id = `custom-${Date.now()}`
+    const customModels = config.customModels?.length
+      ? config.customModels
+      : (config.model ? [config.model] : [])
+
+    // 服务商与模型全部默认启用：聊天界面的模型选择器只收录 enabled === true 的服务商，
+    // 并且逐个模型要求 modelConfigs[model].enabled === true，缺任意一项新模型都选不出来。
+    const modelConfigs: Record<string, ModelConfig> = {}
+    for (const modelName of customModels) {
+      modelConfigs[modelName] = {
+        capabilities: inferCapabilities(modelName),
+        enabled: true,
+      }
+    }
+
     const newConfig = {
       displayName: config.displayName,
       baseUrl: config.baseUrl,
@@ -1195,22 +1258,24 @@ export function ModelProviderPanel({
         id,
         config.protocol as ApiProtocol,
       ),
-      customModels: config.customModels || (config.model ? [config.model] : []),
+      customModels,
+      modelConfigs,
+      enabled: true,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }
 
-    // 只更新本地状态，保存时由 PreferencesDialog 统一处理
-    setLocalProviderConfigs({
+    const nextProviderConfigs = {
       ...localProviderConfigs,
-      [id]: newConfig
-    })
+      [id]: newConfig,
+    }
+    setLocalProviderConfigs(nextProviderConfigs)
 
     toast.success(t('provider.providerAdded', language as Language, { name: config.displayName }))
     setIsAddingCustom(false)
 
     // 自动选择新添加的 Provider
-    setLocalConfig({
+    const nextLocalConfig: LLMConfig = {
       ...localConfig,
       provider: id,
       apiKey: config.apiKey,
@@ -1222,10 +1287,13 @@ export function ModelProviderPanel({
       ),
       model: config.model,
       protocol: config.protocol as ApiProtocol, // 增加协议同步
-    })
+    }
+    setLocalConfig(nextLocalConfig)
+    // 立即落库：否则用户不点「保存」就离开，新增的服务商不会保留
+    void commitConfigs(nextProviderConfigs, nextLocalConfig)
   }
 
-  // 删除自定义 Provider（只更新本地状态）
+  // 删除自定义 Provider
   const handleDeleteCustomProvider = async (e: React.MouseEvent, id: string, name: string) => {
     e.stopPropagation()
     const confirmed = await globalConfirm({
@@ -1233,17 +1301,21 @@ export function ModelProviderPanel({
       message: t('provider.deleteProviderMessage', language as Language, { name: name }),
       variant: 'danger',
     })
-    if (confirmed) {
-      // 如果当前选中的是被删除的 provider，先切换到默认（跳过保存当前配置）
-      if (localConfig.provider === id) {
-        handleSelectBuiltinProvider('openai', true)
-      }
+    if (!confirmed) return
 
-      // 从本地配置中删除（放在切换之后，确保不会被重新创建）
-      const { [id]: _removed, ...rest } = localProviderConfigs
-      void _removed
-      setLocalProviderConfigs(rest)
+    // 如果当前选中的是被删除的 provider，先切换到默认（跳过保存当前配置）
+    let nextLlmConfig: LLMConfig | undefined
+    if (localConfig.provider === id) {
+      nextLlmConfig = handleSelectBuiltinProvider('openai', true)
     }
+
+    // 从配置中删除（放在切换之后，确保不会被重新创建）
+    const { [id]: _removed, ...rest } = localProviderConfigs
+    void _removed
+    setLocalProviderConfigs(rest)
+    // 删除必须落库：只改本地编辑态时，下次打开设置又会从数据库读回被删的服务商，
+    // 表现为「删不掉」。这里同步写入 store 并持久化。
+    void commitConfigs(rest, nextLlmConfig)
   }
 
   const builtinProviders = useMemo(
@@ -1488,13 +1560,16 @@ export function ModelProviderPanel({
                   checked={providerEnabled}
                   switchSize="sm"
                   onChange={() => {
-                    setLocalProviderConfigs({
+                    const nextConfigs = {
                       ...localProviderConfigs,
                       [localConfig.provider]: {
                         ...(currentProviderConfig || {}),
                         enabled: !providerEnabled,
                       },
-                    })
+                    }
+                    setLocalProviderConfigs(nextConfigs)
+                    // 启用状态立即落库：开关只改本地编辑态时，不点「保存」就会丢失
+                    void commitConfigs(nextConfigs)
                   }}
                 />
               </div>

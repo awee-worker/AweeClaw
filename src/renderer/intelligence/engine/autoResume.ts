@@ -41,13 +41,17 @@ export const AUTO_RESUME_MESSAGE = '继续执行未完成的任务'
  * Agent.send 会抛 "Thread already running" 且事件派发是 fire-and-forget，无人捕获，
  * 表现为「续接静默失败、AI 仍然没有继续」。改为轮询 isRunning 直到锁释放。
  */
-export async function dispatchContinuation(threadId: string, attempt = 0): Promise<void> {
+export async function dispatchContinuation(
+  threadId: string,
+  attempt = 0,
+  content: string = AUTO_RESUME_MESSAGE,
+): Promise<void> {
   if (typeof window === 'undefined') return
   const MAX_WAIT_ATTEMPTS = 20 // 300ms × 20 ≈ 6s 上限
   try {
     const { Agent } = await import('./IntelligenceCore')
     if (Agent.isRunning(threadId) && attempt < MAX_WAIT_ATTEMPTS) {
-      window.setTimeout(() => { void dispatchContinuation(threadId, attempt + 1) }, 300)
+      window.setTimeout(() => { void dispatchContinuation(threadId, attempt + 1, content) }, 300)
       return
     }
   } catch {
@@ -56,9 +60,10 @@ export async function dispatchContinuation(threadId: string, attempt = 0): Promi
   }
   // 携带 threadId 定向派发：续接必须回到「被中断的那个线程」，
   // 否则用户切到其它线程后，续接消息会发到当前线程（错误目标）；
-  // silent: 自动续接属于系统行为，不应显示成用户气泡。
+  // silent: 系统行为不显示成用户气泡。content 缺省为异常续接语，
+  // 计划完成汇总等确定性收尾可传入自定义指令内容。
   window.dispatchEvent(new CustomEvent('chat-send-message', {
-    detail: { content: AUTO_RESUME_MESSAGE, messageId: '', threadId, silent: true },
+    detail: { content, messageId: '', threadId, silent: true },
   }))
 }
 

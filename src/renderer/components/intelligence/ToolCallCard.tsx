@@ -259,6 +259,14 @@ const ToolCallCard = memo(function ToolCallCard({
   return (
     <div className={`group my-0.5 relative ${cardStyle}`}>
 
+      {/* 运行中反馈：横向扫光让卡片一眼看出「正在执行」，
+          与状态圆点的脉冲、标题文字的微光共同构成执行中的视觉信号 */}
+      {(isStreaming || isRunning) && (
+        <div className="absolute inset-0 pointer-events-none rounded-lg overflow-hidden">
+          <div className="absolute inset-0 w-[200%] h-full bg-gradient-to-r from-transparent via-accent/10 to-transparent tool-card-sweep" />
+        </div>
+      )}
+
       <div
         className="flex min-h-[32px] items-center gap-2 py-1.5 cursor-pointer select-none"
         onClick={handleToggleExpanded}
@@ -277,7 +285,7 @@ const ToolCallCard = memo(function ToolCallCard({
 
         <div className="flex-1 min-w-0 flex items-center justify-between gap-2 overflow-hidden relative z-10">
           <span
-            className={`text-[12px] truncate ${isStreaming || isRunning ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}
+            className={`text-[12px] truncate ${isStreaming || isRunning ? 'text-text-primary tool-text-shimmer' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}
           >
             {statusText || (
               <span className="opacity-50 inline-flex items-center gap-1.5">

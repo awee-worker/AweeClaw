@@ -22,6 +22,7 @@ import {
   discardInvalidModelCache,
   resolveModelDir,
 } from '../modules/modelCache'
+import { configureTransformersEnv, type TransformersEnv } from '../modules/transformersEnv'
 import type { LLMConfig } from '@protocols'
 
 /* ------------------------------------------------------------------ */
@@ -408,10 +409,13 @@ class TransformersStrategy implements EmbeddingStrategy {
               `${removed ? '已清理，将重新下载' : '清理失败，需手动删除'}: ${resolveModelDir(cacheDir, model)}`,
           )
         }
-        env.cacheDir = cacheDir
       }
 
-      env.allowLocalModels = false
+      // 与感知层共用同一套环境配置：镜像站点 + 关闭本地查找 + 指定缓存目录。
+      // 直连 huggingface.co 在国内网络下会 fetch failed，模型永远加载不出来。
+      const modelHost = configureTransformersEnv(env as TransformersEnv, cacheDir)
+      logger.index.info('[EmbeddingService] 模型站点:', modelHost)
+
       TransformersStrategy.pipeline = await pipeline('feature-extraction', model, { quantized: true })
       logger.index.info('[EmbeddingService] 本地模型加载完成')
     } catch (e) {

@@ -23,6 +23,7 @@
 
 import { logger } from '@shared/toolkit/LogEngine'
 import { getEmbedderCacheDir } from '../modelPaths'
+import { configureTransformersEnv, resolveModelHost, type TransformersEnv } from '../transformersEnv'
 import {
   EMBEDDER_META_FILES,
   EMBEDDER_WEIGHT_FILES,
@@ -47,6 +48,7 @@ interface PipelineSingleton {
       cache_dir?: string
     },
   ) => Promise<unknown>
+  env: TransformersEnv
 }
 
 interface EmbedderPipeline {
@@ -119,6 +121,10 @@ const META_FILES = EMBEDDER_META_FILES
 
 /** 下载进度日志的最小间隔（避免回调高频刷屏） */
 const PROGRESS_LOG_INTERVAL_MS = 1000
+
+/** 网络类加载失败的识别模式（用于在日志中补充站点与排查方向） */
+const NETWORK_ERROR_PATTERN =
+  /fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network/i
 
 // ============================================================
 // LRU 缓存
@@ -303,6 +309,11 @@ export class LocalEmbedder {
       // 动态 import transformers（避免启动时加载）
       const transformers = (await import('@xenova/transformers')) as unknown as PipelineSingleton
 
+      // transformers 默认直连 huggingface.co，国内网络下必然 fetch failed；
+      // 统一改走镜像站点后再下载，否则这个模型永远加载不出来。
+      const modelHost = configureTransformersEnv(transformers.env, cacheDir)
+      logger.perception?.info(`[LocalEmbedder] 模型站点: ${modelHost}`)
+
       // 创建 feature-extraction pipeline
       const extractor = (await transformers.pipeline(
         'feature-extraction',
@@ -324,8 +335,12 @@ export class LocalEmbedder {
       this.loadFailures += 1
       this.loadFailedAt = Date.now()
       const nextRetrySec = Math.ceil(this.getRetryDelayMs() / 1000)
+      // 网络类失败补上站点信息：只看到 "fetch failed" 时无从判断是镜像不可用还是本机断网
+      const hint = NETWORK_ERROR_PATTERN.test(msg)
+        ? `；模型站点 ${resolveModelHost()} 不可访问，请检查网络或代理（可用环境变量 HF_ENDPOINT 更换站点）`
+        : ''
       // 加载失败属根因级错误：首次带堆栈，后续按退避节奏记录，不随采集频率放大
-      const summary = `[LocalEmbedder] 模型加载失败（第 ${this.loadFailures} 次，${nextRetrySec}s 后重试，缓存目录: ${cacheDir}）: ${msg}`
+      const summary = `[LocalEmbedder] 模型加载失败（第 ${this.loadFailures} 次，${nextRetrySec}s 后重试，缓存目录: ${cacheDir}）: ${msg}${hint}`
       if (this.loadFailures === 1) {
         logger.perception?.error(summary, e)
       } else {

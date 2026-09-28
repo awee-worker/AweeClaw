@@ -3,7 +3,7 @@
  * 左对齐布局，支持流式输出、工具调用预览、交互卡片
  */
 import React, { useMemo } from 'react'
-import { Check, FileCode, FilePlus, X } from 'lucide-react'
+import { Check, FileCode, FilePlus, UserCog, X } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
@@ -375,6 +375,21 @@ function AssistantMessageViewBase({
           />
         )
       })()}
+
+      {/* 场景角色徽章：本轮回复使用了角色库中某个角色的方法 */}
+      {(message as AssistantMessage).sceneRole && !messageIsStreaming && (
+        <div className="flex items-center">
+          <span
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-text-muted bg-bg-hover border border-border rounded-full"
+            title={language === 'zh'
+              ? '本条回复应用了该角色的方法（可在设置-角色库中管理）'
+              : 'This reply applied the method of this role (manage in Settings - Role Library)'}
+          >
+            <UserCog className="w-3 h-3" />
+            {(message as AssistantMessage).sceneRole!.nameZh}
+          </span>
+        </div>
+      )}
 
       <div className="w-full text-[15px] leading-relaxed text-text-primary/90 pl-1">
         <div className="prose-custom w-full max-w-none">

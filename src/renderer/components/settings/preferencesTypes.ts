@@ -19,6 +19,16 @@ export interface ProviderSettingsProps {
     providers: { id: string; name: string; models: string[] }[]
     language: Language
     setProvider: (id: string, config: ProviderModelConfig) => void
+    /**
+     * 立即提交服务商配置并持久化（增删服务商 / 增删模型等结构性变更专用）
+     *
+     * 这些操作不等待用户点击「保存」：否则新加的模型在聊天界面看不到、
+     * 删掉的服务商下次打开设置又会从数据库读回来。
+     */
+    commitProviderConfigs?: (
+        configs: Record<string, ProviderModelConfig>,
+        nextLlmConfig?: LLMConfig,
+    ) => void | Promise<void>
 }
 
 export interface EditorSettingsState {

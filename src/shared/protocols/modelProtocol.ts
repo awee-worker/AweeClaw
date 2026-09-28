@@ -333,6 +333,18 @@ export interface ToolExecutionResult {
     /** Plain-text result returned to the model. */
     result: string
     error?: string
+    /**
+     * 工具「调用」本身是否失败，用于区分「工具没跑通」与「跑通了但业务结果不理想」。
+     *
+     * - 未设置：由 `success` 推断（保持既有行为）
+     * - `true`：工具调用确实出错（异常、参数非法、工具不可用、被安全策略拒绝等），界面显示「失败」
+     * - `false`：工具已正常执行完毕——命令的非零退出码、脚本报错、业务校验不通过等
+     *   属于这次执行的**结果**而非工具故障，界面显示「已执行」
+     *
+     * 例如 `run_command` 执行脚本时脚本抛错：命令确实在终端里跑完了并产出了输出，
+     * 这属于业务失败（success=false，供模型据此纠错），但不算工具调用失败（callFailed=false）。
+     */
+    callFailed?: boolean
     /** Extra execution metadata for UI and follow-up logic. */
     meta?: Record<string, unknown>
     /** Structured rich output for renderer-side display. */

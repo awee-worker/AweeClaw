@@ -3,17 +3,10 @@ import { createPortal } from 'react-dom'
 import { ChevronDown, Check, Search, Cloud, Puzzle } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { BUILTIN_PROVIDERS, getBuiltinProvider } from '@shared/configuration/aiProviders'
+import { getBuiltinProvider } from '@shared/configuration/aiProviders'
 import { backendApi, getServerUrl } from '@services/backendApi'
 import { ProviderIcon } from '@components/ui/ProviderIcon'
-
-interface FlatModel {
-  id: string
-  name: string
-  providerId: string
-  providerName: string
-  isCustom?: boolean
-}
+import { buildEnabledLocalModels, type FlatModel } from './availableModels'
 
 interface ModelSelectorProps {
   className?: string
@@ -135,51 +128,11 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
     }
   }, [isOpen, activeTab, isAuthenticated, fetchCloudModels])
 
-  // 构建本地模型列表
-  const localModels = useMemo<FlatModel[]>(() => {
-    const models: FlatModel[] = []
-    const seen = new Set<string>()
-
-    for (const [providerId, provider] of Object.entries(BUILTIN_PROVIDERS)) {
-      const providerConfig = providerConfigs[providerId]
-      if (providerConfig?.enabled !== true) continue
-      if (!providerConfig?.apiKey && !llmConfig.apiKey && providerId !== 'ollama') continue
-
-      const customModels = providerConfig?.customModels || []
-      const modelConfigs = providerConfig?.modelConfigs || {}
-
-      for (const id of customModels) {
-        if (modelConfigs[id]?.enabled !== true) continue
-        if (!id) continue
-        const key = `${providerId}::${id}`
-        if (!seen.has(key)) {
-          seen.add(key)
-          models.push({ id, name: id.split('/').pop() || id, providerId, providerName: provider.displayName, isCustom: true })
-        }
-      }
-    }
-
-    for (const [providerId, config] of Object.entries(providerConfigs)) {
-      if (!providerId.startsWith('custom-')) continue
-      if (config?.enabled !== true) continue
-      if (!config?.apiKey) continue
-
-      const modelIds = config.customModels || []
-      const providerName = config.displayName || providerId
-      const modelConfigs = config?.modelConfigs || {}
-
-      for (const id of modelIds) {
-        if (modelConfigs[id]?.enabled !== true) continue
-        const key = `${providerId}::${id}`
-        if (!seen.has(key)) {
-          seen.add(key)
-          models.push({ id, name: id.split('/').pop() || id, providerId, providerName, isCustom: true })
-        }
-      }
-    }
-
-    return models
-  }, [providerConfigs, llmConfig.apiKey])
+  // 构建本地模型列表（与角色模型选择器同源，见 availableModels.ts）
+  const localModels = useMemo<FlatModel[]>(
+    () => buildEnabledLocalModels(providerConfigs, llmConfig.apiKey),
+    [providerConfigs, llmConfig.apiKey],
+  )
 
   // 当前 tab 对应的模型列表
   const allModels = useMemo<FlatModel[]>(() => {

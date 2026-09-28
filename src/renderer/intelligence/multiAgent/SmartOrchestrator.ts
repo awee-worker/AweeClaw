@@ -9,6 +9,13 @@ export interface SmartAgentDef {
   taskDescription: string
   scope: string
   forbidden: string
+  /** 角色库角色 id：规划器从用户角色库中选中的角色（未命中时不设） */
+  roleId?: string
+}
+
+export interface SmartPlanOptions {
+  /** 角色库附录：注入规划提示词，让规划器优先选用用户已有角色 */
+  roleBriefing?: string | null
 }
 
 export interface SmartPlanResult {
@@ -193,8 +200,9 @@ const PLANNING_SYSTEM_PROMPT = [
   '      "systemPrompt": "You are the Project Manager. Analyze the task, create the project structure using write_file, and provide clear instructions for the team. Only create files that directly fulfill the user\'s request — do NOT create planning documents, analysis reports, work logs, or any meta-files. Create only the actual deliverable files the user asked for. ' + TOOL_FIRST_INSTRUCTION + '",',
   '      "taskDescription": "Analyze the task and set up the project structure. Create initial files and provide guidance for the team.",',
   '      "scope": "Creating project directory structure, README.md, configuration files, and providing work guidance for team members.",',
-  '      "forbidden": "Writing any implementation code (HTML, CSS, JS, Python, Java, etc.). Writing database schemas. Writing deployment scripts. Creating planning documents, analysis reports, or work logs. You are a manager, not a developer."',
-  '    },',
+      '      "forbidden": "Writing any implementation code (HTML, CSS, JS, Python, Java, etc.). Writing database schemas. Writing deployment scripts. Creating planning documents, analysis reports, or work logs. You are a manager, not a developer.",',
+      '      "roleId": "work.project-manager"',
+      '    },',
   '    {',
   '      "id": "frontend-dev",',
   '      "name": "前端开发工程师",',
@@ -258,15 +266,22 @@ export class SmartOrchestrator {
   async plan(
     userTask: string,
     context: string,
-    callLLM: (systemPrompt: string, userMessage: string) => Promise<string>
+    callLLM: (systemPrompt: string, userMessage: string) => Promise<string>,
+    options?: SmartPlanOptions
   ): Promise<SmartPlanResult> {
     const planningPrompt = 'User request: ' + userTask + '\n\n' + (context ? 'Additional context: ' + context + '\n\n' : '') + 'Design an expert agent team for this task. Remember: every agent MUST use tools (write_file, read_file, etc.) to create actual files. The first agent must be a Project Manager. Choose a professional projectName. Agent names MUST be in the same language as the user request. Each agent MUST have scope and forbidden fields.'
+
+    // 角色库附录按需求追加在系统提示词末尾：只影响「这个位置用哪个角色」，
+    // 不改动团队协作的既有规则。无候选角色时提示词与改动前完全一致。
+    const planningSystemPrompt = options?.roleBriefing
+      ? PLANNING_SYSTEM_PROMPT + '\n\n' + options.roleBriefing
+      : PLANNING_SYSTEM_PROMPT
 
     logger.agent.info('[SmartOrchestrator] Planning agent team for task...')
 
     let rawResponse: string
     try {
-      rawResponse = await callLLM(PLANNING_SYSTEM_PROMPT, planningPrompt)
+      rawResponse = await callLLM(planningSystemPrompt, planningPrompt)
     } catch (err) {
       logger.agent.error('[SmartOrchestrator] Planning LLM call failed:', err)
       return this.createFallbackPlan(userTask)
@@ -499,6 +514,8 @@ export class SmartOrchestrator {
         taskDescription: (a.taskDescription as string) || fallbackTask,
         scope: (a.scope as string) || 'Complete the assigned task.',
         forbidden: (a.forbidden as string) || 'None specified.',
+        // 只接受字符串：模型未提供或提供了非字符串时视为「未选中角色库角色」
+        roleId: typeof a.roleId === 'string' && a.roleId.trim() ? a.roleId.trim() : undefined,
       }))
 
       const allAgentIds = new Set(agents.map(a => a.id))

@@ -106,13 +106,11 @@ class ToolApprovalCoordinator {
           this.pendingResolves.get(matchedKey)?.(false)
           this.pendingResolves.delete(matchedKey)
           this.queue = this.queue.filter(item => item.id !== matchedKey)
-        } else if (this.queue.length > 0) {
-          const first = this.queue.shift()!
-          logger.agent.info(`[ApprovalService] reject: no match for ${requestId}, resolving first in queue: ${first.id}`)
-          this.pendingResolves.get(first.id)?.(false)
-          this.pendingResolves.delete(first.id)
         } else {
-          logger.agent.warn(`[ApprovalService] reject(${requestId}): no match found and queue is empty`)
+          // 精确与前缀匹配都失败：说明该 requestId 已过期，或不属于当前待批项。
+          // 此前会兜底拒绝队列里的第一项，等于用一个无关请求把另一个待批工具一起否掉，
+          // 用户看到的是「没点拒绝却有一个工具被拒」。这里只记录，不做任何裁决。
+          logger.agent.warn(`[ApprovalService] reject(${requestId}): no matching pending request, ignored`)
         }
       }
     } else if (this.queue.length > 0) {
@@ -164,6 +162,9 @@ export const approvalService = new ToolApprovalCoordinator()
 
 // ===== 文件快照 =====
 
+/** 单个文件快照的体积上限（字符）：超过则跳过撤销点，避免快照把内存顶满 */
+const MAX_SNAPSHOT_FILE_CHARS = 2_000_000
+
 /**
  * 在工具执行前保存文件快照到检查点
  * 用于支持撤销功能
@@ -191,6 +192,13 @@ async function captureFileSnapshots(
 
     try {
       const content = await api.file.read(fullPath)
+      // 超大文件不建撤销点：快照会常驻检查点，大文件反复编辑会把内存顶满。
+      // 返回 null 即跳过该文件（由上层 if (snapshot) 过滤），
+      // 不能记成 content:null——那会被当成「新建文件」，撤销时误删原文件。
+      if (typeof content === 'string' && content.length > MAX_SNAPSHOT_FILE_CHARS) {
+        logger.agent.warn(`[Tools] Skip undo snapshot for large file (${content.length} chars): ${fullPath}`)
+        return null
+      }
       return { filePath: fullPath, content }
     } catch {
       // 文件不存在，content 为 null（新建文件）
@@ -705,9 +713,14 @@ async function invokeToolInvocation(
 
       const duration = Date.now() - startTime
 
-      const rawContent = result.success
-        ? (result.result !== undefined && result.result !== null ? result.result : 'Success')
-        : `Error: ${result.error || 'Unknown error'}`
+      // 「工具调用是否失败」独立于「业务结果是否成功」：
+      // 命令/脚本已跑完但报错，属于业务失败，不算工具调用失败，
+      // 界面与应用内事件都应显示「已执行」，避免把正常执行误报为失败。
+      const callFailed = result.callFailed ?? !result.success
+
+      const rawContent = callFailed
+        ? `Error: ${result.error || 'Unknown error'}`
+        : (result.result !== undefined && result.result !== null ? result.result : 'Success')
 
       const config = getAgentConfig()
       const content = truncateToolResult(rawContent, toolCall.name, config.maxToolResultChars)
@@ -722,8 +735,8 @@ async function invokeToolInvocation(
         toolName: toolCall.name,
         data: content,
         duration,
-        success: result.success,
-        error: result.success ? undefined : result.error,
+        success: !callFailed,
+        error: callFailed ? result.error : undefined,
       })
 
       const meta = result.meta || {}
@@ -744,7 +757,7 @@ async function invokeToolInvocation(
           ? { ...toolCall.arguments, _meta: meta }
           : toolCall.arguments
 
-        const newStatus = result.success ? 'success' : 'error'
+        const newStatus = callFailed ? 'error' : 'success'
 
         store.updateToolCall(currentAssistantId, toolCall.id, {
           status: newStatus,
@@ -753,7 +766,7 @@ async function invokeToolInvocation(
           richContent,
           streamingState: undefined,
           endTime: Date.now(),
-          errorCode: result.success ? undefined : result.outcome?.code,
+          errorCode: callFailed ? result.outcome?.code : undefined,
         })
 
         // 必须带上调用参数：结果来源在写入时即固定，缺参数会让文件类工具无法判定路径落点，
@@ -764,12 +777,12 @@ async function invokeToolInvocation(
           toolCall.id,
           toolCall.name,
           content,
-          result.success ? 'success' : 'tool_error',
+          callFailed ? 'tool_error' : 'success',
           toolCall.arguments,
           workspacePath,
         )
       }
-      if (result.success) {
+      if (!callFailed) {
         publishToolLifecycleEvent({
           type: 'tool:completed',
           id: toolCall.id,
@@ -838,10 +851,10 @@ async function invokeToolInvocation(
       }
 
       if (toolSpan) {
-        agentHarness.observability.endSpan(toolSpan, result.success ? 'ok' : 'error')
+        agentHarness.observability.endSpan(toolSpan, callFailed ? 'error' : 'ok')
       }
 
-      return { toolCall, result: { content, meta, richContent } }
+      return { toolCall, result: { content, meta, richContent, callFailed } }
     } catch (error) {
       if (toolSpan) {
         agentHarness.observability.endSpan(toolSpan, 'error')
@@ -885,7 +898,7 @@ async function invokeToolInvocation(
       }
       publishToolLifecycleEvent({ type: 'tool:error', id: toolCall.id, error: errorMsg, ...identity })
 
-      return { toolCall, result: { content: `Error: ${errorMsg}` } }
+      return { toolCall, result: { content: `Error: ${errorMsg}`, callFailed: true } }
     }
   }
 
@@ -897,7 +910,7 @@ async function invokeToolInvocation(
         async () => {
           pipelineResult = await toolHandler()
           return {
-            success: !pipelineResult.result.content.startsWith('Error:'),
+            success: !(pipelineResult.result.callFailed ?? pipelineResult.result.content.startsWith('Error:')),
             result: pipelineResult.result.content,
             meta: pipelineResult.result.meta,
           }
@@ -915,10 +928,10 @@ async function invokeToolInvocation(
             endTime: Date.now(),
           })
         }
-        return { toolCall, result: { content: `Error: Rate limited - ${error.message}` } }
+        return { toolCall, result: { content: `Error: Rate limited - ${error.message}`, callFailed: true } }
       }
       if (!pipelineResult) {
-        return { toolCall, result: { content: `Error: ${error instanceof Error ? error.message : String(error)}` } }
+        return { toolCall, result: { content: `Error: ${error instanceof Error ? error.message : String(error)}`, callFailed: true } }
       }
     }
     if (pipelineResult) return pipelineResult
@@ -1050,7 +1063,7 @@ async function orchestrateToolBatchInternal(
             const result = await invokeToolInvocation(tc, context, store, abortSignal)
             results.push(result)
             pending.delete(result.toolCall.id)
-            if (result.result.content.startsWith('Error:')) {
+            if (result.result.callFailed ?? result.result.content.startsWith('Error:')) {
               failed.add(result.toolCall.id)
             } else {
               completed.add(result.toolCall.id)
@@ -1261,7 +1274,7 @@ async function orchestrateToolBatchInternal(
         const result = await invokeToolInvocation(tc, context, store, abortSignal)
         results.push(result)
         pending.delete(tc.id)
-        if (result.result.content.startsWith('Error:')) {
+        if (result.result.callFailed ?? result.result.content.startsWith('Error:')) {
           failed.add(tc.id)
         } else {
           completed.add(tc.id)

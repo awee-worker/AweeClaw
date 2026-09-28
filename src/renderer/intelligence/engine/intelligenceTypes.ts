@@ -81,6 +81,8 @@ export interface AgentToolExecutionResult {
     content: string
     meta?: Record<string, unknown>
     richContent?: import('@protocols').ToolRichContent[]
+    /** 工具调用是否失败（区别于业务结果失败）；未设置时由 content 前缀推断 */
+    callFailed?: boolean
   }
 }
 

@@ -2,7 +2,7 @@
  * 附件管理器 Hook
  * 负责图片/文件的添加、粘贴、拖放、压缩、保存等全生命周期管理
  */
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { api } from '../../../adapters/electronBridge'
 import { localAttachmentsService } from '../../../adapters/localAttachmentsService'
 import { logger } from '@toolkit/LogEngine'
@@ -578,7 +578,16 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
     [],
   )
 
-  return {
+  /**
+   * 返回值整体 memo 化。
+   *
+   * 这里原本直接返回对象字面量：每次渲染都是新引用，而调用方
+   * （useMessageOperations 的 handleRestore / handleSubmit）把它当依赖，
+   * 于是回调跟着每帧重建，再经 messageOps → ChatMessage 的 props 一路打穿
+   * memo，使流式期间整棵可见消息树陪着重渲染。依赖都是 useCallback / useState
+   * 的稳定输出，因此这层 memo 能一直生效。
+   */
+  return useMemo(() => ({
     images,
     setImages,
     isDragging,
@@ -590,5 +599,17 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
     clearImages,
     buildMessageContent,
     restoreFromImages,
-  }
+  }), [
+    images,
+    setImages,
+    isDragging,
+    addImage,
+    handlePaste,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    clearImages,
+    buildMessageContent,
+    restoreFromImages,
+  ])
 }

@@ -162,3 +162,121 @@ export function buildPendingQuestionNotice(
     .filter(Boolean)
     .join('\n')
 }
+
+/* ------------------------------------------------------------------ */
+/* 选项交互的回答衔接                                                 */
+/* ------------------------------------------------------------------ */
+
+/** 助手消息上的交互式选项内容 */
+interface InteractiveSelection {
+  question: string
+  options: Array<{ id: string; label: string }>
+}
+
+/** 提取助手消息上的交互式选项；不是选项类交互时返回 null */
+function extractInteractiveSelection(message: AssistantMessage): InteractiveSelection | null {
+  const interactive = (message as AssistantMessage & {
+    interactive?: { question?: string; options?: Array<{ id?: string; label?: string }> }
+  }).interactive
+
+  if (!interactive?.question) return null
+
+  const rawOptions = Array.isArray(interactive.options) ? interactive.options : []
+  const options = rawOptions
+    .filter((opt): opt is { id?: string; label: string } => typeof opt?.label === 'string')
+    .map((opt, index) => ({ id: opt.id || `option-${index}`, label: opt.label }))
+
+  if (options.length === 0) return null
+
+  return { question: interactive.question, options }
+}
+
+/**
+ * 取线程中最后一条助手消息上的选项交互
+ *
+ * 只认最后一条助手消息：更早的交互早已被回答过，若据此附加说明，
+ * 会把一条无关的新消息错误地解释成对旧选项的回答。
+ */
+function findLastInteractiveSelection(thread: ChatThread | undefined): InteractiveSelection | null {
+  if (!thread?.messages?.length) return null
+
+  for (let i = thread.messages.length - 1; i >= 0; i--) {
+    const message = thread.messages[i]
+    if (message.role !== 'assistant') continue
+    return extractInteractiveSelection(message as AssistantMessage)
+  }
+  return null
+}
+
+/** 把用户文本与选项文案做匹配（单选为单个文案；多选由界面用顿号/逗号拼接） */
+function matchSelectedOptions(
+  text: string,
+  options: InteractiveSelection['options'],
+): InteractiveSelection['options'] {
+  const whole = normalize(text)
+  if (!whole) return []
+
+  const segments = text
+    .split(/[,，、;；]/)
+    .map((segment) => normalize(segment))
+    .filter(Boolean)
+
+  return options.filter((option) => {
+    const label = normalize(option.label)
+    if (!label) return false
+    return whole === label || segments.includes(label)
+  })
+}
+
+/**
+ * 构造「用户点了哪个选项」的衔接说明；无需附加时返回 null
+ *
+ * 与 buildPendingQuestionNotice 的分工：那边处理「用户手打一句『要』」，
+ * 这里处理「用户点了选项卡片」。选项文案通常只是一个短名词（如「功能开发」），
+ * 脱离提问后不具指向性，因此把提问原文与全部选项一并带给模型。
+ *
+ * @param thread       当前会话线程（发送新消息之前的快照）
+ * @param incomingText 用户本次发送的消息文本（即选项文案）
+ * @param language     界面语言（决定说明文案语种）
+ */
+export function buildInteractiveSelectionNotice(
+  thread: ChatThread | undefined,
+  incomingText: string,
+  language: 'zh' | 'en' = 'zh',
+): string | null {
+  const selection = findLastInteractiveSelection(thread)
+  if (!selection) return null
+
+  const picked = matchSelectedOptions(incomingText, selection.options)
+  const optionList = selection.options.map((option) => option.label).join(' / ')
+
+  if (language === 'en') {
+    const answer = picked.length > 0
+      ? `The user selected: ${picked.map((option) => option.label).join(', ')}.`
+      : `The user replied with "${incomingText}" — not one of the listed options, so treat it as a free-form answer.`
+    return [
+      '## Context Bridge (auto-attached)',
+      'Your previous turn asked the user to pick from options. Your question was:',
+      '"""',
+      selection.question,
+      '"""',
+      `Options offered: ${optionList}`,
+      answer,
+      'Treat the reply as the answer to that question and continue from there — do not ask the user again what they mean.',
+    ].join('\n')
+  }
+
+  const answer = picked.length > 0
+    ? `用户选择了：${picked.map((option) => option.label).join('、')}。`
+    : `用户回复的是：「${incomingText}」，不属于上面给出的选项，按自由作答处理。`
+  return [
+    '## 上下文衔接（自动附加）',
+    '你上一条回复让用户在选项中做选择。你的提问原文如下：',
+    '"""',
+    selection.question,
+    '"""',
+    `当时给出的选项：${optionList}`,
+    answer,
+    '请把它理解为对该提问的回答，并据此继续执行（不要再次询问用户「你指的是什么」）。',
+  ].join('\n')
+}

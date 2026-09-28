@@ -364,6 +364,20 @@ export default function ChatPanel() {
     textareaRef,
   })
 
+  /**
+   * scrollToBottom 的稳定引用桥。
+   *
+   * 它的实现来自下方的 useChatScrollController（定义在 messageOps 之后），
+   * 而 messageOps 在此处就要用到。原先直接写内联箭头 `() => scrollToBottom('smooth')`，
+   * 每一轮渲染都是新引用，导致 handleSubmit 跟着重建，再使 messageOps 对象、
+   * renderTimelineItem、Virtuoso 的 itemContent 逐帧失效 —— 流式期间整份可见
+   * 消息列表因此陪着每个分片重渲染。用 ref 桥接后，交给 messageOps 的引用恒定。
+   */
+  const scrollToBottomRef = useRef<(behavior?: 'auto' | 'smooth') => void>(() => {})
+  const handleScrollToBottom = useCallback((behavior?: 'auto' | 'smooth') => {
+    scrollToBottomRef.current(behavior)
+  }, [])
+
   const messageOps = useMessageOperations({
     messages,
     language: language as Language,
@@ -384,7 +398,7 @@ export default function ChatPanel() {
     attachmentManager,
     setInput,
     setChatMode: setChatMode as any,
-    scrollToBottom: () => scrollToBottom('smooth'),
+    scrollToBottom: handleScrollToBottom,
   })
 
   // 使用 ref 桥接 messageOps，避免对象引用变化导致依赖它的 useEffect 频繁重注册
@@ -524,6 +538,9 @@ export default function ChatPanel() {
     threadId: currentThreadId,
     virtuosoRef: scrollVirtuosoRef,
   })
+
+  // 把最新实现挂回稳定引用桥（见上方 handleScrollToBottom）
+  scrollToBottomRef.current = scrollToBottom
 
 
 
@@ -793,6 +810,18 @@ export default function ChatPanel() {
     })
   }, [])
 
+  /**
+   * revealArchivedMessages 的稳定引用桥。
+   *
+   * 它依赖 timelineItems，而后者在流式期间逐帧变化；直接进 renderTimelineItem
+   * 的依赖数组会让该回调每帧失效。改由 ref 读取，并对外暴露一个恒定引用。
+   */
+  const revealArchivedMessagesRef = useRef(timelineProjection.revealArchivedMessages)
+  revealArchivedMessagesRef.current = timelineProjection.revealArchivedMessages
+  const handleRevealArchived = useCallback(() => {
+    revealArchivedMessagesRef.current()
+  }, [])
+
   // ===== 渲染时间线条目 =====
   const renderTimelineItem = useCallback(
     (item: ChatTimelineItem<RenderableMessageItem>) => {
@@ -800,7 +829,7 @@ export default function ChatPanel() {
         return (
           <ArchiveTimelineItemView
             item={item}
-            onReveal={timelineProjection.revealArchivedMessages}
+            onReveal={handleRevealArchived}
             language={language as Language}
             isChatPrimary={isChatPrimary}
           />
@@ -810,43 +839,63 @@ export default function ChatPanel() {
       const msg = item.item.message
       if (!isUserMessage(msg) && !isAssistantMessage(msg)) return null
 
+      // 消息操作走 ref 读取：这些 handle 本身已被 memo 化，取 .current 既拿到
+      // 最新实现，又不必把 messageOps 对象放进依赖数组（它每轮都是新对象，
+      // 会把本回调连同 Virtuoso 的 itemContent 一起逐帧打失效）。
+      const ops = messageOpsRef.current
+
+      // 单条消息的提交探针：与 scope="messages" 的整列表探针配合，
+      // 两者相减即可分离出「列表外壳（Virtuoso 容器与条目包装）」的成本。
       return (
-        <div className={isChatPrimary ? 'max-w-[800px] mx-auto w-full' : ''}>
-          <ChatMessageUI
-            key={msg.id}
-            message={msg}
-            onEdit={messageOps.handleEditMessage}
-            onRegenerate={messageOps.handleRegenerate}
-            onRestore={messageOps.handleRestore}
-            // 事前审批的操作入口在输入框上方的审批条（PendingApprovalBar），
-            // 此处不再注入批准回调：卡片只保留「等待确认」的状态表达
-            onOpenDiff={handleShowDiff}
-            pendingToolId={pendingToolCall?.id}
-            pendingToolIds={pendingToolIds}
-            hasCheckpoint={item.item.hasCheckpoint}
-            isWorkspaceEditor={activeScenarioId === 'dev-assistant'}
-            onDeleteRound={handleDeleteRoundForMessage}
-            selectionMode={deleteSelectionMode}
-            isSelected={selectedMessageIds.has(msg.id)}
-            onToggleSelect={handleToggleSelectMessage}
-          />
-        </div>
+        <CommitProbe scope="message-item">
+          <div className={isChatPrimary ? 'max-w-[800px] mx-auto w-full' : ''}>
+            <ChatMessageUI
+              key={msg.id}
+              message={msg}
+              onEdit={ops.handleEditMessage}
+              onRegenerate={ops.handleRegenerate}
+              onRestore={ops.handleRestore}
+              // 事前审批的操作入口在输入框上方的审批条（PendingApprovalBar），
+              // 此处不再注入批准回调：卡片只保留「等待确认」的状态表达
+              onOpenDiff={handleShowDiff}
+              pendingToolId={pendingToolCall?.id}
+              pendingToolIds={pendingToolIds}
+              hasCheckpoint={item.item.hasCheckpoint}
+              isWorkspaceEditor={activeScenarioId === 'dev-assistant'}
+              onDeleteRound={handleDeleteRoundForMessage}
+              selectionMode={deleteSelectionMode}
+              isSelected={selectedMessageIds.has(msg.id)}
+              onToggleSelect={handleToggleSelectMessage}
+            />
+          </div>
+        </CommitProbe>
       )
     },
     [
+      activeScenarioId,
       deleteSelectionMode,
       handleDeleteRoundForMessage,
+      handleRevealArchived,
       handleShowDiff,
       handleToggleSelectMessage,
       isChatPrimary,
       language,
-      messageOps,
       pendingToolCall?.id,
       pendingToolIds,
       selectedMessageIds,
-      timelineProjection.revealArchivedMessages,
-      activeScenarioId,
     ],
+  )
+
+  /**
+   * itemContent 的稳定引用。
+   *
+   * Virtuoso 依据 itemContent 的函数引用判断已挂载条目是否需要重跑；原先写成
+   * 内联箭头，每次父级渲染都是新函数，等于宣告所有可见条目全部失效。包一层
+   * useCallback 后，只有 renderTimelineItem 真正变化时才更新。
+   */
+  const renderTimelineItemContent = useCallback(
+    (_index: number, item: ChatTimelineItem<RenderableMessageItem>) => renderTimelineItem(item),
+    [renderTimelineItem],
   )
 
   // 用 ref 桥接 timelineProjection，避免 handleTimelineRangeChanged 因对象引用变化而频繁重建
@@ -1043,7 +1092,7 @@ export default function ChatPanel() {
                         rangeChanged={handleTimelineRangeChanged}
                         initialTopMostItemIndex={timelineProjection.initialIndexRef.current}
                         followOutput={followOutput}
-                        itemContent={(_, item) => renderTimelineItem(item)}
+                        itemContent={renderTimelineItemContent}
                         className="flex-1 custom-scrollbar w-full h-full"
                         style={{ minHeight: '100px', overflowX: 'hidden', overflowY: 'auto' }}
                         overscan={12}

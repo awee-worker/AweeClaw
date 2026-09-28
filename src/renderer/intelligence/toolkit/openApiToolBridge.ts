@@ -179,7 +179,8 @@ async function executeTool(
 
   const result = await toolManager.execute(toolName, args, context)
   return {
-    success: result.success,
+    // 命令/脚本跑完但报错属于业务结果，不算工具调用失败
+    success: !(result.callFailed ?? !result.success),
     result: result.result || '',
     error: result.error,
   }

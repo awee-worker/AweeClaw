@@ -66,20 +66,10 @@ async function runShutdownPhases(
  * 应用关闭状态 Hook
  *
  * 注册终端观察者、页面卸载监听器和主进程关闭请求监听器，
- * 通过分阶段执行清理任务，确保各阶段独立失败不影响后续流程。
+ * 注册页面卸载监听器和主进程关闭请求监听器，
  */
 export function useAppShutdownState(): void {
   useEffect(() => {
-    let terminalWatcherCleanup: (() => void) | null = null
-
-    void import('@intelligence/runtime/terminalObserver')
-      .then(({ terminalWatcher }) => {
-        terminalWatcher.start()
-        terminalWatcherCleanup = () => terminalWatcher.stop()
-      })
-      .catch((error) => {
-        logger.system.warn('[App] Failed to initialize terminal watcher:', error)
-      })
 
     const handleUnload = () => {
       runUnloadPhases()
@@ -92,7 +82,6 @@ export function useAppShutdownState(): void {
     window.addEventListener('beforeunload', handleUnload)
 
     return () => {
-      terminalWatcherCleanup?.()
       unsubscribeShutdown()
       window.removeEventListener('beforeunload', handleUnload)
     }

@@ -440,6 +440,14 @@ export const PERF_TRACE_COUNTERS = {
   reactBaseMs: 'react.baseMs',
   /** 消息列表整棵子树（Virtuoso 及其条目）的累计提交耗时 */
   reactMessagesCommitMs: 'react.messagesCommitMs',
+  /**
+   * 单条时间线条目（一条消息及其外壳）的累计提交耗时。
+   *
+   * 与 reactMessagesCommitMs 同一次提交各记一份：列表探针是外层、条目探针逐条相加。
+   * 条目总和显著小于列表耗时 → 差额落在 Virtuoso 容器与条目包装上；两者接近 → 成本
+   * 就在条目内部。有了这一层，才不必再靠推断区分「列表外壳贵」还是「单条消息贵」。
+   */
+  reactMessageItemCommitMs: 'react.messageItemCommitMs',
   /** 单条助手消息内容子树的累计提交耗时 */
   reactAssistantCommitMs: 'react.assistantCommitMs',
 

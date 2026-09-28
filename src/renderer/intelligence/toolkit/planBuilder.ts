@@ -18,6 +18,7 @@ import type {
     TaskPlan,
     PlanTask,
     TaskStatus,
+    TaskExecutionClass,
     ExecutionMode,
     PlanStatus,
 } from '../planner/planTypes'
@@ -48,6 +49,8 @@ export interface PlanTaskArg {
     llmPrompt?: string
     toolCall?: { name: string; arguments: Record<string, unknown> }
     requireApproval?: boolean
+    /** 执行类别，用于并发调度；留空时按角色职责推断（见 resolvePlanRole） */
+    executionClass?: TaskExecutionClass
 }
 
 /** create_task_plan 工具的 edge 参数结构 */
@@ -89,6 +92,49 @@ export interface BuildPlanParams {
 const DEFAULT_PROVIDER = 'anthropic'
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
 const DEFAULT_ROLE = 'coder'
+
+// ============================================
+// 角色库解析钩子（设计文档 6.3 改动 1）
+// ============================================
+
+/**
+ * 角色库解析结果：命中角色库 id 时的回填信息
+ */
+export interface PlanRoleResolution {
+    /** 角色 id（原样回填到 task.role，供执行期二次解析角色人设） */
+    roleId: string
+    /** 角色绑定的 provider（modelPreference，留空则不覆盖默认值） */
+    provider?: string
+    /** 角色绑定的 model（modelPreference，留空则不覆盖默认值） */
+    model?: string
+    /** 按角色职责推断的执行类别，留空则不覆盖默认值 */
+    executionClass?: TaskExecutionClass
+}
+
+type PlanRoleResolver = (suggestedRole: string) => PlanRoleResolution | null
+
+/**
+ * 可注入的角色解析钩子
+ *
+ * planBuilder 保持纯函数（无 store / IPC 依赖），角色库的查询由
+ * taskExecutor 在模块加载时通过 setPlanRoleResolver 注册进来。
+ * 未注册（如单测环境）时行为与旧版完全一致。
+ */
+let planRoleResolver: PlanRoleResolver | null = null
+
+export function setPlanRoleResolver(resolver: PlanRoleResolver | null): void {
+    planRoleResolver = resolver
+}
+
+/** 解析 suggestedRole：先查角色库（若已注册），未命中返回 null */
+function resolvePlanRole(suggestedRole: string): PlanRoleResolution | null {
+    if (!planRoleResolver) return null
+    try {
+        return planRoleResolver(suggestedRole)
+    } catch {
+        return null
+    }
+}
 
 // ============================================
 // 辅助函数
@@ -210,6 +256,9 @@ export function applyGraphFieldsToNode(node: GraphNode, arg: PlanTaskArg): void 
     if (arg.requireApproval !== undefined) {
         node.requireApproval = arg.requireApproval
     }
+    if (arg.executionClass) {
+        node.executionClass = arg.executionClass
+    }
 }
 
 /**
@@ -226,15 +275,25 @@ export function buildPlanTask(
 ): PlanTask {
     const taskId = `task-${index + 1}`
 
+    // 角色解析：suggestedRole 先查角色库（回填 provider/model），未命中走模板默认
+    const roleResolution = resolvePlanRole(arg.suggestedRole ?? '')
+    const roleId = roleResolution?.roleId ?? resolveDefault(arg.suggestedRole, DEFAULT_ROLE)
+
     const task: PlanTask = {
         id: taskId,
         title: arg.title,
         description: arg.description,
-        provider: resolveDefault(arg.suggestedProvider, DEFAULT_PROVIDER),
-        model: resolveDefault(arg.suggestedModel, DEFAULT_MODEL),
-        role: resolveDefault(arg.suggestedRole, DEFAULT_ROLE),
+        provider: resolveDefault(arg.suggestedProvider, roleResolution?.provider ?? DEFAULT_PROVIDER),
+        model: resolveDefault(arg.suggestedModel, roleResolution?.model ?? DEFAULT_MODEL),
+        role: roleId,
         dependencies: arg.dependencies || [],
         status: 'pending' as TaskStatus,
+    }
+
+    // 执行类别：主 Agent 显式指定优先，其次按角色职责推断；留空交由调度器归一化为 general
+    const resolvedExecutionClass = arg.executionClass ?? roleResolution?.executionClass
+    if (resolvedExecutionClass) {
+        task.executionClass = resolvedExecutionClass
     }
 
     // 图扩展字段（复用 applyGraphFieldsToNode）
@@ -316,15 +375,25 @@ export function buildAddedTask(
     timestamp: number,
     index: number,
 ): PlanTask {
+    // 角色解析：与 buildPlanTask 同口径
+    const roleResolution = resolvePlanRole(arg.suggestedRole ?? '')
+    const roleId = roleResolution?.roleId ?? resolveDefault(arg.suggestedRole, DEFAULT_ROLE)
+
     const task: PlanTask = {
         id: `task-${timestamp}-${index}`,
         title: arg.title,
         description: arg.description,
-        provider: resolveDefault(arg.suggestedProvider, DEFAULT_PROVIDER),
-        model: resolveDefault(arg.suggestedModel, DEFAULT_MODEL),
-        role: resolveDefault(arg.suggestedRole, DEFAULT_ROLE),
+        provider: resolveDefault(arg.suggestedProvider, roleResolution?.provider ?? DEFAULT_PROVIDER),
+        model: resolveDefault(arg.suggestedModel, roleResolution?.model ?? DEFAULT_MODEL),
+        role: roleId,
         dependencies: arg.dependencies || [],
         status: 'pending' as TaskStatus,
+    }
+
+    // 执行类别：主 Agent 显式指定优先，其次按角色职责推断；留空交由调度器归一化为 general
+    const resolvedExecutionClass = arg.executionClass ?? roleResolution?.executionClass
+    if (resolvedExecutionClass) {
+        task.executionClass = resolvedExecutionClass
     }
 
     // 图扩展字段（复用 applyGraphFieldsToNode）

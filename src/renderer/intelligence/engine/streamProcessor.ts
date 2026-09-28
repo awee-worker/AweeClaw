@@ -31,6 +31,21 @@ export function getActiveListenerCount(): number {
   return activeListenerCount
 }
 
+/** 参数 JSON 中 content 字段的起始定位（同一 toolId 首次解析时执行一次） */
+const CONTENT_FIELD_PATTERN = /"content"\s*:\s*"/
+
+/** JSON 字符串简单转义映射（\uXXXX 由解码循环单独处理） */
+const JSON_SIMPLE_ESCAPES: Record<string, string> = {
+  '"': '"',
+  '\\': '\\',
+  '/': '/',
+  b: '\b',
+  f: '\f',
+  n: '\n',
+  r: '\r',
+  t: '\t',
+}
+
 // ===== Stream Processor =====
 
 /** AI 产出文件时是否实时预览；每次读取，保证开关切换后立即生效 */
@@ -99,6 +114,19 @@ export function createStreamProcessor(
     partialArgs?: Record<string, unknown>
     name?: string
     timestamp: number
+  }>()
+
+  /**
+   * content 字段的增量提取状态（按 toolId）
+   *
+   * 参数 JSON 随 token 持续增长，每次都从头跑一遍整体正则会让提取成本随已写入
+   * 长度线性上升。这里记住 content 的起始偏移与已解码位置，只对新增部分解码。
+   */
+  const contentFragmentStates = new Map<string, {
+    argsLength: number
+    contentStart: number
+    rawCursor: number
+    decoded: string
   }>()
 
   // Cleanup callbacks for request-scoped listeners.
@@ -191,13 +219,71 @@ export function createStreamProcessor(
     return isAbsolute ? path : joinPath(workspacePath, path)
   }
 
-  const extractContentFragment = (argsString: string): string | null => {
-    const contentMatch = argsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)/)
-    if (!contentMatch) return null
-    return contentMatch[1]
-      .replace(/\\n/g, '\n')
-      .replace(/\\"/g, '"')
-      .replace(/\\\\/g, '\\')
+  /**
+   * 从流式参数 JSON 中增量提取 content 字段的当前值
+   *
+   * 只对新增部分解码：content 起始偏移与已解码位置按 toolId 缓存，参数串被改写
+   * （非只追加）时整体重建。转义按 JSON 规范解码（含 \uXXXX），遇到流式中途的半个
+   * 转义时停在安全位置，等下一批增量到达再续。
+   */
+  const extractContentFragment = (toolId: string, argsString: string): string | null => {
+    let state = contentFragmentStates.get(toolId)
+    if (!state || argsString.length < state.argsLength) {
+      state = { argsLength: 0, contentStart: -1, rawCursor: 0, decoded: '' }
+      contentFragmentStates.set(toolId, state)
+    }
+    state.argsLength = argsString.length
+
+    // content 字段起点只需定位一次
+    if (state.contentStart === -1) {
+      const fieldMatch = CONTENT_FIELD_PATTERN.exec(argsString)
+      if (!fieldMatch) return null
+      state.contentStart = fieldMatch.index + fieldMatch[0].length
+      state.rawCursor = state.contentStart
+      state.decoded = ''
+    }
+
+    let cursor = state.rawCursor
+    let decoded = state.decoded
+
+    while (cursor < argsString.length) {
+      const ch = argsString[cursor]
+
+      // 未转义的引号 = content 值闭合，其后内容不再属于该字段
+      if (ch === '"') break
+
+      if (ch !== '\\') {
+        decoded += ch
+        cursor += 1
+        continue
+      }
+
+      const next = argsString[cursor + 1]
+      // 转义字符尚未到达：停在反斜杠处，等下一批增量
+      if (next === undefined) break
+
+      if (next === 'u') {
+        const hex = argsString.slice(cursor + 2, cursor + 6)
+        // 十六进制位未到齐：等下一批增量
+        if (hex.length < 4) break
+        if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+          decoded += String.fromCharCode(parseInt(hex, 16))
+          cursor += 6
+        } else {
+          decoded += 'u'
+          cursor += 2
+        }
+        continue
+      }
+
+      const simple = JSON_SIMPLE_ESCAPES[next]
+      decoded += simple !== undefined ? simple : next
+      cursor += 2
+    }
+
+    state.rawCursor = cursor
+    state.decoded = decoded
+    return decoded
   }
 
   const drainFilePreviewQueue = () => {
@@ -240,7 +326,7 @@ export function createStreamProcessor(
     // 仅文档类型文件启用实时预览
     if (!isPreviewableDocument(filePath)) return
 
-    const partialContent = extractContentFragment(argsString)
+    const partialContent = extractContentFragment(toolId, argsString)
     if (partialContent === null) return
 
     const previewState = streamingFilePreview.get(toolId)
@@ -289,6 +375,7 @@ export function createStreamProcessor(
     const content = typeof finalArgs.content === 'string' ? finalArgs.content : ''
 
     streamingFilePreview.delete(toolId)
+    contentFragmentStates.delete(toolId)
 
     pendingFilePreviewUpdates.set(toolId, {
       content,
@@ -314,6 +401,7 @@ export function createStreamProcessor(
     pendingToolPreviewUpdates.clear()
     pendingFilePreviewUpdates.clear()
     streamingFilePreview.clear()
+    contentFragmentStates.clear()
     streamingEditPreviewCoordinator.releaseAll()
 
     for (const fn of cleanups) {
@@ -703,6 +791,9 @@ export function createStreamProcessor(
       }
       abortSignal.addEventListener('abort', onAbort, { once: true })
       cleanups.push(() => abortSignal.removeEventListener('abort', onAbort))
+      // 与 cleanups 对齐：cleanup() 按 cleanups.length 递减计数，这里注册了
+      // 额外一个监听就必须同步累加，否则计数会被多减甚至为负，泄漏诊断失真。
+      activeListenerCount += 1
     }
   }
 

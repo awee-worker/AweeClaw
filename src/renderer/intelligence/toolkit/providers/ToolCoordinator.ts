@@ -188,9 +188,12 @@ class ToolManager {
       }
     }
 
-    return result.success
-      ? { kind: 'success', retryable }
-      : { kind: 'error', retryable, code: result.error ? 'EXECUTION_ERROR' : 'UNKNOWN_ERROR' }
+    // 以「工具调用是否失败」为准：命令跑完但业务失败不该被当成工具故障
+    const callFailed = result.callFailed ?? !result.success
+
+    return callFailed
+      ? { kind: 'error', retryable, code: result.error ? 'EXECUTION_ERROR' : 'UNKNOWN_ERROR' }
+      : { kind: 'success', retryable }
   }
 
   private finalizeResult(

@@ -56,6 +56,9 @@ const STORAGE_KEYS = {
 
 const LOCAL_CACHE_KEY = BRAND.storageKeys.settingsCache
 
+/** 编辑前自动快照目录名，需与工具层的 HISTORY_DIR_NAME 保持一致 */
+const HISTORY_IGNORE_ENTRY = '.history'
+
 // LLM 行为参数键列表（这些参数存在 llm_behavior 表）
 const LLM_BEHAVIOR_KEYS = [
   'temperature', 'maxTokens', 'topP', 'topK', 'seed',
@@ -703,6 +706,15 @@ class SettingsService {
       delete config.expandAgentBlocksByDefault
       logger.system.info('[SettingsService] Migrated expandAgentBlocksByDefault → 3 split fields')
     }
+
+    // .history 是编辑前的自动快照目录，不应混入工作区目录扫描结果。
+    // deepMerge 遇到数组是整体替换，已保存配置会盖掉新增的默认项，这里补齐。
+    const ignoredDirs = config.ignoredDirectories
+    if (Array.isArray(ignoredDirs) && !ignoredDirs.includes(HISTORY_IGNORE_ENTRY)) {
+      config.ignoredDirectories = [...ignoredDirs, HISTORY_IGNORE_ENTRY]
+      logger.system.info(`[SettingsService] Migrated ignoredDirectories += ${HISTORY_IGNORE_ENTRY}`)
+    }
+
     return config
   }
 
@@ -734,11 +746,13 @@ class SettingsService {
 
 function cleanProviderConfig(
   providerId: string,
-  config: ProviderConfig,
+  // enabled / modelConfigs 不属于 ProviderConfig 的基础字段，但对运行时可用性至关重要：
+  // 聊天界面的模型选择器要求服务商 enabled === true、且逐个模型 modelConfigs[model].enabled === true
+  config: ProviderConfig & Pick<ProviderModelConfig, 'enabled' | 'modelConfigs'>,
   isCurrentProvider: boolean,
-): Partial<ProviderConfig> | null {
+): Partial<ProviderConfig> & Pick<ProviderModelConfig, 'enabled' | 'modelConfigs'> | null {
   const builtinDef = getBuiltinProvider(providerId)
-  const cleaned: Partial<ProviderConfig> = {}
+  const cleaned: Partial<ProviderConfig> & Pick<ProviderModelConfig, 'enabled' | 'modelConfigs'> = {}
   const resolvedProtocol = config.protocol ?? builtinDef?.protocol
   const defaultOpenAIProfile = getDefaultOpenAICompatibilityProfile(providerId, resolvedProtocol)
 
@@ -755,6 +769,12 @@ function cleanProviderConfig(
     cleaned.timeout = config.timeout
   }
   if (config.customModels?.length) cleaned.customModels = config.customModels
+  // 同步启用状态与模型级配置：electron-store 是 SQLite 不可用时的兜底数据源，
+  // 这里丢字段会导致回退加载后服务商/模型全部按「未启用」处理，聊天里选不到模型
+  if (config.enabled !== undefined) cleaned.enabled = config.enabled
+  if (config.modelConfigs && Object.keys(config.modelConfigs).length > 0) {
+    cleaned.modelConfigs = config.modelConfigs
+  }
   if (config.headers && Object.keys(config.headers).length > 0) cleaned.headers = config.headers
   if (config.protocol && config.protocol !== builtinDef?.protocol) cleaned.protocol = config.protocol
   if (

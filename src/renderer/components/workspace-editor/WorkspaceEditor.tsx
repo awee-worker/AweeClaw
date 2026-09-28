@@ -622,7 +622,7 @@ export default function Editor() {
           clearTimeout(scrollSaveTimerRef.current)
           scrollSaveTimerRef.current = null
         }
-        if (pendingScrollState) setFileScrollPosition(currentFilePath, pendingScrollState as any)
+        if (pendingScrollState && currentFilePath) setFileScrollPosition(currentFilePath, pendingScrollState as any)
       },
     })
 

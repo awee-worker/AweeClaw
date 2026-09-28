@@ -51,6 +51,23 @@ const DEFAULT_CONFIG: FileWatcherConfig = {
   maxWaitTimeMs: 5000,
 }
 
+/**
+ * 传给 @parcel/watcher 的忽略规则
+ *
+ * 该库的 ignore 只接受 glob 字符串，正则会在下方被静默丢弃；
+ * 因此依赖目录必须在这里以 glob 形式再声明一次，否则 node_modules / .git 等
+ * 会被整棵遍历，切换工作区时建立监听会明显卡顿。
+ */
+const WATCHER_IGNORED_GLOBS = [
+  '**/node_modules/**',
+  '**/.git/**',
+  '**/dist/**',
+  '**/build/**',
+  `**/${BRAND.dirName}/**`,
+  '**/*.tmp',
+  '**/*.temp',
+]
+
 const watcherEntries = new Map<string, WatcherEntry>()
 
 /**
@@ -145,8 +162,11 @@ export async function setupFileWatcher(
     maxWaitTimeMs: mergedConfig.maxWaitTimeMs,
   })
 
+  // @parcel/watcher 的 ignore 只认 glob 字符串，正则在此会被静默丢弃。
+  // 必须显式传入 glob 忽略项，否则 node_modules / .git 等会被整棵遍历。
+  const extraGlobs = mergedConfig.ignored.filter((p): p is string => typeof p === 'string')
   const watcherOptions: watcher.Options = {
-    ignore: mergedConfig.ignored.filter((p): p is string => typeof p === 'string'),
+    ignore: Array.from(new Set([...WATCHER_IGNORED_GLOBS, ...extraGlobs])),
     backend: getBackend(),
   }
 

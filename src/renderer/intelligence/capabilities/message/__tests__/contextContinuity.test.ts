@@ -232,3 +232,80 @@ describe('消息组装保留上一条助手提问', () => {
     expect(assembled.messages.filter(m => m.role === 'user')).toHaveLength(2)
   })
 })
+
+describe('选项交互的回答衔接', () => {
+  /** 一条带选项的助手消息：提问走 ask_user，正文为空，选项在 interactive 上 */
+  const ASSISTANT_OPTIONS = {
+    id: 'a2',
+    role: 'assistant',
+    content: '',
+    timestamp: 2,
+    isStreaming: false,
+    parts: [],
+    toolCalls: [],
+    interactive: {
+      type: 'interactive',
+      question: '这次想先做哪个模块？',
+      options: [
+        { id: 'auth', label: '账号体系' },
+        { id: 'order', label: '订单模块' },
+      ],
+      multiSelect: false,
+    },
+  }
+
+  it('点选单个选项 → 说明里同时带提问原文与选中项', async () => {
+    patchGlobals()
+    const { buildInteractiveSelectionNotice } = await import('@intelligence/utils/pendingQuestionContext')
+
+    const notice = buildInteractiveSelectionNotice(
+      threadWith([USER_REQUEST, ASSISTANT_OPTIONS] as unknown as ChatMessage[]),
+      '订单模块',
+      'zh',
+    )
+
+    expect(notice).toBeTruthy()
+    expect(notice).toContain('这次想先做哪个模块？')
+    expect(notice).toContain('用户选择了：订单模块')
+  })
+
+  it('多选（逗号拼接）→ 命中全部选中项', async () => {
+    patchGlobals()
+    const { buildInteractiveSelectionNotice } = await import('@intelligence/utils/pendingQuestionContext')
+
+    const thread = threadWith([
+      USER_REQUEST,
+      { ...ASSISTANT_OPTIONS, interactive: { ...ASSISTANT_OPTIONS.interactive, multiSelect: true } },
+    ] as unknown as ChatMessage[])
+
+    const notice = buildInteractiveSelectionNotice(thread, '账号体系, 订单模块', 'zh')
+    expect(notice).toContain('账号体系、订单模块')
+  })
+
+  it('自由作答（不在选项内）→ 仍带提问原文，并标注为非选项', async () => {
+    patchGlobals()
+    const { buildInteractiveSelectionNotice } = await import('@intelligence/utils/pendingQuestionContext')
+
+    const notice = buildInteractiveSelectionNotice(
+      threadWith([USER_REQUEST, ASSISTANT_OPTIONS] as unknown as ChatMessage[]),
+      '先把支付接上',
+      'zh',
+    )
+
+    expect(notice).toContain('这次想先做哪个模块？')
+    expect(notice).toContain('不属于上面给出的选项')
+  })
+
+  it('最后一条助手消息不带选项（更早的带）→ 不附加', async () => {
+    patchGlobals()
+    const { buildInteractiveSelectionNotice } = await import('@intelligence/utils/pendingQuestionContext')
+
+    const thread = threadWith([
+      USER_REQUEST,
+      ASSISTANT_OPTIONS,
+      { id: 'a3', role: 'assistant', content: '好的，已开始。', timestamp: 3, parts: [], toolCalls: [] },
+    ] as unknown as ChatMessage[])
+
+    expect(buildInteractiveSelectionNotice(thread, '订单模块', 'zh')).toBeNull()
+  })
+})

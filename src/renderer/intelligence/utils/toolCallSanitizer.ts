@@ -17,8 +17,10 @@ interface LeakTagPattern {
 
 const LEAK_TAG_PATTERNS: LeakTagPattern[] = LEAK_MARKUP_TAGS.map(name => ({
   name,
-  openPattern: new RegExp(`<${name}(?:\\s[^>]*)?>`, 'i'),
-  closePattern: new RegExp(`</${name}>`, 'i'),
+  // 开/闭标签用 g 标志配合 lastIndex 在原串上定位：本文件的两个定位函数在流式期间
+  // 每块都要执行，若每次都对剩余文本 slice 一次，长内容下会退化为平方级。
+  openPattern: new RegExp(`<${name}(?:\\s[^>]*)?>`, 'gi'),
+  closePattern: new RegExp(`</${name}>`, 'gi'),
   // 预编译而非在使用处构造：本函数在流式期间每个内容块都会执行，循环内
   // new RegExp 既重复付出编译成本，也让每次调用产生一批一次性对象。
   blockPattern: new RegExp(`<${name}(?:\\s[^>]*)?>[\\s\\S]*?</${name}>`, 'gi'),
@@ -34,13 +36,12 @@ function locateNextOpeningTag(text: string, startIndex: number): number {
   let nextIndex = -1
 
   for (const spec of LEAK_TAG_PATTERNS) {
-    const slice = text.slice(startIndex)
-    const match = spec.openPattern.exec(slice)
-    if (!match || typeof match.index !== 'number') continue
+    spec.openPattern.lastIndex = startIndex
+    const match = spec.openPattern.exec(text)
+    if (!match) continue
 
-    const absoluteIndex = startIndex + match.index
-    if (nextIndex === -1 || absoluteIndex < nextIndex) {
-      nextIndex = absoluteIndex
+    if (nextIndex === -1 || match.index < nextIndex) {
+      nextIndex = match.index
     }
   }
 
@@ -48,11 +49,10 @@ function locateNextOpeningTag(text: string, startIndex: number): number {
 }
 
 function matchOpeningTag(text: string, startIndex: number): { spec: LeakTagPattern; openTagEnd: number } | null {
-  const slice = text.slice(startIndex)
-
   for (const spec of LEAK_TAG_PATTERNS) {
-    const match = spec.openPattern.exec(slice)
-    if (match && match.index === 0) {
+    spec.openPattern.lastIndex = startIndex
+    const match = spec.openPattern.exec(text)
+    if (match && match.index === startIndex) {
       return {
         spec,
         openTagEnd: startIndex + match[0].length,
@@ -65,6 +65,13 @@ function matchOpeningTag(text: string, startIndex: number): { spec: LeakTagPatte
 
 export function filterToolCallLeakChunk(chunk: string, buffered = ''): ToolLeakSanitizationResult {
   const combined = buffered + chunk
+
+  // 泄漏标记必然以 '<' 起头。流式期间本函数每个内容块都会执行一次，正文里
+  // 连 '<' 都没有时不该为四个标签各跑一轮 [\s\S]* 全量匹配。
+  if (combined.indexOf('<') === -1) {
+    return { visibleText: combined, buffer: '' }
+  }
+
   let visibleText = ''
   let cursor = 0
 
@@ -84,13 +91,14 @@ export function filterToolCallLeakChunk(chunk: string, buffered = ''): ToolLeakS
       continue
     }
 
-    const closingSlice = combined.slice(openTag.openTagEnd)
-    const closeMatch = openTag.spec.closePattern.exec(closingSlice)
-    if (!closeMatch || typeof closeMatch.index !== 'number') {
+    openTag.spec.closePattern.lastIndex = openTag.openTagEnd
+    const closeMatch = openTag.spec.closePattern.exec(combined)
+    if (!closeMatch) {
       return { visibleText, buffer: combined.slice(nextOpenIndex) }
     }
 
-    cursor = openTag.openTagEnd + closeMatch.index + closeMatch[0].length
+    // closeMatch.index 是相对原串的绝对偏移（已在 lastIndex 之后定位）
+    cursor = closeMatch.index + closeMatch[0].length
   }
 
   return { visibleText, buffer: '' }

@@ -227,6 +227,7 @@ export const AGENT_DEFAULTS = {
     'node_modules', '.git', 'dist', 'build', '.next',
     '__pycache__', '.venv', 'venv', '.cache', 'coverage',
     '.nyc_output', 'tmp', 'temp', '.idea', '.vscode',
+    '.history',
   ],
 
   // 多 Agent 协作配置

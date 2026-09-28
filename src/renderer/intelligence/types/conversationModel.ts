@@ -209,6 +209,11 @@ export interface AssistantMessage {
   contextItems?: ContextItem[]
   /** 用户对该消息的反馈（赞/踩），持久化存储，重载后保留 */
   feedback?: MessageFeedback
+  /**
+   * 本轮命中并注入人设的场景角色（角色库）。
+   * 仅展示用途（会话内角色徽章），不参与消息语义。
+   */
+  sceneRole?: { id: string; nameZh: string; icon: string }
   /** 内部标记：文本是否已结束（用于工具调用显示时机） */
   _textFinalized?: boolean
 }

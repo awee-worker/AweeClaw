@@ -48,8 +48,9 @@ import { agentRuntime } from './AgentRuntime'
 import { buildAgentSystemPrompt } from '../prompt-engine/PromptComposer'
 import { collectUntrustedSignal, rememberUntrustedSignal } from '../runtime/untrustedContextTracker'
 import { taskComplexityDetector } from '../capabilities/planning/TaskComplexityDetector'
+import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { buildResumeNotice } from '../utils/resumeContext'
-import { buildPendingQuestionNotice } from '../utils/pendingQuestionContext'
+import { buildInteractiveSelectionNotice, buildPendingQuestionNotice } from '../utils/pendingQuestionContext'
 import { executeMultiAgent, continueMultiAgent, type RunningTask } from './MultiAgentExecution'
 import { useStore } from '@renderer/state'
 import { terminalManager } from '@services/TerminalAdapter'
@@ -98,6 +99,11 @@ export class AgentClass {
       promptTemplateId?: string
       planPhase?: 'planning' | 'executing'
       mentionedSkills?: string[]
+      /**
+       * 子任务显式角色人设（角色库）：由 planExecutor 分派子任务时传入，
+       * 优先级高于主对话的自动匹配结果；不传时走自动匹配
+       */
+      sceneRolePersonaOverride?: string | null
     },
     executionOptions?: {
       threadId?: string
@@ -186,22 +192,31 @@ export class AgentClass {
           ? userMessage
           : userMessage.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map(p => p.text).join('')
 
-        // 两类衔接说明互斥，按优先级取其一（异常中断的续接语义更强）：
+        // 三类衔接说明互斥，按优先级取其一（异常中断的续接语义最强，
+        // 其次是对选项交互的回答，最后才是「要/好/继续」这类简短确认）：
         // 1) 断点续接：上次执行被中断（存在未完成工具调用）
-        // 2) 待确认提问衔接：上次正常结束但留下提问，用户只回「要/好/继续」
+        // 2) 选项交互衔接：AI 用 ask_user 提问后用户点了某个选项，选项文案
+        //    往往只是一个短名词，脱离提问后无法判断回答的是什么
+        // 3) 待确认提问衔接：上次正常结束但留下提问，用户只回「要/好/继续」
         //    —— 该场景下简短回复本身不含信息，一旦上一条助手提问因压缩/交接/
         //    裁剪未进入本次请求，AI 就会「不知道要做什么」。
+        const noticeLanguage = (useStore.getState().language || 'zh') as 'zh' | 'en'
         const resumeNotice = resumeThread ? buildResumeNotice(resumeThread, incomingText) : null
-        const bridgeNotice = resumeNotice
+        const selectionNotice = resumeNotice
           ? null
-          : buildPendingQuestionNotice(resumeThread, incomingText, (useStore.getState().language || 'zh') as 'zh' | 'en')
+          : buildInteractiveSelectionNotice(resumeThread, incomingText, noticeLanguage)
+        const bridgeNotice = resumeNotice || selectionNotice
+          ? null
+          : buildPendingQuestionNotice(resumeThread, incomingText, noticeLanguage)
 
-        const notice = resumeNotice ?? bridgeNotice
+        const notice = resumeNotice ?? selectionNotice ?? bridgeNotice
         if (notice) {
           logger.agent.info(
             resumeNotice
               ? '[Agent] 检测到断点续接请求，已附加续接说明'
-              : '[Agent] 检测到对上一轮提问的简短确认，已附加上下文衔接说明',
+              : selectionNotice
+                ? '[Agent] 检测到对选项交互的回答，已附加上下文衔接说明'
+                : '[Agent] 检测到对上一轮提问的简短确认，已附加上下文衔接说明',
           )
           // 说明只挂到 agentContext，不再拼进用户消息本身：
           // 拼接会让这段脚手架文案显示在用户气泡里、被截取成会话标题，还会随历史
@@ -290,7 +305,7 @@ export class AgentClass {
       // 暂存本轮信号：记忆写入等旁路动作拿不到消息数组，只能读这里
       rememberUntrustedSignal(untrustedContext)
 
-      const { prompt: systemPrompt, appliedSkills } = await buildAgentSystemPrompt(chatMode, workspacePath, {
+      const { prompt: systemPrompt, appliedSkills, matchedRole } = await buildAgentSystemPrompt(chatMode, workspacePath, {
         ...promptOptions,
         mentionedSkills: mentionedSkills.length > 0 ? mentionedSkills : undefined,
         userMessage: userMsgText,
@@ -298,6 +313,11 @@ export class AgentClass {
         isChannel: executionOptions?.isChannel,
         untrustedContext,
       })
+
+      // 场景角色徽章：本轮命中角色时标记到助手消息（仅展示，不影响消息语义）
+      if (matchedRole) {
+        store.addSceneRoleToMessage(assistantId, matchedRole, threadId)
+      }
 
       // 提前提取，避免后续重复声明
       const userQueryText = userMsgText
@@ -311,7 +331,10 @@ export class AgentClass {
       }
 
       // ===== 多 Agent 协作路由 =====
-      const complexityResult = taskComplexityDetector.analyze(userQueryText)
+      // 传入当前场景模式：叠加该场景的领域关键词表，使非开发场景的复合任务
+      // 也能被正确判定为多角色任务（建议角色直接落到角色库 id）
+      const currentScene = useSceneModeStore.getState().currentSceneMode
+      const complexityResult = taskComplexityDetector.analyze(userQueryText, currentScene)
 
       // 多 Agent 路径不走消息组装管线（task 直接作为任务描述交给编排器），
       // 因此衔接说明需要在此显式拼上，否则「继续」类短消息会丢失续接语义。
@@ -363,7 +386,9 @@ export class AgentClass {
           assistantId,
           requestId,
           { enabled: true, mode: 'always', threshold: 0, requireConsensus: true, maxAgents: 6 },
-          this.runningTasks
+          this.runningTasks,
+          // 复杂度检测的建议角色：作为规划时的优先项，让团队位置与角色库对齐
+          complexityResult.suggestedRoles
         )
 
         return { threadId, assistantId, requestId }

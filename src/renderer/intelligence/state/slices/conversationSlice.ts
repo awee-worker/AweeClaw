@@ -101,6 +101,8 @@ export interface MessageActions {
 
     // 上下文操作
     addSkillsToMessage: (messageId: string, skills: { name: string; description: string }[], targetThreadId?: string) => void
+    /** 标记助手消息命中的场景角色（角色徽章展示） */
+    addSceneRoleToMessage: (messageId: string, role: { id: string; nameZh: string; icon: string }, targetThreadId?: string) => void
     addContextItem: (item: ContextItem, targetThreadId?: string) => void
     removeContextItem: (index: number, targetThreadId?: string) => void
     clearContextItems: (targetThreadId?: string) => void
@@ -1500,6 +1502,29 @@ export const createMessageSlice: StateCreator<
             return {
                 threadMessageVersions: bumpThreadMessageVersion(state.threadMessageVersions, threadId!),
                 threads: { ...state.threads, [threadId!]: { ...thread, messages } }
+            }
+        })
+    },
+
+    // 标记助手消息命中的场景角色（角色库徽章）
+    addSceneRoleToMessage: (messageId, role, targetThreadId) => {
+        const threadId = targetThreadId || get().currentThreadId
+        if (!threadId) return
+
+        set(state => {
+            const thread = state.threads[threadId]
+            if (!thread) return state
+
+            const messages = thread.messages.map(msg => {
+                if (msg.id !== messageId || msg.role !== 'assistant') return msg
+                const aMsg = msg as AssistantMessage
+                if (aMsg.sceneRole?.id === role.id) return msg
+                return { ...aMsg, sceneRole: role }
+            })
+
+            return {
+                threadMessageVersions: bumpThreadMessageVersion(state.threadMessageVersions, threadId),
+                threads: { ...state.threads, [threadId]: { ...thread, messages } }
             }
         })
     },

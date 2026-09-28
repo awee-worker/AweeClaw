@@ -256,6 +256,21 @@ export function commitWorkspaceShell(shellState: WorkspaceShellState): void {
   setFiles(shellState.files)
 }
 
+/**
+ * MCP 初始化串行队列
+ *
+ * 工作区切换不再等待 MCP 初始化，用户可能在上一轮尚未结束时再次切换；
+ * 用一条链把初始化按序串起来，避免两轮初始化并发操作同一批服务器进程。
+ */
+let mcpInitChain: Promise<void> = Promise.resolve()
+
+function scheduleMcpInitialize(workspaceRoots: string[]): void {
+  const run = () => mcpService.initialize(workspaceRoots)
+  mcpInitChain = mcpInitChain.then(run, run).catch(err => {
+    logger.system.warn('[WorkspaceLoad] Background MCP initialization failed:', err)
+  })
+}
+
 export async function initializeWorkspaceServices(
   workspace: WorkspaceConfig,
   options: WorkspaceLoadOptions = {}
@@ -265,12 +280,15 @@ export async function initializeWorkspaceServices(
     initializeMcp: shouldInitializeMcp = true,
   } = options
 
-  if (shouldRehydrateAgentStore) {
-    await restoreWorkspaceAgentStore()
+  // MCP 初始化需要逐个拉起外部进程，耗时不可控，且只影响工具可用性。
+  // 放到后台串行执行：不阻塞工作区切换返回，失败只记录日志，不回滚整个切换。
+  if (shouldInitializeMcp) {
+    scheduleMcpInitialize(workspace.roots)
   }
 
-  if (shouldInitializeMcp) {
-    await mcpService.initialize(workspace.roots)
+  // 历史会话是进入工作区后立刻要看的内容，保持等待
+  if (shouldRehydrateAgentStore) {
+    await restoreWorkspaceAgentStore()
   }
 }
 
@@ -279,7 +297,11 @@ export async function loadWorkspace(
   options: WorkspaceLoadOptions = {}
 ): Promise<void> {
   const shellState = await prepareWorkspaceShell(workspace)
+
+  // 先把工作区与文件树提交到 store：标题栏与文件树立即切换到新工作区，
+  // 不再等待存储引擎初始化、会话恢复与 MCP 启动这些耗时操作
+  commitWorkspaceShell(shellState)
+
   await bindWorkspaceRoot(shellState)
   await initializeWorkspaceServices(workspace, options)
-  commitWorkspaceShell(shellState)
 }

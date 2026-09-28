@@ -410,9 +410,11 @@ async function executeToolCall(
       context
     )
 
-    if (result.success) {
+    // 命令/脚本跑完但报错属于业务结果，不算工具调用失败：把真实输出交给子智能体
+    const callFailed = result.callFailed ?? !result.success
+    if (!callFailed) {
       const output = typeof result.result === 'string' ? result.result : JSON.stringify(result.result)
-      logger.agent.info(`[AgentSubLoop] Tool ${toolCall.name} executed successfully`)
+      logger.agent.info(`[AgentSubLoop] Tool ${toolCall.name} executed`)
       return {
         role: 'tool',
         content: clampToolOutput(output) || 'Tool executed successfully (no output)',

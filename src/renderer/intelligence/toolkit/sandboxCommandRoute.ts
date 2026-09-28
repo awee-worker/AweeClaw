@@ -65,6 +65,9 @@ function buildSandboxResult(command: string, cwd: string, result: SandboxRunResu
 
   return {
     success: result.success,
+    // 沙箱拒绝执行 → 命令根本没跑起来，属于工具调用失败；
+    // 跑过了但退出码非零 → 业务结果，不算工具失败。
+    callFailed: result.refused === true,
     result: text,
     error: result.success ? undefined : text,
     meta: {

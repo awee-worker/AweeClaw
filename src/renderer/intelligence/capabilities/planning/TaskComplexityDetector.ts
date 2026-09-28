@@ -85,6 +85,32 @@ const DOMAIN_KEYWORDS: Record<string, { keywords: RegExp; role: string }> = {
   devops: { keywords: /部署|ci\/cd|docker|k8s|流水线|自动化|监控/, role: 'developer' },
 }
 
+// 场景化领域关键词：按场景补充，检测时只加载当前场景的词表（与开发向词表合并使用）。
+// role 指向角色库 id（planBuilder / taskExecutor 解析），开发向词表维持原模板 id。
+const SCENE_DOMAIN_KEYWORDS: Record<string, Record<string, { keywords: RegExp; role: string }>> = {
+  work: {
+    dataAnalysis: { keywords: /excel|报表|指标|统计算法|数据分析|台区/, role: 'work.data-analyst' },
+    docWriting: { keywords: /方案|报告|汇报|周报|文档/, role: 'work.doc-writer' },
+    meeting: { keywords: /会议|纪要|议题|行动项/, role: 'work.meeting-scribe' },
+    projectPlan: { keywords: /排期|拆任务|里程碑|跟进/, role: 'work.project-manager' },
+    // 以下与开发向基础表同名：命中时用角色库 id，避免同一领域既给出模板 id 又给出角色 id
+    architecture: { keywords: /架构设计|系统设计|模块划分|技术选型|服务拆分/, role: 'work.architect' },
+    frontend: { keywords: /前端|页面|组件|样式|浏览器兼容/, role: 'work.frontend-engineer' },
+    backend: { keywords: /后端|服务端|接口设计|并发|数据库/, role: 'work.backend-engineer' },
+    testing: { keywords: /测试用例|回归测试|覆盖率|缺陷复现/, role: 'work.qa-engineer' },
+  },
+  life: {
+    travelPlan: { keywords: /出行|路线|行程|旅游/, role: 'life.travel-planner' },
+    familyAffairs: { keywords: /生日|纪念日|聚会|家庭/, role: 'life.family-scheduler' },
+    healthTrack: { keywords: /作息|饮水|久坐|睡眠计划/, role: 'life.health-coach' },
+  },
+  study: {
+    knowledgeMap: { keywords: /知识点|知识体系|梳理|概念关系/, role: 'study.knowledge-mapper' },
+    quizMaking: { keywords: /出题|闪卡|自测|背诵/, role: 'study.flashcard-maker' },
+    reviewPlan: { keywords: /复习计划|学习计划|备考/, role: 'study.plan-coach' },
+  },
+}
+
 // 特殊高复杂度关键词
 const SPECIAL_KEYWORDS = [
   { pattern: /从零开始|从零搭建|全新项目|初始化项目/, score: 15, feature: '从零搭建' },
@@ -124,8 +150,11 @@ export class TaskComplexityDetector {
 
   /**
    * 分析任务复杂度
+   * @param task 任务描述
+   * @param sceneMode 当前场景模式（可选）：传入时叠加该场景的领域关键词表，
+   *        使工作/生活/学习场景的复合任务也能被正确判定为多角色任务
    */
-  analyze(task: string): ComplexityScore {
+  analyze(task: string, sceneMode?: string): ComplexityScore {
     const trimmed = task.trim()
     if (!trimmed) {
       return this.createScore(
@@ -163,7 +192,7 @@ export class TaskComplexityDetector {
     if (lengthResult.feature) features.push(lengthResult.feature)
 
     // 3. 领域交叉检测
-    const domainResult = this.detectDomainCrossing(trimmed, suggestedRoles)
+    const domainResult = this.detectDomainCrossing(trimmed, suggestedRoles, sceneMode)
     if (domainResult.feature) features.push(domainResult.feature)
 
     // 4. 文件范围检测
@@ -264,14 +293,29 @@ export class TaskComplexityDetector {
 
   private detectDomainCrossing(
     task: string,
-    suggestedRoles: Set<string>
+    suggestedRoles: Set<string>,
+    sceneMode?: string
   ): { score: number; feature: string } {
     const matchedDomains: string[] = []
 
-    for (const [domain, config] of Object.entries(DOMAIN_KEYWORDS)) {
-      if (config.keywords.test(task)) {
-        matchedDomains.push(domain)
-        suggestedRoles.add(config.role)
+    // 场景表优先：同名域以场景表为准（其 role 指向角色库，比模板 id 更有注入价值），
+    // 其余域仍走开发向基础表。未传 sceneMode 时行为与改动前一致。
+    const sceneTable = sceneMode ? SCENE_DOMAIN_KEYWORDS[sceneMode] : undefined
+    const sceneDomains = new Set(sceneTable ? Object.keys(sceneTable) : [])
+    const keywordTables: Array<Record<string, { keywords: RegExp; role: string }>> = []
+    if (sceneTable) keywordTables.push(sceneTable)
+    keywordTables.push(
+      sceneDomains.size > 0
+        ? Object.fromEntries(Object.entries(DOMAIN_KEYWORDS).filter(([domain]) => !sceneDomains.has(domain)))
+        : DOMAIN_KEYWORDS
+    )
+
+    for (const table of keywordTables) {
+      for (const [domain, config] of Object.entries(table)) {
+        if (config.keywords.test(task)) {
+          matchedDomains.push(domain)
+          suggestedRoles.add(config.role)
+        }
       }
     }
 

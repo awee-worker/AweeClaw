@@ -1089,56 +1089,6 @@ export class TerminalManagerClass {
     return this.state.terminals.some(t => t.id === id);
   }
 
-  /**
-   * 检查指定终端是否有正在执行的 agent 命令
-   *
-   * 用于 terminalWatcher 判断是否需要主动结束出错的命令。
-   * 仅 'queued' / 'running' 状态视为活动，已结束的命令返回 false。
-   */
-  hasActiveAgentCommand(terminalId: string): boolean {
-    const session = this.currentCommandSessions.get(terminalId)
-    if (!session) return false
-    return session.status === 'queued' || session.status === 'running'
-  }
-
-  /**
-   * 主动结束指定终端的活动命令执行（错误检测场景）
-   *
-   * 当 terminalWatcher 检测到命令输出中包含明确的错误关键字（npm ERR!、Error: 等）时，
-   * 调用此方法立即结束命令执行，将已捕获的输出作为错误结果返回给 AI。
-   *
-   * 设计要点：
-   * 1. 仅结束活动命令，不影响空闲终端
-   * 2. 不发送 Ctrl+C（命令可能已自行出错，无需中断进程；避免破坏终端状态）
-   * 3. finalStatus 设为 'failed'，让 run_command 正确返回错误给 AI
-   * 4. 优先使用命令会话的 partialOutput（命令级输出），避免混入命令前的历史输出
-   *    fallback 到 getOutputPreview（终端级）以防 partialOutput 为空
-   *
-   * @param terminalId 终端 ID
-   * @returns 是否成功结束（false 表示无活动命令或已结束）
-   */
-  finalizeActiveCommandOnError(terminalId: string): boolean {
-    const execution = this.activeExecutions.get(terminalId)
-    if (!execution) return false
-
-    // 优先使用命令会话的 partialOutput（命令级输出，不含命令前的历史）
-    // fallback 到终端级 getOutputPreview，确保极端情况下也有输出可用
-    const session = this.currentCommandSessions.get(terminalId)
-    const sessionOutput = session?.partialOutput || session?.output || ''
-    const partialOutput = sessionOutput || this.getOutputPreview(terminalId, 200, 16000) || ''
-
-    execution.finalize('error_detected', {
-      finalStatus: 'failed',
-      exitCode: 1,
-      output: partialOutput,
-      partialOutput,
-      sentinelMatched: false,
-    })
-
-    return true
-  }
-
-
   setActiveTerminal(id: string | null) {
     // 验证终端是否存在，不存在则静默忽略（终端可能已被手动关闭）
     if (id !== null && !this.state.terminals.find(t => t.id === id)) {

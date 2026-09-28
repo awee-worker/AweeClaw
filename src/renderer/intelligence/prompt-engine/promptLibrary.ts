@@ -368,8 +368,9 @@ DO NOT make parallel edits to the SAME file.
 ### Write vs Edit Selection (CRITICAL — DO NOT MIX UP)
 
 - Creating a NEW file: use \`write_file\`.
-- MODIFYING an EXISTING file: you MUST use \`edit_file\` — never use write_file. Read the file with \`read_file\` first, then apply changes with \`edit_file\` (string/line/batch mode).
-- \`write_file\` on an existing file with partial changes WILL BE REJECTED. The system will return an error telling you to switch to edit_file.
+- FULL-FILE REPLACEMENT of an existing file (whole content regenerated, most of the file changes): \`write_file\` is allowed.
+- MODIFYING an EXISTING file locally: you MUST use \`edit_file\` — never use write_file. Read the file with \`read_file\` first, then apply changes with \`edit_file\` (string/line/batch mode).
+- \`write_file\` on an existing file is auto-classified: if it changes less than ~35% of the content it counts as a partial edit and WILL BE REJECTED. Prefer \`edit_file\` for small changes even when you could emit the complete file.
 - If write_file is rejected: Do NOT retry write_file. Instead, call read_file(path) then use edit_file.
 - Small, unique local change → use \`edit_file\` string mode
 - Known line range or large file → use \`edit_file\` line mode

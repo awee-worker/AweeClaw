@@ -19,7 +19,7 @@ import {
     type PlanTaskArg,
     type PlanEdgeArg,
 } from './planBuilder'
-import { validatePath, isSensitivePath, platform, getDirname, getFileName, extractExtension, isDirectoryTargetPath, normalizePath, resolveToolPathInput } from '@shared/toolkit/pathHelper'
+import { validatePath, isSensitivePath, platform, getDirname, getFileName, extractExtension, isDirectoryTargetPath, normalizePath, resolveToolPathInput, toRelativePath } from '@shared/toolkit/pathHelper'
 import { pathToLspUri } from '@shared/toolkit/uriHelper'
 import { waitForDiagnostics, isLanguageSupported, getLanguageId, didOpenDocument } from '@services/languageServerAdapter'
 import { checkAutomationTaskQuota } from '@services/quotaUsage'
@@ -690,33 +690,111 @@ function joinPath(basePath: string, ...parts: string[]): string {
     return [trimmedBase, ...trimmedParts].join(sep)
 }
 
+/** .history 备份根目录名（位于工作区根目录下，保持原始目录结构） */
+const HISTORY_DIR_NAME = '.history'
+
+/** 单个目录快照的文件数量上限：防止超大目录在删除前的备份拖垮主流程 */
+const HISTORY_BACKUP_MAX_FILES = 500
+
+/** 生成备份文件时间戳后缀（本地时间，14 位：yyyyMMddHHmmss） */
+function buildBackupTimestamp(): string {
+    const d = new Date()
+    const pad = (n: number, len = 2) => String(n).padStart(len, '0')
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+}
+
 /**
- * 备份文件到 .history 目录（仅路径操作，不传输内容，零 Token 消耗）
- * 格式：{workspacePath}/.history/{basename}_{timestamp}{ext}
- * 例如：src/main.ts → .history/main_20260825110301.ts
+ * 计算某路径的备份落点（工作区根 .history 下、保持相对目录结构）
+ *
+ * 规则：{workspacePath}/.history/{相对目录}/{文件名}_{时间戳}{扩展名}
+ * 例如：{ws}/src/utils/a.ts → {ws}/.history/src/utils/a_20260928184400.ts
+ *
+ * 返回 null 表示该路径不应备份：
+ * - 不在工作区内（相对路径无法换算）
+ * - 已经位于 .history 目录内（避免备份被再次备份而无限套娃）
  */
-async function backupFile(filePath: string): Promise<void> {
+function resolveBackupPath(filePath: string, workspacePath: string | null): { backupPath: string; backupDir: string } | null {
+    if (!filePath || !workspacePath) return null
+    const relative = toRelativePath(filePath, workspacePath)
+    // 未落在工作区内时 toRelativePath 会原样返回绝对路径，据此判定越界
+    if (!relative || relative === filePath) return null
+
+    const relNorm = relative.replace(/[\\/]+/g, '/').replace(/^\/+/, '').replace(/\/+$/, '')
+    if (!relNorm) return null
+    const segments = relNorm.split('/')
+    if (segments.includes(HISTORY_DIR_NAME)) return null
+
+    const fileName = segments[segments.length - 1]
+    const dotIdx = fileName.lastIndexOf('.')
+    const namePart = dotIdx > 0 ? fileName.slice(0, dotIdx) : fileName
+    const extPart = dotIdx > 0 ? fileName.slice(dotIdx) : ''
+    const backupName = `${namePart}_${buildBackupTimestamp()}${extPart}`
+
+    const historyRoot = joinPath(workspacePath, HISTORY_DIR_NAME)
+    const dirSegments = segments.slice(0, -1)
+    const backupDir = dirSegments.length > 0 ? joinPath(historyRoot, ...dirSegments) : historyRoot
+    return { backupPath: joinPath(backupDir, backupName), backupDir }
+}
+
+/**
+ * 备份单个文件到工作区根 .history 目录（保持目录结构，零 Token 消耗）
+ */
+async function backupFile(filePath: string, workspacePath: string | null): Promise<void> {
     try {
-        if (!filePath) return
-        const norm = filePath.replace(/[\\/]+/g, '/').replace(/\/+$/, '')
-        const historyDir = joinPath(getDirname(norm), '.history')
-        const normWs = (norm || '').replace(/[\\/]+/g, '/').replace(/\/+$/, '')
-        if (!normWs || !historyDir.startsWith(normWs + '/') && historyDir !== normWs) return
-        await api.file.ensureDir(historyDir)
-        const fileName = norm.split('/').pop()!
-        const dotIdx = fileName.lastIndexOf('.')
-        const namePart = dotIdx > 0 ? fileName.slice(0, dotIdx) : fileName
-        const extPart = dotIdx > 0 ? fileName.slice(dotIdx) : ''
-        const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
-        const backupName = `${namePart}_${timestamp}${extPart}`
-        const backupPath = joinPath(historyDir, backupName)
-        const content = await api.file.read(norm)
-        if (content !== null && content !== undefined) {
-            await api.file.write(backupPath, content)
-        }
+        const target = resolveBackupPath(filePath, workspacePath)
+        if (!target) return
+        const content = await api.file.read(filePath)
+        if (content === null || content === undefined) return
+        await api.file.ensureDir(target.backupDir)
+        await api.file.write(target.backupPath, content)
     } catch {
         // 备份失败不影响主流程
     }
+}
+
+/**
+ * 递归备份目录内的所有文件（删除目录前保留快照）
+ *
+ * - 保持相对工作区的目录结构，与单文件备份一致
+ * - 受 HISTORY_BACKUP_MAX_FILES 上限约束，超出即停止，避免超大目录拖慢删除
+ */
+async function backupDirectory(
+    dirPath: string,
+    workspacePath: string | null,
+    budget: { remaining: number },
+): Promise<void> {
+    if (budget.remaining <= 0) return
+    const items = await api.file.readDir(dirPath)
+    if (!items) return
+    for (const item of items) {
+        if (budget.remaining <= 0) return
+        if (item.isDirectory) {
+            await backupDirectory(item.path, workspacePath, budget)
+        } else {
+            budget.remaining -= 1
+            await backupFile(item.path, workspacePath)
+        }
+    }
+}
+
+/**
+ * 备份目标（文件或目录）到工作区根 .history 目录
+ *
+ * 编辑 / 覆写 / 删除前的统一入口：文件按单文件备份，目录递归备份其内部文件。
+ * 目录判定走 readDir：能列出条目即为目录。
+ */
+async function backupTarget(targetPath: string, workspacePath: string | null): Promise<void> {
+    if (!targetPath || !workspacePath) return
+    try {
+        const items = await api.file.readDir(targetPath)
+        if (items) {
+            await backupDirectory(targetPath, workspacePath, { remaining: HISTORY_BACKUP_MAX_FILES })
+            return
+        }
+    } catch {
+        // readDir 失败：按普通文件处理
+    }
+    await backupFile(targetPath, workspacePath)
 }
 
 type InlineScriptRuntime = 'python' | 'node' | 'powershell' | 'sh'
@@ -822,6 +900,7 @@ async function runInlineScriptViaTempFile(
 
         return {
             success: result.success,
+            callFailed: false,
             result: resultText,
             error: result.success ? undefined : (result.error || resultText),
             meta: {
@@ -864,6 +943,7 @@ async function runInlineScriptViaTempFile(
 
         return {
             success: !!execResult.success,
+            callFailed: false,
             result: resultText,
             error: execResult.success ? undefined : (execResult.error || resultText),
             meta: {
@@ -947,6 +1027,7 @@ async function tryRunPythonFile(
 
     return {
         success: result.success,
+        callFailed: false,
         result: resultText,
         error: result.success ? undefined : (result.error || resultText),
         meta: {
@@ -1496,8 +1577,8 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 发送文件正在编写事件，触发自动打开预览
         EventBus.emit({ type: 'file:writing', filePath: path, workspacePath: ctx.workspacePath || '' })
 
-        // 备份原文件到 .history（不传内容给 AI，零 Token 消耗）
-        await backupFile(path)
+        // 备份原文件到工作区根 .history（保持目录结构，不传内容给 AI，零 Token 消耗）
+        await backupFile(path, ctx.workspacePath)
 
         const originalContent = await api.file.read(path)
         if (originalContent === null || originalContent === undefined) return { success: false, result: '', error: `File not found: ${path}. Use write_file to create new files.` }
@@ -1922,8 +2003,8 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 只看内容是否为空会把项目里原有的空文件误判成新建。
         const fileExisted = await api.file.exists(path)
         const originalContent = await api.file.read(path) || ''
-        // 备份原文件到 .history（仅路径操作，不传内容给 AI，零 Token 消耗）
-        if (originalContent) await backupFile(path)
+        // 备份原文件到工作区根 .history（保持目录结构，不传内容给 AI，零 Token 消耗）
+        if (originalContent) await backupFile(path, ctx.workspacePath)
         const writeDecision = guardWriteFile({
             path,
             originalContent,
@@ -2084,6 +2165,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 error: 'Protected directory',
             }
         }
+        // 删除前把目标（文件，或目录内的全部文件）快照到工作区根 .history，便于误删后恢复
+        await backupTarget(path, ctx.workspacePath)
+
         const success = await api.file.delete(path)
         if (success) {
             notifyComposerChange({ filePath: path, workspacePath: ctx.workspacePath || '', oldContent: null, newContent: null, changeType: 'delete', linesAdded: 0, linesRemoved: 0 })
@@ -2235,6 +2319,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 中止结果工厂：统一构造被取消的返回值
         const buildCancelledResult = (partialOutput?: string): ToolExecutionResult => ({
             success: false,
+            callFailed: false,
             result: partialOutput
                 ? `[Command cancelled by user]\n${partialOutput}`
                 : 'Command cancelled by user',
@@ -2534,14 +2619,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 resultText = `[Shell exited while command was running]\n${displayOutput}`
             }
 
-            // 错误检测主动终止：terminalWatcher 检测到错误关键字后主动结束命令
-            // 添加前缀让 AI 明确知道这是因错误被提前终止，而非正常完成
-            if (commandResult.terminationReason === 'error_detected' && displayOutput) {
-                resultText = `[Command terminated due to error detected in output]\n${displayOutput}`
-            }
-
             return {
                 success: commandResult.success,
+                callFailed: false,
                 result: resultText,
                 meta: {
                     command,

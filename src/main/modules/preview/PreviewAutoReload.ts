@@ -40,6 +40,16 @@ const RELOAD_EXTENSIONS = new Set([
 /** 不参与自动刷新的目录名：依赖与版本库，变动频繁且与预览内容无关 */
 const IGNORED_DIRS = new Set(['node_modules', '.git'])
 
+/**
+ * 订阅时必须交给 watcher 的忽略规则
+ *
+ * @parcel/watcher 的 ignore 只接受 glob 字符串，且只在订阅那一刻生效；
+ * 少了它，watcher 会为 node_modules 这类目录逐个建立监听，
+ * 预览目录落在工作区之上时启动监听就要遍历整棵依赖树。
+ * 刻意不忽略 dist / build：预览构建产物时正需要跟踪它们的变化。
+ */
+const IGNORED_GLOBS = ['**/node_modules/**', '**/.git/**']
+
 /** 合并节拍：一次构建会连续产生大量文件事件 */
 const FLUSH_INTERVAL_MS = 180
 
@@ -166,13 +176,17 @@ class PreviewAutoReload {
         if (root.starting) return root.starting
 
         root.starting = watcher
-            .subscribe(root.dir, (err, events) => {
-                if (err) {
-                    logger.system.warn('[PreviewAutoReload] Watch error:', err)
-                    return
-                }
-                this.handleEvents(root, events)
-            })
+            .subscribe(
+                root.dir,
+                (err, events) => {
+                    if (err) {
+                        logger.system.warn('[PreviewAutoReload] Watch error:', err)
+                        return
+                    }
+                    this.handleEvents(root, events)
+                },
+                { ignore: IGNORED_GLOBS },
+            )
             .then((subscription) => {
                 root.subscription = subscription
                 root.starting = null

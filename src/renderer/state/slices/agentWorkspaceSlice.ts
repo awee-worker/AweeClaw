@@ -32,6 +32,8 @@ export interface WorkspaceAgent {
   name: string
   icon: string
   role: 'pm' | 'architect' | 'frontend' | 'backend' | 'designer' | 'tester' | 'devops' | 'analyst' | 'custom'
+  /** 角色库角色 id：团队协作中该智能体对应的角色库角色（未命中时不设） */
+  roleId?: string
   status: 'waiting' | 'working' | 'completed' | 'failed' | 'moving'
   taskDescription: string
   scope: string

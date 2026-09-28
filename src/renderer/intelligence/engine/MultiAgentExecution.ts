@@ -16,10 +16,18 @@ import { useAgentStore } from '../state/IntelligenceStore'
 import { useStore } from '@renderer/state'
 import type { WorkspaceAgent } from '@renderer/state/slices/agentWorkspaceSlice'
 import type { LLMConfig } from '@intelligence/providerTypes'
-import { smartOrchestrator, extractFilesFromOutput, type ExtractedFile, type AgentProgressEvent } from '../multiAgent/SmartOrchestrator'
+import { smartOrchestrator, extractFilesFromOutput, type ExtractedFile, type AgentProgressEvent, type SmartAgentDef } from '../multiAgent/SmartOrchestrator'
 import { runAgentSubLoop, renderSubAgentResult } from '../multiAgent/AgentSubLoop'
 import { TeamCollaborationProtocol } from '../multiAgent/TeamCollaborationProtocol'
 import { playNotificationSound } from '@utils/notificationSound'
+import {
+  getTeamRoleCandidates,
+  buildTeamRoleBriefing,
+  resolveTeamRoleForAgent,
+  buildTeamRolePersona,
+  type TeamRoleCandidate,
+} from '../capabilities/role/teamRoleResolver'
+import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { agentHarness } from '../harness'
 import { EventBus } from './EventDispatcher'
 import { scheduleAutoResume, resetAutoResumeCounter } from './autoResume'
@@ -365,6 +373,67 @@ const ROLE_ALTERNATIVES: Record<string, WorkspaceAgent['role'][]> = {
   custom: [],
 }
 
+/**
+ * 角色库角色 id → 工作台枚举角色
+ *
+ * 只登记职责明确、枚举里有对应项的角色；未登记的角色走名称关键词兜底，
+ * 仍无对应项时用 custom（工作台有默认表现，不影响执行）。
+ */
+const LIBRARY_ROLE_ID_MAP: Record<string, WorkspaceAgent['role']> = {
+  'work.architect': 'architect',
+  'work.frontend-engineer': 'frontend',
+  'work.backend-engineer': 'backend',
+  'work.qa-engineer': 'tester',
+  'work.data-analyst': 'analyst',
+  'work.code-reviewer': 'analyst',
+  'work.project-manager': 'pm',
+}
+
+/** 名称关键词兜底（含中英），用于用户自建角色的近似归类 */
+const LIBRARY_ROLE_NAME_HINTS: Array<{ pattern: RegExp; role: WorkspaceAgent['role'] }> = [
+  { pattern: /architect|架构/, role: 'architect' },
+  { pattern: /frontend|前端/, role: 'frontend' },
+  { pattern: /backend|服务端|后端/, role: 'backend' },
+  { pattern: /designer|设计|视觉/, role: 'designer' },
+  { pattern: /qa|test|测试/, role: 'tester' },
+  { pattern: /devops|deploy|运维|部署/, role: 'devops' },
+  { pattern: /review|审查|analyst|数据|分析/, role: 'analyst' },
+  { pattern: /manager|项目管理|排期/, role: 'pm' },
+]
+
+function mapLibraryRoleToWorkspaceRole(role: TeamRoleCandidate): WorkspaceAgent['role'] {
+  const exact = LIBRARY_ROLE_ID_MAP[role.id]
+  if (exact) return exact
+  const key = `${role.name} ${role.nameZh}`.toLowerCase()
+  return LIBRARY_ROLE_NAME_HINTS.find(h => h.pattern.test(key))?.role ?? 'custom'
+}
+
+/**
+ * 角色回填：规划产出的智能体若能对上角色库角色，就采用角色的命名与人设。
+ *
+ * 角色库无对应项时保持规划器自行发明的角色，行为与改动前一致；
+ * 同名角色在同一团队内不重复回填（去重逻辑仍按工作台枚举执行）。
+ */
+function applyTeamRoles(agents: SmartAgentDef[], candidates: TeamRoleCandidate[]): Map<string, TeamRoleCandidate> {
+  const hits = new Map<string, TeamRoleCandidate>()
+  if (candidates.length === 0) return hits
+
+  const lang = useStore.getState().language || 'zh'
+  for (const agent of agents) {
+    const role = resolveTeamRoleForAgent({ id: agent.id, name: agent.name, roleId: agent.roleId }, candidates)
+    if (!role) {
+      // 候选清单是角色库的唯一权威来源：不在清单内的 roleId 属于模型编造，清掉以免误导下游
+      agent.roleId = undefined
+      continue
+    }
+    hits.set(agent.id, role)
+    agent.roleId = role.id
+    agent.name = lang === 'zh' ? role.nameZh : role.name
+    agent.systemPrompt = `${agent.systemPrompt}\n\n${buildTeamRolePersona(role)}`
+  }
+  return hits
+}
+
 function deduplicateRoles(agents: WorkspaceAgent[]): WorkspaceAgent[] {
   const seenRoles = new Set<WorkspaceAgent['role']>()
   return agents.map(agent => {
@@ -400,7 +469,9 @@ export async function executeMultiAgent(
   assistantId: string,
   requestId: string,
   _multiAgentConfig: MultiAgentConfig,
-  runningTasks: Map<string, RunningTask>
+  runningTasks: Map<string, RunningTask>,
+  /** 复杂度检测给出的建议角色（角色库 id），作为规划时的优先项 */
+  suggestedRoles: string[] = []
 ): Promise<void> {
   const agentStore = useAgentStore.getState()
   const globalStore = useStore.getState()
@@ -429,7 +500,22 @@ export async function executeMultiAgent(
     agentStore.appendToAssistant(assistantId, '🧠 **多智能体协作已启动**，已切换到智能体工作台查看详情', threadId)
 
     const context = workspacePath ? `Workspace: ${workspacePath}` : ''
-    const plan = await smartOrchestrator.plan(task, context, callLLM)
+
+    // 角色库候选：当前场景启用的角色（含用户自建），供规划器优先选用。
+    // 无候选时注入的提示词不变，团队行为与改动前一致。
+    const sceneMode = useSceneModeStore.getState().currentSceneMode
+    const roleCandidates = getTeamRoleCandidates(sceneMode)
+    const roleBriefing = buildTeamRoleBriefing(roleCandidates, suggestedRoles)
+    if (roleCandidates.length > 0) {
+      logger.agent.info(
+        `[MultiAgentExecution] Role library candidates: ${roleCandidates.length} (scene=${sceneMode}, preferred=${suggestedRoles.join(',') || 'none'})`
+      )
+    }
+
+    const plan = await smartOrchestrator.plan(task, context, callLLM, { roleBriefing })
+
+    // 角色回填：命中角色库的智能体采用角色的命名与人设，未命中保持规划器原样
+    const roleHits = applyTeamRoles(plan.agents, roleCandidates)
 
     const projectName = plan.projectName
       .replace(/[^a-zA-Z0-9_-]/g, '-')
@@ -469,12 +555,16 @@ export async function executeMultiAgent(
 
     const workspaceAgents: WorkspaceAgent[] = plan.agents.map(a => {
       const idLower = a.id.toLowerCase()
-      const detectedRole: WorkspaceAgent['role'] = Object.entries(ROLE_MAP).find(([key]) => idLower.includes(key))?.[1] ?? 'custom'
+      const roleHit = roleHits.get(a.id)
+      const detectedRole: WorkspaceAgent['role'] = roleHit
+        ? mapLibraryRoleToWorkspaceRole(roleHit)
+        : Object.entries(ROLE_MAP).find(([key]) => idLower.includes(key))?.[1] ?? 'custom'
       return {
         id: a.id,
         name: a.name,
         icon: a.icon,
         role: detectedRole,
+        roleId: roleHit?.id,
         status: 'waiting' as const,
         taskDescription: a.taskDescription,
         scope: a.scope,

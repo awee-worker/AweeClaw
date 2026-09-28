@@ -20,6 +20,10 @@ export default {
           active: 'rgb(var(--surface-active) / <alpha-value>)',
           muted: 'rgb(var(--surface-muted) / <alpha-value>)',
         },
+        input: {
+          DEFAULT: 'rgb(var(--input-bg) / <alpha-value>)',
+          border: 'rgb(var(--input-border) / <alpha-value>)',
+        },
         border: {
           DEFAULT: 'rgb(var(--border) / <alpha-value>)',
           subtle: 'rgb(var(--border-subtle) / <alpha-value>)',

@@ -468,12 +468,41 @@ export function useSettingsLocalState(embedded: boolean) {
     }
   }, [isDirty, state, finalEditorConfig, set, save])
 
+  /**
+   * 立即提交服务商配置（增删服务商 / 增删模型等结构性变更专用）
+   *
+   * 设置面板其余字段走「先编辑、后保存」，但服务商与模型的增删是用户一次点击就完成的
+   * 结构性操作：如果只落在本地编辑态，用户不点「保存」就离开，改动会丢失 —— 表现在
+   * 「新加的模型回聊天界面看不到」「删掉的服务商下次进来还在」。因此这类操作走这里，
+   * 同步写入 store 并立即持久化。
+   *
+   * @param configs  完整的服务商配置表（调用方已算好最终结果）
+   * @param nextLlmConfig 需要同步切换当前模型配置时传入（例如删除的正是当前服务商）
+   */
+  const commitProviderConfigs = useCallback(
+    async (configs: Record<string, ProviderModelConfig>, nextLlmConfig?: LLMConfig) => {
+      dispatch({ type: 'SET_LOCAL_PROVIDER_CONFIGS', configs })
+      set('providerConfigs', configs)
+      if (nextLlmConfig) {
+        dispatch({ type: 'SET_LOCAL_CONFIG', config: nextLlmConfig })
+        set('llmConfig', nextLlmConfig)
+      }
+      try {
+        await save()
+      } catch (e) {
+        logger.settings.error('[useSettingsLocalState] 服务商配置持久化失败:', e)
+      }
+    },
+    [set, save],
+  )
+
   return {
     state,
     dispatch,
     finalEditorConfig,
     isDirty,
     handleSave,
+    commitProviderConfigs,
     // 语言运行时切换（阶段7 s7-09）
     applyLanguageImmediately,
     // store 相关

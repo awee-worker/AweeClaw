@@ -668,6 +668,11 @@ class ThemeManager {
     root.style.setProperty('--surface-active', colors.surfaceActive)
     root.style.setProperty('--surface-muted', colors.surfaceMuted)
 
+    // 输入框：亮色主题用纯白底 + 主题浅灰描边（亮色的 surface-active 灰调偏重，容易被误读成禁用态）；
+    // 暗色主题抬高底色，并改用中性描边——各暗色主题的 border 与 surface-active 同色或近色，描不出轮廓
+    root.style.setProperty('--input-bg', theme.type === 'light' ? '255 255 255' : colors.surfaceActive)
+    root.style.setProperty('--input-border', theme.type === 'light' ? colors.border : '82 82 91')
+
     root.style.setProperty('--text-primary', colors.textPrimary)
     root.style.setProperty('--text-secondary', colors.textSecondary)
     root.style.setProperty('--text-muted', colors.textMuted)

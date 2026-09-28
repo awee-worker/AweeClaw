@@ -142,6 +142,8 @@ class VectorIndex {
   private lastRebuildAt = 0
   private lastIncrementalUpdateAt = 0
   private autoReindexTimer: ReturnType<typeof setInterval> | null = null
+  /** 自动重建是否进行中：indexEntries 慢于间隔时用它跳过本次触发，避免并发堆积 */
+  private autoReindexRunning = false
   private annIndex: ANNIndex = {
     centroids: [],
     partitions: new Map(),
@@ -419,6 +421,10 @@ class VectorIndex {
     this.stopAutoReindex()
 
     this.autoReindexTimer = setInterval(async () => {
+      // 重建（indexEntries + persist）可能慢于定时器间隔，进行中时直接跳过本次触发，
+      // 否则多轮重建会并发堆积，既浪费算力也会相互覆盖索引状态。
+      if (this.autoReindexRunning) return
+      this.autoReindexRunning = true
       try {
         const entries = await getEntriesFn()
         const staleCount = entries.filter(e => {
@@ -440,6 +446,8 @@ class VectorIndex {
         }
       } catch (err) {
         logger.agent.warn('[VectorIndex] Auto-reindex failed:', err)
+      } finally {
+        this.autoReindexRunning = false
       }
     }, AUTO_REINDEX_INTERVAL_MS)
 

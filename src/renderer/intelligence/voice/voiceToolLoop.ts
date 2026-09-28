@@ -605,7 +605,9 @@ async function executeToolCallInternal(
   try {
     const result = await toolManager.execute(toolCall.name, toolCall.arguments, context)
 
-    if (result.success) {
+    // 命令/脚本跑完但报错属于业务结果，不算工具调用失败：语音链路同样按「已执行」处理
+    const callFailed = result.callFailed ?? !result.success
+    if (!callFailed) {
       const rawOutput = typeof result.result === 'string' ? result.result : JSON.stringify(result.result)
       // 工具结果截断（与普通聊天窗口一致，防止过长输出导致 LLM 上下文溢出）
       const agentConfig = getAgentConfig()

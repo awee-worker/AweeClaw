@@ -6,8 +6,9 @@
  * 1. 一次提交实际花了多久。累计提交耗时若远小于同期的长任务总量，说明主线程
  *    的时间并不在 React 的提交阶段里，继续削减提交次数只会改善观感、不会显著
  *    降低占用 —— 这时该转向分配与 GC。
- * 2. 贵在哪个子树。嵌套探针把「整份消息列表」与「单条助手消息内容」分开记账，
- *    两者的差值就是列表外壳（虚拟滚动容器、条目包装）的成本。
+ * 2. 贵在哪个子树。嵌套探针分三层记账：整份消息列表（messages）、单条时间线条目
+ *    （message-item）、单条助手消息内容（assistant-content）。相邻两层的差值分别
+ *    给出「列表外壳（虚拟滚动容器、条目包装）」与「条目外壳」的成本。
  *
  * ── 为什么开发与生产走两条路 ──
  *
@@ -41,7 +42,7 @@ import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
 const HAS_PROFILER_CALLBACK = import.meta.env.DEV
 
 /** 探针作用域，每个作用域单独记账 */
-export type CommitScope = 'messages' | 'assistant-content'
+export type CommitScope = 'messages' | 'message-item' | 'assistant-content'
 
 interface ScopeCounters {
   /** 该作用域的累计提交耗时计数器键 */
@@ -58,6 +59,7 @@ interface ScopeCounters {
 
 const SCOPE_COUNTERS: Record<CommitScope, ScopeCounters> = {
   messages: { ms: PERF_TRACE_COUNTERS.reactMessagesCommitMs, primary: true },
+  'message-item': { ms: PERF_TRACE_COUNTERS.reactMessageItemCommitMs, primary: false },
   'assistant-content': { ms: PERF_TRACE_COUNTERS.reactAssistantCommitMs, primary: false },
 }
 

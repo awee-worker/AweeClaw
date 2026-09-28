@@ -79,6 +79,8 @@ export const TOOL_CONFIGS: Record<string, ToolConfig> = {
         criticalRules: [
             'For PDF/Word/Excel/PowerPoint files, use extract_document instead — this tool cannot parse binary formats',
             'Do NOT use run_command with pdftotext/python to extract document text — always use extract_document',
+            'Never guess a path: if unsure the file exists, locate it first with list_directory / search_files',
+            'Read before editing — edit_file matches the exact on-disk content, so read_file must come first',
         ],
         customSchema: z.object({
             path: z.union([
@@ -259,10 +261,12 @@ Client-first: local extraction; falls back to server if local fails.`,
     edit_file: {
         name: 'edit_file',
         displayName: 'Edit File',
-        description: `Edit part of an existing file after reading it first. MUST use this tool for modifying existing files — NOT write_file.
+        description: `Edit part of an existing file after reading it first. This is the DEFAULT and ONLY correct tool for locally modifying an existing file — NOT write_file.
 Choose one mode only: string mode (old_string + new_string), line mode (start_line + end_line + content), or batch mode (edits array).
-Never mix modes, never send empty placeholder edits. Use write_file ONLY for creating new files.`,
-        detailedDescription: `PROCEDURE FOR MODIFYING AN EXISTING FILE:
+Never mix modes, never send empty placeholder edits. Use write_file ONLY for creating a new file or regenerating a file in full.`,
+        detailedDescription: `USE THIS TOOL whenever you change part of an existing file — even if the change is large enough that you could emit the whole file. Only switch to write_file when the file is new, or when the content is regenerated in full and most of the file changes (write_file rejects changes under ~35%).
+
+PROCEDURE FOR MODIFYING AN EXISTING FILE:
 1. Call read_file(path="...") to get the current content
 2. Identify the exact text or line range to change
 3. Use edit_file with the appropriate mode:
@@ -279,7 +283,12 @@ AVOID:
 - Do not mix string/line/batch fields in one call
 - Do not include empty placeholder fields
 - Keep old_string concise but unique enough to match exactly one location
-- Prefer line or batch mode for large files or when you have line numbers`,
+- Prefer line or batch mode for large files or when you have line numbers
+
+ON FAILURE:
+- "old_string not found" → the file changed or whitespace differs: call read_file again and copy the exact text, or switch to line mode
+- "multiple matches" → add 2-3 surrounding lines for context, or pass replace_all=true
+- Never fall back to write_file just because edit_file failed — re-read and retry edit_file`,
         customSchema: z.object({
             path: z.string().min(1, 'path is required'),
             old_string: z.string().optional(),
@@ -347,16 +356,19 @@ AVOID:
     write_file: {
         name: 'write_file',
         displayName: 'Write File',
-        description: `Write complete file content. For CREATING NEW files ONLY or intentional full-file replacement.
+        description: `Write complete file content. Use it for CREATING NEW files ONLY, or for regenerating an existing file in full (most of its content changes).
 
-⚠️ CRITICAL: If you are MODIFYING an existing file, you MUST NOT use write_file. Instead, use edit_file:
+⚠️ INTENT IS AUTO-DETECTED on existing files: if your content changes less than ~35% of the original file, the call is classified as a PARTIAL EDIT and REJECTED. For a few-line change, do NOT rewrite the whole file — use edit_file, even though you *can* produce the full content.
+
+If you are MODIFYING an existing file, use edit_file instead:
   1. First call read_file to get the current content
   2. Then use edit_file with old_string/new_string (string mode) OR start_line/end_line/content (line mode) OR edits array (batch mode)
 
-Using write_file on an existing file for partial edits will be REJECTED — the system will return an error telling you to switch to edit_file.`,
+A rejected write_file wastes a full round trip, so choose edit_file up front for local changes.`,
         criticalRules: [
             'Creating a NEW file: use write_file.',
-            'MODIFYING an EXISTING file: you MUST use edit_file, NOT write_file. First read_file, then edit_file.',
+            'Existing file + change under ~35% of its content: write_file is REJECTED as a partial edit — use edit_file instead.',
+            'MODIFYING an EXISTING file locally: you MUST use edit_file, NOT write_file. First read_file, then edit_file.',
             'write_file on an existing file with partial changes WILL BE REJECTED. The error will tell you to use edit_file instead.',
             'If write_file is rejected, do NOT retry write_file — immediately use read_file to get content, then edit_file to make changes.',
             'Prefer over create_file_or_folder when you have file content ready',

@@ -146,15 +146,17 @@ export function guardWriteFile(input: WriteGuardInput): WriteGuardDecision {
       intent: analysis.intent,
       reason:
         `REJECTED: write_file cannot be used to partially modify existing file "${input.path}". ` +
-        `${Math.round(analysis.changedRatio * 100)}% of the file content would change, indicating a partial edit. ` +
+        `${Math.round(analysis.changedRatio * 100)}% of the file content would change, which is below the ` +
+        `${Math.round(PARTIAL_CHANGE_RATIO_THRESHOLD * 100)}% threshold — the system treats it as a partial edit. ` +
         `write_file is ONLY for creating new files or complete full-file replacement.\n\n` +
-        `CORRECT PROCEDURE:\n` +
+        `CORRECT PROCEDURE (do NOT retry write_file, for this file or any other partial change):\n` +
         `1. Call read_file(path="${input.path}") to get the current file content\n` +
         `2. Use edit_file with one of these modes:\n` +
         `   - String mode: {path, old_string: "...", new_string: "..."}  (for small text replacements)\n` +
         `   - Line mode: {path, start_line: N, end_line: M, content: "..."}  (for line-range replacements)\n` +
         `   - Batch mode: {path, edits: [{action, start_line, end_line, content}]}  (for multiple changes)\n` +
-        `3. Do NOT call write_file again for this file`,
+        `3. Do NOT call write_file again for this file. A rejected write_file always wastes a round trip — ` +
+        `for any future local change, go straight to edit_file.`,
       analysis,
     }
   }

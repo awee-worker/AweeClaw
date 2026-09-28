@@ -20,6 +20,7 @@ import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { EventBus } from '../engine/EventDispatcher'
 import { Agent } from '../engine/IntelligenceCore'
+import { setupPlanCompletionReporter } from '../engine/planCompletionReporter'
 import { BRAND } from '@shared/brand'
 import { gitService } from '@services/gitAdapter'
 import { ExecutionScheduler } from './TaskScheduler'
@@ -54,6 +55,12 @@ import {
     type RuntimeStateFile,
     type PersistedSessionMeta,
 } from '../graph/runtimePersistence'
+import { useRoleLibraryStore } from '@renderer/modes/roleLibraryStore'
+import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
+import { buildSceneRolePersonaSection } from '../prompt-engine/PromptComposer'
+import { setPlanRoleResolver, type PlanRoleResolution } from '../toolkit/planBuilder'
+import type { RoleDescriptor } from '../capabilities/role/RoleDescriptor'
+import type { TaskExecutionClass } from '../planner/planTypes'
 
 // ===== Graph Runtime 真实执行器惰性注入 =====
 //
@@ -61,6 +68,87 @@ import {
 // 而在第一次创建动态图 session 时通过 ensureGraphRuntimeInitialized() 注入一次。
 // flag 防止重复注入。
 let graphRuntimeInitialized = false
+
+// ===== 角色库解析接入（设计文档 6.3 改动 1 / 改动 2） =====
+//
+// planBuilder 保持纯函数，角色库查询由此处注册的回调提供：
+// - suggestedRole 命中角色库 id 时回填 role / provider / model / executionClass
+// - 执行期再由 resolveTaskRole 取角色人设注入子任务提示词
+// 未命中或查询异常时静默返回 null，行为与旧版一致。
+let planRoleResolverRegistered = false
+
+/** 按角色职责推断执行类别：分析/审查类读密集，交并发调度避让 */
+function inferExecutionClass(role: RoleDescriptor): TaskExecutionClass | undefined {
+    const id = role.id.toLowerCase()
+    if (id.includes('analyst') || id.includes('review')) return 'analysis-read-heavy'
+    return undefined
+}
+
+/** 惰性注册角色解析回调（避免模块加载期触碰 store，影响单测） */
+function ensurePlanRoleResolverRegistered(): void {
+    if (planRoleResolverRegistered) return
+    planRoleResolverRegistered = true
+    setPlanRoleResolver((suggestedRole: string): PlanRoleResolution | null => {
+        if (!suggestedRole) return null
+        try {
+            const role = useRoleLibraryStore.getState().getRole(suggestedRole)
+            if (!role || !role.enabled) return null
+            return {
+                roleId: role.id,
+                provider: role.modelPreference?.provider || undefined,
+                model: role.modelPreference?.model || undefined,
+                executionClass: inferExecutionClass(role),
+            }
+        } catch {
+            return null
+        }
+    })
+}
+
+/** 按角色引用取启用中的角色（角色库 id 命中才返回，模板 id 返回 undefined） */
+function resolveTaskRole(roleRef: string | undefined): RoleDescriptor | undefined {
+    if (!roleRef) return undefined
+    try {
+        const role = useRoleLibraryStore.getState().getRole(roleRef)
+        if (role && role.enabled) return role
+    } catch {
+        /* 查询失败不阻断执行 */
+    }
+    return undefined
+}
+
+/** 组装子任务角色人设段落：人设 + 技能 + 输出契约 + 边界约束 */
+function buildSubtaskRolePersona(role: RoleDescriptor): string {
+    const base = buildSceneRolePersonaSection(role)
+    const constraints = [
+        '约束：仅使用已授权工具',
+        `记忆域限于 domain:${role.sceneMode} 与 domain:shared`,
+        '不修改其他子任务负责的文件',
+    ].join('；')
+    return `${base}\n${constraints}`
+}
+
+/** coder 任务的复核角色：优先取当前场景/工作场景的 code-reviewer，取不到回退内置 reviewer 模板 */
+function resolveReviewerRoleId(): string {
+    try {
+        const store = useRoleLibraryStore.getState()
+        const scene = useSceneModeStore.getState().currentSceneMode
+        const inScene = store.getEnabledRoles(scene).find(r => r.id.endsWith('.code-reviewer'))
+        if (inScene) return inScene.id
+        const inWork = store.getEnabledRoles('work').find(r => r.id === 'work.code-reviewer')
+        if (inWork) return inWork.id
+    } catch {
+        /* 回退模板 */
+    }
+    return 'reviewer'
+}
+
+// 模块加载即注册（幂等）：规划阶段调用 create_task_plan 时也要能回填角色的 provider/model
+ensurePlanRoleResolverRegistered()
+
+// 计划终态汇总回流（幂等）：plan 完成后把子任务结果派发回主对话，由主 Agent 统一汇报
+setupPlanCompletionReporter()
+
 
 /**
  * 创建 LLM 条件求值器（包装 api.llm.generateObject）
@@ -429,6 +517,9 @@ export async function startPlanExecution(
     planId?: string
 ): Promise<{ success: boolean; message: string }> {
     const store = useAgentStore.getState()
+
+    // 执行期接入角色库解析：suggestedRole 命中角色库时回填 provider/model/executionClass
+    ensurePlanRoleResolverRegistered()
 
     let plan = planId
         ? store.plans.find(p => p.id === planId)
@@ -1040,7 +1131,8 @@ function buildGraphExecutionContext(
             }
             const result = await toolManager.execute(name, args, context)
             return {
-                success: result.success,
+                // 命令/脚本跑完但报错属于业务结果，不算工具调用失败：节点不因此被判失败
+                success: !(result.callFailed ?? !result.success),
                 output: result.result || '',
                 error: result.error,
             }
@@ -1419,6 +1511,11 @@ async function runTaskWithAgent(
         const maxReviewLoops = 3
         let currentLoop = 0
         let currentRole = task.role || 'default'
+        // coder 任务回退用的执行角色引用（复核结束后回到原角色）
+        const coderRoleRef = task.role || 'coder'
+        // 是否处于 reviewer 复核阶段：复核角色可能是角色库 id（如 work.code-reviewer），
+        // 不能用 currentRole !== 'reviewer' 字面量判断
+        let reviewing = false
         let feedbackMessage = buildTaskMessage(task, plan)
         let finalOutput = ''
         let lastAssistantId: string | undefined
@@ -1431,7 +1528,10 @@ async function runTaskWithAgent(
             }
 
             const templateId = mapRoleToTemplateId(currentRole)
-            logger.agent.info(`[PlanExecutor] Emitting subtask. Loop: ${currentLoop}, Role: ${currentRole} (Template: ${templateId})`)
+            // 角色库命中时注入角色人设 + 输出契约；未命中维持模板人设
+            const roleDescriptor = resolveTaskRole(currentRole)
+            const sceneRolePersona = roleDescriptor ? buildSubtaskRolePersona(roleDescriptor) : null
+            logger.agent.info(`[PlanExecutor] Emitting subtask. Loop: ${currentLoop}, Role: ${currentRole} (Template: ${templateId})${roleDescriptor ? ` [role-library: ${roleDescriptor.id}]` : ''}`)
 
             if (session.status !== 'running') {
                 return { success: false, output: '', error: 'aborted', threadId, requestId: activeRequestId }
@@ -1451,6 +1551,7 @@ async function runTaskWithAgent(
                 {
                     promptTemplateId: templateId,
                     planPhase: 'executing',
+                    sceneRolePersonaOverride: sceneRolePersona,
                 },
                 {
                     threadId,
@@ -1497,14 +1598,16 @@ async function runTaskWithAgent(
             finalOutput = result.output
 
             if (isCoderTask) {
-                if (currentRole !== 'reviewer') {
-                    currentRole = 'reviewer'
+                if (!reviewing) {
+                    reviewing = true
+                    currentRole = resolveReviewerRoleId()
                     feedbackMessage = `[System: Reviewer Phase]\nCoder has completed the sequence for task: "${task.title}".\nPlease verify the latest changes. Use reading tools if necessary. If everything is fully correct and meets requirements without regressions, output exactly <LGTM>. Otherwise, point out the exact logical flaws or remaining steps.`
                     currentLoop++
                 } else if (finalOutput.includes('<LGTM>')) {
                     break
                 } else {
-                    currentRole = task.role || 'coder'
+                    reviewing = false
+                    currentRole = coderRoleRef
                     feedbackMessage = `[System: Coder Phase]\nReviewer found issues or missing steps:\n\n${finalOutput}\n\nPlease address these issues and continue working on the task.`
                     currentLoop++
                 }

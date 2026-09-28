@@ -568,6 +568,17 @@ export class SettingsDb {
         this.upsertProviderConfig(id, config, id === currentProviderId)
       }
 
+      // 清理本次未提交的 provider：saveAll 传入的是完整配置表，表里残留的行
+      // 说明用户已在设置里删掉了该服务商。只 upsert 不删除的话，渲染进程下次
+      // 打开设置从数据库读回这份残留数据，表现为「删掉的服务商又回来了」。
+      const submittedIds = Object.keys(configs)
+      if (submittedIds.length > 0) {
+        const placeholders = submittedIds.map(() => '?').join(', ')
+        this.db
+          .prepare(`DELETE FROM provider_config WHERE provider_id NOT IN (${placeholders})`)
+          .run(...submittedIds)
+      }
+
       this.db.prepare('COMMIT').run()
     } catch (err) {
       this.db.prepare('ROLLBACK').run()

@@ -79,7 +79,7 @@ function ModeProfileCard({ profile, isCurrent, onSelect }: {
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-text-muted hover:text-text flex-shrink-0"
+            className="text-text-muted hover:text-text-primary flex-shrink-0"
             aria-label={expanded ? '收起' : '展开'}
           >
             {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -91,8 +91,8 @@ function ModeProfileCard({ profile, isCurrent, onSelect }: {
             <Icon className="w-4 h-4" style={{ color }} />
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-medium text-text truncate">
-              {profile.displayNameZh}
+            <div className="text-sm font-medium text-text-primary truncate">
+              {profile.displayNameZh}助手
               {isCurrent && (
                 <span className="ml-2 text-xs text-accent">当前</span>
               )}
@@ -116,7 +116,7 @@ function ModeProfileCard({ profile, isCurrent, onSelect }: {
           {/* 人设提示词 */}
           <div>
             <div className="text-xs font-medium text-text-muted mb-1">人设提示词</div>
-            <div className="text-xs text-text bg-bg-hover rounded p-2 line-clamp-3">
+            <div className="text-xs text-text-primary bg-surface-hover rounded p-2 line-clamp-3">
               {profile.personaPrompt}
             </div>
           </div>
@@ -128,7 +128,7 @@ function ModeProfileCard({ profile, isCurrent, onSelect }: {
             </div>
             <div className="flex flex-wrap gap-1">
               {profile.modeSkills.map((id) => (
-                <span key={id} className="text-xs bg-bg-hover text-text-muted px-2 py-0.5 rounded">
+                <span key={id} className="text-xs bg-surface-hover text-text-muted px-2 py-0.5 rounded">
                   {id}
                 </span>
               ))}
@@ -144,7 +144,7 @@ function ModeProfileCard({ profile, isCurrent, onSelect }: {
               <div className="space-y-1">
                 {profile.cronJobs.map((job) => (
                   <div key={job.id} className="text-xs text-text-muted flex items-center gap-2">
-                    <code className="bg-bg-hover px-1 rounded">{job.schedule}</code>
+                    <code className="bg-surface-hover px-1 rounded">{job.schedule}</code>
                     <span>{job.name}</span>
                   </div>
                 ))}
@@ -162,7 +162,7 @@ function ModeProfileCard({ profile, isCurrent, onSelect }: {
                 {profile.proactiveRules.map((rule) => (
                   <div key={rule.id} className="text-xs text-text-muted">
                     <span className="font-medium">{rule.name}</span>
-                    <span className="ml-2 text-text-disabled">{rule.condition}</span>
+                    <span className="ml-2 text-text-muted/70">{rule.condition}</span>
                   </div>
                 ))}
               </div>
@@ -180,16 +180,16 @@ function UsageStatsCard({ stats }: { stats: ModeUsageStats }) {
   const total = stats.work + stats.life + stats.study
 
   const modeLabels: Record<SceneMode, string> = {
-    work: '工作',
-    life: '生活',
-    study: '学习',
+    work: '工作助手',
+    life: '生活助手',
+    study: '学习助手',
   }
 
   return (
     <div className="rounded-lg border border-border p-3">
       <div className="flex items-center gap-2 mb-3">
         <TrendingUp className="w-4 h-4 text-accent" />
-        <h3 className="text-sm font-medium text-text">使用统计</h3>
+        <h3 className="text-sm font-medium text-text-primary">使用统计</h3>
       </div>
 
       {total === 0 ? (
@@ -203,12 +203,12 @@ function UsageStatsCard({ stats }: { stats: ModeUsageStats }) {
             return (
               <div key={mode}>
                 <div className="flex justify-between text-xs mb-1">
-                  <span className="text-text">{modeLabels[mode]}</span>
+                  <span className="text-text-primary">{modeLabels[mode]}</span>
                   <span className="text-text-muted">
                     {formatDuration(seconds)} · {percent}%
                   </span>
                 </div>
-                <div className="h-2 bg-bg-hover rounded-full overflow-hidden">
+                <div className="h-2 bg-surface-hover rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-500"
                     style={{ width: `${percent}%`, backgroundColor: color }}
@@ -222,7 +222,7 @@ function UsageStatsCard({ stats }: { stats: ModeUsageStats }) {
 
       <button
         onClick={() => useSceneModeStore.getState().resetModeUsageStats()}
-        className="mt-3 text-xs text-text-muted hover:text-text transition-colors"
+        className="mt-3 text-xs text-text-muted hover:text-text-primary transition-colors"
       >
         重置统计
       </button>
@@ -238,9 +238,9 @@ function DataMigrationCard() {
 
   const modes: SceneMode[] = ['work', 'life', 'study']
   const modeLabels: Record<SceneMode, string> = {
-    work: '工作模式',
-    life: '生活模式',
-    study: '学习模式',
+    work: '工作助手',
+    life: '生活助手',
+    study: '学习助手',
   }
 
   const handleMigrate = async () => {
@@ -270,7 +270,7 @@ function DataMigrationCard() {
     <div className="rounded-lg border border-border p-3">
       <div className="flex items-center gap-2 mb-3">
         <ArrowRightLeft className="w-4 h-4 text-accent" />
-        <h3 className="text-sm font-medium text-text">数据迁移</h3>
+        <h3 className="text-sm font-medium text-text-primary">数据迁移</h3>
       </div>
 
       <div className="text-xs text-text-muted mb-3">
@@ -281,7 +281,7 @@ function DataMigrationCard() {
         <select
           value={sourceMode}
           onChange={(e) => setSourceMode(e.target.value as SceneMode)}
-          className="text-xs bg-bg-hover text-text rounded px-2 py-1 border border-border flex-1"
+          className="text-xs bg-surface-hover text-text-primary rounded px-2 py-1 border border-border flex-1"
         >
           {modes.map((m) => (
             <option key={m} value={m}>{modeLabels[m]}</option>
@@ -293,7 +293,7 @@ function DataMigrationCard() {
         <select
           value={targetMode}
           onChange={(e) => setTargetMode(e.target.value as SceneMode)}
-          className="text-xs bg-bg-hover text-text rounded px-2 py-1 border border-border flex-1"
+          className="text-xs bg-surface-hover text-text-primary rounded px-2 py-1 border border-border flex-1"
         >
           {modes.map((m) => (
             <option key={m} value={m}>{modeLabels[m]}</option>
@@ -405,7 +405,7 @@ function CronManagerCard() {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <CalendarClock className="w-4 h-4 text-accent" />
-          <h3 className="text-sm font-medium text-text">定时任务管理</h3>
+          <h3 className="text-sm font-medium text-text-primary">定时任务管理</h3>
         </div>
         <button
           onClick={() => void handleToggleGlobal(!cronGlobalEnabled)}
@@ -429,7 +429,7 @@ function CronManagerCard() {
       {cronGlobalEnabled && (
         <div className="space-y-2">
           <div className="text-xs text-text-muted mb-1">
-            当前模式：{profile.displayNameZh}（{cronJobs.length} 个任务）
+            当前模式：{profile.displayNameZh}助手（{cronJobs.length} 个任务）
           </div>
           {cronJobs.map((job) => {
             const overrideKey = `${currentSceneMode}:${job.id}`
@@ -441,7 +441,7 @@ function CronManagerCard() {
             return (
               <div
                 key={job.id}
-                className="flex items-center gap-2 p-2 rounded border border-border bg-bg-hover/30"
+                className="flex items-center gap-2 p-2 rounded border border-border bg-surface-hover/30"
               >
                 <button
                   onClick={() => void handleToggleJob(job.id, !isEnabled)}
@@ -458,7 +458,7 @@ function CronManagerCard() {
                 </button>
 
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-text truncate">{job.name}</div>
+                  <div className="text-xs font-medium text-text-primary truncate">{job.name}</div>
                   <code className="text-xs text-text-muted">{schedule}</code>
                 </div>
 
@@ -469,7 +469,7 @@ function CronManagerCard() {
                       : 'custom'
                   }
                   onChange={(e) => void handleScheduleChange(job.id, e.target.value)}
-                  className="text-xs bg-bg-hover text-text rounded px-1.5 py-1 border border-border flex-shrink-0"
+                  className="text-xs bg-surface-hover text-text-primary rounded px-1.5 py-1 border border-border flex-shrink-0"
                   style={{ maxWidth: '100px' }}
                 >
                   {CRON_FREQUENCY_OPTIONS.map((opt) => (
@@ -480,7 +480,7 @@ function CronManagerCard() {
                 {isOverridden && (
                   <button
                     onClick={() => void handleResetJob(job.id)}
-                    className="text-xs text-text-muted hover:text-text flex-shrink-0"
+                    className="text-xs text-text-muted hover:text-text-primary flex-shrink-0"
                     title="恢复默认"
                   >
                     重置
@@ -520,7 +520,7 @@ function SmartProactiveCard() {
         <div className="flex items-center gap-2 flex-1">
           <Sparkles className="w-4 h-4 text-accent flex-shrink-0" />
           <div className="min-w-0">
-            <h3 className="text-sm font-medium text-text">AI 智能主动模式</h3>
+            <h3 className="text-sm font-medium text-text-primary">AI 智能主动模式</h3>
             <p className="text-xs text-text-muted mt-0.5">
               AI 根据当前模式和时段主动发起关怀提醒，每2小时最多1次
             </p>
@@ -562,7 +562,7 @@ export function SceneModeSettingsPanel() {
       {/* 标题 */}
       <div className="flex items-center gap-2">
         <Zap className="w-5 h-5 text-accent" />
-        <h2 className="text-base font-semibold text-text">场景模式</h2>
+        <h2 className="text-base font-semibold text-text-primary">场景模式</h2>
       </div>
 
       {/* 三模式卡片 */}
@@ -583,7 +583,7 @@ export function SceneModeSettingsPanel() {
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-accent" />
             <div>
-              <h3 className="text-sm font-medium text-text">时间自动切换</h3>
+              <h3 className="text-sm font-medium text-text-primary">时间自动切换</h3>
               <p className="text-xs text-text-muted mt-0.5">
                 工作日 9-18 点自动切工作模式，晚间 19-23 点自动切生活模式
               </p>
