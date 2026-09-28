@@ -267,6 +267,13 @@ export const en = {
   // Editor Tabs
   'editor.fileDeleted': 'File has been deleted',
 
+  // Editor: disk update conflict (AI wrote a file the user is editing; local unsaved edits are kept)
+  'editor.diskconflicthint': '"{name}" was updated on disk by AI; your unsaved editor changes were kept',
+  'editor.diskconflictload': 'Load disk version',
+  'editor.diskconflictkeep': 'Keep my changes',
+  'editor.diskupdatedbyai': 'File updated by AI',
+  'editor.diskupdatedbyai2': 'The disk copy of {name} was updated; your unsaved editor changes were kept',
+
   // Editor Modes
   'editor.editMode': 'Edit Mode',
   'editor.splitMode': 'Split Mode',

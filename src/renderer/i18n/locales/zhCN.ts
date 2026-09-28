@@ -267,6 +267,13 @@ export const zh = {
   // Editor Tabs
   'editor.fileDeleted': '文件已被删除',
 
+  // Editor: 磁盘变更冲突（AI 写入了用户正在编辑的文件，保留本地未保存修改）
+  'editor.diskconflicthint': '「{name}」在磁盘上已被 AI 更新，你在编辑器中的未保存修改未被覆盖',
+  'editor.diskconflictload': '加载磁盘版本',
+  'editor.diskconflictkeep': '保留我的修改',
+  'editor.diskupdatedbyai': '文件已被 AI 更新',
+  'editor.diskupdatedbyai2': '{name} 的磁盘内容已更新，你在编辑器中的未保存修改已保留',
+
   // Editor Modes
   'editor.editMode': '编辑模式',
   'editor.splitMode': '分屏模式',

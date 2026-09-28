@@ -13,6 +13,9 @@ import { useEffect } from 'react'
 import { api } from '../../../adapters/electronBridge'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
+import { toast } from '@components/foundation/NotificationProvider'
+import { getFileName } from '@shared/toolkit/pathHelper'
 
 /** 图片文件扩展名（与 FilePreviewPanel.IMAGE_EXTENSIONS 保持一致） */
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']
@@ -140,8 +143,37 @@ export function useFileEventBridge({
       if (teamModeEnabled) return
       if (!isLiveFilePreviewEnabled()) return
       const fullPath = event.filePath
-      openFile(fullPath, event.content)
-      setActiveFile(fullPath)
+      const store = useStore.getState()
+      const file = store.openFiles.find(f => f.path === fullPath)
+
+      // 文件未打开：直接打开并展示写入结果
+      if (!file) {
+        openFile(fullPath, event.content)
+        setActiveFile(fullPath)
+        return
+      }
+
+      // 文件有未保存修改：保留编辑器里的内容，只把磁盘版本暂存下来并提示用户选择，
+      // 否则 AI 的写入会静默丢掉用户尚未保存的改动（与 file:stream_content 分支的保护一致）
+      if (file.isDirty) {
+        // 内容未变时不重复提示：AI 可能对同一文件连续写入多次
+        const changed = file.diskUpdatePending?.content !== event.content
+        store.markDiskUpdatePending(fullPath, event.content)
+        if (changed) {
+          const language = useStore.getState().language as Language
+          toast.warning(
+            t('editor.diskupdatedbyai', language),
+            t('editor.diskupdatedbyai2', language, { name: getFileName(fullPath) }),
+          )
+        }
+        return
+      }
+
+      // 文件已打开且无未保存修改：同步磁盘上的最新内容，必要时切到该标签
+      store.updateFileContent(fullPath, event.content)
+      if (activeFilePath !== fullPath) {
+        setActiveFile(fullPath)
+      }
     })
 
     return () => {

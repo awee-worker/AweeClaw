@@ -281,6 +281,10 @@ function renderDemo(file, displayTitle) {
         autosave: true,
         compactHeader: false,
         forcesave: true,
+        // 关闭拼写检查：DS 镜像默认词典以英文为主，中文/专业术语会被整篇标记成
+        // 拼写错误，预览时满屏红色波浪下划线（文档本身并无下划线）。用户仍可在
+        // 编辑器菜单里手动开启，这里只改默认状态。
+        spellcheck: false,
         logo: { image: 'https://aweeclaw.com/favicon.ico' }, // 缺失则回退内置品牌，可删除
       },
     },

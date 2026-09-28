@@ -52,6 +52,8 @@
           callbackUrl: `${HOST_URL}/callback`,
           user: { id: 'poc-user', name: 'PoC' },
           mode: 'edit',
+          // 与线上网关保持一致：默认关闭拼写检查，避免中文文档满屏红色波浪线
+          customization: { spellcheck: false },
         },
         events: {
           onAppReady: () => setStatus('编辑器就绪，可直接编辑（保存自动回写本地）', true),

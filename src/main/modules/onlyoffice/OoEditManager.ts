@@ -293,6 +293,92 @@ export class OoEditManager {
     return { ok: true }
   }
 
+  /**
+   * 刷新会话：本地源文件被外部改写（重新生成 / 其它程序保存）后，把最新内容重新上传。
+   *
+   * 与 startSession 的区别在于不重建 Tab 身份：sessionId 保持不变，只替换
+   * remoteName 与 editorUrl，因此文件更新不会让已打开的 Tab 变成孤儿。
+   * 主进程会话记录已不存在时（例如上一次保存已结束会话），用入参的 sourcePath 重建。
+   */
+  async refreshSession(payload: {
+    sessionId: string
+    sourcePath: string
+    title?: string
+  }): Promise<{ ok: boolean; error?: string; session?: OnlyOfficeEditSessionMeta }> {
+    const sessionId = String(payload?.sessionId || '').trim()
+    if (!sessionId) return { ok: false, error: '缺少会话 ID' }
+
+    const { enabled, settings } = this.readServerConfig()
+    if (!enabled) {
+      return { ok: false, error: '未配置 ONLYOFFICE 服务器（aweeclaw-config.json → onlyOffice.serverUrl 置空即禁用）' }
+    }
+
+    const previous = this.sessions.get(sessionId)
+    const rawSource = String(payload?.sourcePath || previous?.sourcePath || '')
+    if (!rawSource) return { ok: false, error: '缺少源文件路径' }
+    const abs = path.resolve(rawSource)
+
+    let stat: fs.Stats
+    try {
+      stat = fs.statSync(abs)
+    } catch {
+      return { ok: false, error: `文件不存在: ${abs}` }
+    }
+    if (!stat.isFile()) return { ok: false, error: '不是有效文件' }
+
+    const ext = path.extname(abs).slice(1).toLowerCase()
+    if (!EXT_SET.has(ext)) {
+      return { ok: false, error: `不支持该文件类型 (.${ext})，支持: ${OO_EDITABLE_EXTENSIONS.join('/')}` }
+    }
+
+    const gwBase = `${settings.serverUrl.replace(/\/+$/, '')}${settings.basePath}`
+    const remoteName = `${crypto.randomUUID()}.${ext}`
+    try {
+      const buf = await fs.promises.readFile(abs)
+      const uploadUrl = `${gwBase}/upload?name=${encodeURIComponent(remoteName)}`
+      const res = await this.requestJson('POST', uploadUrl, buf)
+      if (!res?.ok) {
+        return { ok: false, error: `上传失败: ${res?.error || '网关未返回 ok'}` }
+      }
+    } catch (err) {
+      logger.system.error('[OnlyOffice] Refresh upload failed:', err)
+      return { ok: false, error: `上传失败: ${(err as Error)?.message || '网络错误'}` }
+    }
+
+    // 旧远端副本清理（失败不阻塞，网关 TTL 会兜底回收）
+    if (previous && previous.remoteName && previous.remoteName !== remoteName) {
+      try {
+        await this.request('DELETE', `${gwBase}/files/${encodeURIComponent(previous.remoteName)}`)
+      } catch {
+        logger.system.warn('[OnlyOffice] Refresh cleanup old remote failed (TTL will reclaim)')
+      }
+    }
+
+    const displayTitle =
+      String(payload?.title || previous?.title || path.basename(abs)).trim().slice(0, 200) || path.basename(abs)
+    const startedAt = Date.now()
+    this.sessions.set(sessionId, {
+      sourcePath: abs,
+      remoteName,
+      title: displayTitle,
+      ext,
+      startedAt,
+    })
+
+    const session: OnlyOfficeEditSessionMeta = {
+      sessionId,
+      sourcePath: abs,
+      remoteName,
+      title: displayTitle,
+      ext,
+      editorUrl: `${gwBase}/demo.html?file=${encodeURIComponent(remoteName)}&title=${encodeURIComponent(displayTitle)}&ts=${startedAt}`,
+      serverUrl: settings.serverUrl,
+      startedAt,
+    }
+    logger.system.info(`[OnlyOffice] Session refreshed: ${sessionId} ${remoteName} <- ${abs}`)
+    return { ok: true, session }
+  }
+
   /* ------------------------------------------------------------------ */
   /* IPC 注册                                                          */
   /* ------------------------------------------------------------------ */
@@ -314,5 +400,11 @@ export class OoEditManager {
     safeIpcHandle(OO_EDIT_CHANNELS.DISCARD, async (_e, sessionId: string) => {
       return this.discardSession(String(sessionId || ''))
     })
+
+    safeIpcHandle(
+      OO_EDIT_CHANNELS.REFRESH,
+      async (_e, payload: { sessionId: string; sourcePath: string; title?: string }) =>
+        this.refreshSession(payload || { sessionId: '', sourcePath: '' }),
+    )
   }
 }

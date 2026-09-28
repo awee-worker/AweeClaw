@@ -51,12 +51,24 @@ export interface OnlyOfficeEditSessionMeta {
   startedAt: number
 }
 
+/** 刷新会话入参：本地源文件被外部修改（如重新生成）后，重新上传并复用同一 sessionId */
+export interface OnlyOfficeRefreshRequest {
+  /** 待刷新的会话 ID（保持 Tab 路径与身份不变） */
+  sessionId: string
+  /** 本地源文件绝对路径（主进程会话记录丢失时据此重建） */
+  sourcePath: string
+  /** 编辑器标题；缺省沿用原会话标题 */
+  title?: string
+}
+
 /** IPC 通道常量 */
 export const OO_EDIT_CHANNELS = {
   /** 获取服务器配置（enabled/serverUrl/basePath，不含 adminKey） */
   CONFIG: 'oo-edit:get-config',
   /** 开始会话：上传本地文件 → 返回会话元信息 */
   START: 'oo-edit:start-session',
+  /** 刷新会话：源文件被外部更新后重新上传，复用同一 sessionId */
+  REFRESH: 'oo-edit:refresh-session',
   /** 保存会话：force save → 下载 → 原子写回本地源文件 */
   SAVE: 'oo-edit:save-session',
   /** 放弃会话：删除网关远端副本 */

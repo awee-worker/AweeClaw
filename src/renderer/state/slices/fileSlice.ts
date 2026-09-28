@@ -93,6 +93,21 @@ export interface OpenFile {
   }
   /** v2.4：ONLYOFFICE 在线编辑 Tab 专用数据（kind='oo-edit' 时使用） */
   ooEdit?: OnlyOfficeEditSessionMeta
+  /**
+   * 磁盘已有新内容、但本地存在未保存修改时的待处理变更
+   *
+   * AI 写入正在编辑的文件时若直接覆盖，会静默丢掉用户尚未保存的改动，
+   * 因此这里只把磁盘内容暂存下来，由编辑器提示用户选择如何处理。
+   */
+  diskUpdatePending?: DiskUpdatePending
+}
+
+/** 待处理的磁盘内容变更（磁盘版本与编辑器本地修改发生冲突时暂存） */
+export interface DiskUpdatePending {
+  /** 磁盘上的最新内容 */
+  content: string
+  /** 记录时间戳（毫秒） */
+  at: number
 }
 
 /** 打开文件时的可选参数 */
@@ -155,6 +170,10 @@ export interface FileSlice {
   reloadFileFromDisk: (path: string, content: string) => void
   markFileDeleted: (path: string) => void
   markFileRestored: (path: string) => void
+  /** 记录「磁盘已有新内容但本地有未保存修改」的冲突，交由编辑器提示用户处理 */
+  markDiskUpdatePending: (path: string, content: string) => void
+  /** 清除磁盘变更冲突标记（用户选择保留本地修改后调用） */
+  clearDiskUpdatePending: (path: string) => void
   updatePreviewMetadata: (path: string, preview: Partial<OpenPreviewMetadata>) => void
   setFileScrollPosition: (path: string, scrollPosition: { scrollTop: number; scrollLeft: number }) => void
   /** 设置工具执行时额外允许访问的目录路径列表 */
@@ -493,11 +512,18 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
     }),
 
   updateFileContent: (path, content) =>
-    set((state) => ({
-      openFiles: state.openFiles.map((f) =>
-        f.path === path ? { ...f, content, contentEvicted: false } : f,
-      ),
-    })),
+    set((state) => {
+      const target = state.openFiles.find((f) => f.path === path)
+      // 内容未变化且不处于「已被淘汰」状态时返回原 state：
+      // 外部写入方（流式预览、工具回执、编辑器回流）可能重复推送同一份内容，
+      // 每次重建 openFiles 都会让订阅 openFiles 的组件树重渲染一轮，这里直接短路。
+      if (target && target.content === content && !target.contentEvicted) return state
+      return {
+        openFiles: state.openFiles.map((f) =>
+          f.path === path ? { ...f, content, contentEvicted: false } : f,
+        ),
+      }
+    }),
 
   updateFileDirtyState: (path, currentVersionId) =>
     set((state) => {
@@ -517,7 +543,13 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
     set((state) => ({
       openFiles: state.openFiles.map((f) =>
         f.path === path
-          ? { ...f, isDirty: false, savedVersionId: versionId ?? f.savedVersionId }
+          ? {
+              ...f,
+              isDirty: false,
+              savedVersionId: versionId ?? f.savedVersionId,
+              // 保存后磁盘内容即用户当前内容，之前的磁盘变更冲突随之消解
+              diskUpdatePending: undefined,
+            }
           : f,
       ),
     })),
@@ -529,7 +561,12 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
       return {
         openFiles: state.openFiles.map((f) => {
           if (!savedAt.has(f.path)) return f
-          return { ...f, isDirty: false, savedVersionId: savedAt.get(f.path) ?? f.savedVersionId }
+          return {
+            ...f,
+            isDirty: false,
+            savedVersionId: savedAt.get(f.path) ?? f.savedVersionId,
+            diskUpdatePending: undefined,
+          }
         }),
       }
     }),
@@ -542,6 +579,7 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
         isDirty: false,
         isDeleted: false,
         contentEvicted: false,
+        diskUpdatePending: undefined,
       }),
     })),
 
@@ -551,6 +589,25 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
 
   markFileRestored: (path) =>
     set((state) => ({ openFiles: patchFile(state.openFiles, path, { isDeleted: false }) })),
+
+  markDiskUpdatePending: (path, content) =>
+    set((state) => {
+      const target = state.openFiles.find((f) => f.path === path)
+      // 文件未打开、或已有同样的待处理内容时短路：AI 连续写入不该反复重建 openFiles
+      if (!target || target.diskUpdatePending?.content === content) return state
+      return {
+        openFiles: patchFile(state.openFiles, path, {
+          diskUpdatePending: { content, at: Date.now() },
+        }),
+      }
+    }),
+
+  clearDiskUpdatePending: (path) =>
+    set((state) => {
+      const target = state.openFiles.find((f) => f.path === path)
+      if (!target?.diskUpdatePending) return state
+      return { openFiles: patchFile(state.openFiles, path, { diskUpdatePending: undefined }) }
+    }),
 
   updatePreviewMetadata: (path, preview) =>
     set((state) => ({

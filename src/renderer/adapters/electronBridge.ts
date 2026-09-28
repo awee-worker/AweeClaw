@@ -1129,6 +1129,8 @@ function createGroupedAPI() {
         raw.onlyOffice.startSession(payload),
       saveSession: (sessionId: string) => raw.onlyOffice.saveSession(sessionId),
       discardSession: (sessionId: string) => raw.onlyOffice.discardSession(sessionId),
+      refreshSession: (payload: Parameters<typeof raw.onlyOffice.refreshSession>[0]) =>
+        raw.onlyOffice.refreshSession(payload),
     },
 
     // ========================================

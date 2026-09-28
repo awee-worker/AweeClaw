@@ -22,6 +22,8 @@ import type { Branch } from '@intelligence/state/slices'
 export interface WorkspaceLoadOptions {
   rehydrateAgentStore?: boolean
   initializeMcp?: boolean
+  /** 恢复会话后是否自动打开上次的会话（默认 false：切换工作区后停在「新建任务」页） */
+  activateLastThread?: boolean
 }
 
 export interface WorkspaceShellState {
@@ -64,19 +66,31 @@ export async function rehydrateWorkspaceAgentStore(): Promise<void> {
   logger.agent.info(`[WorkspaceLoad] Agent store restored from workspace snapshot (${Object.keys(threads).length} threads)`)
 }
 
-export async function restoreWorkspaceAgentStore(): Promise<void> {
+/** restoreWorkspaceAgentStore 的恢复策略 */
+export interface RestoreAgentStoreOptions {
+  /**
+   * 是否自动打开快照里记录的会话。
+   * - true（默认，应用启动）：续接上次停留的会话；
+   * - false（切换工作区）：会话列表照常恢复，但聊天区停在「新建任务」
+   *   空状态，由用户从左侧历史列表主动进入某个会话。
+   */
+  activateLastThread?: boolean
+}
+
+export async function restoreWorkspaceAgentStore(options: RestoreAgentStoreOptions = {}): Promise<void> {
+  const activateLastThread = options.activateLastThread ?? true
+
   // 初始化存储引擎（SQLite + 迁移 + 全量加载），统一在此完成，避免与 bindWorkspaceRootLite 重复加载
   await workspaceStorageRuntime.initializeStorage()
 
   await rehydrateWorkspaceAgentStore()
 
-  const state = useAgentStore.getState()
-  const { threads, currentThreadId } = state
+  const { threads } = useAgentStore.getState()
   const threadIds = Object.keys(threads)
 
   logger.system.info('[WorkspaceLoad] Store state after restore', {
     threadCount: threadIds.length,
-    currentThreadId,
+    currentThreadId: useAgentStore.getState().currentThreadId,
     threadIds,
   })
 
@@ -85,15 +99,26 @@ export async function restoreWorkspaceAgentStore(): Promise<void> {
     return
   }
 
-  if (!currentThreadId || !threads[currentThreadId]) {
-    const firstThreadId = threadIds[0]
-    useAgentStore.setState({ currentThreadId: firstThreadId })
-    logger.system.info(`[WorkspaceLoad] Activated first thread: ${firstThreadId}`)
+  // 切换工作区：不续接上次会话。会话数据照常恢复（左侧历史列表可用），
+  // 但聊天区停在「新建任务」空状态，用户需主动进入某个会话。
+  if (!activateLastThread) {
+    suspendAgentStorageWrites()
+    try {
+      useAgentStore.setState({ currentThreadId: null })
+      // 把「无激活会话」记为持久化基线，避免后续落盘把旧 currentThreadId 写回
+      markAgentStorageSnapshotAsCurrent(buildAgentSessionSnapshot(useAgentStore.getState()))
+    } finally {
+      resumeAgentStorageWrites()
+    }
+    logger.system.info('[WorkspaceLoad] Workspace switched, chat reset to new-task view')
+    return
   }
 
-  const activeThreadId = useAgentStore.getState().currentThreadId
-  if (!activeThreadId) {
-    return
+  let activeThreadId = useAgentStore.getState().currentThreadId
+  if (!activeThreadId || !threads[activeThreadId]) {
+    activeThreadId = threadIds[0]
+    useAgentStore.setState({ currentThreadId: activeThreadId })
+    logger.system.info(`[WorkspaceLoad] Activated first thread: ${activeThreadId}`)
   }
 
   const activeThread = useAgentStore.getState().threads[activeThreadId]
@@ -278,6 +303,9 @@ export async function initializeWorkspaceServices(
   const {
     rehydrateAgentStore: shouldRehydrateAgentStore = true,
     initializeMcp: shouldInitializeMcp = true,
+    // 进入工作区默认不续接上次会话：本函数只服务「切换工作区」这条链路，
+    // 切换后停在「新建任务」页；应用启动的续接走 appInitializer 单独调用。
+    activateLastThread = false,
   } = options
 
   // MCP 初始化需要逐个拉起外部进程，耗时不可控，且只影响工具可用性。
@@ -288,7 +316,7 @@ export async function initializeWorkspaceServices(
 
   // 历史会话是进入工作区后立刻要看的内容，保持等待
   if (shouldRehydrateAgentStore) {
-    await restoreWorkspaceAgentStore()
+    await restoreWorkspaceAgentStore({ activateLastThread })
   }
 }
 

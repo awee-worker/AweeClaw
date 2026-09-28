@@ -2,7 +2,7 @@
  * 编辑器主组件
  */
 import { useRef, useCallback, useEffect, useState, useMemo, Suspense, type ReactNode } from 'react'
-import { Loader2 } from 'lucide-react'
+import { AlertTriangle, Loader2 } from 'lucide-react'
 import MonacoEditor, { OnMount, BeforeMount, loader } from '@monaco-editor/react'
 import { MonacoLifecycleBoundary } from './MonacoLifecycleBoundary'
 import type { editor } from 'monaco-editor'
@@ -107,6 +107,44 @@ function isDocumentFile(filePath: string): boolean {
   return DOCUMENT_EXTENSIONS.has(ext)
 }
 
+/**
+ * 计算两段文本之间的最小差异区间
+ *
+ * 只回缩公共前缀与公共后缀，中间剩下的一段即为需要替换的范围 —— 这正是外部写入最常见的形态：
+ * AI 追加或改写文件时，绝大部分行并未变化。相比整篇重设，把替换范围压到最小后，
+ * Monaco 只需对真正变化的那几行重新分词与重绘，不会整屏刷一次。
+ *
+ * 无差异时返回 null；差异仅剩插入点（前后缀相接）时 startOffset === endOffset，等价于纯插入。
+ */
+function computeMinimalTextDiff(
+  prev: string,
+  next: string,
+): { startOffset: number; endOffset: number; text: string } | null {
+  if (prev === next) return null
+
+  const maxPrefix = Math.min(prev.length, next.length)
+  let startOffset = 0
+  while (startOffset < maxPrefix && prev.charCodeAt(startOffset) === next.charCodeAt(startOffset)) {
+    startOffset += 1
+  }
+
+  // 后缀回缩不得越过已确定的前缀，否则区间会反向
+  let prevEnd = prev.length
+  let nextEnd = next.length
+  while (
+    prevEnd > startOffset &&
+    nextEnd > startOffset &&
+    prev.charCodeAt(prevEnd - 1) === next.charCodeAt(nextEnd - 1)
+  ) {
+    prevEnd -= 1
+    nextEnd -= 1
+  }
+
+  if (prevEnd === startOffset && nextEnd === startOffset) return null
+
+  return { startOffset, endOffset: prevEnd, text: next.slice(startOffset, nextEnd) }
+}
+
 // Hooks
 import { useEditorActions, useAICompletion, useEditorEvents, useComposerInlineDiff } from './hooks'
 import { getLanguage } from './utils/langIdMapper'
@@ -207,6 +245,8 @@ export default function Editor() {
   const language = useStore((state) => state.language)
   const closeFile = useStore((state) => state.closeFile)
   const openOnlyOfficeEdit = useStore((state) => state.openOnlyOfficeEdit)
+  const reloadFileFromDisk = useStore((state) => state.reloadFileFromDisk)
+  const clearDiskUpdatePending = useStore((state) => state.clearDiskUpdatePending)
 
   const { pendingChanges, acceptChange, undoChange } = useAgentChangeState()
 
@@ -217,8 +257,14 @@ export default function Editor() {
   const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // LSP 文档同步定时器：避免每次按键都把整份文件内容通过 IPC 发往语言服务
   const lspSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // 记录最近一次「用户输入」写入的内容：大文件走非受控模式时用它区分内外来源
+  // 记录最近一次「用户输入」交出的内容：用于把本地输入与外部写入区分开（本地路径 O(1) 短路）
   const lastLocalEditRef = useRef<string | null>(null)
+  // 待补丁进模型的外部内容（含来源文件路径，避免排队期间切换 Tab 后写错文件）
+  const pendingExternalContentRef = useRef<{ path: string; content: string } | null>(null)
+  // 外部内容同步的帧调度句柄：同一帧内的多次写入合并为一次补丁
+  const externalSyncRafRef = useRef<number | null>(null)
+  // 标记「正在把外部内容补丁进模型」：该窗口内的模型变更不是用户编辑，不回写 store、不标脏、不触发自动保存
+  const applyingExternalEditRef = useRef(false)
   const setFileScrollPosition = useStore((state) => state.setFileScrollPosition)
 
   // Hooks
@@ -248,6 +294,26 @@ export default function Editor() {
     updateFileContent(targetPath, content)
   }, [lineHistoryRequest, activeFilePath, updateFileContent])
 
+  /**
+   * 加载磁盘版本：用磁盘内容覆盖编辑器中的未保存修改
+   *
+   * 只更新 store，模型侧交给外部内容同步 effect 做最小差异补丁，
+   * 因此不会清空撤销栈或把光标拽到文末；isDirty 与冲突标记一并在 slice 内归位。
+   */
+  const handleLoadDiskVersion = useCallback(() => {
+    const path = activeFilePath
+    if (!path) return
+    const pending = useStore.getState().openFiles.find((f) => f.path === path)?.diskUpdatePending
+    if (!pending) return
+    reloadFileFromDisk(path, pending.content)
+  }, [activeFilePath, reloadFileFromDisk])
+
+  /** 保留编辑器中的本地修改，丢弃磁盘上暂存的版本 */
+  const handleKeepLocalEdits = useCallback(() => {
+    if (!activeFilePath) return
+    clearDiskUpdatePending(activeFilePath)
+  }, [activeFilePath, clearDiskUpdatePending])
+
   const isPreviewDocument = Boolean(activeFile && (activeFile.kind === 'preview' || isPreviewDocumentPath(activeFile.path)))
   // v2.3：PPT 预览 Tab（主窗口内嵌模式）
   const isPptPreviewTab = Boolean(activeFile && activeFile.kind === 'ppt-preview' && isPptPreviewPath(activeFile.path))
@@ -255,7 +321,10 @@ export default function Editor() {
 
   // v2.4：ONLYOFFICE 在线编辑 Tab（主窗口内嵌模式）
   const isOoEditTab = Boolean(activeFile && activeFile.kind === 'oo-edit' && isOoEditPath(activeFile.path))
-  const ooEditSession = isOoEditTab && activeFile?.ooEdit ? activeFile.ooEdit : null
+  /** 已打开的 ONLYOFFICE Tab：常驻挂载，切 Tab 只隐藏不卸载（避免 webview 反复重新加载） */
+  const ooEditTabs = useStore(
+    useShallow((state) => state.openFiles.filter((f) => f.kind === 'oo-edit' && Boolean(f.ooEdit))),
+  )
 
   /** 启动 ONLYOFFICE 在线编辑会话：主进程上传本地文件 → 打开编辑 Tab（成功后关闭本地 file Tab，只保留 oo-edit Tab） */
   const handleOnlyOfficeEdit = useCallback(async (filePath: string) => {
@@ -328,25 +397,81 @@ export default function Editor() {
   const isLargeActiveFile = Boolean(activeFileInfo?.isLarge)
 
   /**
-   * 大文件外部内容同步
+   * 把外部内容以「最小差异补丁」写进当前模型
    *
-   * 大文件下编辑器用 defaultValue 非受控挂载，用户输入不再回流到 value，
-   * 从而省掉 @monaco-editor/react 受控模式对每次按键执行的一次 model.getValue() 全量比较。
-   * 代价是外部写入（AI 编辑、磁盘重载）需要显式同步：这里只在内容并非
-   * 「本地上一次输入」时才回写模型 —— 用户输入时是 O(1) 短路，只有确属外部变更才会
-   * 真正读取一次模型内容做比对。
+   * 不使用整篇 setValue：整篇替换会清空撤销栈、把光标拽到文末、丢掉折叠状态，
+   * 并让 Monaco 对全文重新分词重绘 —— 用户看到的就是编辑器整屏闪一下。
+   * 这里只替换差异区间，且 cursorStateComputer 返回 null 保持光标与选区不动，
+   * 外部写入（AI 编辑、磁盘重载、LRU 补载）因此表现为无感刷新。
+   */
+  const applyExternalContent = useCallback((filePath: string, content: string) => {
+    const editor = editorRef.current
+    const model = editor?.getModel()
+    if (!editor || !model) return
+    // 补丁排队期间用户可能已切走：该文件的内容交给它自己的打开/补载流程处理
+    if (useStore.getState().activeFilePath !== filePath) return
+
+    const current = model.getValue()
+    if (current === content) return
+
+    const diff = computeMinimalTextDiff(current, content)
+    if (!diff) return
+
+    const start = model.getPositionAt(diff.startOffset)
+    const end = model.getPositionAt(diff.endOffset)
+
+    applyingExternalEditRef.current = true
+    try {
+      model.pushEditOperations(
+        [],
+        [{
+          range: {
+            startLineNumber: start.lineNumber,
+            startColumn: start.column,
+            endLineNumber: end.lineNumber,
+            endColumn: end.column,
+          },
+          text: diff.text,
+          forceMoveMarkers: false,
+        }],
+        () => null,
+      )
+    } finally {
+      applyingExternalEditRef.current = false
+    }
+  }, [])
+
+  /**
+   * 当前文件的外部内容同步（AI 写入 / 磁盘重载 / LRU 补载）
+   *
+   * 主编辑器一律「非受控」挂载，内容由模型自身持有，store 只在外部变更时把差异补丁回来。
+   * 之所以不再用受控 value：@monaco-editor/react 一旦发现 value 变化，会对整个 model 范围执行
+   * executeEdits + pushUndoStop，等于每次外部写入都整篇替换一次 —— 光标跳到文末、滚动跳变、
+   * 撤销栈被清空，AI 连续写入时就是肉眼可见的整屏闪动。
+   *
+   * 写入按帧合并：流式预览可能在一帧里连推多次，这里只把最新内容补丁一次。
+   * 本地用户输入走 O(1) 短路（onChange 已把内容同步进 store），完全不触碰模型。
    */
   useEffect(() => {
-    if (!isLargeActiveFile || !activeFile) return
+    if (!activeFile || isPreviewDocument) return
+    // 被 LRU 淘汰过的文件 content 只是空占位：交给补载流程回填，
+    // 不能把它当成「文件被清空」补丁进模型，否则切回该文件时会先空一屏再填回
+    if (activeFile.contentEvicted) return
     const content = activeFile.content ?? ''
     if (lastLocalEditRef.current !== null && content === lastLocalEditRef.current) return
-    const model = editorRef.current?.getModel()
-    if (model && model.getValue() !== content) {
-      model.setValue(content)
-    }
-    // 与 isLargeActiveFile 同一档位，不会频繁触发；content 变化时靠上面的短路保护
+
+    pendingExternalContentRef.current = { path: activeFile.path, content }
+    if (externalSyncRafRef.current !== null) return
+    externalSyncRafRef.current = window.requestAnimationFrame(() => {
+      externalSyncRafRef.current = null
+      const pending = pendingExternalContentRef.current
+      pendingExternalContentRef.current = null
+      if (!pending) return
+      applyExternalContent(pending.path, pending.content)
+    })
+    // content 变化走上面的短路保护，不订阅 activeFile 本体
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLargeActiveFile, activeFile?.path, activeFile?.content])
+  }, [activeFile?.path, activeFile?.content, activeFile?.contentEvicted, isPreviewDocument, applyExternalContent])
 
   /**
    * 防抖地把文档变更同步给语言服务
@@ -363,11 +488,16 @@ export default function Editor() {
     }, 400)
   }, [])
 
-  // 卸载时清理待触发的定时器，避免对已销毁的编辑器 / 已关闭的文件继续写入
+  // 卸载时清理待触发的定时器与帧调度，避免对已销毁的编辑器 / 已关闭的文件继续写入
   useEffect(() => {
     return () => {
       if (lspSyncTimerRef.current) clearTimeout(lspSyncTimerRef.current)
       if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
+      if (externalSyncRafRef.current !== null) {
+        window.cancelAnimationFrame(externalSyncRafRef.current)
+        externalSyncRafRef.current = null
+      }
+      pendingExternalContentRef.current = null
     }
   }, [])
 
@@ -439,6 +569,10 @@ export default function Editor() {
   // 同时检查是否有跨文件 Go-to-Definition 待处理的跳转定位
   useEffect(() => {
     clearLintErrors()
+    // 切换文件：本地输入标记与待同步内容都归属于上一个文件，必须一并清空，
+    // 否则新文件会因字符串偶然相等而被短路，或把旧文件的内容补丁进来
+    lastLocalEditRef.current = null
+    pendingExternalContentRef.current = null
     const file = activeFilePath
       ? useStore.getState().openFiles.find((f) => f.path === activeFilePath)
       : undefined
@@ -639,6 +773,9 @@ export default function Editor() {
       }
 
       const contentDisposable = editor.onDidChangeModelContent(() => {
+        // 外部内容补丁引起的模型变更不是用户编辑：跳过脏状态判定，
+        // 否则 AI 每次写入都会把文件标脏，进而连带触发自动保存
+        if (applyingExternalEditRef.current) return
         // 只用版本号判断脏状态：Monaco 的 alternativeVersionId 在「撤销回保存点」时会回到原值，
         // 语义上等价于原先的整文件字符串比较，但省掉了每次按键对整份文件做一次
         // getValue() + 全等比较（大文件下这是两笔 O(n) 开销，也是打字卡顿的来源之一）。
@@ -754,6 +891,30 @@ export default function Editor() {
         />
       )}
 
+      {/* 磁盘变更冲突：用户正在编辑该文件时 AI 写入了磁盘，本地内容保持不变，由用户决定如何处理 */}
+      {activeFile?.diskUpdatePending && !isPreviewDocument && !isPptPreviewTab && !isOoEditTab && (
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border-subtle bg-status-warning/10 text-xs text-text-secondary">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-status-warning" />
+          <span className="min-w-0 flex-1 truncate">
+            {t('editor.diskconflicthint', language, { name: getFileName(activeFile.path) })}
+          </span>
+          <button
+            type="button"
+            onClick={handleLoadDiskVersion}
+            className="shrink-0 rounded px-2 py-0.5 font-medium text-status-warning transition-colors hover:bg-status-warning/15"
+          >
+            {t('editor.diskconflictload', language)}
+          </button>
+          <button
+            type="button"
+            onClick={handleKeepLocalEdits}
+            className="shrink-0 rounded px-2 py-0.5 text-text-muted transition-colors hover:bg-surface-hover/50 hover:text-text-secondary"
+          >
+            {t('editor.diskconflictkeep', language)}
+          </button>
+        </div>
+      )}
+
       {/* 流式编辑预览 */}
       {showDiffPreview && streamingEdit && activeFile && (
         <div className="border-b border-border-subtle h-1/2">
@@ -789,10 +950,24 @@ export default function Editor() {
 
       {/* 编辑器主体 */}
       <div className="flex-1 relative min-h-0 overflow-hidden flex flex-col">
-        {/* v2.4：ONLYOFFICE 在线编辑（主窗口内嵌 Tab） */}
-        {isOoEditTab && ooEditSession ? (
-          <OnlyOfficeEditView session={ooEditSession} />
-        ) : isPptPreviewTab && pptPreviewSessionId ? (
+        {/* v2.4：ONLYOFFICE 在线编辑（主窗口内嵌 Tab）
+            已打开的 oo-edit Tab 常驻挂载：切走只隐藏不卸载，
+            否则每次切回都要重新加载整个编辑器，表现为闪动并丢失滚动位置。 */}
+        {ooEditTabs.map((tab) => (
+          <div
+            key={tab.path}
+            aria-hidden={tab.path !== activeFilePath}
+            className={
+              tab.path === activeFilePath
+                ? 'absolute inset-0 z-10 flex flex-col'
+                : 'absolute inset-0 z-0 invisible pointer-events-none'
+            }
+          >
+            {tab.ooEdit ? <OnlyOfficeEditView session={tab.ooEdit} /> : null}
+          </div>
+        ))}
+
+        {isOoEditTab ? null : isPptPreviewTab && pptPreviewSessionId ? (
           <Suspense fallback={<CodeSkeleton lines={8} />}>
             <PptPreviewPanel sessionId={pptPreviewSessionId} />
           </Suspense>
@@ -875,15 +1050,21 @@ export default function Editor() {
                     key={activeFile.path}
                     path={monaco.Uri.file(activeFile.path).toString()}
                     language={activeLanguage}
-                    value={activeFile.content}
+                    defaultValue={activeFile.content}
                     theme="aweeclaw-dynamic"
                     beforeMount={handleBeforeMount}
                     onMount={handleEditorMount}
                     onChange={(value) => {
-                      if (value !== undefined) {
-                        updateFileContent(activeFile.path, value)
+                      if (value === undefined) return
+                      // 外部补丁写进模型时触发的变更不是用户编辑：内容本就来自 store，
+                      // 只把最新内容同步给语言服务，不回流 store
+                      if (applyingExternalEditRef.current) {
                         if (!isLargeActiveFile) scheduleLspSync(activeFile.path, value)
+                        return
                       }
+                      lastLocalEditRef.current = value
+                      updateFileContent(activeFile.path, value)
+                      if (!isLargeActiveFile) scheduleLspSync(activeFile.path, value)
                     }}
                     loading={<CodeSkeleton lines={12} />}
                     options={splitMonacoOptions}
@@ -903,15 +1084,21 @@ export default function Editor() {
                     key={activeFile.path}
                     path={monaco.Uri.file(activeFile.path).toString()}
                     language={activeLanguage}
-                    value={activeFile.content}
+                    defaultValue={activeFile.content}
                     theme="aweeclaw-dynamic"
                     beforeMount={handleBeforeMount}
                     onMount={handleEditorMount}
                     onChange={(value) => {
-                      if (value !== undefined) {
-                        updateFileContent(activeFile.path, value)
+                      if (value === undefined) return
+                      // 外部补丁写进模型时触发的变更不是用户编辑：内容本就来自 store，
+                      // 只把最新内容同步给语言服务，不回流 store
+                      if (applyingExternalEditRef.current) {
                         if (!isLargeActiveFile) scheduleLspSync(activeFile.path, value)
+                        return
                       }
+                      lastLocalEditRef.current = value
+                      updateFileContent(activeFile.path, value)
+                      if (!isLargeActiveFile) scheduleLspSync(activeFile.path, value)
                     }}
                     loading={<CodeSkeleton lines={12} />}
                     options={splitMonacoOptions}
@@ -938,25 +1125,30 @@ export default function Editor() {
                 options={{ fontSize: getEditorConfig().fontSize, fontFamily: getEditorConfig().fontFamily, fontLigatures: true, renderSideBySide: true, readOnly: false, minimap: { enabled: false }, scrollBeyondLastLine: false }}
               />
             ) : (
-              /* 大文件走非受控模式（defaultValue）：不再把 store 内容作为受控 value 传回，
-                 避免 @monaco-editor/react 每次按键都对整份文件执行一次 getValue() 全量比较；
-                 外部写入由上方的大文件同步 effect 负责回填。小文件保持受控，行为不变。 */
+              /* 非受控挂载（defaultValue）：内容由 Monaco 模型自身持有。
+                 外部写入（AI 编辑 / 磁盘重载 / LRU 补载）由外部内容同步 effect
+                 以最小差异补丁写回模型，不做整篇替换，因此不闪动、不丢光标与撤销栈。 */
               <MonacoEditor
                 height="100%"
                 key={activeFile.path}
                 path={monaco.Uri.file(activeFile.path).toString()}
                 language={editorLanguage}
-                {...(isLargeActiveFile ? { defaultValue: activeFile.content } : { value: activeFile.content })}
+                defaultValue={activeFile.content}
                 theme="aweeclaw-dynamic"
                 beforeMount={handleBeforeMount}
                 onMount={handleEditorMount}
                 onChange={(value) => {
-                  if (value !== undefined) {
-                    lastLocalEditRef.current = value
-                    updateFileContent(activeFile.path, value)
+                  if (value === undefined) return
+                  // 外部补丁写进模型时触发的变更不是用户编辑：内容本就来自 store，
+                  // 只把最新内容同步给语言服务，不标脏、不自动保存
+                  if (applyingExternalEditRef.current) {
                     if (!isLargeActiveFile) scheduleLspSync(activeFile.path, value)
-                    triggerAutoSave(activeFile.path)
+                    return
                   }
+                  lastLocalEditRef.current = value
+                  updateFileContent(activeFile.path, value)
+                  if (!isLargeActiveFile) scheduleLspSync(activeFile.path, value)
+                  triggerAutoSave(activeFile.path)
                 }}
                 loading={<CodeSkeleton lines={12} />}
                 options={monacoOptions}

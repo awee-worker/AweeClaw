@@ -40,5 +40,10 @@ export function createOnlyOfficeApi() {
 
     /** 放弃会话：删除远端副本，不写回本地 */
     discardSession: invoke<{ ok: boolean; error?: string }>(OO_EDIT_CHANNELS.DISCARD),
+
+    /** 刷新会话：源文件被外部更新后重新上传，保持同一 sessionId 与 Tab 身份 */
+    refreshSession: invoke<{ ok: boolean; error?: string; session?: OnlyOfficeEditSessionMeta }>(
+      OO_EDIT_CHANNELS.REFRESH,
+    ),
   }
 }

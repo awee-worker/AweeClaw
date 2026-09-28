@@ -3071,6 +3071,12 @@ export interface ElectronAPI {
     }>
     /** 放弃会话：删除远端副本，不写回本地 */
     discardSession: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
+    /** 刷新会话：源文件被外部更新后重新上传，复用同一 sessionId */
+    refreshSession: (payload: { sessionId: string; sourcePath: string; title?: string }) => Promise<{
+      ok: boolean
+      error?: string
+      session?: import('@protocols/onlyOfficeProtocol').OnlyOfficeEditSessionMeta
+    }>
   }
 
   // ============================================
