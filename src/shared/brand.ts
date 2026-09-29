@@ -87,7 +87,10 @@ export const BRAND = {
     oldKnowledge: '.aweeclaw/knowledge/manual.json',
     plan: '.aweeclaw/plan',
     skills: '.aweeclaw/skills',
-    skillsConfig: '.aweeclaw/skills/.skills-config.json',
+    /** 技能配置文件名：机器级，落在全局技能目录（{userConfigDir}/skills）下，未打开工作区同样持久化 */
+    skillsConfig: '.skills-config.json',
+    /** 旧版技能配置位置（工作区级），仅用于首次迁移读取，不再写入 */
+    skillsConfigLegacy: '.aweeclaw/skills/.skills-config.json',
     rules: '.aweeclaw/rules.md',
     projectSummary: '.aweeclaw/project-summary.json',
     structuralIndex: '.aweeclaw/structural-index.json',

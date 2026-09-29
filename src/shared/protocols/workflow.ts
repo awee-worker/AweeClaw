@@ -21,7 +21,7 @@ export interface AgentRole {
   descriptionZh: string
   systemPrompt: string
   systemPromptZh?: string
-  chatMode: 'chat' | 'agent' | 'plan'
+  chatMode: 'chat' | 'agent' | 'expert'
   icon?: string
   color?: string
   allowedTools?: string[]

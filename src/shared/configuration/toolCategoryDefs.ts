@@ -8,7 +8,7 @@
  * - 场景工具：场景声明的 ToolPack / 自定义工具，只做追加
  * 
  * 加载规则：
- * - chat / agent / plan 三种模式：同一份全量内置工具（ALL_BUILTIN_TOOLS），
+ * - chat / agent / expert 三种模式：同一份全量内置工具（ALL_BUILTIN_TOOLS），
  *   模式差异只体现在审批策略上，不再体现在可用工具上
  * - 角色扩展：在全量内置工具基础上追加角色专属工具组
  * - 场景扩展：追加场景声明的 toolPacks（自动解析依赖）与直接声明的工具
@@ -79,7 +79,7 @@ export interface ToolLoadingContext {
    * voiceToolLoop / PromptComposer）计算后置为 true，即由用户在指令中授权。
    *
    * 置为 true 后三种模式一致下发只读工具；写入类工具（commit / branch / sync /
-   * worktree / audit）仅下发给 agent / plan —— 快速模式（chat）为免审批通道，
+   * worktree / audit）仅下发给 agent / expert —— 快速模式（chat）为免审批通道，
    * 即便授权也不暴露写仓库能力。
    */
   gitToolsEnabled?: boolean
@@ -183,7 +183,7 @@ const GIT_READ_TOOLS: string[] = [
  *
  * chat 模式为「免审批」通道，若允许直接 commit / 切分支 / push，
  * 用户在聊天里让 AI "帮我提交一下"就可能在没有审阅 diff 的情况下改到仓库，
- * 因此这组只挂在 agent / plan 模式（其审批门禁由 approvalType='terminal' 驱动）。
+ * 因此这组只挂在 agent / expert 模式（其审批门禁由 approvalType='terminal' 驱动）。
  */
 const GIT_WRITE_TOOLS: string[] = [
   'git_commit',
@@ -199,7 +199,7 @@ const GIT_WRITE_TOOLS: string[] = [
  * Git 工具名（供「按需暴露」门控与执行层兜底校验共用）
  *
  * - `GIT_READ_TOOL_NAMES`：只读，授权后三种模式一致下发
- * - `GIT_WRITE_TOOL_NAMES`：写入，授权后仅下发给 agent / plan
+ * - `GIT_WRITE_TOOL_NAMES`：写入，授权后仅下发给 agent / expert
  */
 export const GIT_READ_TOOL_NAMES: readonly string[] = [...GIT_READ_TOOLS]
 export const GIT_WRITE_TOOL_NAMES: readonly string[] = [...GIT_WRITE_TOOLS]
@@ -247,7 +247,7 @@ const PLAN_EXPLORATION_TOOLS: string[] = [
  * 全量内置工具 —— 三种工作模式与所有场景共用同一份内置工具集
  *
  * 语义：内置工具是平台能力，不按工作模式或场景裁剪。
- * 选择「快速（chat）/ 思考（agent）/ 专家（plan）」或激活任何场景，都不会减少
+  * 当前产品策略固定为专家档（expert）；场景能力项仍可声明历史能力，但不再作为可切换工作模式入口。选择场景不会减少
  * 可用内置工具；模式与场景只做「追加」——渠道工具、场景声明的工具包与自定义工具、
  * 角色专属工具组、MCP 插件、场景工具桥接、外部智能体桥接。
  *
@@ -498,7 +498,7 @@ export function getToolGroup(id: string): string[] | undefined {
 /**
  * 根据上下文获取工具列表
  *
- * 内置工具全量放行：快速（chat）/ 思考（agent）/ 专家（plan）三种模式、以及所有
+ * 内置工具全量放行：专家档（expert）以及所有
  * 场景，都能使用全部内置工具（ALL_BUILTIN_TOOLS）。模式与场景只做追加：
  * - 渠道会话追加渠道工具（send_file_to_channel）
  * - 场景追加 toolPacks（自动解析依赖）与直接声明的工具名

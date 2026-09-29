@@ -6,7 +6,7 @@
  * 单列流式布局，卡片式展示已安装 Skills
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { skillService, type SkillItem, type SkillTriggerType, type SkillSource } from '@intelligence/runtime/skillRepository'
 import { proceduralSkillLearner } from '@intelligence/runtime/proceduralSkillLearner'
 import { buildSkillDrafts, type SkillDraft } from '@intelligence/runtime/skillDraftProposer'
@@ -17,11 +17,19 @@ import { ActionButton, TextField, OverlayDialog } from '@components/ui'
 import { BRAND } from '@shared/brand'
 import {
     Zap, Plus, Trash2, RefreshCw, Download, Search,
-    ToggleLeft, ToggleRight, ExternalLink, Github, FolderOpen,
+    ToggleLeft, ToggleRight, Eye, EyeOff, ExternalLink, Github, FolderOpen,
     Sparkles, Globe, FileCode, Power, ChevronDown,
-    MoreHorizontal, Pencil, Info, Wand2, Copy
+    MoreHorizontal, Pencil, Info, Wand2, Copy, RotateCcw
 } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
+import type { SceneMode } from '@protocols/sceneModeProtocol'
+import {
+    getSkillSortMode,
+    resetSkillClickStats,
+    setSkillSortMode,
+    subscribeSkillSortMode,
+    type SkillSortMode,
+} from '@intelligence/runtime/skillOrdering'
 
 interface SkillSettingsProps {
     language: Language
@@ -54,6 +62,23 @@ function getSkillColor(name: string) {
     return SKILL_COLORS[Math.abs(hash) % SKILL_COLORS.length]
 }
 
+/** 场景模式显示名（与 SceneMode 一一对应） */
+const SCENE_MODE_LABEL: Record<SceneMode, { zh: string; en: string }> = {
+    work: { zh: '日常办公', en: 'Work' },
+    life: { zh: '生活陪伴', en: 'Life' },
+    study: { zh: '学习探索', en: 'Study' },
+    dev: { zh: '代码开发', en: 'Dev' },
+}
+
+/** 场景模式的固定展示顺序 */
+const SCENE_MODE_ORDER: SceneMode[] = ['work', 'dev', 'life', 'study']
+
+/** 读取技能生效的场景归属（逗号分隔 → 数组）；空数组表示所有场景可见 */
+function getSkillSceneModes(skill: SkillItem): string[] {
+    return (skill.sceneMode || '').split(',').map(m => m.trim()).filter(Boolean)
+}
+
+
 export function SkillRegistryPanel({ language }: SkillSettingsProps) {
     const workspacePath = useStore(s => s.workspacePath)
     const zh = String(language).toLowerCase().startsWith('zh')
@@ -72,6 +97,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
     const [newSkillName, setNewSkillName] = useState('')
     const [creating, setCreating] = useState(false)
     const [createLevel, setCreateLevel] = useState<SkillSource>('project')
+    const [newSkillSceneModes, setNewSkillSceneModes] = useState<SceneMode[]>([])
 
     const [installMode, setInstallMode] = useState<'marketplace' | 'github' | 'create' | null>(null)
     const [installLevel, setInstallLevel] = useState<SkillSource>('project')
@@ -79,9 +105,11 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
     const [installedMessage, setInstalledMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const [installMessage, setInstallMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-    const [filterSource, setFilterSource] = useState<'all' | 'global' | 'project'>('all')
+    const [filterSource, setFilterSource] = useState<'all' | 'bundled' | 'global' | 'project' | 'plugin'>('all')
     const [skillSearch, setSkillSearch] = useState('')
     const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
+    // 技能列表/二级选项的展示顺序：默认按内置顺序，或按用户点击率
+    const sortMode = useSyncExternalStore(subscribeSkillSortMode, getSkillSortMode, getSkillSortMode)
     const [activeMenu, setActiveMenu] = useState<string | null>(null)
     const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null)
     const menuButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
@@ -158,6 +186,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
         if (result.success) {
             showInstalledMessage('success', t('app.installedsuccessfully3', language as Language))
             loadSkills()
+
             setGithubUrl('')
             setInstallMode(null)
         } else {
@@ -166,14 +195,25 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
         setGithubInstalling(false)
     }
 
+    // 切换单个技能的场景归属；无任何选中时表示所有场景可见
+    const handleSceneModeToggle = async (skill: SkillItem, mode: SceneMode) => {
+        const current = getSkillSceneModes(skill)
+        const next = current.includes(mode)
+            ? current.filter(m => m !== mode)
+            : [...current, mode]
+        await skillService.updateSkillSceneMode(skill.name, next)
+        loadSkills()
+    }
+
     const handleCreate = async () => {
         if (!newSkillName.trim()) return
         setCreating(true)
-        const result = await skillService.createSkill(newSkillName.trim(), '', createLevel)
+        const result = await skillService.createSkill(newSkillName.trim(), '', createLevel, newSkillSceneModes.join(','))
         if (result.success) {
             showInstalledMessage('success', t('app.createdsuccessfully', language as Language))
             loadSkills()
             setNewSkillName('')
+            setNewSkillSceneModes([])
             setInstallMode(null)
             if (result.filePath) {
                 const content = await api.file.read(result.filePath)
@@ -203,8 +243,15 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
         }
     }
 
+    // 启用/停用：决定该技能能否被 AI 调用（停用后 apply_skill 不再加载）
     const handleToggle = async (name: string, currentEnabled: boolean) => {
         await skillService.toggleSkill(name, !currentEnabled)
+        loadSkills()
+    }
+
+    // 显示/隐藏：只决定是否出现在空会话技能列表，不影响 AI 调用
+    const handleToggleVisible = async (name: string, currentVisible: boolean) => {
+        await skillService.toggleSkillVisible(name, !currentVisible)
         loadSkills()
     }
 
@@ -291,8 +338,10 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
     }, [skills, filterSource, skillSearch])
 
     const enabledCount = skills.filter(s => s.enabled).length
+    const bundledCount = skills.filter(s => s.source === 'bundled').length
     const globalCount = skills.filter(s => s.source === 'global').length
     const projectCount = skills.filter(s => s.source === 'project').length
+    const pluginCount = skills.filter(s => s.source === 'plugin').length
 
     return (
         <div className="space-y-4 animate-fade-in pb-10">
@@ -438,10 +487,10 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                             )}
                         </div>
                         <div className="flex items-center rounded-lg border border-border/50 bg-background/30 overflow-hidden">
-                            {([['all', t('app.all', language as Language), skills.length], ['global', t('app.global2', language as Language), globalCount], ['project', t('app.project2', language as Language), projectCount]] as [string, string, number][]).map(([val, label, count]) => (
+                            {([['all', t('app.all', language as Language), skills.length], ['bundled', zh ? '内置' : 'Built-in', bundledCount], ['global', t('app.global2', language as Language), globalCount], ['project', t('app.project2', language as Language), projectCount], ['plugin', zh ? '插件' : 'Plugin', pluginCount]] as [string, string, number][]).map(([val, label, count]) => (
                                 <button
                                     key={val}
-                                    onClick={() => setFilterSource(val as 'all' | 'global' | 'project')}
+                                    onClick={() => setFilterSource(val as 'all' | 'bundled' | 'global' | 'project' | 'plugin')}
                                     className={`text-[11px] px-2.5 py-1 transition-colors flex items-center gap-1 ${filterSource === val
                                         ? 'bg-accent/15 text-accent font-medium'
                                         : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
@@ -454,11 +503,39 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                         </div>
                     </div>
 
-                    {/* 技能说明 */}
-                    <div className="px-5 pb-3">
+                    {/* 技能说明 + 展示顺序 */}
+                    <div className="px-5 pb-3 flex flex-wrap items-center justify-between gap-3">
                         <p className="text-[11px] text-text-muted/70">
                             {t('app.skillsareinstructionpackages', language as Language)}
                         </p>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[11px] text-text-muted/70">
+                                {zh ? '展示顺序' : 'Display order'}
+                            </span>
+                            <div className="flex items-center rounded-lg border border-border/50 bg-background/30 overflow-hidden">
+                                {([['default', zh ? '默认' : 'Default'], ['clicks', zh ? '按点击率' : 'By clicks']] as [SkillSortMode, string][]).map(([value, label]) => (
+                                    <button
+                                        key={value}
+                                        onClick={() => setSkillSortMode(value)}
+                                        className={`text-[11px] px-2.5 py-1 transition-colors ${sortMode === value
+                                            ? 'bg-accent/15 text-accent font-medium'
+                                            : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+                                        }`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                            {sortMode === 'clicks' && (
+                                <button
+                                    onClick={() => resetSkillClickStats()}
+                                    title={zh ? '清空点击统计' : 'Clear click stats'}
+                                    className="p-1.5 text-text-muted hover:text-accent transition-colors rounded-md hover:bg-accent/10"
+                                >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {/* 技能列表 */}
@@ -489,6 +566,8 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                     const Icon = getSkillIcon(skill.name)
                                     const color = getSkillColor(skill.name)
                                     const isExpanded = expandedSkill === skill.name
+                                    const sceneModes = getSkillSceneModes(skill)
+
 
                                     return (
                                         <div
@@ -509,12 +588,33 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-1.5 flex-wrap">
                                                         <span className="text-xs font-semibold text-text-primary">{skill.name}</span>
-                                                        <span className={`text-[10px] px-1.5 py-px rounded ${skill.source === 'global'
-                                                            ? 'bg-blue-500/15 text-blue-400'
-                                                            : 'bg-green-500/15 text-green-400'
+                                                        <span className={`text-[10px] px-1.5 py-px rounded ${skill.source === 'bundled'
+                                                            ? 'bg-indigo-500/15 text-indigo-400'
+                                                            : skill.source === 'global'
+                                                                ? 'bg-blue-500/15 text-blue-400'
+                                                                : skill.source === 'plugin'
+                                                                    ? 'bg-amber-500/15 text-amber-400'
+                                                                    : 'bg-green-500/15 text-green-400'
                                                         }`}>
-                                                            {skill.source === 'global' ? t('app.global3', language as Language) : t('app.project3', language as Language)}
+                                                            {skill.source === 'bundled'
+                                                                ? (zh ? '内置' : 'Built-in')
+                                                                : skill.source === 'global'
+                                                                    ? t('app.global3', language as Language)
+                                                                    : skill.source === 'plugin'
+                                                                        ? (zh ? '插件' : 'Plugin')
+                                                                        : t('app.project3', language as Language)}
                                                         </span>
+                                                        <span
+                                                            className="text-[10px] px-1.5 py-px rounded bg-accent/10 text-accent/80"
+                                                            title={zh ? '场景归属：仅在这些模式下可见' : 'Scene scope: visible only in these modes'}
+                                                        >
+                                                            {sceneModes.length === 0
+                                                                ? (zh ? '全场景' : 'All scenes')
+                                                                : sceneModes.map(m => SCENE_MODE_LABEL[m as SceneMode]
+                                                                    ? (zh ? SCENE_MODE_LABEL[m as SceneMode].zh : SCENE_MODE_LABEL[m as SceneMode].en)
+                                                                    : m).join(' / ')}
+                                                        </span>
+
                                                         <button
                                                             onClick={() => handleTriggerTypeChange(skill.name, skill.type === 'auto' ? 'manual' : 'auto')}
                                                             className={`text-[10px] px-1.5 py-px rounded cursor-pointer transition-colors ${skill.type === 'auto'
@@ -545,17 +645,40 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                                     </div>
                                                 )}
 
-                                                {/* 开关 */}
+                                                {/* 启用/停用：决定该技能能否被 AI 调用；内置技能随客户端分发，不可停用 */}
                                                 <button
+                                                    type="button"
                                                     onClick={() => handleToggle(skill.name, skill.enabled)}
-                                                    className={`flex-shrink-0 transition-colors ${skill.enabled ? 'text-accent' : 'text-text-muted/50'}`}
-                                                    title={skill.enabled ? t('app.disable', language as Language) : t('app.enable', language as Language)}
+                                                    disabled={skill.source === 'bundled'}
+                                                    title={skill.source === 'bundled'
+                                                        ? (zh ? '内置技能默认启用，不可停用' : 'Built-in skills are always enabled')
+                                                        : skill.enabled
+                                                            ? (zh ? '停用（AI 不再调用此技能）' : 'Disable (AI can no longer load it)')
+                                                            : (zh ? '启用（允许 AI 调用此技能）' : 'Enable (allow AI to load it)')}
+                                                    aria-label={zh ? '启用 / 停用' : 'Enable / disable'}
+                                                    className={`flex-shrink-0 transition-colors disabled:cursor-not-allowed ${skill.source === 'bundled'
+                                                        ? 'text-accent/40'
+                                                        : skill.enabled ? 'text-accent' : 'text-text-muted/50'
+                                                    }`}
                                                 >
-                                                    {skill.enabled ? (
-                                                        <ToggleRight className="w-6 h-6" />
-                                                    ) : (
-                                                        <ToggleLeft className="w-6 h-6" />
-                                                    )}
+                                                    {skill.enabled ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
+                                                </button>
+
+
+                                                {/* 显示/隐藏：只决定是否出现在空会话技能列表，不影响 AI 调用 */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleToggleVisible(skill.name, skill.visible)}
+                                                    title={skill.visible
+                                                        ? (zh ? '隐藏（空会话不展示，AI 仍可调用）' : 'Hide from skill list (AI can still load it)')
+                                                        : (zh ? '显示在空会话技能列表' : 'Show in skill list')}
+                                                    aria-label={zh ? '显示 / 隐藏' : 'Show / hide'}
+                                                    className={`flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-md transition-colors ${skill.visible
+                                                        ? 'text-text-secondary hover:text-accent hover:bg-accent/10'
+                                                        : 'text-text-muted/40 hover:bg-text-primary/[0.06] hover:text-text-primary'
+                                                    }`}
+                                                >
+                                                    {skill.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                                                 </button>
 
                                                 {/* 更多操作 */}
@@ -595,6 +718,32 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                                                 <p className="text-[11px] text-text-secondary mt-0.5">{skill.description}</p>
                                                             </div>
                                                         )}
+                                                        <div>
+                                                            <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">
+                                                                {zh ? '场景归属' : 'Scene scope'}
+                                                            </span>
+                                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                                {SCENE_MODE_ORDER.map(mode => {
+                                                                    const active = sceneModes.includes(mode)
+                                                                    return (
+                                                                        <button
+                                                                            key={mode}
+                                                                            onClick={() => handleSceneModeToggle(skill, mode)}
+                                                                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${active
+                                                                                ? 'bg-accent/15 text-accent'
+                                                                                : 'bg-surface-hover/40 text-text-muted/60 hover:text-text-secondary'
+                                                                            }`}
+                                                                        >
+                                                                            {zh ? SCENE_MODE_LABEL[mode].zh : SCENE_MODE_LABEL[mode].en}
+                                                                        </button>
+                                                                    )
+                                                                })}
+                                                            </div>
+                                                            <p className="text-[10px] text-text-muted/50 mt-1">
+                                                                {zh ? '不选表示所有场景可见' : 'None selected = visible in all scenes'}
+                                                            </p>
+                                                        </div>
+
                                                         {skill.keywords && skill.keywords.length > 0 && (
                                                             <div>
                                                                 <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('app.keywords', language as Language)}</span>
@@ -805,6 +954,30 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                             {creating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : t('app.create2', language as Language)}
                                         </ActionButton>
                                     </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[11px] text-text-muted">{zh ? '场景归属' : 'Scene scope'}</span>
+                                        <div className="flex items-center rounded-md border border-border/50 overflow-hidden">
+                                            {SCENE_MODE_ORDER.map(mode => {
+                                                const active = newSkillSceneModes.includes(mode)
+                                                return (
+                                                    <button
+                                                        key={mode}
+                                                        onClick={() => setNewSkillSceneModes(prev => (active ? prev.filter(m => m !== mode) : [...prev, mode]))}
+                                                        className={`text-[11px] px-2.5 py-0.5 transition-colors ${active
+                                                            ? 'bg-accent/15 text-accent font-medium'
+                                                            : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+                                                        }`}
+                                                    >
+                                                        {zh ? SCENE_MODE_LABEL[mode].zh : SCENE_MODE_LABEL[mode].en}
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                        <span className="text-[11px] text-text-muted/50">
+                                            {zh ? '不选表示所有场景可见' : 'None = visible in all scenes'}
+                                        </span>
+                                    </div>
+
                                     <div className="flex items-center gap-3">
                                         <div className="flex items-center gap-2">
                                             <span className="text-[11px] text-text-muted">{t('app.saveto', language as Language)}</span>
@@ -837,7 +1010,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
             {/* 使用提示 */}
             <div className="p-4 rounded-xl bg-accent/5 border border-accent/10 text-xs text-text-muted">
                 <p className="font-medium text-accent/80 mb-2">{t('app.tips', language as Language)}</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div className="flex items-start gap-2">
                         <Zap className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
                         <div>
@@ -859,7 +1032,17 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                             <p className="text-[11px] text-text-muted/70 mt-0.5">{t('app.workspaceoverridesglobal', language as Language)}</p>
                         </div>
                     </div>
+                    <div className="flex items-start gap-2">
+                        <Info className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
+                        <div>
+                            <span className="text-text-secondary font-medium">{zh ? '场景归属' : 'Scene scope'}</span>
+                            <p className="text-[11px] text-text-muted/70 mt-0.5">
+                                {zh ? '设定后仅在对应模式的推荐技能中出现；不选表示所有场景可见' : 'Shown as a recommended skill only in the selected modes; none selected means all scenes.'}
+                            </p>
+                        </div>
+                    </div>
                 </div>
+
             </div>
 
             {activeMenu && menuPosition && (() => {
@@ -872,17 +1055,19 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                         className="w-36 bg-surface border border-border/60 rounded-lg shadow-xl py-1 animate-fade-in"
                         data-skill-menu={skill.name}
                     >
-                        <button
-                            onClick={() => {
-                                setActiveMenu(null)
-                                setMenuPosition(null)
-                                handleOpenEditor(skill)
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:bg-accent/10 hover:text-accent transition-colors"
-                        >
-                            <Pencil className="w-3.5 h-3.5" />
-                            {t('app.edit', language as Language)}
-                        </button>
+                        {(skill.source === 'project' || skill.source === 'global') && (
+                            <button
+                                onClick={() => {
+                                    setActiveMenu(null)
+                                    setMenuPosition(null)
+                                    handleOpenEditor(skill)
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:bg-accent/10 hover:text-accent transition-colors"
+                            >
+                                <Pencil className="w-3.5 h-3.5" />
+                                {t('app.edit', language as Language)}
+                            </button>
+                        )}
                         <button
                             onClick={() => {
                                 setActiveMenu(null)
@@ -894,25 +1079,29 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                             <Info className="w-3.5 h-3.5" />
                             {t('app.details', language as Language)}
                         </button>
-                        <div className="border-t border-border/30 my-1"></div>
-                        <button
-                            onClick={() => {
-                                if (deleteConfirm === skill.name) {
-                                    handleDelete(skill.name)
-                                    setMenuPosition(null)
-                                } else {
-                                    setDeleteConfirm(skill.name)
-                                    setTimeout(() => setDeleteConfirm(null), 3000)
-                                }
-                            }}
-                            className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${deleteConfirm === skill.name
-                                ? 'text-red-400 bg-red-500/10 font-medium'
-                                : 'text-red-400/70 hover:bg-red-500/10 hover:text-red-400'
-                            }`}
-                        >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            {deleteConfirm === skill.name ? t('app.confirm', language as Language) : t('app.delete', language as Language)}
-                        </button>
+                        {(skill.source === 'project' || skill.source === 'global') && (
+                            <>
+                                <div className="border-t border-border/30 my-1"></div>
+                                <button
+                                    onClick={() => {
+                                        if (deleteConfirm === skill.name) {
+                                            handleDelete(skill.name)
+                                            setMenuPosition(null)
+                                        } else {
+                                            setDeleteConfirm(skill.name)
+                                            setTimeout(() => setDeleteConfirm(null), 3000)
+                                        }
+                                    }}
+                                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${deleteConfirm === skill.name
+                                        ? 'text-red-400 bg-red-500/10 font-medium'
+                                        : 'text-red-400/70 hover:bg-red-500/10 hover:text-red-400'
+                                    }`}
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    {deleteConfirm === skill.name ? t('app.confirm', language as Language) : t('app.delete', language as Language)}
+                                </button>
+                            </>
+                        )}
                     </div>
                 )
             })()}

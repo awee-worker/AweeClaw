@@ -167,7 +167,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
       descriptionKey: 'commandHub.cmdDesc.ai-chat',
       icon: Sparkles,
       category: 'AI',
-      action: () => { setChatVisible(true); setMode('chat'); if (query) setInputPrompt(query) },
+      action: () => { setChatVisible(true); setMode('expert'); if (query) setInputPrompt(query) },
       frequency: 10,
     },
     {
@@ -177,7 +177,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
       icon: MessageSquare,
       category: 'AI',
       scenarioScope: ['code'],
-      action: () => { if (activeFilePath) { setChatVisible(true); setMode('chat'); setInputPrompt(`Explain the file ${activeFilePath} in detail.`) } },
+      action: () => { if (activeFilePath) { setChatVisible(true); setMode('expert'); setInputPrompt(`Explain the file ${activeFilePath} in detail.`) } },
       frequency: 7,
     },
     {
@@ -187,7 +187,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
       icon: Zap,
       category: 'AI',
       scenarioScope: ['code'],
-      action: () => { if (activeFilePath) { setChatVisible(true); setMode('chat'); setInputPrompt(`Analyze ${activeFilePath} and suggest refactoring improvements.`) } },
+      action: () => { if (activeFilePath) { setChatVisible(true); setMode('expert'); setInputPrompt(`Analyze ${activeFilePath} and suggest refactoring improvements.`) } },
       frequency: 5,
     },
     {
@@ -197,7 +197,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
       icon: Shield,
       category: 'AI',
       scenarioScope: ['code'],
-      action: () => { if (activeFilePath) { setChatVisible(true); setMode('chat'); setInputPrompt(`Find potential bugs in ${activeFilePath} and provide fixes.`) } },
+      action: () => { if (activeFilePath) { setChatVisible(true); setMode('expert'); setInputPrompt(`Find potential bugs in ${activeFilePath} and provide fixes.`) } },
       frequency: 6,
     },
     {
@@ -207,7 +207,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
       icon: BookOpen,
       category: 'AI',
       scenarioScope: ['legal'],
-      action: () => { setChatVisible(true); setMode('chat'); setInputPrompt('Review this legal document for potential issues, compliance gaps, and risk areas.') },
+      action: () => { setChatVisible(true); setMode('expert'); setInputPrompt('Review this legal document for potential issues, compliance gaps, and risk areas.') },
       frequency: 3,
     },
     {
@@ -217,7 +217,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
       icon: Shield,
       category: 'AI',
       scenarioScope: ['medical'],
-      action: () => { setChatVisible(true); setMode('chat'); setInputPrompt('Perform a medical safety and accuracy check on this content.') },
+      action: () => { setChatVisible(true); setMode('expert'); setInputPrompt('Perform a medical safety and accuracy check on this content.') },
       frequency: 2,
     },
     {

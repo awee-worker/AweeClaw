@@ -100,8 +100,18 @@ export class AgentClass {
       planPhase?: 'planning' | 'executing'
       mentionedSkills?: string[]
       /**
-       * 子任务显式角色人设（角色库）：由 planExecutor 分派子任务时传入，
+       * 会话级显式专家（角色库）：来自输入区 ExpertSelector 的锁定选择，
+       * 优先级高于自动匹配与场景默认角色；不传时走自动匹配路径
+       */
+      explicitRoleId?: string | null
+      /**
+       * 子任务显式角色人设（角色库）：由 planExecutor 在分派子任务时传入，
        * 优先级高于主对话的自动匹配结果；不传时走自动匹配
+       */
+      subtaskSceneRolePersonaOverride?: string | null
+      /**
+       * 子任务显式角色人设（兼容旧调用方）：与 subtaskSceneRolePersonaOverride 等价
+       * @deprecated 使用 subtaskSceneRolePersonaOverride
        */
       sceneRolePersonaOverride?: string | null
     },
@@ -312,6 +322,9 @@ export class AgentClass {
         perceptionContext,
         isChannel: executionOptions?.isChannel,
         untrustedContext,
+        // 子任务角色人设：planExecutor 通过 subtaskSceneRolePersonaOverride 传入，
+        // 旧调用方仍用 sceneRolePersonaOverride 字段名，这里归一到 PromptComposer 的 sceneRolePersonaOverride
+        sceneRolePersonaOverride: promptOptions?.subtaskSceneRolePersonaOverride ?? promptOptions?.sceneRolePersonaOverride,
       })
 
       // 场景角色徽章：本轮命中角色时标记到助手消息（仅展示，不影响消息语义）

@@ -88,3 +88,39 @@ export function buildStatusBreakdown(
     .map(({ status, count }) => `${labels[status]} (${count})`)
     .join('，')
 }
+
+/**
+ * 把工具调用切成状态分组
+ *
+ * 恒为单一组，且组内顺序就是调用原始顺序：状态只决定组头的图标与文案，
+ * 不参与排序。
+ *
+ * 早期实现在组内出现待批准工具时按状态拆分（待批准在前、已完成在后）。
+ * 但一个工具组里经常同时有已经跑完的工具和刚拦下等待确认的工具 —— 先读文件、
+ * 紧接着写文件，两步之间没有可见文本就会并进同一组 —— 新卡片一进来就被插到
+ * 已完成卡片之前，用户批准后整组又挪回调用顺序，卡片先上后下地跳一次。
+ * 按状态排序带来的收益远小于这次位移，因此取消拆分。
+ *
+ * 只读取 status 字段，入参用泛型让调用方原样取回自己的元素类型：
+ * 渲染层传 ToolCall，测试可以传更轻的对象。
+ *
+ * @param tools 工具调用列表
+ * @returns 分组列表（恒为单组，图标与配色由调用方按 status 附加）
+ */
+export function groupToolsByStatus<T extends { status?: ToolStatus }>(
+  tools: T[],
+): Array<{ status: ToolGroupStatus; tools: T[] }> {
+  const counts = countToolStatuses(tools)
+
+  // 组状态取组内最高优先级：进行中 > 待批准 > 失败 > 已完成
+  let status: ToolGroupStatus = 'success'
+  if (counts.pending > 0) {
+    status = 'pending'
+  } else if (counts.awaiting > 0) {
+    status = 'awaiting'
+  } else if (counts.error > 0) {
+    status = 'error'
+  }
+
+  return [{ status, tools }]
+}

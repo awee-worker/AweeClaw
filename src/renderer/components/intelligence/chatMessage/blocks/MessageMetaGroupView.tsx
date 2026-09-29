@@ -48,7 +48,7 @@ function MessageMetaGroupViewBase({ manualSkills, searchContent, isSearchStreami
     }
   }
 
-  const skillNames = (manualSkills || []).map((s: any) => s.skillId).join(', ')
+  const skillNames = (manualSkills || []).map((s: any) => s.name || s.skillId).join(', ')
 
   return (
     <div className="overflow-hidden w-full my-0.5 animate-fade-in relative z-10">
@@ -101,7 +101,7 @@ function MessageMetaGroupViewBase({ manualSkills, searchContent, isSearchStreami
                         onClick={(e) => handleOpenSkill(e, item.skillId)}
                         className="font-mono text-text-muted/75 hover:text-accent transition-colors focus:outline-none"
                       >
-                        {item.skillId}
+                        {item.name || item.skillId}
                       </button>
                     </React.Fragment>
                   ))}

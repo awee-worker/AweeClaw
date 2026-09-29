@@ -22,10 +22,10 @@ export const MODE_CONFIGS: Record<WorkMode, ModeConfig> = {
         icon: 'Brain',
         description: '擅长解决更难的问题'
     },
-    plan: {
-        id: 'plan',
+    expert: {
+        id: 'expert',
         label: 'Expert',
         icon: 'GraduationCap',
-        description: '研究级智能模式'
+        description: '按当前场景调用专家方法'
     }
 }

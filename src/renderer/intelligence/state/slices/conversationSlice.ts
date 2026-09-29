@@ -1543,7 +1543,33 @@ export const createMessageSlice: StateCreator<
             const thread = state.threads[threadId]
             if (!thread) return state
 
-            const exists = thread.contextItems.some(existing => {
+            const items = thread.contextItems
+
+            // 技能、插件为单选上下文：再次选择同类项时用新项替换旧项，
+            // 否则切换技能（如「网站开发」→「APP 开发」）时旧选择会一直残留。
+            if (item.type === 'Skill' || item.type === 'Plugin') {
+                const itemType = item.type
+                const keyOf = (target: ContextItem): string => {
+                    if (target.type === 'Skill') return `Skill:${target.skillId}`
+                    if (target.type === 'Plugin') return `Plugin:${target.pluginId}`
+                    return ''
+                }
+
+                const sameType = items.filter(existing => existing.type === itemType)
+                if (sameType.some(existing => keyOf(existing) === keyOf(item))) return state
+
+                return {
+                    threads: {
+                        ...state.threads,
+                        [threadId]: {
+                            ...thread,
+                            contextItems: [...items.filter(existing => existing.type !== itemType), item],
+                        },
+                    },
+                }
+            }
+
+            const exists = items.some(existing => {
                 if (existing.type !== item.type) return false
                 if ('uri' in existing && 'uri' in item) {
                     return existing.uri === item.uri
@@ -1558,12 +1584,13 @@ export const createMessageSlice: StateCreator<
                     ...state.threads,
                     [threadId]: {
                         ...thread,
-                        contextItems: [...thread.contextItems, item],
+                        contextItems: [...items, item],
                     },
                 },
             }
         })
     },
+
 
     // 移除上下文项
     removeContextItem: (index) => {

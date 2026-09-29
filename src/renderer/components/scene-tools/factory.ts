@@ -4,6 +4,7 @@
  * 提供 SceneToolDS 接口和 listDS 通用工厂，
  * 供各工具模块使用，避免在 agentBridge.ts 中重复定义。
  */
+import type { SceneMode } from '@protocols/sceneModeProtocol'
 
 // ============================================
 // 类型定义
@@ -14,7 +15,7 @@ export type OpResult = { ok: boolean; id?: string; error?: string }
 export interface SceneToolDS {
   id: string
   name: string
-  mode: 'work' | 'life' | 'study'
+  mode: SceneMode
   description: string
   /** 新增条目时接受的字段说明（给 LLM 看） */
   itemSchema: string

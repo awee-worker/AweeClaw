@@ -61,8 +61,8 @@ export interface VoiceContextPayload {
   workspacePath: string | null
   /** 工具执行授权方式（every-step / dangerous-only / never），同步主窗口 authorizationMode */
   authorizationMode?: 'every-step' | 'dangerous-only' | 'never'
-  /** 工作模式（chat/agent/plan），同步主窗口 useModeStore.currentMode */
-  workMode?: 'chat' | 'agent' | 'plan' | null
+  /** 工作模式（chat/agent/expert），同步主窗口 useModeStore.currentMode */
+  workMode?: 'chat' | 'agent' | 'expert' | null
   /** 自定义智能体配置（同步主窗口 store.agentConfig，供迷你聊天选择/生效） */
   agentConfig?: AvatarAgentConfig | null
   updatedAt: number
@@ -2261,9 +2261,11 @@ export interface ElectronAPI {
 
   // Skills
   skillsGetGlobalDir: () => Promise<string>
+  /** 内置技能目录（随客户端分发，只读） */
+  skillsGetBundledDir: () => Promise<string>
   skillsList: (workspacePaths?: string[]) => Promise<{
     success: boolean
-    skills?: Array<{ name: string; description: string; scope: 'global' | 'workspace' }>
+    skills?: Array<{ name: string; description: string; scope: 'global' | 'workspace' | 'bundled' }>
     error?: string
   }>
   skillsRead: (
@@ -2271,9 +2273,10 @@ export interface ElectronAPI {
     workspacePaths?: string[],
   ) => Promise<{
     success: boolean
-    skill?: { name: string; content: string; scope: 'global' | 'workspace' } | null
+    skill?: { name: string; content: string; scope: 'global' | 'workspace' | 'bundled' } | null
     error?: string
   }>
+
 
   // Channel 多渠道
   channelInitialize: () => Promise<{ success: boolean; error?: string }>
@@ -2466,6 +2469,8 @@ export interface ElectronAPI {
   pluginEnable: (pluginKey: string) => Promise<{ success: boolean; error?: string }>
   /** 禁用插件 */
   pluginDisable: (pluginKey: string) => Promise<{ success: boolean; error?: string }>
+  /** 设置插件是否在新建任务界面显示 */
+  pluginSetNewTaskVisible: (pluginKey: string, visible: boolean) => Promise<{ success: boolean; error?: string }>
   /** 获取已安装插件列表 */
   pluginGetInstalled: () => Promise<Array<{
     pluginId: string
@@ -2473,6 +2478,8 @@ export interface ElectronAPI {
     version: string
     installedAt: string
     enabled: boolean
+    /** 是否在新建任务界面显示（缺省视为显示） */
+    newTaskVisible?: boolean
     types: string[]
     manifest: unknown
     mcpServerId?: string
@@ -2514,6 +2521,25 @@ export interface ElectronAPI {
       }>
     }
     mcpServerId?: string
+  }>>
+  /** 获取 skill 型插件的技能贡献（供技能列表并入来源） */
+  pluginGetSkillContributions: () => Promise<Array<{
+    pluginKey: string
+    version: string
+    pluginEnabled: boolean
+    skillName: string
+    /** 插件 manifest 中的中文名 */
+    nameZh?: string
+    /** 插件 manifest 中的英文名 */
+    nameEn?: string
+    /** 插件图标：图片地址或 lucide 图标名 */
+    icon?: string
+    description: string
+    skillMdPath: string
+    /** 插件是否在新建任务界面显示；false 时其技能不并入技能列表 */
+    newTaskVisible: boolean
+    /** 该 skill 型插件本地缺少 SKILL.md；true 时正文不可读，需重装或更新插件 */
+    skillMdMissing?: boolean
   }>>
   /** 保存插件用户配置（并触发 MCP 重连，若该插件是 MCP 型且已注册） */
   pluginSaveConfig: (
@@ -2623,9 +2649,9 @@ export interface ElectronAPI {
     /** 事件：头像窗口请求切换授权方式（main→主窗口监听） */
     onSelectAuthorizationMode: (callback: (mode: 'every-step' | 'dangerous-only' | 'never') => void) => () => void
     /** 头像→main→主窗口：切换工作模式 */
-    selectWorkMode: (mode: 'chat' | 'agent' | 'plan') => Promise<{ success: boolean; error?: string }>
+    selectWorkMode: (mode: 'chat' | 'agent' | 'expert') => Promise<{ success: boolean; error?: string }>
     /** 事件：头像窗口请求切换工作模式（main→主窗口监听） */
-    onSelectWorkMode: (callback: (mode: 'chat' | 'agent' | 'plan') => void) => () => void
+    onSelectWorkMode: (callback: (mode: 'chat' | 'agent' | 'expert') => void) => () => void
     /** 头像→main→主窗口：切换自定义智能体（agentId 为 null 表示不使用智能体） */
     selectAgent: (agentId: string | null) => Promise<{ success: boolean; error?: string }>
     /** 事件：头像窗口请求切换自定义智能体（main→主窗口监听） */

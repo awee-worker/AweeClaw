@@ -20,6 +20,15 @@ import { getMessageText, type ChatThread, type AssistantMessage, type UserMessag
 /** 有效字符上限：超过该长度的消息视为用户自己的完整表述，不再当作「简短确认」 */
 const SHORT_REPLY_MAX_CHARS = 12
 
+/** 指代型回复的长度上限：必须含指代词才采纳，因此比简短确认宽松 */
+const REFERENTIAL_MAX_CHARS = 24
+
+/** 带进衔接说明的上一轮助手回复最大字符数：够覆盖「发现了哪几件事」，又不至于把整篇回复塞进去 */
+const LAST_TURN_REPLY_MAX_CHARS = 2600
+
+/** 待处理事项清单最多列出多少条 */
+const MAX_PENDING_ITEMS = 12
+
 /** 否定 / 收尾语：命中则判定「不是在肯定提问」，不附加衔接说明 */
 const NEGATIVE_MARKERS = [
   '不用', '不需要', '不要', '别', '算了', '取消', '停止', '终止', '暂时不', '不继续',
@@ -35,12 +44,25 @@ const AFFIRMATIVE_MARKERS = [
   'proceed', 'continue', 'start', 'confirm', 'agreed', 'fine', 'absolutely', 'of course',
 ]
 
-/** 提问 / 提议特征：上一条助手消息命中才认为存在「待确认提问」 */
+/** 提问 / 提议特征：本轮最后一段助手文本命中才认为存在「待确认提问」 */
 const QUESTION_MARKERS = [
   '要不要', '是否要', '是否需要', '需要我', '要我', '是否继续', '继续吗', '可以吗', '好吗',
-  '行吗', '对吧', '如何', '还是', '要不要我', '是否需要我', '请确认', '请你确认',
+  '行吗', '对吧', '如何', '还是', '要不要我', '是否需要我', '请确认', '请你确认', '一并',
   'shall i', 'should i', 'do you want', 'would you like', 'want me to', 'may i', 'can i',
   'continue?', 'proceed?',
+]
+
+/**
+ * 指代词：出现这类词说明回复在引用上一轮的内容
+ *
+ * 「要一并处理」「都改了吧」「按上面说的做」这类回复即使超过简短确认的长度上限，
+ * 也完全依赖上一轮上下文才能理解 —— 不衔接的话，模型不知道「一并 / 都」指哪些事项。
+ */
+const REFERENTIAL_MARKERS = [
+  '一并', '一起', '全部', '全都', '所有', '上面', '上述', '前面', '刚才', '刚刚',
+  '这些', '那些', '这几个', '这几项', '那几', '都处理', '都改', '都做', '都修', '照做',
+  '按你说的', '按你上面', '照你说的',
+  'all of them', 'all of it', 'all of these', 'the above', 'those', 'them all', 'everything', 'both',
 ]
 
 function normalize(text: string): string {
@@ -56,6 +78,28 @@ export function isShortAffirmativeReply(text: string): boolean {
   const lower = raw.toLowerCase()
   if (NEGATIVE_MARKERS.some(marker => lower.includes(marker.toLowerCase()))) return false
   return AFFIRMATIVE_MARKERS.some(marker => lower.includes(marker.toLowerCase()))
+}
+
+/**
+ * 是否属于「指代型回复」
+ *
+ * 如「要一并处理」「那你把刚才说的那几个都改了吧」。这类回复比简短确认长，
+ * 但语义完全落在上一轮：没有上一轮内容就无法判断「一并 / 那几个」是什么。
+ * 判定要求必须命中指代词，避免把用户自己的完整表述误当成确认。
+ */
+export function isReferentialReply(text: string): boolean {
+  const raw = normalize(text)
+  if (!raw) return false
+  if (raw.length > REFERENTIAL_MAX_CHARS) return false
+
+  const lower = raw.toLowerCase()
+  if (NEGATIVE_MARKERS.some(marker => lower.includes(marker.toLowerCase()))) return false
+  return REFERENTIAL_MARKERS.some(marker => lower.includes(marker.toLowerCase()))
+}
+
+/** 需要衔接上一轮的回复：简短肯定，或带指代词的作答 */
+export function needsPendingQuestionBridge(text: string): boolean {
+  return isShortAffirmativeReply(text) || isReferentialReply(text)
 }
 
 /** 提取助手消息的可见文本（content 为空时回退到文本 part / 交互式提问） */
@@ -85,37 +129,78 @@ function looksLikePendingQuestion(text: string): boolean {
   if (!trimmed) return false
   if (/[?？]\s*$/.test(trimmed)) return true
 
-  const tail = trimmed.slice(-160).toLowerCase()
+  // 窗口放宽到 480：模型常在一段总结之后用「要不要我…」收尾，
+  // 只看结尾 160 字符容易漏掉前面半句里的征询句式。
+  const tail = trimmed.slice(-480).toLowerCase()
   return QUESTION_MARKERS.some(marker => tail.includes(marker))
 }
 
+/**
+ * 抽取助手回复里的列表项
+ *
+ * 「要一并处理」的事项通常以列表承载（- / 1. / ①②）。把清单单独列出来，
+ * 模型就能把它与用户的「一并」直接对应上，不必在一大段回复里自行检索。
+ */
+function extractListItems(text: string): string[] {
+  const items: string[] = []
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    if (!/^(?:[-*+]|\d{1,2}[.、)]|[\u2460-\u2473])\s*\S/.test(trimmed)) continue
+    items.push(trimmed.length > 160 ? `${trimmed.slice(0, 160)}…` : trimmed)
+  }
+  return items
+}
+
 interface PendingQuestionInfo {
-  question: string
+  /** 上一轮（最后一个用户请求之后）助手回复的完整要点，末尾即待确认的提问 */
+  assistantReply: string
+  /** 上一轮回复中提取出的待处理事项清单 */
+  pendingItems: string[]
   lastUserRequest: string
 }
 
-/** 扫描线程，找出最后一条助手消息中的待确认提问 */
+/**
+ * 定位「待确认提问」
+ *
+ * 关键点：一轮助手输出可能被工具调用拆成多条 assistant 消息 —— 先汇报
+ * 「发现 3 个问题：A/B/C」，再发起提问「要不要一并处理？」。只取最后一条
+ * 助手消息会丢掉「要处理什么」，用户回一句「要一并处理」时模型自然无从下手。
+ * 因此这里收集**最后一个用户请求之后的所有助手消息**，合并为上一轮回复要点。
+ */
 function findPendingQuestion(thread: ChatThread | undefined): PendingQuestionInfo | null {
-  if (!thread?.messages?.length) return null
+  const messages = thread?.messages
+  if (!messages?.length) return null
 
-  let lastAssistantText = ''
-  let lastUserRequest = ''
-
-  for (let i = thread.messages.length - 1; i >= 0; i--) {
-    const message = thread.messages[i]
-    if (message.role === 'assistant' && !lastAssistantText) {
-      lastAssistantText = extractAssistantText(message as AssistantMessage)
-    } else if (message.role === 'user' && !lastUserRequest) {
-      lastUserRequest = getMessageText((message as UserMessage).content).trim()
+  // 最后一条真实用户消息（跳过静默注入的 hidden 消息，它们不是用户的口头请求）
+  let lastUserIndex = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message.role === 'user' && !(message as UserMessage).hidden) {
+      lastUserIndex = i
+      break
     }
-    if (lastAssistantText && lastUserRequest) break
   }
+  if (lastUserIndex < 0) return null
 
-  if (!lastAssistantText || !looksLikePendingQuestion(lastAssistantText)) return null
+  const assistantTexts: string[] = []
+  for (let i = lastUserIndex + 1; i < messages.length; i++) {
+    const message = messages[i]
+    if (message.role !== 'assistant') continue
+    const text = extractAssistantText(message as AssistantMessage)
+    if (text) assistantTexts.push(text)
+  }
+  if (assistantTexts.length === 0) return null
 
+  // 以最后一段助手文本判定是否留下提问；其余文本作为背景一并带上
+  const lastAssistantText = assistantTexts[assistantTexts.length - 1]
+  if (!looksLikePendingQuestion(lastAssistantText)) return null
+
+  const assistantReply = assistantTexts.join('\n\n')
   return {
-    question: lastAssistantText.slice(-600),
-    lastUserRequest: lastUserRequest.slice(0, 300),
+    assistantReply: assistantReply.slice(-LAST_TURN_REPLY_MAX_CHARS),
+    pendingItems: extractListItems(assistantReply).slice(-MAX_PENDING_ITEMS),
+    lastUserRequest: getMessageText((messages[lastUserIndex] as UserMessage).content).trim().slice(0, 300),
   }
 }
 
@@ -131,20 +216,25 @@ export function buildPendingQuestionNotice(
   incomingText: string,
   language: 'zh' | 'en' = 'zh',
 ): string | null {
-  if (!isShortAffirmativeReply(incomingText)) return null
+  if (!needsPendingQuestionBridge(incomingText)) return null
 
   const pending = findPendingQuestion(thread)
   if (!pending) return null
 
+  const replyEcho = incomingText.trim().slice(0, 80)
+
   if (language === 'en') {
     return [
       '## Context Bridge (auto-attached)',
-      'The user replied with a short confirmation to your previous question. Your previous question was:',
+      `The user replied with a brief answer ("${replyEcho}") that depends on your previous turn. Your full previous reply was:`,
       '"""',
-      pending.question,
+      pending.assistantReply,
       '"""',
-      pending.lastUserRequest ? `Context: the user's earlier request was "${pending.lastUserRequest}".` : '',
-      'Treat the short reply as confirmation of that question and continue accordingly (start the proposed work directly, without asking again what the user means). If the reply clearly means the opposite (declining), then stop and confirm instead.',
+      pending.pendingItems.length
+        ? `Items still open at the end of that reply (this is what "all of them" / "both" / "the above" refers to):\n${pending.pendingItems.join('\n')}`
+        : '',
+      pending.lastUserRequest ? `Context: the user's request for that turn was "${pending.lastUserRequest}".` : '',
+      'Treat the brief reply as confirmation and proceed directly with the pending item(s) above — do not ask the user again what they mean. If the reply clearly declines instead, stop and briefly confirm.',
     ]
       .filter(Boolean)
       .join('\n')
@@ -152,12 +242,15 @@ export function buildPendingQuestionNotice(
 
   return [
     '## 上下文衔接（自动附加）',
-    '用户本次回复是对你上一条提问的简短确认。你上一条提问原文如下：',
+    `用户本次回复是「${replyEcho}」，简短且依赖上一轮 —— 请按下述上一轮内容理解它。你上一轮的完整回复如下（末尾就是你正在等确认的提问）：`,
     '"""',
-    pending.question,
+    pending.assistantReply,
     '"""',
-    pending.lastUserRequest ? `背景：用户之前的请求是「${pending.lastUserRequest}」。` : '',
-    '请把这条简短回复理解为对该提问的肯定确认，并直接按提问中的提议继续执行（不要再次询问用户「你指的是什么」）。若该回复明显是否定/收尾之意，则停止并简短确认即可。',
+    pending.pendingItems.length
+      ? `上一轮回复中列出的待处理事项（用户所说的「一并 / 都 / 一起」指的就是这些）：\n${pending.pendingItems.join('\n')}`
+      : '',
+    pending.lastUserRequest ? `背景：那一轮用户的请求是「${pending.lastUserRequest}」。` : '',
+    '请把这条简短回复理解为对该提问的肯定确认，直接按上述待处理事项继续执行（不要再次询问用户「你指的是什么」）。若该回复明显是否定/收尾之意，则停止并简短确认即可。',
   ]
     .filter(Boolean)
     .join('\n')
@@ -183,8 +276,8 @@ function extractInteractiveSelection(message: AssistantMessage): InteractiveSele
 
   const rawOptions = Array.isArray(interactive.options) ? interactive.options : []
   const options = rawOptions
-    .filter((opt): opt is { id?: string; label: string } => typeof opt?.label === 'string')
-    .map((opt, index) => ({ id: opt.id || `option-${index}`, label: opt.label }))
+    .filter((opt) => typeof opt?.label === 'string')
+    .map((opt, index) => ({ id: opt?.id || `option-${index}`, label: opt.label }))
 
   if (options.length === 0) return null
 

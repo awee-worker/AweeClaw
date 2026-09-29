@@ -103,14 +103,27 @@ function applyOverride(base: RoleDescriptor, override?: Partial<RoleDescriptor>)
   return override ? { ...base, ...override } : base
 }
 
+/** 全部场景模式（与 sceneModeProtocol 的 SceneMode 保持一致） */
+const ALL_SCENE_MODES: SceneMode[] = ['work', 'life', 'study', 'dev']
+
+/** 内置角色 id 迁移映射：work.dev-* → dev.*（内置角色拆分为四场景时引入，用于用户数据迁移） */
+const ROLE_ID_MIGRATIONS: Record<string, string> = {
+  'work.dev-architect': 'dev.architect',
+  'work.dev-frontend': 'dev.frontend',
+  'work.dev-backend': 'dev.backend',
+  'work.dev-qa': 'dev.qa',
+  'work.dev-devops': 'dev.devops',
+  'work.dev-data': 'dev.data',
+}
+
 /** id 格式校验：<scene>.<slug>（小写字母、数字、点、连字符） */
-const ROLE_ID_PATTERN = /^(work|life|study)\.[a-z0-9][a-z0-9-]*$/
+const ROLE_ID_PATTERN = /^(work|life|study|dev)\.[a-z0-9][a-z0-9-]*$/
 
 export const useRoleLibraryStore = create<RoleLibraryStore>()(
   persist(
     (set, get) => ({
       roles: [],
-      defaultRoleIds: { work: null, life: null, study: null },
+      defaultRoleIds: { work: null, life: null, study: null, dev: null },
       overrides: {},
       autoMatchEnabled: true,
 
@@ -244,7 +257,65 @@ export const useRoleLibraryStore = create<RoleLibraryStore>()(
         overrides: state.overrides,
         autoMatchEnabled: state.autoMatchEnabled,
       }),
+      // 版本 1：内置研发角色由工作场景迁移到代码开发场景（内置角色拆分为四场景）
+      version: 1,
+      migrate: (persisted, fromVersion) => {
+        const state = persisted as Partial<RoleLibraryState> | undefined
+        if (!state) return persisted as RoleLibraryStore
+        if (fromVersion >= 1) return state as RoleLibraryStore
+
+        // 改写 overrides 的 key：不改写则用户对研发角色的启停/覆盖设置全部失配，角色恢复默认启用
+        if (state.overrides) {
+          const nextOverrides: Record<string, Partial<RoleDescriptor>> = {}
+          for (const [id, override] of Object.entries(state.overrides)) {
+            nextOverrides[ROLE_ID_MIGRATIONS[id] ?? id] = override
+          }
+          state.overrides = nextOverrides
+        }
+
+        // 改写 defaultRoleIds 的引用值
+        if (state.defaultRoleIds) {
+          const nextDefaults = { ...state.defaultRoleIds }
+          for (const scene of ALL_SCENE_MODES) {
+            const id = nextDefaults[scene]
+            if (id && ROLE_ID_MIGRATIONS[id]) nextDefaults[scene] = ROLE_ID_MIGRATIONS[id]
+          }
+          state.defaultRoleIds = nextDefaults
+        }
+
+        // 清理 roles 中残留的旧 id：新 id 已成为内置角色，旧 id 会被 isBuiltin 判为自定义角色而重复出现
+        if (Array.isArray(state.roles)) {
+          state.roles = state.roles.filter(r => !ROLE_ID_MIGRATIONS[r.id])
+        }
+
+        return state as RoleLibraryStore
+      },
       onRehydrateStorage: () => (state) => {
+        // 内置角色随版本升级增删：清理指向已移除角色的「场景默认角色」残留，并补全新增场景的 key。
+        // 不清理的话，设置面板里对应卡片已经不存在，用户既看不到该默认项，也没有入口取消它。
+        if (state) {
+          const nextDefaults = { ...state.defaultRoleIds }
+          let changed = 0
+          for (const scene of ALL_SCENE_MODES) {
+            if (!(scene in nextDefaults)) {
+              nextDefaults[scene] = null
+              changed++
+            }
+          }
+          for (const scene of ALL_SCENE_MODES) {
+            const id = nextDefaults[scene]
+            if (!id) continue
+            const stillExists = roleRegistry.isBuiltin(id) || state.roles.some(r => r.id === id)
+            if (!stillExists) {
+              nextDefaults[scene] = null
+              changed++
+            }
+          }
+          if (changed > 0) {
+            state.defaultRoleIds = nextDefaults
+            logger.agent.info(`[RoleLibraryStore] Reconciled ${changed} default role entr(ies) after builtin roles changed`)
+          }
+        }
         logger.agent.info('[RoleLibraryStore] Rehydrated, roles:', state?.roles?.length ?? 0)
       },
     },

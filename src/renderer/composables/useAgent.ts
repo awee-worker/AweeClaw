@@ -39,14 +39,14 @@ import type { PlanStatus } from '@intelligence/planner/planTypes'
 const MODE_DEFAULT_EFFORT: Record<WorkMode, LLMConfig['reasoningEffort']> = {
   chat: 'low',
   agent: 'high',
-  plan: 'xhigh',
+  expert: 'xhigh',
 }
 
 /** 各模式默认是否启用思考 */
 const MODE_DEFAULT_THINKING: Record<WorkMode, boolean> = {
   chat: false,
   agent: true,
-  plan: true,
+  expert: true,
 }
 
 /** 根据工作模式生成推理参数覆盖 */
@@ -181,7 +181,9 @@ export function useAgentCommands() {
       activeFile: params.activeFilePath || undefined,
       customInstructions: params.aiInstructions,
       promptTemplateId: params.promptTemplateId,
-      planPhase: params.chatMode === 'plan' ? params.planPhase : undefined,
+      planPhase: params.chatMode === 'expert' ? params.planPhase : undefined,
+      // 专家选择器锁定的角色：走 resolveSceneRole 第一级显式指定；未选（自动档）为 undefined，由自动匹配接管
+      explicitRoleId: useStore.getState().agentConfig?.activeExpertId || undefined,
     })
   }, [])
 
@@ -445,7 +447,7 @@ export function useThreadMessenger() {
           activeFile: params.activeFilePath || undefined,
           customInstructions: params.aiInstructions,
           promptTemplateId: params.promptTemplateId,
-          planPhase: params.chatMode === 'plan' ? params.planPhase : undefined,
+          planPhase: params.chatMode === 'expert' ? params.planPhase : undefined,
         },
         { threadId, silent: options?.silent },
       )

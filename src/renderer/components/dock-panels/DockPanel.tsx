@@ -2,7 +2,7 @@
  * 底部 Dock 面板容器
  */
 import { useEffect, useState, useCallback, memo } from 'react'
-import { useStore, useModeStore } from '@store'
+import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import {
   AlertCircle, ScrollText, Bug, Terminal as TerminalIcon,
@@ -232,7 +232,6 @@ const DockPanel = memo(function DockPanel() {
 
             <button
               onClick={() => {
-                const setMode = useModeStore.getState().setMode
                 const setInputPrompt = useAgentStore.getState().setInputPrompt
                 if (!activeTerminalId) return
                 const content = terminalManager.getOutputPreview(activeTerminalId, 24, 6000)
@@ -240,7 +239,6 @@ const DockPanel = memo(function DockPanel() {
                   .slice(-2000)
                   .trim()
                 if (!content) return
-                setMode('chat')
                 setInputPrompt(`I'm getting this error in the terminal. Please analyze it and fix the code:\n\n\`\`\`\n${content}\n\`\`\``)
               }}
               className="flex items-center justify-center w-7 h-7 rounded-lg text-accent hover:bg-accent/10 transition-colors"

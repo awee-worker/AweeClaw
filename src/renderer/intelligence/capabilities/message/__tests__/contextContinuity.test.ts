@@ -140,6 +140,85 @@ describe('待确认提问的上下文衔接', () => {
     expect(notice).toBeTruthy()
     expect(notice).toContain('要不要我继续实现注册功能？')
   })
+
+  it('上一轮回复很长且被工具轮次拆成多条 → 衔接说明带上完整要点与待处理清单', async () => {
+    patchGlobals()
+    const { buildPendingQuestionNotice } = await import('@intelligence/utils/pendingQuestionContext')
+
+    const thread = threadWith([
+      { id: 'u1', role: 'user', content: '帮我检查一下这个项目', timestamp: 1 },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: [
+          '我扫描了主要模块，发现 3 个问题：',
+          '- 登录接口没有做参数校验',
+          '- 上传目录缺少大小限制',
+          '- 日志里会打印用户手机号',
+        ].join('\n'),
+        timestamp: 2,
+        isStreaming: false,
+        parts: [],
+        toolCalls: [{ id: 't1', name: 'read_file', arguments: {} }],
+      },
+      { id: 't1', role: 'tool', toolCallId: 't1', name: 'read_file', content: '文件内容…', timestamp: 3 },
+      {
+        id: 'a2',
+        role: 'assistant',
+        content: '以上就是本次检查结果。要不要我一并处理？',
+        timestamp: 4,
+        isStreaming: false,
+        parts: [],
+        toolCalls: [],
+      },
+    ] as unknown as ChatMessage[])
+
+    const notice = buildPendingQuestionNotice(thread, '要一并处理', 'zh')
+
+    expect(notice).toBeTruthy()
+    // 提问原文仍在
+    expect(notice).toContain('要不要我一并处理？')
+    // 「要处理什么」不再丢失：清单被单独带出
+    expect(notice).toContain('登录接口没有做参数校验')
+    expect(notice).toContain('日志里会打印用户手机号')
+  })
+
+  it('指代型回复（超简短确认长度）→ 仍附加上一轮内容', async () => {
+    patchGlobals()
+    const { buildPendingQuestionNotice } = await import('@intelligence/utils/pendingQuestionContext')
+
+    const thread = threadWith([USER_REQUEST, ASSISTANT_QUESTION] as unknown as ChatMessage[])
+    // 17 个有效字符，超出「简短确认」上限，但含「上面 / 那些 / 一并」指代词
+    const notice = buildPendingQuestionNotice(thread, '把上面说的那些问题一并处理了吧', 'zh')
+
+    expect(notice).toBeTruthy()
+    expect(notice).toContain('要不要我继续实现注册功能？')
+  })
+
+  it('指代型否定回复 → 不附加', async () => {
+    patchGlobals()
+    const { buildPendingQuestionNotice } = await import('@intelligence/utils/pendingQuestionContext')
+
+    const thread = threadWith([USER_REQUEST, ASSISTANT_QUESTION] as unknown as ChatMessage[])
+    expect(buildPendingQuestionNotice(thread, '这些都不用处理了', 'zh')).toBeNull()
+  })
+
+  it('静默注入的 hidden 用户消息不作为「上一轮请求」', async () => {
+    patchGlobals()
+    const { buildPendingQuestionNotice } = await import('@intelligence/utils/pendingQuestionContext')
+
+    const thread = threadWith([
+      { id: 'u1', role: 'user', content: '帮我实现登录功能', timestamp: 1 },
+      ASSISTANT_QUESTION,
+      { id: 'u2', role: 'user', content: '项目上下文：xxx', timestamp: 3, hidden: true },
+    ] as unknown as ChatMessage[])
+
+    const notice = buildPendingQuestionNotice(thread, '要', 'zh')
+    expect(notice).toBeTruthy()
+    // 请求应回溯到真实用户消息，而不是静默注入的上下文
+    expect(notice).toContain('帮我实现登录功能')
+    expect(notice).not.toContain('项目上下文：xxx')
+  })
 })
 
 describe('助手提问消息在历史转换中不被丢弃', () => {

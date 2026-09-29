@@ -44,6 +44,20 @@ describe('buildAssistantGroups', () => {
     expect(shapeOf(groups)).toEqual(['tools:a@0', 'text@1', 'tools:b@2'])
   })
 
+  it('工具调用之间的空白文本不打断工具组连续性', () => {
+    // 工具调用前的文本缓冲区 flush 可能留下空行或换行，
+    // 这类 part 不产生可见 DOM，不应把连续工具调用拆成多个单工具组
+    const groups = buildAssistantGroups([
+      toolPart('a'),
+      textPart('\n'),
+      toolPart('b'),
+      textPart('  '),
+      toolPart('c'),
+    ])
+
+    expect(shapeOf(groups)).toEqual(['tools:a,b,c@0'])
+  })
+
   it('todo_write 抽成任务列表组，不进入相邻工具组', () => {
     const todos = [{ content: '写文档', status: 'pending', activeForm: '正在写文档' }]
     const todoPart = {
@@ -136,5 +150,49 @@ describe('buildAssistantGroups', () => {
     expect(persistedGroup.startIndex).toBe(1)
     // ……但渲染标识不变，工具卡片得以复用同一份 DOM
     expect(toolGroupKey(previewedGroup)).toBe(toolGroupKey(persistedGroup))
+  })
+
+  it('收尾后内容为空的推理块（渲染为 null）不打断工具组连续性', () => {
+    // 回归场景：工具执行期间推理块收尾后 content 为空，ReasoningPartView 返回 null，
+    // 不占 DOM。若仍按「内容间断」处理，连续工具调用会被切成多个单工具组，
+    // 用户先看到几张独立卡片、随后又重新并组 —— 表现为卡片跳动。
+    const groups = buildAssistantGroups([
+      toolPart('a'),
+      reasoningPart(''),
+      toolPart('b'),
+      reasoningPart('   '),
+      toolPart('c'),
+    ])
+
+    expect(shapeOf(groups)).toEqual(['tools:a,b,c@0'])
+  })
+
+  it('流式中的空推理块是可见内容，会正常打断工具组', () => {
+    // 与上一条相对：流式中的推理块会渲染「思考中」骨架，占 DOM，
+    // 因此必须切断工具组，否则工具卡片会排到思考块上方，顺序颠倒。
+    const streamingReasoning = {
+      type: 'reasoning',
+      content: '',
+      isStreaming: true,
+    } as unknown as AssistantPart
+
+    const groups = buildAssistantGroups([toolPart('a'), streamingReasoning, toolPart('b')])
+
+    expect(shapeOf(groups)).toEqual(['tools:a@0', 'reasoning@1', 'tools:b@2'])
+  })
+
+  it('注册表里不渲染的搜索 / 多智能体工作流片段不打断工具组连续性', () => {
+    const searchPart = { type: 'search' } as unknown as AssistantPart
+    const workflowPart = { type: 'multi_agent_workflow' } as unknown as AssistantPart
+
+    const groups = buildAssistantGroups([
+      toolPart('a'),
+      searchPart,
+      toolPart('b'),
+      workflowPart,
+      toolPart('c'),
+    ])
+
+    expect(shapeOf(groups)).toEqual(['tools:a,b,c@0'])
   })
 })

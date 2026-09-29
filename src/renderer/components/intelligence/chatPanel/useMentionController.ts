@@ -98,6 +98,7 @@ export function useMentionController({
             type: 'Skill',
             skillId: candidate.data.skillId,
             name: candidate.data.name,
+            displayName: candidate.labelZh ? candidate.labelZh.replace(/^@/, '') : undefined,
           }
           break
         case 'plugin':

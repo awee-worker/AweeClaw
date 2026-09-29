@@ -6,6 +6,7 @@
  * - plugin:uninstall           卸载插件
  * - plugin:enable              启用插件
  * - plugin:disable             禁用插件
+ * - plugin:setNewTaskVisible   设置是否在新建任务界面显示
  * - plugin:getInstalled        获取已安装列表
  * - plugin:isInstalled         检查是否已安装
  * - plugin:checkUpdate         检查更新
@@ -94,6 +95,8 @@ export interface PluginInstalledRecord {
   version: string
   installedAt: string
   enabled: boolean
+  /** 是否在新建任务界面显示（缺省视为显示） */
+  newTaskVisible?: boolean
   /** 插件类型数组（部分主进程实现可能仅返回 type 单字段，消费方需做兜底） */
   types?: string[]
   /** 单类型字段（主进程 InstalledPluginRecord 实际返回） */
@@ -115,6 +118,29 @@ export interface PluginUpdateInfo {
   hasUpdate: boolean
   currentVersion?: string
   latestVersion?: string
+}
+
+/** 插件技能贡献记录（与主进程 PluginSkillContribution 对应） */
+export interface PluginSkillContributionRecord {
+  pluginKey: string
+  version: string
+  /** 插件是否启用；插件被禁用时不并入技能列表 */
+  pluginEnabled: boolean
+  /** SKILL.md frontmatter 中声明的技能名 */
+  skillName: string
+  /** 插件 manifest 中的中文名 */
+  nameZh?: string
+  /** 插件 manifest 中的英文名 */
+  nameEn?: string
+  /** 插件图标：图片地址或 lucide 图标名 */
+  icon?: string
+  description: string
+  /** SKILL.md 绝对路径 */
+  skillMdPath: string
+  /** 插件是否在新建任务界面显示；false 时其技能不并入技能列表 */
+  newTaskVisible: boolean
+  /** 该 skill 型插件本地缺少 SKILL.md；true 时正文不可读，需重装或更新插件 */
+  skillMdMissing?: boolean
 }
 
 /** 插件 UI 贡献记录（与主进程 PluginUiContribution 对应） */
@@ -160,6 +186,8 @@ export function createPluginApi() {
       invoke<{ success: boolean; error?: string }>('plugin:enable')(pluginKey),
     pluginDisable: (pluginKey: string) =>
       invoke<{ success: boolean; error?: string }>('plugin:disable')(pluginKey),
+    pluginSetNewTaskVisible: (pluginKey: string, visible: boolean) =>
+      invoke<{ success: boolean; error?: string }>('plugin:setNewTaskVisible')(pluginKey, visible),
 
     // ── 查询 ──
     pluginGetInstalled: () =>
@@ -170,6 +198,10 @@ export function createPluginApi() {
     // ── 插件 UI 贡献（扩展点加载器使用） ──
     pluginGetUiContributions: () =>
       invoke<PluginUiContributionRecord[]>('plugin:getUiContributions')(),
+
+    // ── 插件技能贡献（技能列表并入来源） ──
+    pluginGetSkillContributions: () =>
+      invoke<PluginSkillContributionRecord[]>('plugin:getSkillContributions')(),
 
     // ── 更新 ──
     pluginCheckUpdate: (

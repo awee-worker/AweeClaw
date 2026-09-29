@@ -148,7 +148,7 @@ function summarizePatch(_tool: string, patch: Record<string, unknown>): string {
 /** 场景工具使用指南：注入系统提示词，让 AI 知道工具存在与使用时机 */
 export function getSceneToolsGuide(mode?: SceneToolDS['mode']): string {
   const list = allDS.filter((d) => !mode || d.mode === mode)
-  const modeName = mode ? { work: '工作', life: '生活', study: '学习' }[mode] : '全部'
+  const modeName = mode ? { work: '工作', life: '生活', study: '学习', dev: '代码开发' }[mode] : '全部'
   const now = new Date()
   const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
   const lines = list.map((d) => `- ${d.id}（${d.name}）：${d.description}`)
@@ -519,7 +519,7 @@ const SCENE_TOOLS_DEFINITIONS: ToolDefinition[] = [
     parameters: {
       type: 'object',
       properties: {
-        mode: { type: 'string', description: 'Filter by scene mode: work / life / study', enum: ['work', 'life', 'study'] },
+        mode: { type: 'string', description: 'Filter by scene mode: work / life / study / dev', enum: ['work', 'life', 'study', 'dev'] },
       },
     },
   },

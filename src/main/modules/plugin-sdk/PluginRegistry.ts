@@ -144,8 +144,9 @@ class PluginRegistry implements IPluginRegistry {
             const raw = fs.readFileSync(manifestPath, 'utf-8')
             const manifest = JSON.parse(raw) as unknown
             if (this.validateManifest(manifest)) {
-              // 补充 main 路径为绝对路径
-              if (!path.isAbsolute(manifest.main)) {
+              // 补充 main 路径为绝对路径。无本地入口的插件保持空字符串，
+              // 否则会被拼成插件目录本身，后续被误判为可加载的入口。
+              if (manifest.main && !path.isAbsolute(manifest.main)) {
                 manifest.main = path.join(dir, entry.name, manifest.main)
               }
               manifests.push(manifest)
@@ -398,6 +399,8 @@ class PluginRegistry implements IPluginRegistry {
    * - MCP 型插件（具备 capabilities.mcp）：允许 main 为空字符串或省略
    *   原因：stdio/sse 传输的 MCP 插件通过外部进程（npx/uvx）或远程端点运行，
    *         不需要本地 JS 入口文件；其激活由 McpManager 管理，不走 PluginRuntime
+   * - skill 型插件（type 含 'skill'）：允许 main 为空字符串或省略
+   *   原因：技能正文是随包分发的 SKILL.md，注册走技能系统，同样没有本地入口
    */
   validateManifest(manifest: unknown): manifest is PluginManifest {
     if (!manifest || typeof manifest !== 'object') return false
@@ -407,15 +410,16 @@ class PluginRegistry implements IPluginRegistry {
     if (typeof m.version !== 'string' || !m.version) return false
     if (m.type === undefined) return false
 
-    // 判断是否为 MCP 型插件（capabilities.mcp 存在即视为 MCP 型）
     const caps = m.capabilities as Record<string, unknown> | undefined
     const hasMcpCapability = !!caps && typeof caps === 'object' && !!caps.mcp
+    const types = Array.isArray(m.type) ? m.type : [m.type]
+    const mainOptional = hasMcpCapability || types.includes('skill')
 
-    if (hasMcpCapability) {
-      // MCP 型插件：main 可以省略或为空字符串，但类型必须是 string（若提供）
+    if (mainOptional) {
+      // 无本地入口的插件：main 可以省略或为空字符串，但类型必须是 string（若提供）
       if (m.main !== undefined && typeof m.main !== 'string') return false
     } else {
-      // 非 MCP 型插件：必须有非空 main 入口
+      // 其余插件必须有非空 main 入口
       if (typeof m.main !== 'string' || !m.main) return false
     }
     return true

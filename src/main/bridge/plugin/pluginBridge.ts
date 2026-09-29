@@ -11,6 +11,7 @@
  * - plugin:uninstall      卸载插件
  * - plugin:enable         启用插件
  * - plugin:disable        禁用插件
+ * - plugin:setNewTaskVisible  设置是否在新建任务界面显示
  * - plugin:getInstalled   获取已安装列表
  * - plugin:isInstalled    检查是否已安装
  * - plugin:checkUpdate    检查更新
@@ -94,11 +95,30 @@ export function registerPluginHandlers(context: PluginIpcContext): void {
     'plugin',
   )
 
+  // ── 新建任务界面显示开关 ──
+  safeIpcHandle(
+    'plugin:setNewTaskVisible',
+    async (_event, pluginKey: string, visible: boolean) => {
+      return installer.setNewTaskVisible(pluginKey, visible)
+    },
+    'plugin',
+  )
+
   // ── 已安装列表 ──
   safeIpcHandle<InstalledPluginRecord[]>(
     'plugin:getInstalled',
     async () => {
       return installer.getInstalledList()
+    },
+    'plugin',
+  )
+
+  // ── 插件技能贡献列表 ──
+  // 返回 skill 型插件 SKILL.md 的位置与元信息，供渲染层并入技能来源
+  safeIpcHandle(
+    'plugin:getSkillContributions',
+    async () => {
+      return installer.getSkillContributions()
     },
     'plugin',
   )

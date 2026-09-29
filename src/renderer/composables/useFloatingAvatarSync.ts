@@ -88,7 +88,7 @@ export function useFloatingAvatarSync(): void {
     })),
   )
 
-  // 工作模式来自独立的 useModeStore（chat/agent/plan）
+  // 工作模式来自独立的 useModeStore（当前产品策略固定 expert，历史 chat/agent/plan 在写入时归一）
   const workMode = useModeStore((s) => s.currentMode)
 
   // 用 ref 跟踪上一次推送的上下文，避免重复推送
@@ -418,7 +418,9 @@ export function useFloatingAvatarSync(): void {
     const unsubscribe = api.floatingAvatar.onSelectWorkMode((mode) => {
       logger.system.info('[FloatingAvatarSync] Select work mode from avatar:', mode)
       try {
-        useModeStore.getState().setMode(mode)
+        // 头像窗口仍可能携带旧协议里的模式字段；主窗口策略已固定为专家档，直接归一为 expert
+        void mode
+        useModeStore.getState().setMode('expert')
       } catch (err) {
         logger.system.error('[FloatingAvatarSync] Select work mode failed:', err)
       }

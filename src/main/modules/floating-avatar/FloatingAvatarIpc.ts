@@ -85,7 +85,7 @@ export interface FloatingAvatarIpcCallbacks {
   /** 转发授权方式切换到主窗口（主窗口更新 store + save + 重新 push voiceContext） */
   forwardSelectAuthorizationMode: (mode: 'every-step' | 'dangerous-only' | 'never') => void
   /** 转发工作模式切换到主窗口（主窗口更新 useModeStore + 重新 push voiceContext） */
-  forwardSelectWorkMode: (mode: 'chat' | 'agent' | 'plan') => void
+  forwardSelectWorkMode: (mode: 'chat' | 'agent' | 'expert') => void
   /** 转发自定义智能体切换到主窗口（主窗口更新 store + save + 重新 push voiceContext） */
   forwardSelectAgent: (agentId: string | null) => void
   /** 打开主窗口设置页（迷你聊天「创建智能体」入口，与右键菜单 openSettings 一致） */
@@ -426,12 +426,12 @@ export function registerFloatingAvatarIpc(callbacks: FloatingAvatarIpcCallbacks)
 
   // 头像窗口切换工作模式（转发到主窗口，主窗口更新 useModeStore + 重新 push voiceContext）
   safeIpcHandle('floating-avatar:select-work-mode', async (_event, mode: unknown) => {
-    const validModes = ['chat', 'agent', 'plan']
+    const validModes = ['chat', 'agent', 'expert']
     if (!validModes.includes(mode as string)) {
       return { success: false, error: 'Invalid work mode' }
     }
     try {
-      callbacks.forwardSelectWorkMode(mode as 'chat' | 'agent' | 'plan')
+      callbacks.forwardSelectWorkMode(mode as 'chat' | 'agent' | 'expert')
       return { success: true }
     } catch (err) {
       logger.system.error('[FloatingAvatarIpc] Select work mode failed:', err)

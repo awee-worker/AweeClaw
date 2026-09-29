@@ -1,12 +1,5 @@
 /**
- * 角色库设置面板
- *
- * 功能：
- * 1. 场景切换（工作助手 / 生活助手 / 学习助手）+ 自动匹配总开关 + 搜索
- * 2. 角色卡片网格：启停、编辑、复制为自定义、删除（内置仅停用）
- * 3. 新建 / 编辑表单（RoleEditForm）
- *
- * @see aweeclaw-client/docs/role-library/01-role-library-design.md 第 8 节
+ * 专家库设置面板
  */
 
 import { useMemo, useState } from 'react'
@@ -26,9 +19,10 @@ import { ToggleSwitch } from '@components/ui'
 import { toast } from '@components/foundation/InlineNotification'
 
 const SCENES: Array<{ id: SceneMode; label: string }> = [
-  { id: 'work', label: '工作助手' },
-  { id: 'life', label: '生活助手' },
-  { id: 'study', label: '学习助手' },
+  { id: 'work', label: '日常办公' },
+  { id: 'life', label: '生活陪伴' },
+  { id: 'study', label: '学习探索' },
+  { id: 'dev', label: '代码开发' },
 ]
 
 export function RoleLibraryPanel() {
@@ -72,7 +66,7 @@ export function RoleLibraryPanel() {
     setFormOpen(true)
   }
 
-  /** 复制为自定义角色（可跨场景） */
+  /** 复制为自定义专家（可跨场景） */
   const handleCopy = (role: RoleDescriptor) => {
     const now = Date.now()
     const copy: RoleDescriptor = {
@@ -89,13 +83,13 @@ export function RoleLibraryPanel() {
       toast.error(`复制失败：${issues[0].message}`)
       return
     }
-    toast.success('已复制为自定义角色，技能引用如越界已清空')
+    toast.success('已复制为自定义专家，技能引用如越界已清空')
   }
 
   const handleDelete = (role: RoleDescriptor) => {
     if (role.builtin) return
     removeCustomRole(role.id)
-    toast.success(`已删除角色：${role.nameZh}`)
+    toast.success(`已删除专家：${role.nameZh}`)
   }
 
   return (
@@ -120,7 +114,7 @@ export function RoleLibraryPanel() {
 
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 text-xs text-text-muted select-none">
-            <span>自动匹配</span>
+            <span>自动匹配专家</span>
             <ToggleSwitch
               switchSize="sm"
               checked={autoMatchEnabled}
@@ -130,10 +124,10 @@ export function RoleLibraryPanel() {
 
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="搜索角色"
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="搜索专家"
               className="pl-7 pr-2 py-1 text-xs bg-input border border-input-border rounded-md outline-none focus:border-accent w-36"
             />
           </div>
@@ -142,12 +136,12 @@ export function RoleLibraryPanel() {
             onClick={handleCreate}
             className="inline-flex items-center gap-1 px-3 py-1 text-xs bg-accent/10 text-accent hover:bg-accent/20 rounded-md transition-colors"
           >
-            <Plus className="w-3.5 h-3.5" />创建角色
+            <Plus className="w-3.5 h-3.5" />创建专家
           </button>
         </div>
       </div>
 
-      {/* 角色卡片网格 */}
+      {/* 专家卡片网格 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         {filtered.map(role => (
           <div
@@ -188,13 +182,13 @@ export function RoleLibraryPanel() {
                 onClick={() => handleEdit(role)}
                 className="px-2 py-0.5 text-[11px] text-text-muted hover:text-accent hover:bg-accent/5 rounded transition-colors"
               >
-                <Pencil className="w-3 h-3 inline mr-0.5" />编辑
+                <Pencil className="w-3 h-3 inline mr-0.5" />编辑专家
               </button>
               <button
                 onClick={() => handleCopy(role)}
                 className="px-2 py-0.5 text-[11px] text-text-muted hover:text-accent hover:bg-accent/5 rounded transition-colors"
               >
-                <Copy className="w-3 h-3 inline mr-0.5" />复制为自定义
+                <Copy className="w-3 h-3 inline mr-0.5" />复制为自定义专家
               </button>
               {!role.builtin && (
                 <button
@@ -225,7 +219,7 @@ export function RoleLibraryPanel() {
         ))}
         {filtered.length === 0 && (
           <div className="col-span-full text-center text-xs text-text-muted py-8">
-            当前场景暂无角色
+            当前场景暂无专家
           </div>
         )}
       </div>
@@ -233,7 +227,7 @@ export function RoleLibraryPanel() {
       {/* 边界提示 */}
       <div className="flex items-start gap-1.5 text-[11px] text-text-muted pt-1">
         <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-        <span>角色决定「用哪套方法做事」，不会改变 AweeClaw 的身份与安全边界；停用角色后仍可用场景默认方式完成同类任务。</span>
+        <span>专家决定「用哪套方法做事」，不会改变 AweeClaw 的身份与安全边界；停用专家后仍可用场景默认方式完成同类任务。</span>
       </div>
 
       {/* 编辑表单 */}

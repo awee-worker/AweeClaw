@@ -109,7 +109,7 @@ export class PlanContextContributor implements ContextContributor {
   readonly id = 'plan-context'
 
   isEnabled(mode: WorkMode): boolean {
-    return mode === 'plan'
+    return mode === 'expert'
   }
 
   async contribute(config: ContextAssemblyConfig): Promise<ContextContribution | null> {
@@ -152,7 +152,7 @@ export class DependencySummaryContributor implements ContextContributor {
   readonly id = 'dependency-summary'
 
   isEnabled(mode: WorkMode): boolean {
-    return mode === 'plan'
+    return mode === 'expert'
   }
 
   async contribute(config: ContextAssemblyConfig): Promise<ContextContribution | null> {

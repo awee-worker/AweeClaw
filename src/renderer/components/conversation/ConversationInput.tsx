@@ -14,7 +14,6 @@ import {
   Plus,
   Folder,
   Globe,
-  Wrench,
   Paperclip,
   FileSpreadsheet,
   FileCode,
@@ -33,16 +32,15 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { getFileName } from '@shared/toolkit/pathHelper'
-import { WorkMode } from '@/renderer/modes/workModeTypes'
 import { motion, AnimatePresence } from 'framer-motion'
 // VoiceRealtimePanel 已迁移到独立的 VoiceConversationOverlay 全屏语音对话界面
 import {t, type Language} from '@renderer/i18n'
 import { ActionButton } from '../ui'
 
 import ModelSelector from './AIModelSelector'
-import ModeSelector from './WorkModeSelector'
 import AuthorizationModeSelector from './AuthorizationModeSelector'
 import AgentSelector from './AgentSelector'
+import ExpertSelector from './ExpertSelector'
 import ScreenPermissionGuide from '../ui/ScreenPermissionGuide'
 import { useVoiceInput, appendVoiceText } from '../../composables/useVoiceInput'
 import VoiceVisualizer from '../voice/VoiceVisualizer'
@@ -69,8 +67,6 @@ interface ChatInputProps {
   hasApiKey: boolean
   needsCloudLogin?: boolean
   hasPendingToolCall: boolean
-  chatMode: WorkMode
-  setChatMode: (mode: WorkMode) => void
   onSubmit: () => void
   onAbort: () => void
   onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
@@ -97,8 +93,6 @@ const ChatInput = memo(function ChatInput({
   hasApiKey,
   needsCloudLogin,
   hasPendingToolCall,
-  chatMode,
-  setChatMode,
   onSubmit,
   onAbort,
   onInputChange,
@@ -484,13 +478,14 @@ const ChatInput = memo(function ChatInput({
                     case 'File': return { bg: 'bg-text-primary/[0.04]', text: 'text-text-secondary', border: 'border-transparent', Icon: FileText }
                     case 'CodeSelection': return { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-transparent', Icon: Code }
                     case 'Folder': return { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-transparent', Icon: Folder }
-                    case 'Skill': return { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20', Icon: Wrench }
+                    case 'Skill': return { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20', Icon: null }
                     case 'Plugin': return { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20', Icon: Puzzle }
                     default: return { bg: 'bg-text-primary/[0.04]', text: 'text-text-muted', border: 'border-transparent', Icon: FileText }
                   }
                 }
 
                 const style = getContextStyle(item.type)
+                const ContextIcon = style.Icon
                 const label = (() => {
                   switch (item.type) {
                     case 'File':
@@ -506,7 +501,9 @@ const ChatInput = memo(function ChatInput({
                       return range ? `${name}:${range[0]}-${range[1]}` : name
                     }
                     case 'Skill': {
-                      return `@${(item as import('@intelligence/providerTypes').SkillContext).skillId || 'skill'}`
+                      // 优先展示技能中文名，便于中文界面识别；skillId 仍保留英文用于后端解析
+                      const skillItem = item as import('@intelligence/providerTypes').SkillContext
+                      return `@${skillItem.displayName || skillItem.name || skillItem.skillId || 'skill'}`
                     }
                     case 'Plugin': {
                       return `@${(item as import('@intelligence/providerTypes').PluginContext).name || 'plugin'}`
@@ -524,7 +521,7 @@ const ChatInput = memo(function ChatInput({
                     transition={{ duration: 0.15 }}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 ${style.bg} ${style.text} text-[12px] font-medium rounded-lg border ${style.border} select-none group/chip transition-all hover:border-opacity-100 hover:shadow-sm`}
                   >
-                    <style.Icon className="w-3 h-3 opacity-70" />
+                    {ContextIcon && <ContextIcon className="w-3 h-3 opacity-70" />}
                     <span className="max-w-[120px] truncate">{label}</span>
                     <button
                       onClick={() => onRemoveContextItem(item)}
@@ -733,9 +730,9 @@ const ChatInput = memo(function ChatInput({
       <div
         className="-mt-5 z-10"
       >
-        <div className="flex items-center gap-2 bg-border/20 px-4 pt-6 pb-1 rounded-b-xl rounded-t-none">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 bg-border/20 px-4 pt-6 pb-1 rounded-b-xl rounded-t-none">
           <AgentSelector language={language} onOpenSettings={onOpenSettings} onEditAgent={onEditAgent} disabled={isStreaming} />
-          <ModeSelector mode={chatMode} onModeChange={setChatMode} disabled={isStreaming} />
+          <ExpertSelector disabled={isStreaming} />
           <AuthorizationModeSelector disabled={isStreaming} />
         </div>
       </div>

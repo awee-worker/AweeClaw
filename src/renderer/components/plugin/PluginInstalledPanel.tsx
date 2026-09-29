@@ -37,6 +37,8 @@ import {
   Clock,
   Search,
   X,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { resolveLucideIcon } from './pluginIconResolver'
 import { useStore } from '@store'
@@ -45,6 +47,8 @@ import { ActionButton } from '../ui'
 import { toast } from '../foundation/NotificationProvider'
 import {
   getInstalledPlugins,
+  getPluginSkillContributions,
+  setPluginNewTaskVisible,
   uninstallPlugin,
   enablePlugin,
   disablePlugin,
@@ -52,6 +56,7 @@ import {
   updatePlugin,
 } from '@services/pluginService'
 import type { InstalledPlugin } from '@services/pluginService'
+import { skillService } from '@intelligence/runtime/skillRepository'
 import type { McpServerStatus } from '@shared/protocols/toolProtocolBridge'
 import { type Language } from '@renderer/i18n'
 import { PluginConfigEditDialog } from './PluginConfigEditDialog'
@@ -101,6 +106,8 @@ export function PluginInstalledPanel() {
   const [configTarget, setConfigTarget] = useState<{ pluginKey: string; name: string; fields: PluginConfigField[] } | null>(null)
   /** 搜索关键字（匹配名称、pluginKey、描述、类型） */
   const [searchQuery, setSearchQuery] = useState('')
+  /** 声明为 skill 型、但本地缺少 SKILL.md 的插件：技能正文没随包落地，技能条不会出现它 */
+  const [skillMissingKeys, setSkillMissingKeys] = useState<Set<string>>(new Set())
 
   /**
    * 按关键字过滤已安装插件
@@ -150,8 +157,16 @@ export function PluginInstalledPanel() {
   const loadPlugins = useCallback(async () => {
     setIsLoading(true)
     try {
-      const list = await getInstalledPlugins()
+      // 技能贡献与插件列表一同取回：其中被标记 skillMdMissing 的插件，说明技能正文
+      // 没有随包落地（技能条里看不到它），卡片上要给出明确提示而不是无声无息。
+      const [list, contributions] = await Promise.all([
+        getInstalledPlugins(),
+        getPluginSkillContributions().catch(() => []),
+      ])
       setPlugins(list)
+      setSkillMissingKeys(
+        new Set(contributions.filter((c) => c.skillMdMissing).map((c) => c.pluginKey)),
+      )
     } catch (err) {
       toast.card({
         type: 'error',
@@ -169,6 +184,11 @@ export function PluginInstalledPanel() {
   useEffect(() => {
     loadPlugins()
   }, [loadPlugins])
+
+  // 插件列表变化（安装 / 启停 / 卸载）会改变技能来源，清掉技能缓存让技能条重新扫描
+  useEffect(() => {
+    skillService.clearCache()
+  }, [plugins])
 
   /** 启用插件 */
   async function handleEnable(plugin: InstalledPlugin) {
@@ -320,6 +340,28 @@ export function PluginInstalledPanel() {
     setConfigTarget({ pluginKey: plugin.pluginKey, name, fields })
   }
 
+  /**
+   * 切换插件「在新建任务界面显示」开关
+   *
+   * 与启用 / 禁用相互独立：只决定该插件提供的能力（技能等）是否出现在新建任务界面。
+   * 技能型插件关闭后其技能不再并入技能条，非技能型插件状态先行记录。
+   */
+  async function handleNewTaskVisibleToggle(plugin: InstalledPlugin) {
+    setOperating(plugin.pluginKey)
+    try {
+      const result = await setPluginNewTaskVisible(plugin.pluginKey, !plugin.newTaskVisible)
+      if (result.success) {
+        // 可见性影响技能来源，清缓存让技能条即时刷新
+        skillService.clearCache()
+        await loadPlugins()
+      } else {
+        toast.error(result.error || (language === 'zh' ? '操作失败' : 'Operation failed'))
+      }
+    } finally {
+      setOperating(null)
+    }
+  }
+
   return (
     <div className="flex flex-col min-h-0 flex-1">
       {/* 顶部操作栏 */}
@@ -429,6 +471,9 @@ export function PluginInstalledPanel() {
                   onDisable={() => handleDisable(plugin)}
                   onUninstall={() => handleUninstall(plugin)}
                   onOpenConfig={() => handleOpenConfig(plugin)}
+                  newTaskVisible={plugin.newTaskVisible}
+                  onToggleNewTaskVisible={() => { void handleNewTaskVisibleToggle(plugin) }}
+                  skillMissing={skillMissingKeys.has(plugin.pluginKey)}
                   onUpdate={updates[plugin.pluginKey]?.latestVersion
                     ? () => handleUpdate(plugin, updates[plugin.pluginKey].latestVersion!)
                     : undefined}
@@ -517,7 +562,10 @@ function PluginCard({
   onDisable,
   onUninstall,
   onOpenConfig,
+  newTaskVisible,
+  onToggleNewTaskVisible,
   onUpdate,
+  skillMissing,
 }: {
   plugin: InstalledPlugin
   language: Language
@@ -531,8 +579,14 @@ function PluginCard({
   onDisable: () => void
   onUninstall: () => void
   onOpenConfig: () => void
+  /** 是否在新建任务界面显示 */
+  newTaskVisible: boolean
+  /** 切换「在新建任务界面显示」 */
+  onToggleNewTaskVisible: () => void
   /** 升级回调（仅当有更新时传入） */
   onUpdate?: () => void
+  /** 技能型插件本地缺少 SKILL.md：技能正文没随包落地，技能条里不会出现它 */
+  skillMissing?: boolean
 }) {
   const manifest = plugin.manifest as {
     name?: string
@@ -632,6 +686,19 @@ function PluginCard({
               <span className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 text-[12px] rounded bg-orange-500/15 text-orange-400">
                 <AlertCircle className="w-2.5 h-2.5" />
                 {language === 'zh' ? '有更新' : 'Update'}
+              </span>
+            )}
+            {skillMissing && (
+              <span
+                className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 text-[12px] rounded bg-red-500/15 text-red-400"
+                title={
+                  language === 'zh'
+                    ? '技能正文（SKILL.md）缺失，该技能不会出现在技能列表；更新或重装此插件可修复'
+                    : 'Skill body (SKILL.md) is missing, so this skill will not appear in the skill list; update or reinstall the plugin to fix'
+                }
+              >
+                <AlertCircle className="w-2.5 h-2.5" />
+                {language === 'zh' ? '技能正文缺失' : 'Skill missing'}
               </span>
             )}
           </div>
@@ -755,6 +822,25 @@ function PluginCard({
             loading={operating}
             tone="danger"
           />
+          {/* 在新建任务界面显示：只有技能型插件才需要这个开关，
+              非技能型插件没有可并入技能列表的内容，不显示以免造成误解；
+              与启用/禁用独立，仅用图标避免被误解为启用/停用 */}
+          {(plugin.types || []).includes('skill') && (
+            <button
+              type="button"
+              onClick={onToggleNewTaskVisible}
+              disabled={operating || !plugin.enabled}
+              title={language === 'zh' ? '在新建任务界面显示' : 'Show in new task screen'}
+              aria-label={language === 'zh' ? '在新建任务界面显示' : 'Show in new task screen'}
+              className={`ml-auto flex items-center justify-center w-7 h-7 rounded-md transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+                newTaskVisible
+                  ? 'text-accent hover:bg-accent/10'
+                  : 'text-text-muted/60 hover:bg-text-primary/[0.06] hover:text-text-primary'
+              }`}
+            >
+              {newTaskVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+            </button>
+          )}
         </div>
       </div>
     </div>

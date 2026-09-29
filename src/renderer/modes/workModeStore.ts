@@ -1,8 +1,11 @@
 /**
  * 模式状态管理
- * 
+ *
  * 通过 electron-store (preferencesStore) 持久化，
  * 与其他设置统一存储后端，通过 IPC 调用 settings:get/set
+ *
+ * 当前产品策略：默认固定为 expert（专家档）。历史 chat/agent/plan 值在写入时归一到 expert，
+ * 避免界面隐藏模式选择后仍从本地缓存读回低档位或旧命名。
  */
 
 import { create } from 'zustand'
@@ -11,6 +14,11 @@ import { WorkMode } from './workModeTypes'
 import { api } from '../adapters/electronBridge'
 
 const STORE_KEY = 'modeStore'
+
+/** 归一化到专家档：产品策略固定为 expert，历史 chat/agent/plan 不再作为可切换档位 */
+function normalizeToExpertMode(_mode: WorkMode): WorkMode {
+  return 'expert'
+}
 
 interface ModeState {
     /** 当前工作模式 */
@@ -59,14 +67,15 @@ const electronStoreStorage = {
 export const useModeStore = create<ModeStore>()(
     persist(
         (set, get) => ({
-            currentMode: 'agent', // 默认 Agent 模式
+            currentMode: 'expert', // 默认专家档
             previousMode: null,
 
             setMode: (mode) => {
+                const nextMode = normalizeToExpertMode(mode)
                 const current = get().currentMode
-                if (current !== mode) {
+                if (current !== nextMode) {
                     set({
-                        currentMode: mode,
+                        currentMode: nextMode,
                         previousMode: current
                     })
                 }
@@ -76,20 +85,25 @@ export const useModeStore = create<ModeStore>()(
                 const previous = get().previousMode
                 if (previous) {
                     set({
-                        currentMode: previous,
+                        currentMode: normalizeToExpertMode(previous),
                         previousMode: null
                     })
                 }
             },
 
-            isMode: (mode) => get().currentMode === mode
+            isMode: (mode) => get().currentMode === normalizeToExpertMode(mode)
         }),
         {
             name: 'aweeclaw-mode-store',
             storage: createJSONStorage(() => electronStoreStorage),
             partialize: (state) => ({
                 currentMode: state.currentMode
-            })
+            }),
+            onRehydrateStorage: () => (state) => {
+                if (state && state.currentMode !== 'expert') {
+                    state.currentMode = 'expert'
+                }
+            }
         }
     )
 )

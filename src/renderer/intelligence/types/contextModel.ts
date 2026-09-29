@@ -68,6 +68,8 @@ export interface SkillContext {
   type: 'Skill'
   skillId: string
   name: string
+  /** 界面展示名：中文界面下优先显示技能中文名，缺省回退到 name */
+  displayName?: string
   description?: string
   /** LLM 自动选中（非 @mention） */
   auto?: boolean

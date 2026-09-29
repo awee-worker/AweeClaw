@@ -169,7 +169,9 @@ export interface SceneModeProfile {
 }
 ```
 
-## 二、三种模式的默认 Profile
+## 二、四种模式的默认 Profile
+
+> 代码开发（dev）模式的 Profile 见 `SceneModeProfiles.ts` 中的 `DEV_MODE_PROFILE`，字段结构与下方工作模式一致。
 
 新建文件 `src/renderer/intelligence/capabilities/sceneMode/SceneModeProfiles.ts`：
 
@@ -188,9 +190,9 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
 回答直接了当，先给结论再展开细节。主动识别任务、风险、跟进项。
 不主动聊生活话题，不在线工作记忆域写入生活/学习内容。`,
   modeSkills: [
-    'work-email-draft', 'work-meeting-prep', 'work-meeting-notes',
-    'work-task-extract', 'work-doc-summary', 'work-focus-guard',
-    'work-schedule', 'work-report', 'remote-command',
+    'office-doc', 'office-email', 'office-meeting',
+    'office-schedule', 'office-task', 'office-data',
+    'office-sheet', 'office-ppt', 'office-research',
   ],
   memoryDomainTag: 'domain:work',
   perceptionFilter: {
@@ -248,9 +250,9 @@ export const LIFE_MODE_PROFILE: SceneModeProfile = {
 用温柔的语气交流，多用鼓励和关怀的话语。主动关心健康：喝水、起身、护眼。
 不主动谈工作，不在线生活记忆域写入工作/学习内容。`,
   modeSkills: [
-    'life-health-reminder', 'life-weather', 'life-mood-companion',
-    'life-accounting', 'life-shopping-list', 'life-recipe',
-    'life-sleep', 'life-relationship', 'life-iot-control',
+    'life-companion', 'life-health', 'life-fitness',
+    'life-recipe', 'life-home', 'life-plan',
+    'life-shopping', 'life-travel',
   ],
   memoryDomainTag: 'domain:life',
   perceptionFilter: {
@@ -310,9 +312,9 @@ export const STUDY_MODE_PROFILE: SceneModeProfile = {
 费曼学习法：学完一节，引导用户"用自己的话讲给我听"。
 主动召回：复习时出题，而非被动重读。不主动谈工作/生活。`,
   modeSkills: [
-    'study-note-extract', 'study-flashcard', 'study-feynman',
-    'study-socratic', 'study-quiz', 'study-review-scheduler',
-    'study-knowledge-graph', 'study-progress', 'study-plan',
+    'study-explain', 'study-notes', 'study-memory',
+    'study-mindmap', 'study-quiz', 'study-plan',
+    'study-language', 'study-paper',
   ],
   memoryDomainTag: 'domain:study',
   perceptionFilter: {

@@ -661,7 +661,7 @@ function buildSceneRolesSection(sceneMode: string, sceneNameZh: string, installe
   }
   if (sorted.length > 0) {
     parts.push('')
-    parts.push('复杂任务可拆成子任务并行分派：用 create_task_plan，把 suggestedRole 填角色 id（如 work.data-analyst）。')
+    parts.push('复杂任务可拆成子任务并行分派：用 create_task_plan，把 suggestedRole 填角色 id（如 work.legal-counsel）。')
   }
   return parts.join('\n')
 }
@@ -1035,6 +1035,11 @@ export async function buildAgentSystemPrompt(
      * 优先级高于主对话的自动匹配结果；不传时走自动匹配
      */
     sceneRolePersonaOverride?: string | null
+    /**
+     * 会话级显式专家（角色库）：来自输入区 ExpertSelector 的锁定选择，
+     * 走 resolveSceneRole 第一级显式指定，优先级高于自动匹配与场景默认角色
+     */
+     explicitRoleId?: string | null
   }
 ): Promise<{ prompt: string; activeSkills: { name: string; description: string }[]; appliedSkills: { name: string; description: string }[]; matchedRole: { id: string; nameZh: string; icon: string } | null }> {
   const {
@@ -1049,6 +1054,7 @@ export async function buildAgentSystemPrompt(
     isChannel,
     untrustedContext,
     sceneRolePersonaOverride,
+    explicitRoleId,
   } = options || {}
 
   let template = promptTemplateId
@@ -1147,7 +1153,7 @@ export async function buildAgentSystemPrompt(
   // 命中时把角色完整人设追加到场景人设之后（不替换），并提供角色清单注入。
   // 匹配失败静默降级（matcher 内部已兜底），绝不阻塞主链路。
   //
-  // 模式门控：角色 Agent 只在思考（agent）与专家（plan）模式生效，
+  // 模式门控：角色 Agent 只在思考（agent）与专家（expert）模式生效，
   // 快速模式（chat）作为轻量问答通道不进入角色体系（不匹配、不注入人设与清单）。
   const roleAgentEnabled = isRoleAgentEnabled(mode)
   let roleMatch: RoleMatchResult | null = null
@@ -1158,6 +1164,7 @@ export async function buildAgentSystemPrompt(
         sceneMode: sceneProfile.id,
         // 调用方未提供附件扩展名时，从消息文本兜底提取（上传路径内联在消息里）
         attachmentExts: options?.attachmentExts ?? extractFileExtsFromText(userMessage ?? ''),
+        explicitRoleId: explicitRoleId ?? undefined,
       })
     } catch (err) {
       logger.agent.warn('[PromptBuilder] Scene role match failed:', err)

@@ -2243,7 +2243,7 @@ export const zh = {
   'wf.chatmode': '对话模式',
   'wf.agentmodecanusetools': 'Agent模式可以调用工具，Chat模式仅对话',
   'wf.chat': '对话',
-  'wf.plan': '规划',
+  'wf.expert': '专家',
   'wf.temperature': 'Temperature',
   'wf.0precise1morecreative': '0=精确执行, 1=更有创意',
   'wf.systemprompt': '系统提示词',

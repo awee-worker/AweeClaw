@@ -107,6 +107,49 @@ export interface InstalledPluginRecord {
   mcpServerId?: string
   /** 是否启用 */
   enabled: boolean
+  /**
+   * 是否在新建任务界面显示。
+   *
+   * 与「启用 / 禁用」相互独立：启用决定插件是否在本地运行，
+   * 本字段只决定该插件提供的能力（技能等）是否出现在新建任务界面。
+   * 旧记录缺省该字段时按显示处理。
+   */
+  newTaskVisible?: boolean
+}
+
+/**
+ * 插件技能贡献
+ *
+ * skill 型插件的 SKILL.md 只注册到后端，并不写入本地技能目录，
+ * 因此本地技能服务扫描不到它。这里把 SKILL.md 的位置与元信息交给渲染层，
+ * 由技能服务统一并入技能来源，供新建任务界面的技能列表使用。
+ */
+export interface PluginSkillContribution {
+  pluginKey: string
+  version: string
+  /** 插件是否启用；插件被禁用时不并入技能列表 */
+  pluginEnabled: boolean
+  /** SKILL.md frontmatter 中声明的技能名，缺省回退为 pluginKey */
+  skillName: string
+  /** 插件 manifest 中的中文名，供中文界面展示技能条目（SKILL.md 不含该字段） */
+  nameZh?: string
+  /** 插件 manifest 中的英文名 */
+  nameEn?: string
+  /** 插件图标：图片地址或 lucide 图标名，供技能条目展示与插件一致的图标 */
+  icon?: string
+  description: string
+  /** SKILL.md 绝对路径 */
+  skillMdPath: string
+  /** 插件是否在新建任务界面显示；false 时其技能不并入技能列表 */
+  newTaskVisible: boolean
+  /**
+   * 该 skill 型插件本地缺少 SKILL.md。
+   *
+   * true 时 skillMdPath 不可读，技能正文没有随包落地（历史上 configOnly 安装
+   * 只写 manifest.json 就是这种），渲染层据此提示用户重新安装或更新插件；
+   * 正常携带 SKILL.md 的插件不返回该字段。
+   */
+  skillMdMissing?: boolean
 }
 
 /** 安装参数 */
@@ -191,6 +234,16 @@ export class PluginInstaller {
    */
   private builtinRecords = new Map<string, InstalledPluginRecord>()
   private progressCallbacks = new Set<ProgressCallback>()
+  /**
+   * 安装过程中被替换掉的可用版本备份：pluginKey -> { backupDir, originalDir }。
+   *
+   * 安装会覆盖两类已存在的目录：同版本重装时被解压覆盖的同名目录（extractTarGz 备份），
+   * 以及版本升级时被新版本取代的旧版本目录（finalizeInstall 备份）。两者都先移入
+   * `.backups/<pluginKey>/<version>` 而不是直接删除——安装后续步骤仍可能失败，届时
+   * 据此还原，避免「一次失败的安装让用户连原本可用的版本一起失去」。
+   * 安装成功后由 install() 清理；按 pluginKey 分槽，不同插件互不干扰。
+   */
+  private pendingBackups = new Map<string, { backupDir: string; originalDir: string }>()
   private getMainWindow: () => BrowserWindow | null
 
   constructor(getMainWindow: () => BrowserWindow | null) {
@@ -234,15 +287,23 @@ export class PluginInstaller {
 
     logger.system.info(`[PluginInstaller] Installing plugin ${pluginId} v${version}`)
 
+    /** 本次安装落地的版本目录（标准模式=解压目录，配置型=轻量目录），失败时用于清理 */
+    let targetDir: string | undefined
+    /** 插件 key（取自后端详情），失败回滚时需要它定位备份槽；详情未取到时为 undefined */
+    let pluginKey: string | undefined
+
     try {
       // 1. 获取下载信息 + 插件详情（优先使用渲染进程预取的数据，避免主进程网络请求失败）
       this.emitProgress(pluginId, 'downloading', 0, 0, 'Fetching download info...')
       const downloadInfo = preloadedDownloadInfo ?? await this.fetchDownloadInfo(backendUrl, pluginId, version, authToken)
       const pluginDetail = preloadedPluginDetail ?? await this.fetchPluginDetail(backendUrl, pluginId, authToken)
+      pluginKey = pluginDetail.pluginKey
 
       // 分支：配置型插件（无包文件）
       if (downloadInfo.configOnly && downloadInfo.manifest) {
-        return await this.installConfigOnly(
+        // 目录算法与 installConfigOnly 内部保持一致，登记下来供失败清理使用
+        targetDir = path.join(this.pluginsRoot, pluginDetail.pluginKey, version)
+        const result = await this.installConfigOnly(
           pluginId,
           version,
           pluginDetail,
@@ -251,6 +312,12 @@ export class PluginInstaller {
           authToken,
           userConfig,
         )
+        if (result.success) {
+          this.discardPendingBackup(pluginDetail.pluginKey)
+        } else {
+          this.cleanupFailedInstall(pluginDetail.pluginKey, targetDir)
+        }
+        return result
       }
 
       // 标准模式：下载 -> 校验 -> 解压 -> 注册 -> 联动 MCP
@@ -278,9 +345,10 @@ export class PluginInstaller {
         return this.fail(pluginId, 'Signature verification failed. The package may be tampered with or from an untrusted source.')
       }
 
-      // 4. 解压
+      // 4. 解压（内部会在覆盖同名目录前先备份，供失败回滚）
       this.emitProgress(pluginId, 'extracting', downloadInfo.packageSize, downloadInfo.packageSize, 'Extracting...')
       const pluginDir = path.join(this.pluginsRoot, pluginDetail.pluginKey, version)
+      targetDir = pluginDir
       await this.extractTarGz(archivePath, pluginDir)
 
       // 清理临时文件
@@ -289,17 +357,17 @@ export class PluginInstaller {
       // 5. 读取并校验 manifest
       const manifest = this.readManifest(pluginDir)
       if (!manifest) {
-        fs.rmSync(pluginDir, { recursive: true, force: true })
+        this.cleanupFailedInstall(pluginDetail.pluginKey, pluginDir)
         return this.fail(pluginId, 'Invalid plugin package: manifest.json missing or invalid')
       }
 
       if (manifest.id !== pluginDetail.pluginKey) {
-        fs.rmSync(pluginDir, { recursive: true, force: true })
+        this.cleanupFailedInstall(pluginDetail.pluginKey, pluginDir)
         return this.fail(pluginId, `manifest.id (${manifest.id}) does not match pluginKey (${pluginDetail.pluginKey})`)
       }
 
       // 6-9. 注册 + 联动 MCP + 持久化 + 上报
-      return await this.finalizeInstall(
+      const result = await this.finalizeInstall(
         pluginId,
         version,
         pluginDetail,
@@ -310,10 +378,19 @@ export class PluginInstaller {
         downloadInfo.packageSize,
         userConfig,
       )
+      if (result.success) {
+        // 新版本已落地可用，备份槽不再需要
+        this.discardPendingBackup(pluginDetail.pluginKey)
+      } else {
+        this.cleanupFailedInstall(pluginDetail.pluginKey, pluginDir)
+      }
+      return result
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       logger.system.error(`[PluginInstaller] Install failed for ${pluginId}: ${msg}`)
-      this.emitProgress(pluginId, 'error', 0, 0, msg)
+      // 失败现场清理：删掉解压到一半的目录，并把被覆盖的可用版本还原回去
+      this.cleanupFailedInstall(pluginKey ?? pluginId, targetDir)
+      // error 进度事件由 fail() 统一广播，此处不再重复发送
       return this.fail(pluginId, msg)
     }
   }
@@ -488,14 +565,17 @@ export class PluginInstaller {
         logger.system.warn(`[PluginInstaller] Failed to disconnect old MCP server: ${err}`)
       }
 
-      // 移除旧版本目录
+      // 移除旧版本目录。
+      // 改为先移入备份槽而非直接删除：升级到这里只是文件层面完成，紧接着的运行时加载与
+      // MCP 连接仍可能失败，届时需要把旧版本放回原位，否则用户会连原本可用的版本一起失去。
+      // 安装成功后由 install() 统一清理备份槽。
       try {
         const oldDir = path.join(this.pluginsRoot, pluginDetail.pluginKey, existing.version)
         if (fs.existsSync(oldDir) && oldDir !== pluginDir) {
-          fs.rmSync(oldDir, { recursive: true, force: true })
+          this.backupVersionDir(oldDir)
         }
       } catch (err) {
-        logger.system.warn(`[PluginInstaller] Failed to remove old version dir: ${err}`)
+        logger.system.warn(`[PluginInstaller] Failed to back up old version dir: ${err}`)
       }
     }
 
@@ -546,6 +626,7 @@ export class PluginInstaller {
       manifest,
       mcpServerId,
       enabled: true,
+      newTaskVisible: true,
     }
     this.installedRecords.set(pluginDetail.pluginKey, record)
     this.saveInstalledRecords()
@@ -778,6 +859,27 @@ export class PluginInstaller {
     }
   }
 
+  /**
+   * 设置插件是否在新建任务界面显示
+   *
+   * 只切换可见性开关，不改动插件的运行状态：
+   * - 技能型插件：下次读取技能贡献时按该开关决定技能是否并入技能列表；
+   * - 非技能型插件：当前新建任务界面尚不展示其能力，状态先行记录。
+   */
+  setNewTaskVisible(pluginKey: string, visible: boolean): { success: boolean; error?: string } {
+    const record = this.installedRecords.get(pluginKey) ?? this.builtinRecords.get(pluginKey)
+    if (!record) {
+      return { success: false, error: 'Plugin not installed' }
+    }
+
+    record.newTaskVisible = visible
+    // 内置插件的记录由注册方持有，不写入外部安装记录文件
+    if (this.installedRecords.has(pluginKey)) {
+      this.saveInstalledRecords()
+    }
+    return { success: true }
+  }
+
   /** 获取已安装插件列表（合并内置插件与外部安装的插件） */
   getInstalledList(): InstalledPluginRecord[] {
     return Array.from(this.installedRecords.values()).concat(
@@ -793,6 +895,86 @@ export class PluginInstaller {
   /** 检查是否已安装（含内置插件） */
   isInstalled(pluginKey: string): boolean {
     return this.installedRecords.has(pluginKey) || this.builtinRecords.has(pluginKey)
+  }
+
+  /**
+   * 汇总已安装 skill 型插件的技能贡献
+   *
+   * skill 型插件的 SKILL.md 位于插件目录，安装时只注册到后端，
+   * 并不会出现在本地技能目录里，因此新建任务界面的技能列表默认看不到它们。
+   * 这里读出每个 skill 型插件 SKILL.md 的位置与元信息交给渲染层，
+   * 由技能服务作为独立来源并入技能列表；SKILL.md 不存在时跳过该项。
+   */
+  getSkillContributions(): PluginSkillContribution[] {
+    const contributions: PluginSkillContribution[] = []
+
+    for (const record of this.getInstalledList()) {
+      const types = Array.isArray(record.manifest.type)
+        ? record.manifest.type
+        : [record.manifest.type]
+      if (!types.includes('skill' as PluginType)) continue
+
+      const skillMdPath = path.join(
+        this.pluginsRoot,
+        record.pluginKey,
+        record.version,
+        'SKILL.md',
+      )
+
+      // 声明为 skill 型却找不到 SKILL.md：技能正文没有随包落地，这个插件无论如何
+      // 都不会出现在技能列表里。过去此处直接 continue，于是「插件与技能市场」显示
+      // 已安装、已启用，技能列表里却凭空少一项，且没有任何线索。
+      // 改为照常上报一条标记 skillMdMissing 的贡献，由渲染层提示用户重装 / 更新。
+      if (!fs.existsSync(skillMdPath)) {
+        logger.system.warn(
+          `[PluginInstaller] Skill plugin "${record.pluginKey}@${record.version}" is missing SKILL.md; ` +
+            'its skill will not be offered in the skill list',
+        )
+        contributions.push({
+          pluginKey: record.pluginKey,
+          version: record.version,
+          pluginEnabled: record.enabled,
+          skillName: record.pluginKey,
+          nameZh: record.nameZh || record.manifest.nameZh,
+          nameEn: record.name || record.manifest.name,
+          icon: record.icon || record.manifest.icon,
+          description: record.manifest.descriptionZh || record.manifest.description || '',
+          skillMdPath,
+          newTaskVisible: record.newTaskVisible !== false,
+          skillMdMissing: true,
+        })
+        continue
+      }
+
+      let skillName = record.pluginKey
+      let description = record.manifest.descriptionZh || record.manifest.description || ''
+
+      try {
+        const raw = fs.readFileSync(skillMdPath, 'utf-8')
+        const match = raw.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/)
+        if (match) {
+          skillName = this.extractYamlValue(match[1], 'name') || skillName
+          description = this.extractYamlValue(match[1], 'description') || description
+        }
+      } catch (err) {
+        logger.system.warn(`[PluginInstaller] Failed to read SKILL.md for ${record.pluginKey}: ${err}`)
+      }
+
+      contributions.push({
+        pluginKey: record.pluginKey,
+        version: record.version,
+        pluginEnabled: record.enabled,
+        skillName,
+        nameZh: record.nameZh || record.manifest.nameZh,
+        nameEn: record.name || record.manifest.name,
+        icon: record.icon || record.manifest.icon,
+        description,
+        skillMdPath,
+        newTaskVisible: record.newTaskVisible !== false,
+      })
+    }
+
+    return contributions
   }
 
   /** 检查更新（返回后端最新版本号，若需要更新） */
@@ -1437,16 +1619,9 @@ export class PluginInstaller {
       throw new Error('TAR_BAD_ARCHIVE: Unrecognized archive format')
     }
 
-    // 备份旧版本目录（用于回滚）
+    // 覆盖同名目录前先备份：重装失败时据此还原，避免用户连原本可用的版本一起丢
     if (fs.existsSync(targetDir)) {
-      const backupDir = path.join(this.pluginsRoot, BACKUP_DIR, path.basename(path.dirname(targetDir)))
-      if (!fs.existsSync(path.dirname(backupDir))) {
-        fs.mkdirSync(path.dirname(backupDir), { recursive: true })
-      }
-      if (fs.existsSync(backupDir)) {
-        fs.rmSync(backupDir, { recursive: true, force: true })
-      }
-      fs.renameSync(targetDir, backupDir)
+      this.backupVersionDir(targetDir)
     }
 
     fs.mkdirSync(targetDir, { recursive: true })
@@ -1456,6 +1631,92 @@ export class PluginInstaller {
       cwd: targetDir,
       strip: 1,
     })
+  }
+
+  /**
+   * 将被覆盖的版本目录移入备份槽 `.backups/<pluginKey>/<version>`，并登记为待还原备份。
+   *
+   * 用「移动」而不是「删除」：安装后续步骤（读 manifest、加载运行时、连接 MCP）都可能
+   * 失败，届时需要把它放回原位，用户才不至于因为一次失败的安装而失去可用版本。
+   * 同一插件同一版本只保留一份备份，重复备份时旧的那份会被覆盖。
+   *
+   * @param sourceDir 被覆盖的版本目录绝对路径（形如 插件根目录/pluginKey/version）
+   */
+  private backupVersionDir(sourceDir: string): void {
+    const pluginKey = path.basename(path.dirname(sourceDir))
+    const version = path.basename(sourceDir)
+    const backupDir = path.join(this.pluginsRoot, BACKUP_DIR, pluginKey, version)
+
+    fs.mkdirSync(path.dirname(backupDir), { recursive: true })
+    if (fs.existsSync(backupDir)) {
+      fs.rmSync(backupDir, { recursive: true, force: true })
+    }
+    fs.renameSync(sourceDir, backupDir)
+    this.pendingBackups.set(pluginKey, { backupDir, originalDir: sourceDir })
+    logger.system.info(`[PluginInstaller] Backed up ${sourceDir} to ${backupDir}`)
+  }
+
+  /**
+   * 安装失败后的现场清理。
+   *
+   * 两件事按顺序做：先删掉本次安装写到一半的版本目录，再把被覆盖的可用版本放回原位。
+   * 两者顺序不能颠倒——备份的 originalDir 有时就是 targetDir（同版本重装），
+   * 先还原再删会把刚还原的目录又删掉。
+   *
+   * @param pluginKey 插件 key，用于定位备份槽
+   * @param targetDir 本次安装落地的版本目录；下载或校验阶段失败时为 undefined
+   */
+  private cleanupFailedInstall(pluginKey: string, targetDir: string | undefined): void {
+    const backup = this.pendingBackups.get(pluginKey)
+    this.pendingBackups.delete(pluginKey)
+
+    // 1. 删除写入到一半的新目录（存在才删）
+    if (targetDir) {
+      try {
+        if (fs.existsSync(targetDir)) {
+          fs.rmSync(targetDir, { recursive: true, force: true })
+        }
+      } catch (err) {
+        logger.system.warn(`[PluginInstaller] Failed to clean failed install dir ${targetDir}: ${err}`)
+      }
+    }
+
+    // 2. 把备份放回原位
+    if (!backup) return
+    try {
+      if (fs.existsSync(backup.backupDir)) {
+        fs.mkdirSync(path.dirname(backup.originalDir), { recursive: true })
+        fs.renameSync(backup.backupDir, backup.originalDir)
+        // 目录回到了旧位置，同步纠正 MCP 的插件目录映射，否则它会继续指向已删除的新目录
+        McpClient.registerPluginDir(pluginKey, backup.originalDir)
+        logger.system.info(
+          `[PluginInstaller] Install failed, rolled back to ${backup.originalDir}`,
+        )
+      }
+    } catch (err) {
+      logger.system.warn(
+        `[PluginInstaller] Failed to roll back ${backup.originalDir} from ${backup.backupDir}: ${err}`,
+      )
+    }
+  }
+
+  /**
+   * 安装成功后丢弃备份槽：新版本已落地可用，备份不再需要，及时清理避免占用磁盘。
+   *
+   * @param pluginKey 插件 key，用于定位备份槽
+   */
+  private discardPendingBackup(pluginKey: string): void {
+    const backup = this.pendingBackups.get(pluginKey)
+    this.pendingBackups.delete(pluginKey)
+    if (!backup) return
+
+    try {
+      if (fs.existsSync(backup.backupDir)) {
+        fs.rmSync(backup.backupDir, { recursive: true, force: true })
+      }
+    } catch (err) {
+      logger.system.warn(`[PluginInstaller] Failed to clean backup ${backup.backupDir}: ${err}`)
+    }
   }
 
   /** 校验 tar 文件头 */
@@ -1497,12 +1758,26 @@ export class PluginInstaller {
       if (typeof m.id !== 'string' || !m.id) return null
       if (typeof m.name !== 'string' || !m.name) return null
       if (typeof m.version !== 'string' || !m.version) return null
-      if (typeof m.main !== 'string' || !m.main) return null
       if (m.type === undefined) return null
 
-      // 补充 main 为绝对路径
+      // main 是本地入口模块，只有需要本地执行代码的插件才必须提供：
+      //   - skill 型：正文来自随包分发的 SKILL.md，没有 JS 入口
+      //   - MCP 型：能力由 npx/uvx 外部进程或远程端点提供，同样没有本地入口
+      // 这两类 manifest 统一写空字符串，与发布脚本 loadManifest 的校验口径保持一致；
+      // 其它类型仍要求非空 main，否则视为包内容不完整。
+      const types = Array.isArray(m.type) ? m.type : [m.type]
+      const capabilities = m.capabilities as { mcp?: unknown } | undefined
+      const mainOptional = types.includes('skill') || types.includes('mcp') || !!capabilities?.mcp
+      if (typeof m.main !== 'string') {
+        if (!mainOptional) return null
+        m.main = ''
+      } else if (!m.main && !mainOptional) {
+        return null
+      }
+
+      // 补充 main 为绝对路径（无入口模块的插件保持空字符串）
       const result = manifest as PluginManifest
-      if (!path.isAbsolute(result.main)) {
+      if (result.main && !path.isAbsolute(result.main)) {
         result.main = path.join(pluginDir, result.main)
       }
       return result
@@ -1674,8 +1949,15 @@ export class PluginInstaller {
     }
   }
 
-  /** 构造失败结果 */
+  /**
+   * 构造失败结果
+   *
+   * 失败必须同时广播 error 进度事件：多数失败分支（manifest 校验不通过、校验和
+   * 不符等）走的是正常返回而非抛异常，若此处不广播，渲染进程的进度条会停在最后
+   * 一个阶段（如「解压中」）不再更新，出现「已提示安装失败、进度提示却不消失」。
+   */
   private fail(pluginId: string, error: string): InstallResult {
+    this.emitProgress(pluginId, 'error', 0, 0, error)
     return { success: false, pluginId, error }
   }
 }

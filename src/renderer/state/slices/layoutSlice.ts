@@ -54,6 +54,7 @@ export const WORKBENCH_DEFAULT_WIDGETS: Record<SceneMode, string[]> = {
   work: ['new-chat', 'work-todo', 'work-weekly', 'work-pomodoro', 'recent-workspaces'],
   life: ['new-chat', 'life-ledger', 'life-water', 'life-mood', 'recent-workspaces'],
   study: ['new-chat', 'study-flashcards', 'study-planner', 'study-pomodoro', 'recent-workspaces'],
+  dev: ['new-chat', 'open-folder', 'recent-workspaces'],
 }
 
 /* ===================== 工作台配置持久化 ===================== */
@@ -408,16 +409,19 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
     work: persistedWorkbench.widgets?.work?.length ? [...persistedWorkbench.widgets.work] : [...WORKBENCH_DEFAULT_WIDGETS.work],
     life: persistedWorkbench.widgets?.life?.length ? [...persistedWorkbench.widgets.life] : [...WORKBENCH_DEFAULT_WIDGETS.life],
     study: persistedWorkbench.widgets?.study?.length ? [...persistedWorkbench.widgets.study] : [...WORKBENCH_DEFAULT_WIDGETS.study],
+    dev: persistedWorkbench.widgets?.dev?.length ? [...persistedWorkbench.widgets.dev] : [...WORKBENCH_DEFAULT_WIDGETS.dev],
   },
   workbenchPositions: {
     work: persistedWorkbench.positions?.work ?? {},
     life: persistedWorkbench.positions?.life ?? {},
     study: persistedWorkbench.positions?.study ?? {},
+    dev: persistedWorkbench.positions?.dev ?? {},
   },
   workbenchBackgrounds: {
     work: persistedWorkbench.backgrounds?.work ?? null,
     life: persistedWorkbench.backgrounds?.life ?? null,
     study: persistedWorkbench.backgrounds?.study ?? null,
+    dev: persistedWorkbench.backgrounds?.dev ?? null,
   },
   /* ----- 场景管理页面标签页初始状态 ----- */
   scenarioPageTab: 'installed',

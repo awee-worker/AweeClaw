@@ -2245,7 +2245,7 @@ export const en = {
   'wf.chatmode': 'Chat Mode',
   'wf.agentmodecanusetools': 'Agent mode can use tools, Chat mode is text-only',
   'wf.chat': 'Chat',
-  'wf.plan': 'Plan',
+  'wf.expert': 'Expert',
   'wf.temperature': 'Temperature',
   'wf.0precise1morecreative': '0=precise, 1=more creative',
   'wf.systemprompt': 'System Prompt',

@@ -106,17 +106,17 @@ function AgentTaskBasicSection({ data, onChange, language }: Omit<TabProps, 'nod
         tip={t('wf.agentmodecanusetools', language as Language)}
       >
         <div className="flex gap-1.5">
-          {(['chat', 'agent', 'plan'] as const).map(mode => (
+          {(['chat', 'agent', 'expert'] as const).map(mode => (
             <button
               key={mode}
               onClick={() => onChange('chatMode', mode)}
               className={`flex-1 px-2 py-1.5 text-[11px] font-medium rounded-lg border transition-all ${
-                (data.chatMode || 'agent') === mode
+                 (data.chatMode || 'expert') === mode
                   ? 'bg-blue-50 border-blue-300 text-blue-700'
                   : 'bg-white border-gray-150 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              {{ chat: t('wf.chat', language as Language), agent: 'Agent', plan: t('wf.plan', language as Language) }[mode]}
+              {{ chat: t('wf.chat', language as Language), agent: 'Agent', expert: t('wf.expert', language as Language) }[mode]}
             </button>
           ))}
         </div>

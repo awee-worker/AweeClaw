@@ -19,7 +19,7 @@
 
 import type { ComponentType } from 'react'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
-import type { PluginSidebarPanelContribution, PluginTopActionContribution, PluginSettingsTabContribution, PluginWidgetCardContribution } from '@shared/plugin-sdk/types'
+import type { PluginSidebarPanelContribution, PluginTopActionContribution, PluginSettingsTabContribution, PluginWidgetCardContribution, SceneMode } from '@shared/plugin-sdk/types'
 import { registerPanelComponent, unregisterPanelComponent } from '@renderer/components/explorer/PanelRegistry'
 import { fetchAndRewriteBundle, buildPluginBundleUrl } from './rewriteBareSpecifiers'
 import { createPluginHostApi } from './PluginHostApi'
@@ -669,7 +669,7 @@ class PluginUiRegistryImpl {
         // 若声明了 modes，则检查当前模式是否在允许列表内
         const modes = wc.contribution.modes
         if (modes?.length && mode) {
-          return modes.includes(mode as 'work' | 'life' | 'study')
+          return modes.includes(mode as SceneMode)
         }
         return true
       })
@@ -713,7 +713,7 @@ class PluginUiRegistryImpl {
       for (const wc of contribution.contributes.widgetCards) {
         // 模式过滤
         if (wc.modes?.length && mode) {
-          if (!wc.modes.includes(mode as 'work' | 'life' | 'study')) continue
+          if (!wc.modes.includes(mode as SceneMode)) continue
         }
 
         result.push({

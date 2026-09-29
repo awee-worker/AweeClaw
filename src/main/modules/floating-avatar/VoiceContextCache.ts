@@ -35,8 +35,8 @@ export interface VoiceContext {
   language: 'zh' | 'en'
   /** 当前工作区路径（注入系统提示词） */
   workspacePath: string | null
-  /** 工作模式（chat/agent/plan，同步主窗口 currentMode） */
-  workMode: 'chat' | 'agent' | 'plan' | null
+  /** 工作模式（chat/agent/expert，同步主窗口 currentMode） */
+  workMode: 'chat' | 'agent' | 'expert' | null
   /** 自定义智能体配置（同步主窗口 store.agentConfig，迷你聊天智能体选择/生效） */
   agentConfig?: unknown | null
   /** 最后更新时间（ms） */
@@ -53,7 +53,7 @@ const DEFAULT_CONTEXT: VoiceContext = {
   voiceModelConfig: null,
   language: 'zh',
   workspacePath: null,
-  workMode: 'chat',
+  workMode: 'expert',
   agentConfig: null,
   updatedAt: 0,
 }

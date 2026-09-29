@@ -8,8 +8,8 @@
  *
  * 使用示例：
  *   const { canUseMode, requireMode, isPaidPlan } = useFeatureGuard()
- *   if (!canUseMode('plan')) { ... 显示锁定标识 }
- *   const ok = await requireMode('plan')  // 校验+拦截，不通过则弹升级提示
+ *   if (!canUseMode('expert')) { ... 显示锁定标识 }
+ *   const ok = await requireMode('expert')  // 校验+拦截，不通过则弹升级提示
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useStore } from '@store'

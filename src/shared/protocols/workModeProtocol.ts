@@ -3,7 +3,7 @@
  */
 
 /** 工作模式 */
-export type WorkMode = 'chat' | 'agent' | 'plan'
+export type WorkMode = 'chat' | 'agent' | 'expert'
 
 /**
  * 规范化工作模式名称。

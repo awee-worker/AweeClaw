@@ -380,25 +380,45 @@ const ROLE_ALTERNATIVES: Record<string, WorkspaceAgent['role'][]> = {
  * 仍无对应项时用 custom（工作台有默认表现，不影响执行）。
  */
 const LIBRARY_ROLE_ID_MAP: Record<string, WorkspaceAgent['role']> = {
-  'work.architect': 'architect',
-  'work.frontend-engineer': 'frontend',
-  'work.backend-engineer': 'backend',
-  'work.qa-engineer': 'tester',
-  'work.data-analyst': 'analyst',
-  'work.code-reviewer': 'analyst',
-  'work.project-manager': 'pm',
+  // 行业角色按工作性质落到工作台现有枚举：分析 / 审查类 → analyst，统筹 / 计划类 → pm；
+  // 工程交付类（电力 / 制造 / 建筑 / 教育 / 销售）无对应枚举，走名称兜底或 custom。
+  'work.legal-counsel': 'analyst',
+  'work.finance-accountant': 'analyst',
+  'work.tax-advisor': 'analyst',
+  'work.investment-analyst': 'analyst',
+  'work.medical-affairs': 'analyst',
+  'work.ip-specialist': 'analyst',
+  'work.hr-specialist': 'pm',
+  'work.marketing-strategist': 'pm',
+  'work.supply-chain': 'pm',
+  'work.government-affairs': 'pm',
+  // 研发角色与工作台枚举一一对应
+  'dev.architect': 'architect',
+  'dev.frontend': 'frontend',
+  'dev.backend': 'backend',
+  'dev.qa': 'tester',
+  'dev.devops': 'devops',
+  'dev.data': 'analyst',
 }
 
 /** 名称关键词兜底（含中英），用于用户自建角色的近似归类 */
 const LIBRARY_ROLE_NAME_HINTS: Array<{ pattern: RegExp; role: WorkspaceAgent['role'] }> = [
+  // 研发向：内置角色已按 id 精确映射，这里保留名称兜底以便用户自建同类角色
   { pattern: /architect|架构/, role: 'architect' },
   { pattern: /frontend|前端/, role: 'frontend' },
   { pattern: /backend|服务端|后端/, role: 'backend' },
   { pattern: /designer|设计|视觉/, role: 'designer' },
   { pattern: /qa|test|测试/, role: 'tester' },
   { pattern: /devops|deploy|运维|部署/, role: 'devops' },
-  { pattern: /review|审查|analyst|数据|分析/, role: 'analyst' },
-  { pattern: /manager|项目管理|排期/, role: 'pm' },
+  // 行业向
+  { pattern: /legal|compliance|法务|合规|律师/, role: 'analyst' },
+  { pattern: /financ|account|tax|财务|会计|税务|审计/, role: 'analyst' },
+  { pattern: /invest|金融|证券|基金|投资/, role: 'analyst' },
+  { pattern: /review|审查|审核|复核|analyst|分析/, role: 'analyst' },
+  { pattern: /hr|human|人力|人事|招聘/, role: 'pm' },
+  { pattern: /market|营销|市场|品牌/, role: 'pm' },
+  { pattern: /supply|procure|供应链|采购|物流|库存/, role: 'pm' },
+  { pattern: /manager|项目经理|项目管理|排期|统筹/, role: 'pm' },
 ]
 
 function mapLibraryRoleToWorkspaceRole(role: TeamRoleCandidate): WorkspaceAgent['role'] {

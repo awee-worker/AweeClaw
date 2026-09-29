@@ -4,7 +4,7 @@
  * 统一导出各个领域模块
  */
 
-// 工作模式领域（AI 推理深度：chat/agent/plan）
+// 工作模式领域（AI 推理深度：chat/agent/expert，当前产品策略默认 expert）
 export * from './capabilities/mode/WorkModeDescriptor'
 export * from './capabilities/mode/WorkModeRegistry'
 

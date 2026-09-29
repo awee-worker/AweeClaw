@@ -2,17 +2,18 @@
  * 空对话态欢迎屏
  *
  * UI1：问候语随场景模式变化，多句轮换
- * UI3：当前场景模式的内置工具列表（5-6个核心工具 + 更多工具入口）
+ *
+ * 技能建议栏（SkillSuggestionBar）单独成组件，渲染在输入框容器上方。
  */
 
 import { useState, useCallback, useMemo, useRef } from 'react'
 import { useStore } from '@store'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
-import * as LucideIcons from 'lucide-react'
-import { Users, Sparkles, Rocket, ChevronRight } from 'lucide-react'
+import { Users, Sparkles, Rocket, Briefcase, Heart, GraduationCap, Code2 } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
 import type { TimePeriod } from '@intelligence/capabilities/sceneMode/SceneModeDescriptor'
-import { getToolsByMode } from '@renderer/components/scene-tools/registry'
+import { sceneModeRegistry } from '@intelligence/capabilities/sceneMode/SceneModeRegistry'
+import type { SceneMode } from '@protocols/sceneModeProtocol'
 
 const DEFAULT_TITLE_ZH = '需要我帮您做什么？'
 const DEFAULT_TITLE_EN = 'How can I help?'
@@ -36,29 +37,31 @@ type WorkTab = 'daily' | 'team' | 'free'
  */
 const SHOW_WORK_MODE_SELECTOR = false
 
-/** 欢迎界面默认展示的工具数量（不含"更多工具"） */
-const WELCOME_TOOL_COUNT = 5
-
-/**
- * 从 lucide-react 动态获取图标组件
- */
-function getIconComponent(name: string): React.ComponentType<{ className?: string; strokeWidth?: number }> {
-  const Comp = (LucideIcons as unknown as Record<string, React.ComponentType<{ className?: string; strokeWidth?: number }>>)[name]
-  return Comp ?? Sparkles
-}
-
 export default function EmptyChatSuggestions() {
   const language = useStore(s => s.language)
-  const activeSidePanel = useStore(s => s.activeSidePanel)
-  const setActiveSidePanel = useStore(s => s.setActiveSidePanel)
-  const setPendingSceneToolId = useStore(s => s.setPendingSceneToolId)
   const teamModeEnabled = useStore(s => s.teamModeEnabled)
   const freeModeEnabled = useStore(s => s.freeModeEnabled)
   const setTeamModeEnabled = useStore(s => s.setTeamModeEnabled)
   const setFreeModeEnabled = useStore(s => s.setFreeModeEnabled)
 
-  const { activeProfile, currentSceneMode } = useSceneModeStore()
+  const { activeProfile, currentSceneMode, setSceneMode } = useSceneModeStore()
   const isZh = language === 'zh'
+
+  const sceneEntries = useMemo(() => {
+    const profiles = sceneModeRegistry.getAllProfiles()
+    const sceneName: Record<SceneMode, { zh: string; en: string }> = {
+      work: { zh: '日常办公', en: 'Daily Work' },
+      life: { zh: '生活陪伴', en: 'Life Companion' },
+      study: { zh: '学习探索', en: 'Learning Explorer' },
+      dev: { zh: '代码开发', en: 'Code Development' },
+    }
+    return profiles.map(profile => ({
+      id: profile.id,
+      icon: profile.id === 'work' ? Briefcase : profile.id === 'life' ? Heart : profile.id === 'study' ? GraduationCap : Code2,
+      labelZh: sceneName[profile.id].zh,
+      labelEn: sceneName[profile.id].en,
+    }))
+  }, [])
 
   const [activeWorkTab, setActiveWorkTab] = useState<WorkTab>(
     freeModeEnabled ? 'free' : teamModeEnabled ? 'team' : 'daily'
@@ -126,31 +129,10 @@ export default function EmptyChatSuggestions() {
   // 选择器隐藏时仅展示标题，去除原标题与选择器之间的大间距
   const contentGap = SHOW_WORK_MODE_SELECTOR ? 'gap-[66px]' : ''
 
-  // ── UI3：当前场景模式的内置工具列表 ──
-  const allTools = useMemo(() => getToolsByMode(currentSceneMode), [currentSceneMode])
-
-  // 优先 core（P0），不足再补 enhanced（P1），取前 WELCOME_TOOL_COUNT 个
-  const coreTools = allTools.filter(t => t.tier === 'core')
-  const enhancedTools = allTools.filter(t => t.tier === 'enhanced')
-  const welcomeTools = [...coreTools, ...enhancedTools].slice(0, WELCOME_TOOL_COUNT)
-
-  // 点击工具卡片：直接打开场景工具面板并跳转至对应工具详情页
-  const handleToolClick = useCallback((toolId: string) => {
-    setActiveSidePanel('scene-tools')
-    // 通过 store 写入目标工具 ID，SceneToolsPanel 在工具就绪后自动跳转
-    setPendingSceneToolId(toolId)
-  }, [setActiveSidePanel, setPendingSceneToolId])
-
-  // 点击「更多工具」：打开场景工具面板
-  const handleMoreTools = useCallback(() => {
-    if (activeSidePanel === 'scene-tools') {
-      setActiveSidePanel(null)
-    } else {
-      setActiveSidePanel('scene-tools')
-    }
-  }, [activeSidePanel, setActiveSidePanel])
-
-  const hasMoreTools = allTools.length > WELCOME_TOOL_COUNT
+  const handleSceneSelect = useCallback(async (nextScene: SceneMode) => {
+    if (nextScene === currentSceneMode) return
+    await setSceneMode(nextScene)
+  }, [currentSceneMode, setSceneMode])
 
   return (
     <div className="flex flex-col items-center w-full select-none">
@@ -215,35 +197,26 @@ export default function EmptyChatSuggestions() {
           </div>
         )}
 
-        {/* UI3：内置工具列表 */}
-        {welcomeTools.length > 0 && (
-          <div className="flex flex-wrap items-center justify-center gap-2.5 mt-6 max-w-[700px]">
-            {welcomeTools.map((tool) => {
-              const Icon = getIconComponent(tool.icon)
-              const label = isZh ? tool.name : tool.nameEn
-              return (
-                <button
-                  key={tool.id}
-                  onClick={() => handleToolClick(tool.id)}
-                  title={isZh ? tool.description : tool.description}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-surface/60 border border-border/50 text-text-secondary hover:text-text-primary hover:border-accent/30 hover:bg-accent/5 transition-all duration-200"
-                >
-                  <Icon className="w-3.5 h-3.5" strokeWidth={1.5} />
-                  <span>{label}</span>
-                </button>
-              )
-            })}
-            {hasMoreTools && (
+        <div className="mt-5 flex items-center gap-1 p-1 rounded-full bg-surface/50 border border-border/40">
+          {sceneEntries.map(entry => {
+            const SceneIcon = entry.icon
+            const selected = currentSceneMode === entry.id
+            return (
               <button
-                onClick={handleMoreTools}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium bg-surface/60 border border-border/50 text-text-muted hover:text-text-primary hover:border-accent/30 hover:bg-accent/5 transition-all duration-200"
+                key={entry.id}
+                onClick={() => void handleSceneSelect(entry.id)}
+                className={`
+                  flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200
+                  ${selected ? 'bg-accent text-white shadow-sm' : 'text-text-muted hover:text-text-primary hover:bg-surface/80'}
+                `}
               >
-                <span>{isZh ? '更多工具' : 'More Tools'}</span>
-                <ChevronRight className="w-3 h-3" />
+                <SceneIcon className="w-3.5 h-3.5" strokeWidth={2} />
+                {isZh ? entry.labelZh : entry.labelEn}
               </button>
-            )}
-          </div>
-        )}
+            )
+          })}
+        </div>
+
       </div>
     </div>
   )

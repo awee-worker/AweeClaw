@@ -2,13 +2,13 @@
  * WorkbenchHome — 工作台首页（macOS 桌面小组件风格）
  *
  * 结构：
- * - 顶部栏：问候语 + 日期 + 场景模式分段切换（工作/生活/学习）+ 自定义按钮
+ * - 顶部栏：问候语 + 日期 + 添加卡片 / 自定义按钮
  * - 卡片墙：一张卡片一个入口（操作卡 / 工具卡），macOS 桌面小组件式网格布局
  *   - 操作卡：新建任务、打开文件夹、场景市场、场景工具、场景管理、最近工作
  *     · 「新建任务」卡片的描述文案随场景模式动态轮换，与新建任务页（空对话态）欢迎语同源
  *   - 工具卡：当前模式的内置工具，实时展示数据摘要（待办数、今日专注、本周周报等）
  *   - 卡片可添加 / 移除，不同模式拥有独立卡片集合与默认配置
- * - 添加卡片弹层：macOS 小组件库风格，按当前模式分组选择
+ * - 添加卡片弹层：macOS 小组件库风格，按场景模式分组展示全部工具
  *
  * 模式默认卡片（见 layoutSlice WORKBENCH_DEFAULT_WIDGETS）：
  *   work  → 新建任务、待办清单、工作周报、番茄专注钟、最近工作
@@ -23,6 +23,7 @@ import {
   Briefcase,
   Check,
   Clock,
+  Code2,
   Eraser,
   FolderOpen,
   GraduationCap,
@@ -53,7 +54,6 @@ import { toast } from '@components/foundation/NotificationProvider'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { t, type Language } from '@renderer/i18n'
 import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
-import { useModeStore } from '@/renderer/modes/workModeStore'
 import { sceneModeRegistry } from '@intelligence/capabilities/sceneMode/SceneModeRegistry'
 import type { SceneModeProfile, TimePeriod } from '@intelligence/capabilities/sceneMode/SceneModeDescriptor'
 import type { SceneMode } from '@protocols/sceneModeProtocol'
@@ -94,6 +94,7 @@ const MODE_META: Record<SceneMode, { icon: LucideIcon; color: string; descZh: st
   work: { icon: Briefcase, color: '#3B82F6', descZh: '高效办公，任务、会议与文档协作', descEn: 'Efficient work, tasks & docs' },
   life: { icon: Heart, color: '#F97316', descZh: '生活记录，账本、打卡与日常', descEn: 'Track life & daily habits' },
   study: { icon: GraduationCap, color: '#10B981', descZh: '专注学习，闪卡、错题与计划', descEn: 'Focus on learning' },
+  dev: { icon: Code2, color: '#8B5CF6', descZh: '代码开发，读写改造与验证', descEn: 'Code: read, change, verify' },
 }
 
 /** 操作卡定义（所有模式通用） */
@@ -175,6 +176,13 @@ const GREETING_MAP: Record<SceneMode, Record<GreetingSlot, [string, string]>> = 
     noon: ['中午好', 'Good noon'],
     afternoon: ['下午好，保持专注', 'Good afternoon'],
     evening: ['晚上好，温故知新', 'Good evening'],
+  },
+  dev: {
+    night: ['夜深了，改完这版就休息', 'Late night'],
+    morning: ['早上好，先理清要动的代码', 'Good morning'],
+    noon: ['中午好，先休息一会儿', 'Good noon'],
+    afternoon: ['下午好，改完记得跑验证', 'Good afternoon'],
+    evening: ['晚上好，适合收尾今天的改动', 'Good evening'],
   },
 }
 
@@ -668,8 +676,7 @@ export default function WorkbenchHome() {
   const setPendingSceneToolId = useStore((s) => s.setPendingSceneToolId)
   const { createThread } = useAgentActions()
 
-  const { currentSceneMode, setSceneMode } = useSceneModeStore()
-  const { setMode: setWorkMode } = useModeStore()
+  const { currentSceneMode } = useSceneModeStore()
 
   const [recentWorkspaces, setRecentWorkspaces] = useState<RecentWorkspace[]>([])
   const [libraryOpen, setLibraryOpen] = useState(false)
@@ -757,17 +764,6 @@ export default function WorkbenchHome() {
       logger.ui.error('[WorkbenchHome] Failed to load recent workspaces:', e)
     }
   }
-
-  /* ---------- 场景模式切换 ---------- */
-  const handleModeSelect = useCallback(
-    async (mode: SceneMode) => {
-      if (mode === currentSceneMode) return
-      await setSceneMode(mode)
-      const newProfile = sceneModeRegistry.getOrDefault(mode)
-      setWorkMode(newProfile.defaultWorkMode)
-    },
-    [currentSceneMode, setSceneMode, setWorkMode]
-  )
 
   /* ---------- 操作入口 ---------- */
   const handleNewChat = useCallback(() => {
@@ -1015,33 +1011,6 @@ export default function WorkbenchHome() {
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0">
-          {/* 场景模式分段切换 */}
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-surface/70 border border-border/30">
-            {(Object.keys(MODE_META) as SceneMode[]).map((mode) => {
-              const meta = MODE_META[mode]
-              const ModeIcon = meta.icon
-              const profile = sceneModeRegistry.getOrDefault(mode)
-              // 仪表盘上以「XX助手」呈现，强调该模式是面向用户的助手入口
-              const label = isZh ? `${profile.displayNameZh}助手` : `${profile.displayName} Assistant`
-              const selected = currentSceneMode === mode
-              return (
-                <button
-                  key={mode}
-                  onClick={() => void handleModeSelect(mode)}
-                  className={`
-                    flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200
-                    ${selected ? 'text-white shadow-sm' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}
-                  `}
-                  style={selected ? { background: meta.color, boxShadow: `0 4px 14px -6px ${meta.color}b0` } : undefined}
-                  title={isZh ? meta.descZh : meta.descEn}
-                >
-                  <ModeIcon className="w-3.5 h-3.5" strokeWidth={2} />
-                  {label}
-                </button>
-              )
-            })}
-          </div>
-
           {/* 添加卡片 */}
           <button
             onClick={() => setLibraryOpen(true)}
@@ -1320,7 +1289,7 @@ function resolveCardMeta(id: string, mode: SceneMode): CardMeta | null {
     }
   }
   const tool = getToolById(id)
-  if (tool && tool.mode === mode) {
+  if (tool) {
     const idx = TOOL_COLORS.length > 0 ? Math.abs(hashCode(tool.id)) % TOOL_COLORS.length : 0
     return {
       id: tool.id,
@@ -1706,13 +1675,12 @@ function CardLibrary({
   onAdd: (id: string) => void
   onClose: () => void
 }) {
-  const toolCards = getToolsByMode(mode)
+  // 添加卡片时展示全部场景模式的工具，便于跨模式取用
+  const toolGroups = (Object.keys(MODE_META) as SceneMode[])
+    .map((m) => ({ mode: m, meta: MODE_META[m], tools: getToolsByMode(m) }))
+    .filter((g) => g.tools.length > 0)
   const pluginCards = usePluginWidgetCards(mode)
   const scenarioCards = useScenarioWidgetCards()
-  const modeMeta = MODE_META[mode]
-  const modeLabel = isZh
-    ? `${sceneModeRegistry.getOrDefault(mode).displayNameZh}助手`
-    : `${sceneModeRegistry.getOrDefault(mode).displayName} Assistant`
 
   const renderItem = (item: { id: string; icon: LucideIcon; titleZh: string; titleEn: string; color: string }) => {
     const added = addedIds.includes(item.id)
@@ -1759,7 +1727,9 @@ function CardLibrary({
           <div>
             <h4 className="text-sm font-semibold text-text-primary">{isZh ? '添加卡片' : 'Add Cards'}</h4>
             <p className="text-[11px] text-text-muted mt-0.5">
-              {isZh ? `当前模式：${modeLabel}，选择卡片添加到工作台` : `Mode: ${modeLabel} — pick cards to add`}
+              {isZh
+                ? '选择卡片添加到工作台，工具覆盖工作 / 生活 / 学习三种模式'
+                : 'Pick cards to add — tools from work / life / study modes'}
             </p>
           </div>
           <button
@@ -1773,7 +1743,7 @@ function CardLibrary({
         {/* 内容 */}
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-5">
           {/* 通用卡片 */}
-          <div className="mb-5">
+          <div>
             <div className="flex items-center gap-2 mb-2.5">
               <Sparkles className="w-3.5 h-3.5 text-accent/70" strokeWidth={1.8} />
               <span className="text-xs font-semibold text-text-secondary">{isZh ? '通用' : 'General'}</span>
@@ -1784,30 +1754,33 @@ function CardLibrary({
             </div>
           </div>
 
-          {/* 当前模式工具卡片 */}
-          {toolCards.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-2.5">
-                <modeMeta.icon className="w-3.5 h-3.5" style={{ color: modeMeta.color }} strokeWidth={1.8} />
-                <span className="text-xs font-semibold text-text-secondary">
-                  {modeLabel}
-                  {isZh ? '工具' : ' Tools'}
-                </span>
-                <div className="flex-1 h-px bg-border/30" />
+          {/* 三种模式的工具卡片 */}
+          {toolGroups.map((group) => {
+            const GroupIcon = group.meta.icon
+            const groupLabel = isZh
+              ? `${sceneModeRegistry.getOrDefault(group.mode).displayNameZh}工具`
+              : `${sceneModeRegistry.getOrDefault(group.mode).displayName} Tools`
+            return (
+              <div key={group.mode} className="mt-5">
+                <div className="flex items-center gap-2 mb-2.5">
+                  <GroupIcon className="w-3.5 h-3.5" style={{ color: group.meta.color }} strokeWidth={1.8} />
+                  <span className="text-xs font-semibold text-text-secondary">{groupLabel}</span>
+                  <div className="flex-1 h-px bg-border/30" />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {group.tools.map((tool) => {
+                    const Icon = getLucideIcon(tool.icon) || Zap
+                    const idx = TOOL_COLORS.length > 0 ? Math.abs(hashCode(tool.id)) % TOOL_COLORS.length : 0
+                    return renderItem({ id: tool.id, icon: Icon, titleZh: tool.name, titleEn: tool.nameEn, color: TOOL_COLORS[idx] })
+                  })}
+                </div>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {toolCards.map((tool) => {
-                  const Icon = getLucideIcon(tool.icon) || Zap
-                  const idx = TOOL_COLORS.length > 0 ? Math.abs(hashCode(tool.id)) % TOOL_COLORS.length : 0
-                  return renderItem({ id: tool.id, icon: Icon, titleZh: tool.name, titleEn: tool.nameEn, color: TOOL_COLORS[idx] })
-                })}
-              </div>
-            </div>
-          )}
+            )
+          })}
 
           {/* 插件卡片 */}
           {pluginCards.length > 0 && (
-            <div className={toolCards.length > 0 ? 'mt-5' : ''}>
+            <div className="mt-5">
               <div className="flex items-center gap-2 mb-2.5">
                 <Blocks className="w-3.5 h-3.5 text-purple-500/70" strokeWidth={1.8} />
                 <span className="text-xs font-semibold text-text-secondary">
@@ -1827,7 +1800,7 @@ function CardLibrary({
 
           {/* 场景卡片 */}
           {scenarioCards.length > 0 && (
-            <div className={(toolCards.length > 0 || pluginCards.length > 0) ? 'mt-5' : ''}>
+            <div className="mt-5">
               <div className="flex items-center gap-2 mb-2.5">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-500/70" strokeWidth={1.8} />
                 <span className="text-xs font-semibold text-text-secondary">

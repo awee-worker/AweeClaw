@@ -24,7 +24,7 @@ export interface VoiceContext {
   voiceModelConfig: unknown | null
   language: 'zh' | 'en'
   workspacePath: string | null
-  workMode: 'chat' | 'agent' | 'plan' | null
+  workMode: 'chat' | 'agent' | 'expert' | null
   /** 自定义智能体配置（同步主窗口 store.agentConfig） */
   agentConfig?: AvatarAgentConfig | null
   updatedAt: number
@@ -261,10 +261,9 @@ export function createFloatingAvatarApi() {
     // 工作模式切换（头像窗口→main→主窗口）
     // --------------------------------------------
     // 切换工作模式（转发到主窗口，主窗口更新 useModeStore + 重新 push voiceContext）
-    selectWorkMode: (mode: 'chat' | 'agent' | 'plan') =>
-      ipcRenderer.invoke('floating-avatar:select-work-mode', mode) as Promise<IpcResponse>,
-    // 事件：头像窗口请求切换工作模式（main→主窗口监听）
-    onSelectWorkMode: on<'chat' | 'agent' | 'plan'>('floating-avatar:select-work-mode'),
+  selectWorkMode: (mode: 'chat' | 'agent' | 'expert') =>
+    ipcRenderer.invoke('floating-avatar:select-work-mode', mode) as Promise<IpcResponse>,
+  onSelectWorkMode: on<'chat' | 'agent' | 'expert'>('floating-avatar:select-work-mode'),
 
     // --------------------------------------------
     // 自定义智能体切换（头像窗口→main→主窗口）

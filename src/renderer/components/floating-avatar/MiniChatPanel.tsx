@@ -125,8 +125,8 @@ export interface MiniChatPanelProps {
   llmConfig?: unknown | null
   /** 工具执行授权方式（来自 voiceContext，同步主窗口 authorizationMode） */
   authorizationMode?: 'every-step' | 'dangerous-only' | 'never'
-  /** 工作模式（来自 voiceContext，同步主窗口 workMode）：快速/思考/专家 */
-  workMode?: 'chat' | 'agent' | 'plan'
+  /** 工作模式（来自 voiceContext，同步主窗口 workMode）：专家档 */
+  workMode?: 'chat' | 'agent' | 'expert'
   /** 自定义智能体配置（来自 voiceContext.agentConfig，供智能体选择器显示/切换） */
   agentConfig?: AvatarAgentConfig | null
   /** 主窗口当前对话快照（同步显示主窗口对话内容，提问时作为上下文） */

@@ -8,9 +8,11 @@
  * - 切换到工作模式 / 进入工作模式 / 工作模式
  * - 切换到生活模式 / 进入生活模式 / 生活模式
  * - 切换到学习模式 / 进入学习模式 / 学习模式
+ * - 切换到代码开发模式 / 进入代码开发模式
  * - switch to work mode / work mode
  * - switch to life mode / life mode
  * - switch to study mode / study mode
+ * - switch to dev mode / coding mode
  *
  * @see {@link file:///Volumes/MacData/Ai/aweeclaw/aweeclaw-client/docs/scene-modes/05-extensions.md} 方向2 设计
  */
@@ -70,6 +72,18 @@ const SCENE_COMMANDS: SceneCommandRule[] = [
     pattern: /\b(?:switch(?:\s+to)?|enter|change(?:\s+to)?)\s+(?:the\s+)?(?:study|learning)\s+mode\b|\b(?:study|learning)\s+mode\b/i,
     mode: 'study',
     name: 'study-mode-command-en',
+  },
+
+  // ── 代码开发模式 ──
+  {
+    pattern: /(?:切换到|进入|切换至|切到).{0,4}(?:代码开发|开发|编码|写代码).{0,2}模式|(?:代码开发|编码)模式/,
+    mode: 'dev',
+    name: 'dev-mode-command',
+  },
+  {
+    pattern: /\b(?:switch(?:\s+to)?|enter|change(?:\s+to)?)\s+(?:the\s+)?(?:dev|development|code|coding)\s+mode\b|\b(?:dev|development|coding)\s+mode\b/i,
+    mode: 'dev',
+    name: 'dev-mode-command-en',
   },
 ]
 

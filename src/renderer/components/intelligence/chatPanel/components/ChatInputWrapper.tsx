@@ -5,7 +5,6 @@
 import { memo } from 'react'
 import { ChatInput, type PendingAttachment } from '../../../conversation'
 import type { ContextItem } from '@intelligence/providerTypes'
-import type { WorkMode } from '@/renderer/modes/workModeTypes'
 
 interface ChatInputWrapperProps {
   input: string
@@ -16,8 +15,6 @@ interface ChatInputWrapperProps {
   hasApiKey: boolean
   needsCloudLogin: boolean
   hasPendingToolCall: boolean
-  chatMode: WorkMode
-  setChatMode: (mode: WorkMode) => void
   onSubmit: () => void
   onAbort: () => void
   onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
@@ -44,8 +41,6 @@ function ChatInputWrapperBase({
   hasApiKey,
   needsCloudLogin,
   hasPendingToolCall,
-  chatMode,
-  setChatMode,
   onSubmit,
   onAbort,
   onInputChange,
@@ -71,8 +66,6 @@ function ChatInputWrapperBase({
       hasApiKey={hasApiKey}
       needsCloudLogin={needsCloudLogin}
       hasPendingToolCall={hasPendingToolCall}
-      chatMode={chatMode}
-      setChatMode={setChatMode}
       onSubmit={onSubmit}
       onAbort={onAbort}
       onInputChange={onInputChange}

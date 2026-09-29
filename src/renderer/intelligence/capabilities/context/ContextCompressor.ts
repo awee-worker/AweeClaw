@@ -59,6 +59,14 @@ const TRUNCATE_TOOLS = new Set(['write_file', 'edit_file', 'create_file_or_folde
 /** 受保护的工具（不清理结果） */
 const PROTECTED_TOOLS = new Set(['ask_user'])
 
+/**
+ * 回合对齐的最大前向回退条数
+ *
+ * 窗口起点若落在回合中间，向前回退到该回合的 user 消息即可复原完整回合。
+ * 回退距离封顶，避免单个「几十次工具调用」的超长回合把窗口撑到远超条数限额。
+ */
+const MAX_TURN_ALIGN_LOOKBACK = 60
+
 // ===== 摘要失败降级状态 =====
 
 /** 摘要失败计数与降级判定（独立模块，便于单测直接覆盖阈值） */
@@ -95,6 +103,43 @@ function getMessageLimit(level: CompressionLevel, config: ReturnType<typeof getA
     case 3: return Math.min(base, 15)
     case 4: return Math.min(base, 10)
   }
+}
+
+/**
+ * 把历史窗口起点对齐到「回合起始」
+ *
+ * 直接 `slice(-N)` 会落在回合中间，窗口可能以 assistant / tool 开头：
+ * - 丢掉本轮用户意图 —— 窗口起点前那条 user 消息被切掉，「我刚才要做什么」随之消失；
+ * - 切出孤立 tool 结果 —— 它前面的 assistant.tool_calls 已被切掉，模型收到一份
+ *   无法关联回任何调用的结果，拼接出的消息序列不合法。
+ *
+ * 对齐规则：起点不是 user 消息时，向前回退到最近的 user，宁可多留几条也不切断
+ * 一个回合及其工具调用对。回退距离受 maxLookback 约束；若约束内找不到 user
+ * （单轮工具调用极多），退而向后跳过开头的孤立 tool，至少保证序列合法。
+ *
+ * @param messages    完整消息序列（含本轮用户消息）
+ * @param start       原起点（= 长度 - 条数限额）
+ * @param maxLookback 允许的前向回退条数
+ * @returns 对齐后的起点下标（落在 messages 范围内）
+ */
+export function alignWindowStart(
+  messages: Array<{ role?: string }>,
+  start: number,
+  maxLookback: number,
+): number {
+  if (start <= 0) return 0
+  if (messages[start]?.role === 'user') return start
+
+  // 1) 向前回退到最近的 user：保留完整回合（含其工具调用对）
+  const floor = Math.max(0, start - Math.max(0, maxLookback))
+  for (let i = start - 1; i >= floor; i--) {
+    if (messages[i]?.role === 'user') return i
+  }
+
+  // 2) 回退超限：跳过开头的孤立 tool 消息，至少不制造无对应调用的工具结果
+  let i = start
+  while (i < messages.length && messages[i]?.role === 'tool') i++
+  return i
 }
 
 /**
@@ -265,11 +310,24 @@ export function prepareMessages(
   // 只在有修改时才使用新数组
   result = hasModifications ? modifiedMessages : result
 
-  // 1. 限制消息数量
+  // 1. 限制消息数量（窗口起点对齐到回合起始，避免切出孤立 tool 或丢掉本轮用户意图）
   const messageLimit = getMessageLimit(lastLevel, config)
   if (result.length > messageLimit) {
-    removedMessages = result.length - messageLimit
-    result = result.slice(-messageLimit)
+    const rawStart = result.length - messageLimit
+    const alignedStart = Math.min(
+      alignWindowStart(result, rawStart, Math.min(messageLimit, MAX_TURN_ALIGN_LOOKBACK)),
+      result.length - 1,
+    )
+    removedMessages = alignedStart
+    if (alignedStart !== rawStart) {
+      logger.agent.info(
+        `[Compression] 窗口起点对齐到回合起始: ${rawStart} → ${alignedStart}` +
+          `（保留 ${result.length - alignedStart} 条，条数限额 ${messageLimit}）`
+      )
+    }
+    if (alignedStart > 0) {
+      result = result.slice(alignedStart)
+    }
   }
 
   // 2. L1+: 截断工具调用参数

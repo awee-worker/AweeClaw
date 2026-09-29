@@ -15,7 +15,14 @@
  */
 
 import type { AssistantPart, ToolCall, TodoItem } from '@intelligence/providerTypes'
-import { isToolCallPart } from '@intelligence/providerTypes'
+import {
+  isToolCallPart,
+  isTextPart,
+  isReasoningPart,
+  isSearchPart,
+  isSourcesPart,
+  isMultiAgentWorkflowPart,
+} from '@intelligence/providerTypes'
 import type { AssistantGroupItem } from '../types'
 
 /** 从 todo_write 工具调用参数中安全提取任务列表 */
@@ -28,6 +35,48 @@ function extractTodos(args: Record<string, unknown>): TodoItem[] {
     typeof t.status === 'string' &&
     typeof t.activeForm === 'string'
   )
+}
+
+/**
+ * 判断一个 part 是否会渲染出可见 DOM
+ *
+ * 分组规则必须与渲染结果一致：渲染器返回 null 的 part 既不占 DOM 也不占高度，
+ * 若仍把它当成「内容间断」来切断工具组，连续的工具调用就会被切成多个单工具组。
+ * 工具执行期间这类 part 会零星落在工具调用之间（文本缓冲区 flush 留下的空行、
+ * 收尾后内容为空的推理块、注册表里固定不渲染的搜索 / 多智能体工作流片段），
+ * 于是用户先看到几张各自独立的卡片，等这些 part 落定后才重新并成一组 ——
+ * 观感就是卡片跳动、分组头姗姗来迟。按「是否渲染出内容」判定，工具组从第二次
+ * 调用起就稳定成组，中途不会拆开再合上。
+ *
+ * 判定必须与 PartRendererRegistry 的实际渲染对齐，否则又会分叉：
+ * - TextPartView：内容 trim 后为空 → null
+ * - ReasoningPartView：内容 trim 后为空且不在流式中 → null
+ *   （流式中的空推理块会渲染「思考中」骨架，属于可见内容，不能算惰性）
+ * - SourcesPartView：来源数组为空时 SourcesBlockView 返回 null
+ * - SearchPart / MultiAgentWorkflowPart：注册表里固定渲染 null
+ */
+function isVisuallyInertPart(part: AssistantPart): boolean {
+  if (isTextPart(part)) {
+    const content = (part as { content?: string }).content
+    return typeof content !== 'string' || content.trim() === ''
+  }
+
+  if (isReasoningPart(part)) {
+    const reasoning = part as { content?: string; isStreaming?: boolean }
+    return !reasoning.content?.trim() && !reasoning.isStreaming
+  }
+
+  if (isSearchPart(part) || isMultiAgentWorkflowPart(part)) {
+    return true
+  }
+
+  // 来源列表为空时 SourcesBlockView 返回 null，不占 DOM，同样不能算内容间断
+  if (isSourcesPart(part)) {
+    const sources = (part as { sources?: unknown[] }).sources
+    return !Array.isArray(sources) || sources.length === 0
+  }
+
+  return false
 }
 
 /**
@@ -129,6 +178,12 @@ export function buildAssistantGroups(
       currentToolCalls.push(part.toolCall)
       return
     }
+
+    // 不产生可见 DOM 的 part（空白文本、收尾后为空的推理块、不渲染的搜索 /
+    // 多智能体工作流片段）不应打断工具组连续性：工具调用之间的文本缓冲区
+    // flush、推理收尾都会留下这类片段，若把它们当作内容间断，连续工具调用
+    // 就会被拆成多个单工具组，用户看到的就是卡片跳动、而不是自动归入同一分组。
+    if (isVisuallyInertPart(part)) return
 
     flushToolGroup()
     result.push({ type: 'part', part, index })

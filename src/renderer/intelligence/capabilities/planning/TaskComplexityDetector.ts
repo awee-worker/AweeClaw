@@ -89,15 +89,33 @@ const DOMAIN_KEYWORDS: Record<string, { keywords: RegExp; role: string }> = {
 // role 指向角色库 id（planBuilder / taskExecutor 解析），开发向词表维持原模板 id。
 const SCENE_DOMAIN_KEYWORDS: Record<string, Record<string, { keywords: RegExp; role: string }>> = {
   work: {
-    dataAnalysis: { keywords: /excel|报表|指标|统计算法|数据分析|台区/, role: 'work.data-analyst' },
-    docWriting: { keywords: /方案|报告|汇报|周报|文档/, role: 'work.doc-writer' },
-    meeting: { keywords: /会议|纪要|议题|行动项/, role: 'work.meeting-scribe' },
-    projectPlan: { keywords: /排期|拆任务|里程碑|跟进/, role: 'work.project-manager' },
-    // 以下与开发向基础表同名：命中时用角色库 id，避免同一领域既给出模板 id 又给出角色 id
-    architecture: { keywords: /架构设计|系统设计|模块划分|技术选型|服务拆分/, role: 'work.architect' },
-    frontend: { keywords: /前端|页面|组件|样式|浏览器兼容/, role: 'work.frontend-engineer' },
-    backend: { keywords: /后端|服务端|接口设计|并发|数据库/, role: 'work.backend-engineer' },
-    testing: { keywords: /测试用例|回归测试|覆盖率|缺陷复现/, role: 'work.qa-engineer' },
+    // 行业领域词表：命中后交给对应行业角色的方法执行。
+    legal: { keywords: /合同|条款|法务|合规|违约|诉讼/, role: 'work.legal-counsel' },
+    finance: { keywords: /会计|账务|成本核算|财报|资产负债|结算/, role: 'work.finance-accountant' },
+    tax: { keywords: /税务|报税|纳税|发票|税率|税收优惠/, role: 'work.tax-advisor' },
+    hr: { keywords: /招聘|绩效|薪酬|劳动法|员工关系|考勤/, role: 'work.hr-specialist' },
+    marketing: { keywords: /营销|推广|品牌|投放|转化率|市场定位/, role: 'work.marketing-strategist' },
+    sales: { keywords: /销售|报价|成交|商机|客户异议/, role: 'work.sales-consultant' },
+    supplyChain: { keywords: /采购|供应商|库存|物流|交期|询价/, role: 'work.supply-chain' },
+    investment: { keywords: /投融资|估值|财务模型|基金|股权|尽调/, role: 'work.investment-analyst' },
+    medical: { keywords: /临床试验|药品注册|适应症|医药合规|说明书/, role: 'work.medical-affairs' },
+    power: { keywords: /电网|配电|台区|负荷|线损|新能源/, role: 'work.power-engineer' },
+    manufacturing: { keywords: /工艺|产线|良率|装配|精益|工序/, role: 'work.manufacturing-engineer' },
+    civil: { keywords: /施工|图纸|造价|工程量|结构设计|验收/, role: 'work.civil-engineer' },
+    education: { keywords: /课程设计|教案|培训方案|教学大纲|课件/, role: 'work.education-trainer' },
+    ip: { keywords: /专利|商标|著作权|知识产权|侵权/, role: 'work.ip-specialist' },
+    government: { keywords: /政策解读|申报|补贴|资质|备案|政企/, role: 'work.government-affairs' },
+  },
+  // 代码开发场景：研发工程领域词表，命中后交给对应研发角色的方法执行。
+  // 研发词表放在 dev 组而非 work 组：detector 只加载当前场景的词表，
+  // 若留在 work 组会导致工作场景下建议出 dev 角色，而该角色不在工作场景内、建议落空。
+  dev: {
+    architecture: { keywords: /架构|架构设计|系统设计|模块划分|分层|微服务|单体/, role: 'dev.architect' },
+    frontend: { keywords: /前端|ui|界面|组件|页面|react|vue|html|css|tailwind/, role: 'dev.frontend' },
+    backend: { keywords: /后端|api|接口|服务|server|controller|model/, role: 'dev.backend' },
+    testing: { keywords: /测试|单元测试|集成测试|e2e|jest|pytest|覆盖率/, role: 'dev.qa' },
+    devops: { keywords: /部署|ci\/cd|docker|k8s|流水线|自动化|监控/, role: 'dev.devops' },
+    dataDev: { keywords: /数据管道|etl|数仓|指标|报表|sql 优化/, role: 'dev.data' },
   },
   life: {
     travelPlan: { keywords: /出行|路线|行程|旅游/, role: 'life.travel-planner' },

@@ -1,6 +1,8 @@
 # A 阶段：三种场景模式详细设计
 
 > 工作模式 / 生活模式 / 学习模式 的完整能力定义
+>
+> 代码开发（dev）模式在后续迭代中补充，其 Profile 见 `SceneModeProfiles.ts` 的 `DEV_MODE_PROFILE`，内置角色见 `docs/role-library/01-role-library-design.md` 4.3 节。
 
 ## 一、设计原则
 
@@ -59,17 +61,17 @@
 
 工作模式挂载以下技能（通过 `modeSkills` 白名单过滤）：
 
-| 技能名 | 类型 | 说明 |
-|---|---|---|
-| `work-email-draft` | auto | 邮件起草：根据要点生成专业邮件 |
-| `work-meeting-prep` | auto | 会议准备：聚合文档生成准备卡片 |
-| `work-meeting-notes` | auto | 会议纪要：转写+要点+action item |
-| `work-task-extract` | auto | 任务抽取：从对话/文档抽取 TODO |
-| `work-doc-summary` | auto | 文档摘要：长文档快速总结 |
-| `work-schedule` | manual | 日程管理：安排/查询日程 |
-| `work-report` | manual | 工作汇报：生成周报/日报 |
-| `work-focus-guard` | auto | 专注守护：检测注意力涣散 |
-| `remote-command` | manual | 远程命令：跨端执行（已有能力） |
+| 技能名 | 说明 |
+|---|---|
+| `office-doc` | 文档处理：通知、报告、方案、总结等文体的结构与措辞 |
+| `office-email` | 邮件沟通：主题、称呼、正文结构与语气 |
+| `office-meeting` | 会议纪要：会前准备、会中记录与会后跟进 |
+| `office-schedule` | 日程规划：按优先级与精力分配时间块，识别冲突与空档 |
+| `office-task` | 任务拆解：把目标拆成可分配、可验收的步骤并跟进闭环 |
+| `office-data` | 数据分析：从指标口径到结论输出的业务分析路径 |
+| `office-sheet` | 表格处理：公式、数据清洗与透视汇总 |
+| `office-ppt` | PPT 制作：从大纲到版式，每页只讲一件事 |
+| `office-research` | 资料调研：多渠道检索与来源交叉验证 |
 
 ### 3.3 记忆域（memoryDomain）
 
@@ -165,17 +167,16 @@
 
 ### 4.2 技能清单（skills）
 
-| 技能名 | 类型 | 说明 |
-|---|---|---|
-| `life-health-reminder` | auto | 健康提醒：喝水/起身/护眼 |
-| `life-weather` | auto | 天气查询：出门提醒带伞/防晒 |
-| `life-mood-companion` | auto | 情绪陪伴：感知情绪并回应 |
-| `life-accounting` | manual | 记账：一句话录入支出 |
-| `life-shopping-list` | manual | 购物清单：语音添加商品 |
-| `life-recipe` | auto | 菜谱推荐：基于饮食偏好 |
-| `life-sleep` | auto | 睡眠管理：提醒作息 |
-| `life-relationship` | manual | 人际管理：生日/纪念日提醒 |
-| `life-iot-control` | auto | 智能家居：回家开灯/睡前关电器 |
+| 技能名 | 说明 |
+|---|---|
+| `life-companion` | 情绪陪伴：先倾听再回应，梳理感受并找到可迈出的一小步 |
+| `life-health` | 健康饮食：饮食搭配、运动安排与作息调整 |
+| `life-fitness` | 运动健身：按目标和当前水平安排可执行的训练 |
+| `life-recipe` | 家常用餐：按现有食材和口味给出可操作的菜谱 |
+| `life-home` | 居家生活：整理收纳、清洁保养与家务安排 |
+| `life-plan` | 生活规划：日程安排、习惯养成与目标拆解 |
+| `life-shopping` | 消费决策：需求梳理、选项比较与消费避坑 |
+| `life-travel` | 旅行规划：行程安排、交通住宿与预算清单 |
 
 ### 4.3 记忆域（memoryDomain）
 
@@ -274,17 +275,16 @@
 
 ### 5.2 技能清单（skills）
 
-| 技能名 | 类型 | 说明 |
-|---|---|---|
-| `study-note-extract` | auto | 笔记抽取：阅读材料自动抽取核心概念 |
-| `study-flashcard` | auto | 记忆卡：自动生成 Anki 风格卡片 |
-| `study-feynman` | auto | 费曼引导：引导用户复述并判断 |
-| `study-socratic` | auto | 苏格拉底问答：反问引导思考 |
-| `study-quiz` | manual | 测验：主动出题测试掌握度 |
-| `study-review-scheduler` | auto | 复习调度：遗忘曲线计算复习时间 |
-| `study-knowledge-graph` | auto | 知识图谱：构建概念网络 |
-| `study-progress` | manual | 学习进度：查看掌握度报告 |
-| `study-plan` | manual | 学习计划：生成个性化计划 |
+| 技能名 | 说明 |
+|---|---|
+| `study-explain` | 知识讲解：从直觉到严谨、从例子到原理 |
+| `study-notes` | 笔记整理：把零散信息变成结构化、可检索、可复习的笔记 |
+| `study-memory` | 记忆复习：主动回忆与间隔重复 |
+| `study-mindmap` | 思维导图：层级化组织零散知识，形成可逐步展开的框架 |
+| `study-quiz` | 习题练习：出题、批改与错题分析 |
+| `study-plan` | 学习计划：目标拆解与节奏安排 |
+| `study-language` | 语言学习：听说读写训练与反馈 |
+| `study-paper` | 论文阅读：文献拆解、方法评估与综述提纲 |
 
 ### 5.3 记忆域（memoryDomain）
 

@@ -71,7 +71,7 @@ export interface FloatingAvatarDeps {
   /** 转发授权方式切换到主窗口（主窗口更新 store + save + 重新 push voiceContext） */
   forwardSelectAuthorizationMode: (mode: 'every-step' | 'dangerous-only' | 'never') => void
   /** 转发工作模式切换到主窗口（主窗口更新 useModeStore + 重新 push voiceContext） */
-  forwardSelectWorkMode: (mode: 'chat' | 'agent' | 'plan') => void
+  forwardSelectWorkMode: (mode: 'chat' | 'agent' | 'expert') => void
   /** 转发自定义智能体切换到主窗口（主窗口更新 store + save + 重新 push voiceContext） */
   forwardSelectAgent: (agentId: string | null) => void
 }

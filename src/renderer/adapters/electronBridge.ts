@@ -357,17 +357,40 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   pluginUninstall: (pluginKey: string) => Promise<{ success: boolean; error?: string }>
   pluginEnable: (pluginKey: string) => Promise<{ success: boolean; error?: string }>
   pluginDisable: (pluginKey: string) => Promise<{ success: boolean; error?: string }>
+  /** 设置插件是否在新建任务界面显示 */
+  pluginSetNewTaskVisible: (pluginKey: string, visible: boolean) => Promise<{ success: boolean; error?: string }>
   pluginGetInstalled: () => Promise<Array<{
     pluginId: string
     pluginKey: string
     version: string
     installedAt: string
     enabled: boolean
+    /** 是否在新建任务界面显示（缺省视为显示） */
+    newTaskVisible?: boolean
     types: string[]
     manifest: unknown
     mcpServerId?: string
   }>>
   pluginIsInstalled: (pluginKey: string) => Promise<boolean>
+  /** 获取 skill 型插件的技能贡献（供技能列表并入来源） */
+  pluginGetSkillContributions: () => Promise<Array<{
+    pluginKey: string
+    version: string
+    pluginEnabled: boolean
+    skillName: string
+    /** 插件 manifest 中的中文名 */
+    nameZh?: string
+    /** 插件 manifest 中的英文名 */
+    nameEn?: string
+    /** 插件图标：图片地址或 lucide 图标名 */
+    icon?: string
+    description: string
+    skillMdPath: string
+    /** 插件是否在新建任务界面显示；false 时其技能不并入技能列表 */
+    newTaskVisible: boolean
+    /** 该 skill 型插件本地缺少 SKILL.md；true 时正文不可读，需重装或更新插件 */
+    skillMdMissing?: boolean
+  }>>
   pluginCheckUpdate: (
     pluginKey: string,
     backendUrl: string,
@@ -940,8 +963,11 @@ function createGroupedAPI() {
       uninstall: (pluginKey: string) => raw.pluginUninstall(pluginKey),
       enable: (pluginKey: string) => raw.pluginEnable(pluginKey),
       disable: (pluginKey: string) => raw.pluginDisable(pluginKey),
+      setNewTaskVisible: (pluginKey: string, visible: boolean) =>
+        raw.pluginSetNewTaskVisible(pluginKey, visible),
       getInstalled: () => raw.pluginGetInstalled(),
       isInstalled: (pluginKey: string) => raw.pluginIsInstalled(pluginKey),
+      getSkillContributions: () => raw.pluginGetSkillContributions(),
       checkUpdate: (pluginKey: string, backendUrl: string, authToken?: string) =>
         raw.pluginCheckUpdate(pluginKey, backendUrl, authToken),
       /** 读取插件用户配置 */
@@ -1006,7 +1032,7 @@ function createGroupedAPI() {
         callback: Parameters<typeof raw.floatingAvatar.onSelectAuthorizationMode>[0],
       ) => raw.floatingAvatar.onSelectAuthorizationMode(callback),
       // 工作模式切换（头像窗口→main→主窗口）
-      selectWorkMode: (mode: 'chat' | 'agent' | 'plan') =>
+      selectWorkMode: (mode: 'chat' | 'agent' | 'expert') =>
         raw.floatingAvatar.selectWorkMode(mode),
       onSelectWorkMode: (
         callback: Parameters<typeof raw.floatingAvatar.onSelectWorkMode>[0],

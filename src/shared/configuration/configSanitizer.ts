@@ -194,6 +194,8 @@ export interface AgentConfigSchema {
     dynamicThreshold?: boolean
   }
   ignoredDirectories?: string[]
+  /** 当前会话锁定的专家（角色库角色 id），null/undefined 表示自动编排档 */
+  activeExpertId?: string | null
   multiAgent?: {
     enabled?: boolean
     mode?: 'auto' | 'always'
@@ -282,6 +284,11 @@ export function cleanAgentConfig(config: Record<string, unknown>): AgentConfigSc
   // activeCustomAgentId
   if (typeof config.activeCustomAgentId === 'string') {
     cleaned.activeCustomAgentId = config.activeCustomAgentId
+  }
+
+  // activeExpertId（会话锁定的专家角色，null 表示自动档）
+  if (config.activeExpertId === null || typeof config.activeExpertId === 'string') {
+    cleaned.activeExpertId = config.activeExpertId
   }
 
   // soundNotifications 子对象

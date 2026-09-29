@@ -142,7 +142,7 @@ export function useSceneModeEffects(): void {
     // ── 方向4：监听移动端→PC 场景模式同步 ──
     const unsubscribeDeviceLink = api.deviceLink.onSceneModeSync((payload) => {
       logger.agent.info(`[SceneModeEffects] Received scene mode sync from mobile: ${payload.mode}`)
-      const validModes: SceneMode[] = ['work', 'life', 'study']
+      const validModes: SceneMode[] = ['work', 'life', 'study', 'dev']
       if (validModes.includes(payload.mode as SceneMode)) {
         // 静默切换，避免反向推送形成循环
         useSceneModeStore.getState().setSceneMode(payload.mode as SceneMode, { silent: true })

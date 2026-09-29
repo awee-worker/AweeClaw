@@ -19,11 +19,8 @@ import { logger } from '@toolkit/LogEngine'
 
 const STORE_KEY = 'sceneModeStore'
 
-/** 各模式累计使用时长（秒） */
-export interface ModeUsageStats {
-  work: number
-  life: number
-  study: number
+/** 各模式累计使用时长（秒，key 为场景模式） */
+export type ModeUsageStats = Record<SceneMode, number> & {
   /** 上次切换时间戳（ms） */
   lastSwitchAt: number
 }
@@ -154,7 +151,7 @@ export const useSceneModeStore = create<SceneModeStore>()(
       currentSceneMode: 'work',
       previousSceneMode: null,
       activeProfile: sceneModeRegistry.getOrDefault('work'),
-      modeUsageStats: { work: 0, life: 0, study: 0, lastSwitchAt: 0 },
+      modeUsageStats: { work: 0, life: 0, study: 0, dev: 0, lastSwitchAt: 0 },
       autoSwitchEnabled: false,
       cronGlobalEnabled: true,
       cronOverrides: {},
@@ -227,7 +224,7 @@ export const useSceneModeStore = create<SceneModeStore>()(
 
       resetModeUsageStats: () => {
         set({
-          modeUsageStats: { work: 0, life: 0, study: 0, lastSwitchAt: Date.now() },
+          modeUsageStats: { work: 0, life: 0, study: 0, dev: 0, lastSwitchAt: Date.now() },
         })
       },
 

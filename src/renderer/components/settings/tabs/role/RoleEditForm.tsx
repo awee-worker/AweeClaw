@@ -42,7 +42,7 @@ const INTENT_LABELS: Record<RoleIntent, string> = {
 }
 
 const SCENE_LABELS: Record<SceneMode, string> = {
-  work: '工作助手', life: '生活助手', study: '学习助手',
+  work: '日常办公', life: '生活陪伴', study: '学习探索', dev: '代码开发',
 }
 
 /**
@@ -291,10 +291,10 @@ export function RoleEditForm({ sceneMode, existing, onClose }: RoleEditFormProps
             </div>
             <div>
               <div className="text-sm font-semibold text-text-primary">
-                {isEdit ? `编辑「${existing.nameZh}」` : '创建角色'}
+                {isEdit ? `编辑「${existing.nameZh}」` : '创建专家'}
               </div>
               <div className="text-[10px] text-text-muted">
-                {SCENE_LABELS[sceneMode]}场景{isBuiltin ? ' · 内置角色' : ' · 自定义角色'}
+                {SCENE_LABELS[sceneMode]}场景{isBuiltin ? ' · 内置专家' : ' · 自定义专家'}
               </div>
             </div>
           </div>
@@ -592,7 +592,7 @@ export function RoleEditForm({ sceneMode, existing, onClose }: RoleEditFormProps
             onClick={handleSave}
             className="px-5 py-2 text-xs font-medium bg-accent text-white hover:bg-accent/90 rounded-lg transition-colors shadow-sm"
           >
-            {isEdit ? '保存修改' : '创建角色'}
+            {isEdit ? '保存修改' : '创建专家'}
           </button>
         </div>
       </div>

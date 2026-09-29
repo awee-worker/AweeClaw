@@ -104,19 +104,22 @@ function AgentTaskRoleSection({ data, onChange, language }: Omit<TabProps, 'node
         />
       </Section>
 
-      <Section title={t('wf.chatmode', language as Language)}>
-        <div className="flex gap-1">
-          {(['chat', 'agent', 'plan'] as const).map(mode => (
+      <Section
+        title={t('wf.chatmode', language as Language)}
+        tip={t('wf.agentmodecanusetools', language as Language)}
+      >
+        <div className="flex gap-1.5">
+          {(['chat', 'agent', 'expert'] as const).map(mode => (
             <button
               key={mode}
               onClick={() => onChange('chatMode', mode)}
-              className={`flex-1 px-2 py-1.5 text-[10px] font-medium rounded-md transition-colors ${
-                data.chatMode === mode
-                  ? 'bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30'
-                  : 'bg-[var(--background)] text-[var(--text-muted)] border border-[var(--border)] hover:border-[var(--accent)]/30'
+              className={`flex-1 px-2 py-1.5 text-[11px] font-medium rounded-lg border transition-all ${
+                (data.chatMode || 'agent') === mode
+                  ? 'bg-blue-50 border-blue-300 text-blue-700'
+                  : 'bg-white border-gray-150 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+              {{ chat: t('wf.chat', language as Language), agent: 'Agent', expert: t('wf.expert', language as Language) }[mode]}
             </button>
           ))}
         </div>

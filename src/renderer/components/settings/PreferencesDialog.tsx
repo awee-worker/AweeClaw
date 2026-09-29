@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback, useEffect, useRef, useSyncExternalStore, useState } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send, Lock, GitBranch, UserCog } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send, Lock, GitBranch, GraduationCap } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -276,7 +276,7 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         { id: 'appearance', label: t('settings.appearance', language as Language), icon: <Palette className="w-4 h-4" /> },
         { id: 'system', label: t('settings.system', language as Language), icon: <Monitor className="w-4 h-4" /> },
         { id: 'sceneMode', label: '场景模式', icon: <Layers className="w-4 h-4" /> },
-        { id: 'roleLibrary', label: '角色库', icon: <UserCog className="w-4 h-4" /> },
+        { id: 'roleLibrary', label: language === 'zh' ? '专家库' : 'Expert Library', icon: <GraduationCap className="w-4 h-4" /> },
         { id: 'voice', label: t('settings.voiceSettings', language as Language), icon: <Mic className="w-4 h-4" /> },
         { id: 'local-voice', label: language === 'zh' ? '本地语音' : 'Local Voice', icon: <Mic className="w-4 h-4" /> },
         { id: 'vision', label: t('settings.visionSettings', language as Language), icon: <ScanEye className="w-4 h-4" /> },

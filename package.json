@@ -288,6 +288,10 @@
         "to": "vrm"
       },
       {
+        "from": "resources/skills",
+        "to": "skills"
+      },
+      {
         "from": "src/main/modules/local-voice/py",
         "to": "py",
         "filter": [

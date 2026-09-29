@@ -3,9 +3,8 @@
  *
  * 职责：
  * - 暴露全局 Skills 目录路径查询 IPC 接口
+ * - 暴露内置 Skills 目录路径查询 IPC 接口
  * - 自动创建用户级 Skills 目录
- * - 将 Skills 目录注册到安全白名单，允许 Agent 访问
- * - 提供 skills:list / skills:read IPC，读取 global + workspace 级技能（prompt 片段）
  *
  * 技能文件约定（只读 prompt 片段，非可调用工具）：
  * - 单文件：{skillsDir}/{name}.md          → 技能名 = 文件名（去 .md）
@@ -15,11 +14,13 @@
  * 作用域：
  * - global：{userConfigDir}/skills/
  * - workspace：{workspaceRoot}/.aweeclaw/skills/（可多个工作区）
- * - 同名技能 global 优先；workspace 仅作补充，不覆盖 global
+ * - bundled：随客户端分发的内置技能（只读，优先级最低）
+ * - 同名技能 global 优先；workspace 与 bundled 仅作补充，不覆盖 global
  */
 
 import * as path from 'path'
 import * as fs from 'fs'
+import { app } from 'electron'
 import { safeIpcHandle } from '../core/ipcGuard'
 import { logger } from '@shared/toolkit/LogEngine'
 import { getUserConfigDir } from '../../modules/configPath'
@@ -27,7 +28,8 @@ import { securityManager } from '../../guard/securityPolicyEngine'
 
 // ─── 类型 ────────────────────────────────────────────
 
-type SkillScope = 'global' | 'workspace'
+type SkillScope = 'global' | 'workspace' | 'bundled'
+
 
 interface SkillInfo {
   name: string
@@ -54,8 +56,34 @@ function getWorkspaceSkillsDir(workspaceRoot: string): string {
 }
 
 /**
+ * 内置技能目录（随客户端分发，只读）
+ *
+ * - 打包后：<process.resourcesPath>/skills（由 electron-builder extraResources 投放）
+ * - 开发态：<项目根>/resources/skills
+ */
+function getBundledSkillsDir(): string {
+  const candidates = app.isPackaged
+    ? [
+        path.join(process.resourcesPath, 'skills'),
+        // 兜底：逐级回退，避免内置技能目录缺失时内置技能整体消失且无任何提示
+        path.join(app.getAppPath(), 'resources', 'skills'),
+      ]
+    : [path.join(app.getAppPath(), 'resources', 'skills')]
+
+  for (const dir of candidates) {
+    if (fs.existsSync(dir)) return dir
+  }
+
+  logger.system.warn(
+    `[Skills] Bundled skills directory not found. Checked: ${candidates.join(', ')}`,
+  )
+  return candidates[0]
+}
+
+
+/**
  * 收集所有需要扫描的技能目录
- * @returns [{ dir, scope }] 列表，global 在前
+ * @returns [{ dir, scope }] 列表，按优先级从高到低排列
  */
 function collectSkillDirs(workspacePaths?: string[]): Array<{ dir: string; scope: SkillScope }> {
   const dirs: Array<{ dir: string; scope: SkillScope }> = [{ dir: getGlobalSkillsDir(), scope: 'global' }]
@@ -66,8 +94,11 @@ function collectSkillDirs(workspacePaths?: string[]): Array<{ dir: string; scope
       }
     }
   }
+  // 内置技能作为兜底，同名时优先级最低
+  dirs.push({ dir: getBundledSkillsDir(), scope: 'bundled' })
   return dirs
 }
+
 
 // ─── 描述提取 ────────────────────────────────────────
 
@@ -247,9 +278,12 @@ async function fileReadable(filePath: string): Promise<boolean> {
 
 export function registerSkillsHandlers(): void {
   const globalSkillsDir = getGlobalSkillsDir()
+  const bundledSkillsDir = getBundledSkillsDir()
 
   // 将全局技能目录加入安全白名单，允许 Agent / 工具访问
   securityManager.addAllowedAppPath(globalSkillsDir)
+  // 内置技能目录只读访问：技能正文需要被按需加载
+  securityManager.addAllowedAppPath(bundledSkillsDir)
 
   // 自动创建用户级技能目录
   fs.promises.mkdir(globalSkillsDir, { recursive: true }).catch(() => {})
@@ -258,6 +292,11 @@ export function registerSkillsHandlers(): void {
   safeIpcHandle('skills:getGlobalDir', async () => {
     await fs.promises.mkdir(globalSkillsDir, { recursive: true })
     return globalSkillsDir
+  })
+
+  // 查询内置技能目录路径（随客户端分发，只读）
+  safeIpcHandle('skills:getBundledDir', async () => {
+    return bundledSkillsDir
   })
 
   // 列出所有技能（global + workspace）

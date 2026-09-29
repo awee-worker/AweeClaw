@@ -52,7 +52,7 @@ const SKIP_PATTERNS: RegExp[] = [
   /^(继续|接着|go on|continue)[\s!！.。~～]*$/i,
 ]
 
-/** @角色名 提及解析：支持中英文名，如 @文档撰写、@work.doc-writer */
+/** @角色名 提及解析：支持中英文名，如 @法务合规、@work.legal-counsel */
 export function parseRoleMention(message: string): string | null {
   // 形式一：@<角色id>
   const idMatch = message.match(/@(work|life|study)\.[a-z0-9-]+/)

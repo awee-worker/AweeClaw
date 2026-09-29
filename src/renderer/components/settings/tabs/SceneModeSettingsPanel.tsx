@@ -22,6 +22,7 @@ import { toast } from '@components/foundation/InlineNotification'
 import { logger } from '@toolkit/LogEngine'
 import {
   Briefcase,
+  Code2,
   Home,
   BookOpen,
   Clock,
@@ -39,13 +40,15 @@ const MODE_ICONS: Record<SceneMode, typeof Briefcase> = {
   work: Briefcase,
   life: Home,
   study: BookOpen,
+  dev: Code2,
 }
 
 /** 模式主题色映射 */
 const MODE_COLORS: Record<SceneMode, string> = {
   work: '#3b82f6',
-  life: '#10b981',
-  study: '#8b5cf6',
+  life: '#f97316',
+  study: '#10b981',
+  dev: '#8b5cf6',
 }
 
 /** 格式化时长（秒 → 可读字符串） */
@@ -176,13 +179,14 @@ function ModeProfileCard({ profile, isCurrent, onSelect }: {
 
 /** 使用统计卡片 */
 function UsageStatsCard({ stats }: { stats: ModeUsageStats }) {
-  const modes: SceneMode[] = ['work', 'life', 'study']
-  const total = stats.work + stats.life + stats.study
+  const modes: SceneMode[] = ['work', 'life', 'study', 'dev']
+  const total = modes.reduce((sum, m) => sum + (stats[m] ?? 0), 0)
 
   const modeLabels: Record<SceneMode, string> = {
-    work: '工作助手',
-    life: '生活助手',
-    study: '学习助手',
+    work: '日常办公',
+    life: '生活陪伴',
+    study: '学习探索',
+    dev: '代码开发',
   }
 
   return (
@@ -236,11 +240,12 @@ function DataMigrationCard() {
   const [targetMode, setTargetMode] = useState<SceneMode>('study')
   const [migrating, setMigrating] = useState(false)
 
-  const modes: SceneMode[] = ['work', 'life', 'study']
+  const modes: SceneMode[] = ['work', 'life', 'study', 'dev']
   const modeLabels: Record<SceneMode, string> = {
-    work: '工作助手',
-    life: '生活助手',
-    study: '学习助手',
+    work: '日常办公',
+    life: '生活陪伴',
+    study: '学习探索',
+    dev: '代码开发',
   }
 
   const handleMigrate = async () => {

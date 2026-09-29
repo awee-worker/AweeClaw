@@ -128,7 +128,7 @@ function buildSubtaskRolePersona(role: RoleDescriptor): string {
     return `${base}\n${constraints}`
 }
 
-/** coder 任务的复核角色：优先取当前场景/工作场景的 code-reviewer，取不到回退内置 reviewer 模板 */
+/** coder 任务的复核角色：优先取当前场景/工作场景下用户自建的 code-reviewer，取不到回退内置 reviewer 模板 */
 function resolveReviewerRoleId(): string {
     try {
         const store = useRoleLibraryStore.getState()
@@ -1513,7 +1513,7 @@ async function runTaskWithAgent(
         let currentRole = task.role || 'default'
         // coder 任务回退用的执行角色引用（复核结束后回到原角色）
         const coderRoleRef = task.role || 'coder'
-        // 是否处于 reviewer 复核阶段：复核角色可能是角色库 id（如 work.code-reviewer），
+        // 是否处于 reviewer 复核阶段：复核角色可能是角色库 id（用户自建），
         // 不能用 currentRole !== 'reviewer' 字面量判断
         let reviewing = false
         let feedbackMessage = buildTaskMessage(task, plan)
@@ -1551,7 +1551,7 @@ async function runTaskWithAgent(
                 {
                     promptTemplateId: templateId,
                     planPhase: 'executing',
-                    sceneRolePersonaOverride: sceneRolePersona,
+                    subtaskSceneRolePersonaOverride: sceneRolePersona,
                 },
                 {
                     threadId,

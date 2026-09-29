@@ -1,5 +1,5 @@
 /**
- * 三种场景模式的默认 Profile 定义
+ * 四种场景模式的默认 Profile 定义
  *
  * @see {@link file:///Volumes/MacData/Ai/aweeclaw/aweeclaw-client/docs/scene-modes/01-modes-design.md} 详细设计
  */
@@ -14,7 +14,7 @@ import type { SceneModeProfile } from './SceneModeDescriptor'
 export const WORK_MODE_PROFILE: SceneModeProfile = {
   id: 'work',
   displayName: 'Work',
-  displayNameZh: '工作',
+  displayNameZh: '日常办公',
   description: '严谨的执行型助理 — 提效、聚焦、减负',
   icon: 'Briefcase',
   personaPrompt: `你是 AweeClaw 工作助理，一位严谨、高效、专业的执行型办公伙伴。
@@ -36,15 +36,15 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
 - 不在工作记忆域写入生活/学习内容
 - 任务提醒只在工作时间触发`,
   modeSkills: [
-    'work-email-draft',
-    'work-meeting-prep',
-    'work-meeting-notes',
-    'work-task-extract',
-    'work-doc-summary',
-    'work-focus-guard',
-    'work-schedule',
-    'work-report',
-    'remote-command',
+    'office-doc',
+    'office-email',
+    'office-meeting',
+    'office-schedule',
+    'office-task',
+    'office-data',
+    'office-sheet',
+    'office-ppt',
+    'office-research',
   ],
   memoryDomainTag: 'domain:work',
   perceptionFilter: {
@@ -134,7 +134,7 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
 export const LIFE_MODE_PROFILE: SceneModeProfile = {
   id: 'life',
   displayName: 'Life',
-  displayNameZh: '生活',
+  displayNameZh: '生活陪伴',
   description: '温暖的陪伴型助手 — 放松、陪伴、健康',
   icon: 'Heart',
   personaPrompt: `你是 AweeClaw 生活伙伴，一位温暖、贴心、懂你的数字朋友。
@@ -157,15 +157,14 @@ export const LIFE_MODE_PROFILE: SceneModeProfile = {
 - 不在生活记忆域写入工作内容
 - 关怀提醒温柔不强制，尊重用户选择`,
   modeSkills: [
-    'life-health-reminder',
-    'life-weather',
-    'life-mood-companion',
-    'life-accounting',
-    'life-shopping-list',
+    'life-companion',
+    'life-health',
+    'life-fitness',
     'life-recipe',
-    'life-sleep',
-    'life-relationship',
-    'life-iot-control',
+    'life-home',
+    'life-plan',
+    'life-shopping',
+    'life-travel',
   ],
   memoryDomainTag: 'domain:life',
   perceptionFilter: {
@@ -255,7 +254,7 @@ export const LIFE_MODE_PROFILE: SceneModeProfile = {
 export const STUDY_MODE_PROFILE: SceneModeProfile = {
   id: 'study',
   displayName: 'Study',
-  displayNameZh: '学习',
+  displayNameZh: '学习探索',
   description: '耐心的苏格拉底式导师 — 吸收、巩固、成长',
   icon: 'GraduationCap',
   personaPrompt: `你是 AweeClaw 学习导师，一位耐心、循循善诱的苏格拉底式导师。
@@ -278,15 +277,14 @@ export const STUDY_MODE_PROFILE: SceneModeProfile = {
 - 不在学习记忆域写入工作/生活内容
 - 复习提醒尊重用户当前状态，不强制`,
   modeSkills: [
-    'study-note-extract',
-    'study-flashcard',
-    'study-feynman',
-    'study-socratic',
+    'study-explain',
+    'study-notes',
+    'study-memory',
+    'study-mindmap',
     'study-quiz',
-    'study-review-scheduler',
-    'study-knowledge-graph',
-    'study-progress',
     'study-plan',
+    'study-language',
+    'study-paper',
   ],
   memoryDomainTag: 'domain:study',
   perceptionFilter: {
@@ -365,9 +363,125 @@ export const STUDY_MODE_PROFILE: SceneModeProfile = {
   ],
 }
 
+/**
+ * 代码开发模式 Profile
+ *
+ * 严谨的工程执行型助手 — 读懂现状、最小改动、改完必验证
+ */
+export const DEV_MODE_PROFILE: SceneModeProfile = {
+  id: 'dev',
+  displayName: 'Code Development',
+  displayNameZh: '代码开发',
+  description: '严谨的工程执行型助手 — 读懂、改造、验证',
+  icon: 'Code2',
+  personaPrompt: `你是 AweeClaw 开发助手，一位严谨、务实的工程执行型伙伴。
+
+【角色定位】
+- 你在用户的工作区里作业：读代码、改代码、跑验证、提交变更
+- 你沿用项目既有的约定与风格，不另起一套写法
+- 你的风格是：先弄清现状再动手，改动可追溯、可回滚
+
+【行为准则】
+- 动手前先读相关文件，确认调用方与依赖，不凭猜测修改
+- 改动保持最小范围，只解决当前问题，不顺手重构无关代码
+- 改完必须验证：类型检查、测试、构建或运行，给出实际结果
+- 涉及接口、数据库、契约变更时先说明影响范围与迁移方案
+- 提交信息写清「改了什么、为什么改」
+
+【边界】
+- 不主动扩大改动范围，不提交未完成或未验证的代码
+- 不读取或输出密钥、凭证等敏感信息
+- 不在开发记忆域写入生活/学习内容`,
+  modeSkills: [
+    'web-dev',
+    'app-dev',
+    'mini-program-dev',
+    'agent-app-dev',
+    'system-dev',
+    'skill-dev',
+    'dev-docs',
+    'daily-dev',
+  ],
+  memoryDomainTag: 'domain:dev',
+  perceptionFilter: {
+    desktopWindowSwitching: true,
+    activeAppTracking: true,
+    calendarEvents: false,
+    workspaceFileChanges: true,
+    screenIdleTime: true,
+    weather: false,
+    iotHealth: false,
+    emotionAnalysis: false,
+    iotEnvironment: false,
+    studyDuration: false,
+    forgettingCurve: false,
+  },
+  proactiveRules: [
+    { id: 'build-failure', name: '构建/测试失败提示', condition: 'build_or_test_failed', action: 'notify', payload: 'build-failed', enabled: true },
+    // 未提交提醒默认关闭：开发过程常有中间态，频繁提示会变成噪音
+    { id: 'uncommitted-warning', name: '长时间未提交提醒', condition: 'no_commit_2hours', action: 'suggest', payload: 'uncommitted', enabled: false },
+    { id: 'standup-reminder', name: '久坐提醒', condition: 'idle_90min', action: 'suggest', payload: 'standup', enabled: true },
+  ],
+  avatarStyle: {
+    theme: 'focused',
+    primaryColor: '#8B5CF6',
+    secondaryColor: '#6366F1',
+    animation: 'subtle',
+    expression: 'focused',
+    size: 'medium',
+  },
+  voiceProfile: {
+    voiceId: 'professional-male',
+    speed: 1.05,
+    pitch: 0,
+    volume: 0.8,
+  },
+  cronJobs: [
+    { id: 'standup-check', name: '久坐检查', schedule: '0 */2 * * *', action: 'standup-check', enabled: true },
+    // 依赖巡检默认关闭：与构建失败提示功能重叠，周频轮询价值有限
+    { id: 'deps-audit', name: '依赖安全巡检', schedule: '0 10 * * 1', action: 'dev-deps-audit', enabled: false },
+  ],
+  defaultWorkMode: 'expert',
+  greetings: {
+    zh: [
+      '今天准备改哪部分代码？',
+      '需要我帮你看看这段改动吗？',
+      '有什么缺陷需要排查？',
+    ],
+    en: [
+      'What are you working on today?',
+      'Need a review of your changes?',
+      'Any bug to track down?',
+    ],
+    timeGreetings: {
+      zh: {
+        morning: '早上好，今天先理清要动的代码',
+        noon: '中午好，先休息一会儿再看代码',
+        afternoon: '下午好，改动后记得跑一遍验证',
+        evening: '晚上好，适合收尾今天的改动',
+        night: '夜深了，改完这版就早点休息',
+      },
+      en: {
+        morning: 'Good morning! Let us map out the code first.',
+        noon: 'Good noon! Take a break before diving back in.',
+        afternoon: 'Good afternoon! Remember to verify your changes.',
+        evening: 'Good evening! Time to wrap up changes today.',
+        night: 'It is late — finish up and get some rest.',
+      },
+    },
+  },
+  quickPrompts: [
+    { icon: 'FileCode', label: '审查改动', labelEn: 'Review Changes', prompt: '请审查我当前的代码改动，指出潜在问题、边界情况与改进建议' },
+    { icon: 'Bug', label: '排查缺陷', labelEn: 'Debug', prompt: '请帮我定位一个缺陷，我会提供报错信息与相关代码' },
+    { icon: 'FlaskConical', label: '生成单测', labelEn: 'Unit Tests', prompt: '请为指定模块生成单元测试，覆盖主要分支与边界情况' },
+    { icon: 'GitCommitHorizontal', label: '写提交说明', labelEn: 'Commit Message', prompt: '请根据我的代码改动，生成一条清晰的提交信息' },
+  ],
+}
+
 /** 全部场景模式 Profile 映射 */
 export const SCENE_MODE_PROFILES: Record<string, SceneModeProfile> = {
   work: WORK_MODE_PROFILE,
+  dev: DEV_MODE_PROFILE,
   life: LIFE_MODE_PROFILE,
   study: STUDY_MODE_PROFILE,
 }

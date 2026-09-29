@@ -91,6 +91,8 @@ export interface InstalledPlugin {
   version: string
   installedAt: string
   enabled: boolean
+  /** 是否在新建任务界面显示（缺省视为显示） */
+  newTaskVisible: boolean
   types: string[]
   manifest: Record<string, unknown>
   mcpServerId?: string
@@ -616,6 +618,8 @@ export async function getInstalledPlugins(): Promise<InstalledPlugin[]> {
         version: r.version,
         installedAt: r.installedAt,
         enabled: r.enabled,
+        // 旧记录没有该字段，缺省视为显示
+        newTaskVisible: r.newTaskVisible !== false,
         types,
         manifest,
         mcpServerId: r.mcpServerId,
@@ -624,6 +628,62 @@ export async function getInstalledPlugins(): Promise<InstalledPlugin[]> {
   } catch (err) {
     logger.ipc.error('[pluginService] Get installed failed:', err)
     return []
+  }
+}
+
+/** 插件技能贡献（skill 型插件暴露给技能列表的 SKILL.md 信息） */
+export interface PluginSkillContribution {
+  pluginKey: string
+  version: string
+  /** 插件是否启用；插件被禁用时不并入技能列表 */
+  pluginEnabled: boolean
+  /** SKILL.md frontmatter 中声明的技能名 */
+  skillName: string
+  /** 插件 manifest 中的中文名 */
+  nameZh?: string
+  /** 插件 manifest 中的英文名 */
+  nameEn?: string
+  /** 插件图标：图片地址或 lucide 图标名，供技能条目展示与插件一致的图标 */
+  icon?: string
+  description: string
+  /** SKILL.md 绝对路径 */
+  skillMdPath: string
+  /** 插件是否在新建任务界面显示；false 时其技能不并入技能列表 */
+  newTaskVisible: boolean
+  /** 该 skill 型插件本地缺少 SKILL.md；true 时正文不可读，需重装或更新插件 */
+  skillMdMissing?: boolean
+}
+
+/**
+ * 获取已安装 skill 型插件的技能贡献
+ *
+ * 技能条与 apply_skill 的数据源是本地技能目录，插件技能并不在其中，
+ * 由技能服务读取这里返回的 SKILL.md 位置后并入技能来源。
+ */
+export async function getPluginSkillContributions(): Promise<PluginSkillContribution[]> {
+  try {
+    const api = getAPI()
+    return await api.plugin.getSkillContributions()
+  } catch (err) {
+    logger.ipc.error('[pluginService] Get plugin skill contributions failed:', err)
+    return []
+  }
+}
+
+/**
+ * 设置插件是否在新建任务界面显示
+ *
+ * 与启用 / 禁用相互独立：只影响该插件提供的能力（技能等）是否出现在新建任务界面。
+ */
+export async function setPluginNewTaskVisible(
+  pluginKey: string,
+  visible: boolean,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const api = getAPI()
+    return await api.plugin.setNewTaskVisible(pluginKey, visible)
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
 

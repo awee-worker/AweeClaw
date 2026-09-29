@@ -485,7 +485,7 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
           {([
             { id: 'chat', icon: Zap, labelZh: '快速', labelEn: 'Quick', color: 'text-blue-400' },
             { id: 'agent', icon: Brain, labelZh: '思考', labelEn: 'Think', color: 'text-accent' },
-            { id: 'plan', icon: GraduationCap, labelZh: '专家', labelEn: 'Expert', color: 'text-purple-400' },
+            { id: 'expert', icon: GraduationCap, labelZh: '专家', labelEn: 'Expert', color: 'text-purple-400' },
           ] as const).map(m => (
             <button
               key={m.id}

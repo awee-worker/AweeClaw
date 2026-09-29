@@ -97,7 +97,7 @@ export interface WorkflowNodeData {
   userPrompt?: string
   modelId?: string
   temperature?: number
-  chatMode?: 'chat' | 'agent' | 'plan'
+  chatMode?: 'chat' | 'agent' | 'expert'
   boundTools?: string[]
   boundMcpServers?: string[]
   boundMcpTools?: string[]

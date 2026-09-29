@@ -7,7 +7,7 @@ import { slashCommandService, type SlashCommand } from '@services/slashCommandAd
 
 interface UseSlashCommandControllerParams {
   setInput: (value: string | null | undefined) => void
-  setChatMode: (mode: string) => void
+  setChatMode?: (mode: string) => void
   activeFilePath: string | null
   selectedCode: string | null
   workspacePath: string | null
@@ -53,8 +53,9 @@ export function useSlashCommandController({
       })
       if (result) {
         setInput(result.prompt)
+        // 模式选择器已移除，斜杠命令不再回写历史档位；有命令偏好时归一到专家档
         if (result.mode) {
-          setChatMode(result.mode as any)
+          setChatMode?.('expert')
         }
       }
       setShowSlashCommand(false)

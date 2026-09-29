@@ -529,7 +529,7 @@ export async function executeAgentCycle(
   setToolLoadingContext({
     mode: context.chatMode,
     templateId: useStore.getState().promptTemplateId,
-    planPhase: context.chatMode === 'plan' ? context.planPhase : undefined,
+    planPhase: context.chatMode === 'expert' ? context.planPhase : undefined,
     scenarioId: activeScenarioId,
     scenarioToolPacks,
     scenarioTools,

@@ -131,7 +131,7 @@ export class McpToolProvider implements ToolProvider {
       return 'dangerous'
     }
 
-    if (this.context.mode === 'plan') {
+    if (this.context.mode === 'expert') {
       return 'none'
     }
 

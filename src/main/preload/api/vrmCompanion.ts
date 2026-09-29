@@ -123,7 +123,7 @@ export interface VrmVoiceContext {
   voiceModelConfig: unknown | null
   language: 'zh' | 'en'
   workspacePath: string | null
-  workMode?: 'chat' | 'agent' | 'plan' | null
+  workMode?: 'chat' | 'agent' | 'expert' | null
   agentConfig?: unknown | null
   updatedAt: number
 }

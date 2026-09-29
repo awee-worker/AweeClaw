@@ -14,7 +14,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, type Com
 import type { VirtuosoHandle } from 'react-virtuoso'
 import { Virtuoso } from 'react-virtuoso'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useStore, useModeStore } from '@store'
+import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentActions, useAgentCommands, useAgentViewState, useThreadMessenger } from '@hooks/useAgent'
 import { useChatScrollController, useAutoSpeak } from '@hooks'
@@ -39,6 +39,7 @@ import ChatMessageUI from './ChatMessage'
 import ChangesReviewPanel from './ChangesReviewPanel'
 import SlashCommandPopup from './SlashCommandPopup'
 import EmptyChatSuggestions from '../conversation/WelcomeSuggestions'
+import SkillSuggestionBar from '../conversation/SkillSuggestionBar'
 import { ChatMessagesSkeleton, Spinner } from '../ui/ProgressIndicator'
 import { playNotificationSound } from '@utils/notificationSound'
 import { AgentWorkspace } from './AgentWorkspace'
@@ -157,9 +158,6 @@ export default function ChatPanel() {
     if (!state.currentThreadId) return true
     return state.threads[state.currentThreadId]?.messagesHydrated !== false
   })
-
-  const chatMode = useModeStore(s => s.currentMode)
-  const setChatMode = useModeStore(s => s.setMode)
 
   // ===== Agent 视图与命令 =====
   const {
@@ -357,7 +355,6 @@ export default function ChatPanel() {
 
   const slashCommandController = useSlashCommandController({
     setInput,
-    setChatMode: setChatMode as any,
     activeFilePath,
     selectedCode,
     workspacePath,
@@ -397,7 +394,6 @@ export default function ChatPanel() {
     addContextItem,
     attachmentManager,
     setInput,
-    setChatMode: setChatMode as any,
     scrollToBottom: handleScrollToBottom,
   })
 
@@ -1014,6 +1010,8 @@ export default function ChatPanel() {
                 <div className="flex-1 flex flex-col items-center justify-center min-h-0 overflow-y-auto px-4">
                   <EmptyChatSuggestions />
                   <div className="w-full max-w-[800px] mt-16">
+                    {/* 技能建议栏：贴在输入框容器正上方，宽度与输入框一致 */}
+                    <SkillSuggestionBar />
                     <ChatInputWrapper
                       input={input}
                       setInput={setInput}
@@ -1022,8 +1020,6 @@ export default function ChatPanel() {
             hasApiKey={hasApiKey}
             needsCloudLogin={needsCloudLogin}
             hasPendingToolCall={!!pendingToolCall}
-            chatMode={chatMode}
-            setChatMode={setChatMode}
             isStreaming={isStreaming}
             onSubmit={() => messageOps.handleSubmit(input, isStreaming)}
             onAbort={handleAbort}
@@ -1184,8 +1180,6 @@ export default function ChatPanel() {
                   hasApiKey={hasApiKey}
                   needsCloudLogin={needsCloudLogin}
                   hasPendingToolCall={!!pendingToolCall}
-                  chatMode={chatMode}
-                  setChatMode={setChatMode}
                   isStreaming={isStreaming}
                   onSubmit={() => messageOps.handleSubmit(input, isStreaming)}
                   onAbort={handleAbort}

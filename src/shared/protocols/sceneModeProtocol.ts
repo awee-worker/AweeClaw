@@ -1,16 +1,16 @@
 /**
  * 场景模式类型定义（共享）
  *
- * 与 WorkMode（chat/agent/plan，AI 推理深度）正交，
- * SceneMode 控制使用场景：工作 / 生活 / 学习。
+ * 与 WorkMode（chat/agent/expert，AI 推理深度）正交，
+ * SceneMode 控制使用场景：工作 / 生活 / 学习 / 代码开发。
  *
  * 两个维度可自由组合，例如「工作场景 + Expert 模式」= 深度工作执行。
  *
  * @see {@link file:///Volumes/MacData/Ai/aweeclaw/aweeclaw-client/docs/scene-modes/README.md} 设计文档
  */
 
-/** 场景模式：工作 / 生活 / 学习 */
-export type SceneMode = 'work' | 'life' | 'study'
+/** 场景模式：工作 / 生活 / 学习 / 代码开发 */
+export type SceneMode = 'work' | 'life' | 'study' | 'dev'
 
 /** 记忆域 tag 前缀 */
 export const MEMORY_DOMAIN_TAG_PREFIX = 'domain:'
@@ -20,6 +20,7 @@ export const SCENE_MODE_DOMAIN_TAG: Record<SceneMode, string> = {
   work: 'domain:work',
   life: 'domain:life',
   study: 'domain:study',
+  dev: 'domain:dev',
 }
 
 /** 跨域共享 tag：所有场景模式均可见的记忆条目 */
@@ -35,7 +36,7 @@ export function normalizeSceneMode(mode: SceneMode): SceneMode {
 
 /** 判断字符串是否为有效场景模式 */
 export function isValidSceneMode(mode: string): mode is SceneMode {
-  return mode === 'work' || mode === 'life' || mode === 'study'
+  return mode === 'work' || mode === 'life' || mode === 'study' || mode === 'dev'
 }
 
 /** 获取场景模式的记忆域 tag（未匹配时回退到共享域） */

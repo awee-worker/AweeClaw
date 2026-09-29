@@ -11,8 +11,6 @@ import { api } from '../adapters/electronBridge'
 import { keybindingService } from '@services/keybindingAdapter'
 import { goBack, goForward } from '@services/editorNavigation'
 import { platform } from '@shared/toolkit/pathHelper'
-import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
-import type { SceneMode } from '@protocols/sceneModeProtocol'
 
 const kb = keybindingService
 
@@ -180,22 +178,6 @@ const HANDLERS: KeyHandler[] = [
     if (ctx.showWorkflow) ctx.setShowWorkflow(false)
     if (ctx.showQuickOpen) ctx.setShowQuickOpen(false)
     if (ctx.showAbout) ctx.setShowAbout(false)
-    return true
-  },
-
-  // 场景模式快捷键：Cmd/Ctrl+Shift+1/2/3 切换工作/生活/学习
-  (e, _ctx) => {
-    if (!(e.metaKey || e.ctrlKey) || !e.shiftKey) return false
-    const modeMap: Record<string, SceneMode> = {
-      '1': 'work',
-      '2': 'life',
-      '3': 'study',
-    }
-    const mode = modeMap[e.key]
-    if (!mode) return false
-    e.preventDefault()
-    useSceneModeStore.getState().setSceneMode(mode)
-    return true
     return true
   },
 

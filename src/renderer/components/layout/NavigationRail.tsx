@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Settings, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, MessageSquarePlus, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle, Blocks, PackageOpen } from 'lucide-react'
+import { Settings, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, MessageSquarePlus, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle, Blocks, PackageOpen, GraduationCap } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -89,10 +89,11 @@ function UserMenuDropdown({
   onClose,
   language,
   onSettingsClick,
-  onExploreClick,
-  // onWorkflowClick 见类型声明；工作流菜单暂隐藏（见 featureItems 注释），恢复时在此重新解构
-  onScheduleClick,
-  onPluginCenterClick,
+    onExploreClick,
+    // onWorkflowClick 见类型声明；工作流菜单暂隐藏（见 featureItems 注释），恢复时在此重新解构
+    onScheduleClick,
+    onPluginCenterClick,
+    onExpertLibraryClick,
   onUserInfoClick,
   onBillingCenterClick,
   onSessionHistoryClick,
@@ -112,6 +113,7 @@ function UserMenuDropdown({
   onWorkflowClick: () => void
   onScheduleClick: () => void
   onPluginCenterClick: () => void
+  onExpertLibraryClick: () => void
   onUserInfoClick: () => void
   onBillingCenterClick: () => void
   onSessionHistoryClick: () => void
@@ -191,6 +193,13 @@ function UserMenuDropdown({
       onClick: onPluginCenterClick,
       badge: pluginBadge,
       badgeTitle: badgeHint('有插件即将到期或已到期', 'Paid plugins expiring or expired'),
+    },
+    {
+      icon: GraduationCap,
+      label: language === 'zh' ? '专家库' : 'Expert Library',
+      onClick: onExpertLibraryClick,
+      badge: 0,
+      badgeTitle: '',
     },
     {
       icon: Clock,
@@ -475,6 +484,7 @@ export default function NavigationRail() {
     activeCustomMenuId,
     closeInternalBrowser,
     setChatVisible,
+    setSettingsIntent,
   } = useStore(useShallow(s => ({
     activeSidePanel: s.activeSidePanel,
     setActiveSidePanel: s.setActiveSidePanel,
@@ -503,6 +513,7 @@ export default function NavigationRail() {
     activeCustomMenuId: s.activeCustomMenuId,
     closeInternalBrowser: s.closeInternalBrowser,
     setChatVisible: s.setChatVisible,
+    setSettingsIntent: s.setSettingsIntent,
   })))
 
   const currentThreadId = useAgentStore(state => state.currentThreadId)
@@ -648,6 +659,14 @@ export default function NavigationRail() {
     setShowWorkflow(false)
     closeInternalBrowser()
   }, [setActiveSidePanel, setShowPluginCenterPage, setShowWorkflow, closeInternalBrowser])
+
+  const handleExpertLibraryClick = useCallback(() => {
+    setActiveSidePanel(null)
+    setSettingsIntent({ tab: 'roleLibrary' })
+    setShowSettingsPage(true)
+    setShowWorkflow(false)
+    closeInternalBrowser()
+  }, [setActiveSidePanel, setSettingsIntent, setShowSettingsPage, setShowWorkflow, closeInternalBrowser])
 
   const handleUserInfoClick = useCallback(() => {
     setActiveSidePanel(null)
@@ -1268,6 +1287,7 @@ export default function NavigationRail() {
           onWorkflowClick={handleWorkflowClick}
           onScheduleClick={handleScheduleClick}
           onPluginCenterClick={handlePluginCenterClick}
+onExpertLibraryClick={handleExpertLibraryClick}
           onUserInfoClick={handleUserInfoClick}
           onBillingCenterClick={handleBillingCenterClick}
           onSessionHistoryClick={handleSessionHistoryClick}

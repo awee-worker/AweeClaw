@@ -12,7 +12,7 @@ describe('Git 工具按需暴露', () => {
   it('默认（用户未提出 Git 操作）不下发任何 git_* 工具', () => {
     expect(gitToolsIn(getToolsForContext({ mode: 'agent' }))).toEqual([])
     expect(gitToolsIn(getToolsForContext({ mode: 'chat' }))).toEqual([])
-    expect(gitToolsIn(getToolsForContext({ mode: 'plan' }))).toEqual([])
+    expect(gitToolsIn(getToolsForContext({ mode: 'expert' }))).toEqual([])
   })
 
   it('场景声明 code 工具包时同样不绕过门控', () => {
@@ -38,7 +38,7 @@ describe('Git 工具按需暴露', () => {
   })
 
   it('授权后三种模式都下发只读工具', () => {
-    for (const mode of ['chat', 'agent', 'plan'] as const) {
+    for (const mode of ['chat', 'agent', 'expert'] as const) {
       const tools = getToolsForContext({ mode, gitToolsEnabled: true })
       for (const name of GIT_READ_TOOL_NAMES) {
         expect(tools, `${mode} 模式缺少 ${name}`).toContain(name)
@@ -53,7 +53,7 @@ describe('Git 工具按需暴露', () => {
       expect(chat, `chat 模式不应下发 ${name}`).not.toContain(name)
     }
 
-    for (const mode of ['agent', 'plan'] as const) {
+    for (const mode of ['agent', 'expert'] as const) {
       const tools = getToolsForContext({ mode, gitToolsEnabled: true })
       for (const name of GIT_WRITE_TOOL_NAMES) {
         expect(tools, `${mode} 模式缺少 ${name}`).toContain(name)

@@ -241,10 +241,10 @@ export const DEFAULT_AGENT_CONFIG: AgentRuntimeConfig = {
   enableAutoContext: true,
 
   modePostProcessHooks: {
-    plan: {
+    expert: {
       enabled: true,
       hook: ({ mode, hasWriteOps }) => {
-        if (mode !== 'plan') return null
+        if (mode !== 'expert') return null
         if (!hasWriteOps) return null
 
         return {

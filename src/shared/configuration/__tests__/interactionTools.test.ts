@@ -1,7 +1,7 @@
 /**
  * 内置工具全量放行守卫
  *
- * 需求：快速（chat）/ 思考（agent）/ 专家（plan）三种模式，以及所有场景，
+ * 需求：快速（chat）/ 思考（agent）/ 专家（expert）三种模式，以及所有场景，
  * 都能使用全部内置工具。模式与场景只做「追加」，不再裁剪内置工具。
  *
  * 历史事故：选择「智能体」模式后 AI 提示「我需要用 ask_user 工具，但它不在我的
@@ -40,7 +40,7 @@ const CORE_SAMPLE = [
 
 describe('内置工具全量放行', () => {
   it('三种模式都可使用全部内置工具', () => {
-    for (const mode of ['chat', 'agent', 'plan'] as const) {
+    for (const mode of ['chat', 'agent', 'expert'] as const) {
       const tools = getToolsForContext({ mode })
       for (const name of CORE_SAMPLE) {
         expect(tools, `${mode} 模式缺少 ${name}`).toContain(name)
@@ -52,7 +52,7 @@ describe('内置工具全量放行', () => {
     // 在默认上下文（未授权 git、无场景）下三模式工具集逐个相同
     const agent = getToolsForContext({ mode: 'agent' }).sort()
     expect(getToolsForContext({ mode: 'chat' }).sort()).toEqual(agent)
-    expect(getToolsForContext({ mode: 'plan' }).sort()).toEqual(agent)
+    expect(getToolsForContext({ mode: 'expert' }).sort()).toEqual(agent)
   })
 
   it('场景声明工具包 / 直接声明工具都不减少内置工具', () => {
@@ -63,7 +63,7 @@ describe('内置工具全量放行', () => {
       { mode: 'agent', scenarioToolPacks: ['media'] },
       { mode: 'agent', scenarioTools: ['read_file'] },
       { mode: 'chat', scenarioToolPacks: ['office'] },
-      { mode: 'plan', scenarioToolPacks: ['web'] },
+      { mode: 'expert', scenarioToolPacks: ['web'] },
     ]
 
     for (const ctx of variants) {
@@ -85,13 +85,13 @@ describe('内置工具全量放行', () => {
 
   it('git 工具仍按需暴露，且快速模式不暴露写入类工具', () => {
     // 未授权：三种模式都不下发任何 git_*
-    for (const mode of ['chat', 'agent', 'plan'] as const) {
+    for (const mode of ['chat', 'agent', 'expert'] as const) {
       const tools = getToolsForContext({ mode })
       expect(GIT_TOOL_NAMES.filter((n) => tools.includes(n))).toEqual([])
     }
 
     // 用户指令授权后：只读工具三种模式一致下发
-    for (const mode of ['chat', 'agent', 'plan'] as const) {
+    for (const mode of ['chat', 'agent', 'expert'] as const) {
       const granted = getToolsForContext({ mode, gitToolsEnabled: true })
       for (const name of GIT_READ_TOOL_NAMES) {
         expect(granted, `${mode} 模式授权后缺少 ${name}`).toContain(name)

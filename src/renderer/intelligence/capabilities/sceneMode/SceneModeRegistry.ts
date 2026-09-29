@@ -18,7 +18,7 @@ export class SceneModeRegistry {
     Object.values(SCENE_MODE_PROFILES).forEach(profile => {
       this.profiles.set(profile.id, profile)
     })
-    logger.agent.info('[SceneModeRegistry] Initialized with 3 scene modes')
+    logger.agent.info(`[SceneModeRegistry] Initialized with ${this.profiles.size} scene modes`)
   }
 
   /** 注册自定义 Profile */

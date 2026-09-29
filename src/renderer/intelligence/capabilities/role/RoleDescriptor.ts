@@ -61,7 +61,7 @@ export interface RoleModelPreference {
 
 /** 角色描述符 */
 export interface RoleDescriptor {
-  /** 全局唯一 id，命名规则：<scene>.<slug>，如 work.doc-writer、study.feynman-tutor */
+  /** 全局唯一 id，命名规则：<scene>.<slug>，如 work.legal-counsel、study.feynman-tutor */
   id: string
   /** 所属场景 */
   sceneMode: SceneMode
@@ -128,9 +128,9 @@ export const ROLE_MATCH_GAP = 0.2
 /**
  * 角色体系生效的工作模式
  *
- * 只有思考（agent）与专家（plan）模式会匹配角色、注入角色人设与角色清单，
+ * 只有思考（agent）与专家（expert）模式会匹配角色、注入角色人设与角色清单，
  * 并参与多角色子任务分派；快速模式（chat）作为轻量问答通道，不进入角色体系。
  */
 export function isRoleAgentEnabled(mode: WorkMode): boolean {
-  return mode === 'agent' || mode === 'plan'
+  return mode === 'agent' || mode === 'expert'
 }

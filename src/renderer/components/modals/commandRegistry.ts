@@ -9,6 +9,7 @@
  * - 历史记录：记录最近使用的命令
  */
 
+import type { WorkMode } from '@shared/protocols/workModeProtocol'
 import {
   Search,
   FolderOpen,
@@ -57,8 +58,7 @@ export interface CommandContext {
   /** 设置 AI 输入提示 */
   setInputPrompt: (prompt: string) => void
   /** 设置模式 */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setMode: (mode: any) => void
+  setMode: (mode: WorkMode) => void
   /** 显示设置页 */
   setShowSettingsPage: (show: boolean) => void
   /** 设置终端可见性 */
@@ -268,19 +268,19 @@ function executeCommand(id: string, ctx: CommandContext): void {
   switch (id) {
     case 'ai-chat':
       ctx.setChatVisible(true)
-      ctx.setMode('chat')
+      ctx.setMode('expert')
       break
     case 'ai-explain':
       if (ctx.activeFilePath) {
         ctx.setChatVisible(true)
-        ctx.setMode('chat')
+        ctx.setMode('expert')
         ctx.setInputPrompt(`Explain the file ${ctx.activeFilePath} in detail.`)
       }
       break
     case 'ai-refactor':
       if (ctx.activeFilePath) {
         ctx.setChatVisible(true)
-        ctx.setMode('chat')
+        ctx.setMode('expert')
         ctx.setInputPrompt(
           `Analyze ${ctx.activeFilePath} and suggest refactoring improvements for readability and performance.`,
         )
@@ -289,9 +289,10 @@ function executeCommand(id: string, ctx: CommandContext): void {
     case 'ai-fix':
       if (ctx.activeFilePath) {
         ctx.setChatVisible(true)
-        ctx.setMode('chat')
+        ctx.setMode('expert')
         ctx.setInputPrompt(`Find potential bugs in ${ctx.activeFilePath} and provide fixes.`)
       }
+      break
       break
     case 'toggle-terminal':
       ctx.setTerminalVisible(!ctx.terminalVisible)

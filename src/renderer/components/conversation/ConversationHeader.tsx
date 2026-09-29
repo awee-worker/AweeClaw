@@ -1,25 +1,14 @@
-import { History, Trash2, Zap, Shield } from 'lucide-react'
+import { History, Trash2, GraduationCap, Shield, Zap } from 'lucide-react'
 import { useStore } from '@store'
-import { WorkMode } from '@/renderer/modes/workModeTypes'
 import { t } from '@renderer/i18n'
 
 interface ChatHeaderProps {
-  chatMode: WorkMode
-  setChatMode: (mode: WorkMode) => void
   showSessions: boolean
   setShowSessions: (show: boolean) => void
   onClearMessages: () => void
 }
 
-const HEADER_MODES: Array<{ id: WorkMode; labelZh: string; labelEn: string }> = [
-  { id: 'chat', labelZh: '快速', labelEn: 'Quick' },
-  { id: 'agent', labelZh: '思考', labelEn: 'Think' },
-  { id: 'plan', labelZh: '专家', labelEn: 'Expert' },
-]
-
 export default function ChatHeader({
-  chatMode,
-  setChatMode,
   showSessions,
   setShowSessions,
   onClearMessages,
@@ -34,21 +23,9 @@ export default function ChatHeader({
   return (
     <div className="h-12 flex items-center justify-between px-4 border-b border-border bg-background z-20">
       <div className="flex items-center gap-2">
-        <div className="flex bg-surface rounded-lg p-0.5 border border-border-subtle">
-          {HEADER_MODES.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setChatMode(m.id)}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${chatMode === m.id
-                ? m.id === 'chat'
-                  ? 'bg-background text-text-primary shadow-sm'
-                  : 'text-accent bg-accent/10 shadow-sm'
-                : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              {isZh ? m.labelZh : m.labelEn}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface border border-border-subtle">
+          <GraduationCap className="w-3.5 h-3.5 text-purple-400" />
+          <span className="text-xs font-medium text-text-secondary">{isZh ? '专家' : 'Expert'}</span>
         </div>
         {activeScenarioId && (
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-accent/5 border border-accent/10 text-accent text-[10px] font-medium">

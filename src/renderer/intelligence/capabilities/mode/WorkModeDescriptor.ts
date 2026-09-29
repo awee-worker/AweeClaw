@@ -146,7 +146,7 @@ export const AGENT_MODE_DESCRIPTOR: ModeDescriptor = {
 }
 
 export const PLAN_MODE_DESCRIPTOR: ModeDescriptor = {
-  id: 'plan',
+  id: 'expert',
   displayName: 'Expert',
   description: '研究级智能模式 — 深度思考、制定计划、执行任务、事后验证',
   toolPolicy: {

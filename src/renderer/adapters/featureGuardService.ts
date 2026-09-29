@@ -4,7 +4,7 @@
  * 职责：
  * 1. 对接后端 FeatureGuardService API（/api/v1/payment/features）
  * 2. 本地缓存有效功能配置，避免每次操作都请求后端
- * 3. 处理 WorkMode（chat/agent/plan）与后端 mode（quick/think/expert）的映射
+ * 3. 处理 WorkMode（chat/agent/expert）与后端 mode（quick/think/expert）的映射
  * 4. 提供同步快速判断（基于缓存）与异步精确判断（请求后端）
  *
  * 设计原则：
@@ -153,12 +153,12 @@ export interface BoosterPackConfig {
 
 /**
  * 客户端 WorkMode ↔ 后端 mode 映射
- * 客户端使用语义化命名（chat/agent/plan），后端 features.modes 使用能力命名（quick/think/expert）
+  * 客户端使用语义化命名（chat/agent/expert），后端 features.modes 使用能力命名（quick/think/expert）
  */
 const WORK_MODE_TO_BACKEND_MODE: Record<WorkMode, string> = {
   chat: 'quick',
   agent: 'think',
-  plan: 'expert',
+  expert: 'expert',
 }
 
 // ─── FREE 兜底配置（后端不可达 / 未登录时使用） ─────────
@@ -350,7 +350,7 @@ export async function checkFeature(
 /**
  * 精确检查工作模式权限（请求后端）
  *
- * @param workMode 客户端 WorkMode（chat/agent/plan）
+  * @param workMode 客户端 WorkMode（chat/agent/expert）
  */
 export async function checkWorkMode(
   workMode: WorkMode,

@@ -35,7 +35,7 @@ interface UseMessageOperationsParams {
   addContextItem: (item: any) => void
   attachmentManager: ReturnType<typeof useAttachmentManager>
   setInput: (value: string | null | undefined) => void
-  setChatMode: (mode: string) => void
+  setChatMode?: (mode: string) => void
   scrollToBottom: (behavior?: 'smooth' | 'auto') => void
 }
 
@@ -94,8 +94,9 @@ export function useMessageOperations({
         })
         if (result) {
           userMessage = result.prompt
+          // 模式选择器已移除：所有写入统一归一到专家档（expert），避免写回 chat/agent
           if (result.mode) {
-            setChatMode(result.mode)
+            setChatMode?.('expert')
           }
         }
       }

@@ -35,6 +35,7 @@ import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
 import {
   buildStatusBreakdown,
   countToolStatuses,
+  groupToolsByStatus,
   type ToolGroupStatus,
 } from './toolGroupStats'
 
@@ -54,6 +55,15 @@ const GROUP_VISUALS: Record<ToolGroupStatus, { label: string; icon: LucideIcon; 
   error: { label: '失败', icon: XCircle, color: 'text-status-error' },
   success: { label: '已完成', icon: CheckCircle2, color: 'text-status-success' },
 }
+
+/**
+ * 分组头固定高度（px）
+ *
+ * 这一行从第一个工具起就占住高度：第二个工具到来时只把组头内容淡入，
+ * 高度全程不变。若改成「单工具不渲染组头、多工具才渲染」，第二个工具
+ * 出现的一瞬间会凭空多出 28px，把下方卡片整体顶下去 —— 正是要消除的跳动。
+ */
+const GROUP_HEADER_HEIGHT = 28
 
 /** 组头状态明细使用的显示名（与分组视觉配置同源，避免两处文案分叉） */
 const GROUP_STATUS_LABELS: Record<ToolGroupStatus, string> = {
@@ -146,68 +156,6 @@ export function renderToolCallCard(
       onReject={isPending ? opts.onRejectTool : undefined}
     />
   )
-}
-/**
- * 获取工具状态分组
- *
- * 状态归属：
- * - pending / running → 进行中
- * - awaiting          → 待批准（等待用户确认，尚未执行）
- * - rejected          → 已拒绝（归入失败组）
- * - error             → 失败
- * - success           → 已完成
- *
- * 分组策略（P1-D 顺序固定渲染）：
- * - 有待批准工具（事前审批场景）：按状态分组，卡片停留在待批准位置。
- * - 无待批准工具（批量执行场景）：单一组按调用原始顺序渲染，卡片位置固定，
- *   状态用卡片内图标表达 —— 工具完成时卡片不移动，彻底消除
- *   「从进行中组移到已完成组」导致的 DOM 重排抖动。
- *
- * @param tools 工具调用列表
- * @returns 分组列表（顺序：进行中 → 待批准 → 失败 → 已完成）
- */
-function groupToolsByStatus(tools: ToolCall[]): ToolGroup[] {
-  // 事前审批场景：保留状态分组
-  if (tools.some((tc) => tc.status === 'awaiting')) {
-    const groups: Record<ToolGroupStatus, ToolCall[]> = {
-      pending: [],
-      awaiting: [],
-      success: [],
-      error: [],
-    }
-
-    for (const tc of tools) {
-      if (tc.status === 'pending' || tc.status === 'running') {
-        groups.pending.push(tc)
-      } else if (tc.status === 'awaiting') {
-        // 等待用户批准的工具单独成组，不混入“已完成”
-        groups.awaiting.push(tc)
-      } else if (tc.status === 'success') {
-        groups.success.push(tc)
-      } else if (tc.status === 'error' || tc.status === 'rejected') {
-        groups.error.push(tc)
-      } else {
-        // 未知状态归入已完成
-        groups.success.push(tc)
-      }
-    }
-
-    const order: ToolGroupStatus[] = ['pending', 'awaiting', 'error', 'success']
-    return order
-      .filter((s) => groups[s].length > 0)
-      .map((s) => ({ status: s, ...GROUP_VISUALS[s], tools: groups[s] }))
-  }
-
-  // 批量执行场景：单一组按原始顺序渲染，卡片位置固定
-  // 组状态取当前最高优先级状态：进行中 > 失败 > 已完成
-  const hasRunning = tools.some((tc) => tc.status === 'pending' || tc.status === 'running')
-  let status: ToolGroupStatus = 'success'
-  if (hasRunning) {
-    status = 'pending'
-  } else if (tools.some((tc) => tc.status === 'error' || tc.status === 'rejected')) {
-    status = 'error'
-  }
-  return [{ status, ...GROUP_VISUALS[status], tools }]
 }
 
 /**
@@ -320,8 +268,11 @@ function ToolCallGroup({
     messageId,
   }
 
-  // 按状态分组
-  const groups = useMemo(() => groupToolsByStatus(toolCalls), [toolCalls])
+  // 按状态分组：恒为单组，卡片顺序就是调用顺序；这里只补上组头所需的图标与配色
+  const groups = useMemo(
+    () => groupToolsByStatus(toolCalls).map((group) => ({ ...group, ...GROUP_VISUALS[group.status] })),
+    [toolCalls],
+  )
 
   // P1-C 组级进度：批量执行时统计已完成/总数，显示在「进行中」组头
   const doneCount = useMemo(
@@ -371,97 +322,95 @@ function ToolCallGroup({
     >
       {groups.map((group) => {
         const hasApproval = groupHasApproval(group)
-        const isAwaitingGroup = group.status === 'awaiting'
-        // 待批准组强制展开，不受折叠状态影响
+        // 含待批准工具的分组强制展开，不受折叠状态影响
         const isCollapsed = !hasApproval && collapsedGroups.has(group.status)
         const Icon = group.icon
         const isPendingGroup = group.status === 'pending'
         const showHeader = group.tools.length > 1
         // 组状态取最高优先级，但组头必须反映组内真实构成：批量执行时
         // 一个失败 + 三个完成若只写「失败 (4)」，会被误读成整批都失败。
-        const statusBreakdown = buildStatusBreakdown(countToolStatuses(group.tools), GROUP_STATUS_LABELS)
+        const statusCounts = countToolStatuses(group.tools)
+        const statusBreakdown = buildStatusBreakdown(statusCounts, GROUP_STATUS_LABELS)
         const headerText = statusBreakdown ?? `${group.label} (${group.tools.length})`
+        // 组头文案已经点出「待批准」时不再补挂徽标：单组渲染下状态名与状态明细
+        // 都可能写到它，同一信息出现两次只会让组头变啰嗦。
+        const headerMentionsAwaiting = group.status === 'awaiting' || statusCounts.awaiting > 0
 
         return (
           <div
-            // key 取组内首个工具 id：组状态会随执行推进变化（进行中 → 已完成），
-            // 组数也会在审批前后于「单组」与「多组」之间来回切（有工具等待批准时
-            // 才按状态拆分）。这两种变化都会改变 group.status 与 groups.length，
-            // 用它们作 key 会让整个分组容器——连同其下所有卡片 DOM——被卸载重建，
-            // 紧接着重播淡入动画并重算高度，表现为卡片闪一下、会话内容跳动。
-            // 首个工具 id 在一次连续调用里恒定，用它作 key 可以让状态推进和
-            // 分组增删都落在同一份 DOM 上，只更新卡片内容而不重建容器。
+            // key 取组内首个工具 id：组状态会随执行推进变化（进行中 → 待批准 →
+            // 已完成）。状态不能作 key —— 它一变，整个分组容器连同其下所有卡片
+            // DOM 就会被卸载重建，紧接着重播淡入动画并重算高度，表现为卡片闪一下、
+            // 会话内容跳动。首个工具 id 在一次连续调用里恒定，用它作 key 可以让
+            // 状态推进和卡片追加都落在同一份 DOM 上，只更新内容而不重建容器。
             key={group.tools[0]?.id ?? group.status}
             style={{ contain: 'layout style' }}
           >
-            {/* 分组标题（仅多工具时显示）
-                固定高度占位避免标题出现/消失时的高度跳变。
-                使用 opacity 过渡让标题平滑出现/消失，而非瞬间弹出 */}
-            <div
-              style={{
-                minHeight: showHeader ? 28 : 0,
-                transition: 'min-height 0.2s ease',
-              }}
-            >
-              {showHeader && (
-                <button
-                  onClick={() => !hasApproval && toggleGroup(group.status)}
-                  disabled={hasApproval}
-                  className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium transition-colors ${
-                    hasApproval
-                      ? 'text-text-primary cursor-default'
-                      : 'text-text-muted hover:text-text-primary cursor-pointer'
+            {/* 分组标题：始终挂载（用 opacity 控制显隐），避免「单工具无分组头 → 多工具有分组头」
+                切换时按钮条件挂载带来的瞬间弹出/消失观感。固定高度占位 + opacity 过渡，
+                高度跳变由占位吸收，出现/消失仅透明度变化，卡片位置不偏移。 */}
+            <div style={{ height: GROUP_HEADER_HEIGHT }}>
+              <button
+                onClick={() => !hasApproval && toggleGroup(group.status)}
+                disabled={hasApproval || !showHeader}
+                tabIndex={showHeader ? 0 : -1}
+                className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium transition-opacity ${
+                  hasApproval
+                    ? 'text-text-primary cursor-default'
+                    : 'text-text-muted hover:text-text-primary cursor-pointer'
+                } ${showHeader ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                style={{ height: GROUP_HEADER_HEIGHT }}
+                aria-expanded={!isCollapsed}
+                aria-hidden={!showHeader}
+                aria-label={showHeader ? headerText : undefined}
+                title={
+                  hasApproval
+                    ? '当前有工具等待批准，无法折叠'
+                    : undefined
+                }
+              >
+                {isCollapsed ? (
+                  <ChevronRight className="w-3 h-3" aria-hidden />
+                ) : (
+                  <ChevronDown className="w-3 h-3" aria-hidden />
+                )}
+                <Icon
+                  className={`w-3 h-3 ${group.color} ${
+                    isPendingGroup ? 'animate-spin' : ''
                   }`}
-                  style={{ height: 28 }}
-                  aria-expanded={!isCollapsed}
-                  aria-label={headerText}
-                  title={
-                    hasApproval
-                      ? '当前有工具等待批准，无法折叠'
-                      : undefined
-                  }
-                >
-                  {isCollapsed ? (
-                    <ChevronRight className="w-3 h-3" aria-hidden />
-                  ) : (
-                    <ChevronDown className="w-3 h-3" aria-hidden />
-                  )}
-                  <Icon
-                    className={`w-3 h-3 ${group.color} ${
-                      isPendingGroup ? 'animate-spin' : ''
-                    }`}
-                    aria-hidden
-                  />
-                  <span>
-                    {headerText}
-                    {/* P1-C 组级进度：进行中组显示已完成/总数，替代逐卡闪烁。
-                        已有状态明细时不再重复显示进度（明细本身已给出分段数量）。 */}
-                    {isPendingGroup && totalCount > 1 && !statusBreakdown && (
-                      <span className="text-text-muted/70 font-normal ml-1">
-                        · {doneCount}/{totalCount}
-                      </span>
-                    )}
-                    {(group.status === 'success' || group.status === 'error') && (
-                      <span className="text-text-muted/70 font-normal ml-1">
-                        · {buildGroupSummary(group.tools, language)}
-                      </span>
-                    )}
-                  </span>
-                  {/* 仅在非 awaiting 组显示“待批准”徽标，避免与 awaiting 组标题重复 */}
-                  {hasApproval && !isAwaitingGroup && (
-                    <span className="ml-1 text-[12px] px-1.5 py-0.5 rounded bg-status-warning/15 text-status-warning">
-                      待批准
+                  aria-hidden
+                />
+                <span>
+                  {headerText}
+                  {/* P1-C 组级进度：进行中组显示已完成/总数，替代逐卡闪烁。
+                      已有状态明细时不再重复显示进度（明细本身已给出分段数量）。 */}
+                  {isPendingGroup && totalCount > 1 && !statusBreakdown && (
+                    <span className="text-text-muted/70 font-normal ml-1">
+                      · {doneCount}/{totalCount}
                     </span>
                   )}
-                </button>
-              )}
+                  {(group.status === 'success' || group.status === 'error') && (
+                    <span className="text-text-muted/70 font-normal ml-1">
+                      · {buildGroupSummary(group.tools, language)}
+                    </span>
+                  )}
+                </span>
+                {/* 组头文案没有点出「待批准」时才补挂徽标，避免同一信息出现两次 */}
+                {hasApproval && !headerMentionsAwaiting && (
+                  <span className="ml-1 text-[12px] px-1.5 py-0.5 rounded bg-status-warning/15 text-status-warning">
+                    待批准
+                  </span>
+                )}
+              </button>
             </div>
 
-            {/* 工具卡片列表：包含待批准工具时强制渲染；多工具分组项向右缩进。
-                每个卡片包裹层使用 layout containment 隔离内部 reflow，
-                并添加淡入动画掩盖新增卡片时的瞬时高度跳变。 */}
-            {(!isCollapsed || group.tools.length === 1 || hasApproval) && (
-              <div className={`space-y-2 ${group.tools.length > 1 ? 'pl-5' : ''}`}>
+             {/* 工具卡片列表：包含待批准工具时强制渲染。
+                 卡片始终使用统一缩进（pl-5），避免「单工具无缩进 → 多工具有缩进」
+                 的布局跳变：分组头出现时已有卡片的位置不偏移，消除「工具卡片消失重建」的观感。
+                 每个卡片包裹层使用 layout containment 隔离内部 reflow，
+                 并添加淡入动画掩盖新增卡片时的瞬时高度跳变。 */}
+             {(!isCollapsed || group.tools.length === 1 || hasApproval) && (
+               <div className="space-y-2 pl-5">
                 {group.tools.map((tc) => (
                   <div
                     key={tc.id}

@@ -109,6 +109,8 @@ export interface AgentConfig {
   liveFilePreview?: boolean
   /** 当前激活的自定义智能体 ID */
   activeCustomAgentId?: string
+  /** 当前会话锁定的专家（角色库角色 id），null/undefined 表示自动编排档 */
+  activeExpertId?: string | null
   /** 自定义 Agent 角色配置 */
   customAgentProfiles?: Array<{
     id: string

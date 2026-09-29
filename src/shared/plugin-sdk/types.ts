@@ -638,4 +638,4 @@ export interface PluginWidgetCardContribution {
 }
 
 /** 场景模式（与 sceneModeProtocol 保持一致） */
-export type SceneMode = 'work' | 'life' | 'study'
+export type SceneMode = 'work' | 'life' | 'study' | 'dev'

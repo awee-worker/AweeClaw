@@ -301,9 +301,17 @@ function AssistantMessageViewBase({
     if (!isAssistantMessage(message)) return []
 
     const persistedIds = new Set((assistantMessage.toolCalls || []).map((tc: any) => tc.id))
+
+    // 顺序必须恒定，故直接沿用 previewMap 的键序：它等于 tool_call_start 的到达顺序，
+    // 也就是模型的调用声明顺序，并与工具正式写入 parts 的先后一致。
+    //
+    // 这里曾按 lastUpdateTime 排序，意图是「刚更新的调用排到最后」。但连续 / 并行调用时
+    // 各工具的参数分片是交替到达的，每 150ms 的 flush 都会把刚刚更新的那个工具挪到队尾，
+    // 于是组内首元素在 A、B、C 之间来回切换。而工具组以「首个工具 id」作为渲染 key，
+    // 键一变整组 DOM 就被卸载重建、淡入动画重播 —— 观感正是「读取文件…」反复消失又出现，
+    // 直到工具全部落定才稳定成组。键序在整个流式期间不变，预览转正式时也不会重排。
     const streamingPreviews = Object.entries(previewMap)
       .filter(([id, preview]) => preview?.isStreaming && !persistedIds.has(id))
-      .sort(([, left], [, right]) => (left.lastUpdateTime || 0) - (right.lastUpdateTime || 0))
       .map(([id, preview]) => ({
         id,
         name: preview.name || '...',
