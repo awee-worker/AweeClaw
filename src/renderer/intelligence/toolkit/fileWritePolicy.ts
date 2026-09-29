@@ -11,6 +11,8 @@
  *   促使模型切换到 edit_file，而不是让它整文件覆盖后产生副作用。
  * - 策略层只做判定，不直接执行 IO，便于复用、测试和后续扩展。
  */
+import * as Diff from 'diff'
+
 export type WriteIntent = 'create' | 'full-rewrite' | 'partial-update'
 
 /**
@@ -19,10 +21,13 @@ export type WriteIntent = 'create' | 'full-rewrite' | 'partial-update'
  */
 export interface WriteIntentAnalysis {
   intent: WriteIntent
-  commonPrefixChars: number
-  commonSuffixChars: number
-  changedOriginalChars: number
-  changedNewChars: number
+  /** 原文件中被删除或替换的行数（行级 diff 统计） */
+  changedOriginalLines: number
+  /** 新文件中新增或替换的行数（行级 diff 统计） */
+  changedNewLines: number
+  /** 原文件总行数 */
+  totalOriginalLines: number
+  /** 原文件被改动的行数占比；高于阈值即判定为整文件重写 */
   changedRatio: number
 }
 
@@ -42,6 +47,9 @@ export interface WriteGuardDecision {
 
 // 当“原文件被改动的比例”低于该阈值时，倾向判定为局部修改而不是整文件重写。
 const PARTIAL_CHANGE_RATIO_THRESHOLD = 0.35
+
+// 超过该字符数的超大文件不做精确行级 diff，退化为字符级前后缀估算，避免判定本身拖慢写入。
+const LINE_DIFF_CHAR_LIMIT = 400_000
 
 /**
  * 计算两个字符串从头开始的最长公共前缀。
@@ -73,43 +81,99 @@ function getCommonSuffixLength(a: string, b: string, prefixLength: number): numb
 }
 
 /**
+ * 统一换行符后再比较。
+ *
+ * 换行符差异属于格式噪声：只改了几行内容的写入，在逐行比较下会表现为整个文件
+ * 都变了，从而绕过局部修改判定。判定前先归一化该噪声，让结论只反映真正的内容改动。
+ */
+function normalizeNewlines(text: string): string {
+  return text.replace(/\r\n?/g, '\n')
+}
+
+/** 统计文本行数；结尾换行符不计入额外行，与行级 diff 的分段口径保持一致 */
+function countLines(text: string): number {
+  if (!text) return 0
+  const segments = text.split('\n')
+  return text.endsWith('\n') ? segments.length - 1 : segments.length
+}
+
+/**
+ * 行级 diff 统计，只累计真正被删除/新增的行数。
+ *
+ * 早期实现用「字符级公共前后缀包住的区间」估算改动量，会把多处改动之间的
+ * 未改动内容一并算作改动：文件里分散改上几处，改动比例就会被高估到阈值以上，
+ * 于是常规的局部修改被判成整文件重写、write_file 被放行——这正是模型习惯性
+ * 整写覆盖的成因之一。改为行级 diff 后，统计口径与“改了多少行”直接对应。
+ */
+function analyzeLineDiff(
+  originalContent: string,
+  nextContent: string
+): { removedLines: number; addedLines: number } {
+  let removedLines = 0
+  let addedLines = 0
+
+  for (const part of Diff.diffLines(originalContent, nextContent)) {
+    const lines = countLines(part.value)
+    if (part.removed) removedLines += lines
+    else if (part.added) addedLines += lines
+  }
+
+  return { removedLines, addedLines }
+}
+
+/**
  * 分析一次 write_file 的真实意图。
  *
- * 这里不依赖 AST，也不做复杂 diff，而是用“公共前后缀 + 变化区间大小”做快速启发式判断。
- * 这么做的目标不是得到最完美的文本 diff，而是给工具选择提供稳定、低成本的决策依据。
+ * 判定口径是「原文件有多少行被真正改动」：
+ * - 局部修改（改几行、分散改几处、末尾追加）→ 被改动的原始行占比很低 → partial-update
+ * - 整文件重写（大部分行被替换）→ 占比很高 → full-rewrite
+ *
+ * 超大文件跳过精确行级 diff，退化为字符级前后缀估算，避免判定本身拖慢写入。
  */
 export function analyzeWriteIntent(originalContent: string, nextContent: string): WriteIntentAnalysis {
-  if (originalContent.length === 0) {
+  const original = normalizeNewlines(originalContent)
+  const next = normalizeNewlines(nextContent)
+
+  if (original.length === 0) {
     return {
       intent: 'create',
-      commonPrefixChars: 0,
-      commonSuffixChars: 0,
-      changedOriginalChars: 0,
-      changedNewChars: nextContent.length,
+      changedOriginalLines: 0,
+      changedNewLines: countLines(next),
+      totalOriginalLines: 0,
       changedRatio: 1,
     }
   }
 
-  const commonPrefixChars = getCommonPrefixLength(originalContent, nextContent)
-  const commonSuffixChars = getCommonSuffixLength(originalContent, nextContent, commonPrefixChars)
-  const changedOriginalChars = Math.max(0, originalContent.length - commonPrefixChars - commonSuffixChars)
-  const changedNewChars = Math.max(0, nextContent.length - commonPrefixChars - commonSuffixChars)
-  const changedRatio = originalContent.length === 0 ? 1 : changedOriginalChars / originalContent.length
+  const totalOriginalLines = countLines(original)
 
-  const intent: WriteIntent =
-    changedRatio <= PARTIAL_CHANGE_RATIO_THRESHOLD
-      ? 'partial-update'
-      : 'full-rewrite'
+  // 超大文件退化为字符级估算：行级 diff 在「大文件 + 大面积改动」时开销不可控
+  if (original.length > LINE_DIFF_CHAR_LIMIT || next.length > LINE_DIFF_CHAR_LIMIT) {
+    const commonPrefixChars = getCommonPrefixLength(original, next)
+    const commonSuffixChars = getCommonSuffixLength(original, next, commonPrefixChars)
+    const changedOriginalChars = Math.max(0, original.length - commonPrefixChars - commonSuffixChars)
+    const changedRatio = changedOriginalChars / original.length
+
+    return {
+      intent: changedRatio <= PARTIAL_CHANGE_RATIO_THRESHOLD ? 'partial-update' : 'full-rewrite',
+      changedOriginalLines: Math.round(totalOriginalLines * changedRatio),
+      changedNewLines: Math.max(0, next.length - commonPrefixChars - commonSuffixChars),
+      totalOriginalLines,
+      changedRatio,
+    }
+  }
+
+  const { removedLines, addedLines } = analyzeLineDiff(original, next)
+  const changedRatio = totalOriginalLines === 0 ? 1 : removedLines / totalOriginalLines
 
   return {
-    intent,
-    commonPrefixChars,
-    commonSuffixChars,
-    changedOriginalChars,
-    changedNewChars,
+    intent: changedRatio <= PARTIAL_CHANGE_RATIO_THRESHOLD ? 'partial-update' : 'full-rewrite',
+    changedOriginalLines: removedLines,
+    changedNewLines: addedLines,
+    totalOriginalLines,
     changedRatio,
   }
 }
+
 /**
  * write_file 执行前的统一守卫。
  *
@@ -145,7 +209,7 @@ export function guardWriteFile(input: WriteGuardInput): WriteGuardDecision {
       allow: false,
       intent: analysis.intent,
       reason:
-        `REJECTED: write_file cannot be used to partially modify existing file "${input.path}". ` +
+        `${Math.round(analysis.changedRatio * 100)}% of the file's original lines would change, which is below the ` +
         `${Math.round(analysis.changedRatio * 100)}% of the file content would change, which is below the ` +
         `${Math.round(PARTIAL_CHANGE_RATIO_THRESHOLD * 100)}% threshold — the system treats it as a partial edit. ` +
         `write_file is ONLY for creating new files or complete full-file replacement.\n\n` +

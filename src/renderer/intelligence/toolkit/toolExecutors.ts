@@ -2114,6 +2114,32 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 工作区本来就有的文件属于编辑，只有真正新建的文件才算新建。
         const existedBefore = await api.file.exists(path)
         const content = (args.content as string) || ''
+        // 覆盖已有文件时须按「编辑」记录：oldContent、变更行数与 isNewFile 都要如实反映，
+        // 否则 UI 会把一次整写覆盖显示成「新建」，恰好掩盖了它对原文件的改写。
+        const isOverwrite = existedBefore && originalContent !== null
+        const lineChanges = existedBefore && originalContent !== null
+            ? getLineChangesForWrite(originalContent, content)
+            : { added: countLinesFast(content), removed: 0 }
+
+        // 对已存在文件的写入同样受局部修改策略约束：
+        // create_file_or_folder 也带 content，若放任它覆盖已有文件，就等同于绕过
+        // write_file 的局部修改拦截，模型会转而从这个入口整写覆盖。
+        if (existedBefore && originalContent !== null && content) {
+            const writeDecision = guardWriteFile({
+                path,
+                originalContent,
+                nextContent: content,
+                hasRecentRead: fileCacheService.hasValidCache(path),
+            })
+            if (!writeDecision.allow) {
+                return {
+                    success: false,
+                    result: '',
+                    error: writeDecision.reason || 'create_file_or_folder rejected by write strategy',
+                }
+            }
+        }
+
         const guardedWrite = await guardedWriteFile({
             path,
             nextContent: content,
@@ -2128,12 +2154,12 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             notifyComposerChange({
                 filePath: path,
                 workspacePath: ctx.workspacePath || '',
-                oldContent: null,
+                oldContent: isOverwrite ? originalContent : null,
                 newContent: content,
-                changeType: 'create',
-                linesAdded: content.split('\n').length,
-                linesRemoved: 0,
-                ...getWritePreviewFlags(null, content),
+                changeType: isOverwrite ? 'modify' : 'create',
+                linesAdded: lineChanges.added,
+                linesRemoved: lineChanges.removed,
+                ...getWritePreviewFlags(isOverwrite ? originalContent : null, content),
                 toolCallId: ctx.toolCallId
             })
         }
@@ -2145,14 +2171,14 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
         return {
             success: true,
-            result: 'File created',
+            result: isOverwrite ? 'File updated' : 'File created',
             meta: buildWriteMeta(
                 path,
-                null,
+                isOverwrite ? originalContent : null,
                 content,
-                { added: countLinesFast(content), removed: 0 },
+                lineChanges,
                 guardedWrite.meta,
-                { isNewFile: true }
+                { isNewFile: !isOverwrite }
             )
         }
     },
