@@ -5,6 +5,8 @@ import {
   stripNonSpeakableContent,
   buildVoiceSystemPrompt,
   isEndConversationCommand,
+  takeSpeakableSegment,
+  takeTailSegment,
 } from '../utils/voiceTextUtils'
 import { resolveVoiceLlmConfig } from '../utils/voiceLlmConfig'
 import { createActivityStatus, type ActivityStatus } from '../utils/voiceActivityStatus'
@@ -204,10 +206,8 @@ const INTERRUPT_GRACE_MS = 420    // 起播后的免打断静默期（ms）
 const TTS_NOISE_FLOOR = 0.012     // 底噪门限（低于此值视为静音）
 const TTS_LEVEL_SPAN = 0.16       // 满开合对应的 RMS 区间宽度
 
-// 分句流式 TTS 参数
-const SEGMENT_MIN_CHARS = 8       // 单句最短字符数，避免「好的，」这类碎片单独发声
-const SEGMENT_MAX_CHARS = 60      // 无句末标点时的强制切分长度，保证首句不会久等
-const SENTENCE_END_CHARS = '。！？；…!?;\n'
+// 分句切分规则已抽到 @utils/voiceTextUtils（takeSpeakableSegment / takeTailSegment），
+// 主窗口语音对话、头像与桌面伴侣共用同一套节奏。
 const VAD_CHECK_INTERVAL = 100   // VAD 检测间隔（ms）
 const SAMPLE_RATE = 16000        // 采样率
 // TTS 播放电平采样间隔（ms）：≈30fps，足以驱动口型平滑，单次仅 256 个采样点
@@ -259,44 +259,8 @@ function getResolvedVoiceConfig(
   )
 }
 
-/**
- * 从文本流的 from 位置起切出一个可朗读片段。
- *
- * 切分点优先取句末标点；若到 SEGMENT_MAX_CHARS 仍等不到句末标点
- * （英文缩写、长串数字、表格行等），则退到逗号处、再不行硬切 ——
- * 否则首句会一直卡在缓冲区里不出声，流式合成就失去了意义。
- *
- * @returns null 表示当前还没有够长、可切的片段（继续等后续 chunk）
- */
-function takeSpeakableSegment(
-  buf: string,
-  from: number,
-): { text: string; end: number } | null {
-  if (from >= buf.length) return null
-  const tail = buf.slice(from)
-
-  for (let i = 0; i < tail.length; i += 1) {
-    if (SENTENCE_END_CHARS.includes(tail[i]) && i + 1 >= SEGMENT_MIN_CHARS) {
-      return { text: tail.slice(0, i + 1), end: from + i + 1 }
-    }
-  }
-
-  if (tail.length < SEGMENT_MAX_CHARS) return null
-
-  const lastSoft = Math.max(
-    tail.lastIndexOf('，'),
-    tail.lastIndexOf(','),
-    tail.lastIndexOf('、'),
-  )
-  const cut = lastSoft >= SEGMENT_MIN_CHARS ? lastSoft + 1 : SEGMENT_MAX_CHARS
-  return { text: tail.slice(0, cut), end: from + cut }
-}
-
-/** 收尾切分：把 from 之后的全部剩余文本一次性取走（含无句末标点的尾巴） */
-function takeTailSegment(buf: string, from: number): { text: string; end: number } | null {
-  if (from >= buf.length) return null
-  return { text: buf.slice(from), end: buf.length }
-}
+// takeSpeakableSegment / takeTailSegment 已移至 @utils/voiceTextUtils，
+// 与本文件顶部的 import 对应。
 
 // ============================================
 // 主 hook

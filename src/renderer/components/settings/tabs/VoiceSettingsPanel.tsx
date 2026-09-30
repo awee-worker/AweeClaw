@@ -135,6 +135,11 @@ export default function VoiceSettingsPanel({ language }: VoiceSettingsPanelProps
     return StorageService.get<string>('voice_auto_speak') === 'true'
   })
 
+  // 长按麦克风时是否先询问播报方式（关闭 = 直接沿用上次选择进入语音对话）
+  const [askOnLongPress, setAskOnLongPress] = useState(() => {
+    return StorageService.get<string>('voice_dialog_skip_prompt') !== 'true'
+  })
+
   /** 已保存的配置快照（仅 PERSISTED_FIELDS），用于 dirty 检测和"返回应用"重置 */
   const savedSnapshotRef = useRef<string>('')
 
@@ -319,6 +324,12 @@ export default function VoiceSettingsPanel({ language }: VoiceSettingsPanelProps
   const handleAutoSpeakChange = useCallback((value: boolean) => {
     setAutoSpeak(value)
     StorageService.set('voice_auto_speak', String(value))
+  }, [])
+
+  // 长按询问开关：与聊天输入区的「下次不再询问」共用同一个偏好，此处取反向语义
+  const handleAskOnLongPressChange = useCallback((value: boolean) => {
+    setAskOnLongPress(value)
+    StorageService.set('voice_dialog_skip_prompt', String(!value))
   }, [])
 
   // 测试 TTS 语音
@@ -811,6 +822,26 @@ export default function VoiceSettingsPanel({ language }: VoiceSettingsPanelProps
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${autoSpeak ? 'translate-x-6' : 'translate-x-1'}`}
+                />
+              </button>
+            </div>
+
+            {/* 长按麦克风是否先询问播报方式 */}
+            <div className="flex items-center justify-between gap-4 py-1">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-text-primary">
+                  {tt('长按麦克风时询问播报方式', 'Ask before voice chat')}
+                </div>
+                <div className="text-xs text-text-muted mt-0.5">
+                  {tt('关闭后长按直接沿用上次选择，不再弹面板', 'When off, holding the mic reuses your last choice')}
+                </div>
+              </div>
+              <button
+                onClick={() => handleAskOnLongPressChange(!askOnLongPress)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ${askOnLongPress ? 'bg-accent' : 'bg-border/60'}`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${askOnLongPress ? 'translate-x-6' : 'translate-x-1'}`}
                 />
               </button>
             </div>

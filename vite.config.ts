@@ -155,7 +155,12 @@ export default defineConfig({
           build: {
             outDir: 'dist/main',
             rollupOptions: {
-              external: EXTERNAL_DEPS,
+              // node: 前缀的内置模块一律留给运行时解析。
+              // Vite 判定「什么是内置模块」依据的是**构建时**那个 Node 的
+              // builtinModules；node:sqlite（Node 22.5+ 才有）在旧构建环境下
+              // 不在列表里，会被当成浏览器模块替换成空 stub，运行时解构
+              // DatabaseSync 得到 undefined，报「DatabaseSync is not a constructor」。
+              external: [...EXTERNAL_DEPS, /^node:/],
               onwarn(warning, warn) {
                 if (warning.code === 'EVAL' && (warning.id?.includes('web-tree-sitter') || warning.id?.includes('onnxruntime-web'))) return
                 warn(warning)

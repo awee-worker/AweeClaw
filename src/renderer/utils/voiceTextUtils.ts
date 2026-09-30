@@ -318,3 +318,63 @@ export function matchWakeWord(
       );
   }
 }
+
+// ============================================
+// 分句切分（流式播报用）
+// ============================================
+//
+// 播报不能等整段回复生成完再合成：文字早已流式显示完，声音才迟迟开始，
+// 字幕与播报天然错位。把流式文本按句切出来逐句合成，首句出声提前到
+// 「第一句生成完」，听感才跟得上。
+//
+// 切分粒度由下面三个常量决定：过小会把「好的，」这类碎片单独念一遍，
+// 过大则首句久等。主窗口语音对话与头像/桌面伴侣共用同一套规则，
+// 保证各处播报节奏一致。
+
+/** 单句最短字符数，避免「好的，」这类碎片单独发声 */
+export const SEGMENT_MIN_CHARS = 8
+
+/** 无句末标点时的强制切分长度，保证首句不会久等 */
+export const SEGMENT_MAX_CHARS = 60
+
+/** 句末标点集合：命中即视为一句说完 */
+export const SENTENCE_END_CHARS = '。！？；…!?;\n'
+
+/**
+ * 从缓冲区的 from 位置起切出一个可朗读片段
+ *
+ * 切分点优先取句末标点；若到 SEGMENT_MAX_CHARS 仍等不到句末标点
+ * （英文缩写、长串数字、表格行等），则退到逗号处、再不行硬切 ——
+ * 否则首句会一直卡在缓冲区里不出声，流式合成就失去了意义。
+ *
+ * @returns null 表示当前还没有够长、可切的片段（继续等后续 chunk）
+ */
+export function takeSpeakableSegment(
+  buf: string,
+  from: number,
+): { text: string; end: number } | null {
+  if (from >= buf.length) return null
+  const tail = buf.slice(from)
+
+  for (let i = 0; i < tail.length; i += 1) {
+    if (SENTENCE_END_CHARS.includes(tail[i]) && i + 1 >= SEGMENT_MIN_CHARS) {
+      return { text: tail.slice(0, i + 1), end: from + i + 1 }
+    }
+  }
+
+  if (tail.length < SEGMENT_MAX_CHARS) return null
+
+  const lastSoft = Math.max(
+    tail.lastIndexOf('，'),
+    tail.lastIndexOf(','),
+    tail.lastIndexOf('、'),
+  )
+  const cut = lastSoft >= SEGMENT_MIN_CHARS ? lastSoft + 1 : SEGMENT_MAX_CHARS
+  return { text: tail.slice(0, cut), end: from + cut }
+}
+
+/** 收尾切分：把 from 之后的全部剩余文本一次性取走（含无句末标点的尾巴） */
+export function takeTailSegment(buf: string, from: number): { text: string; end: number } | null {
+  if (from >= buf.length) return null
+  return { text: buf.slice(from), end: buf.length }
+}

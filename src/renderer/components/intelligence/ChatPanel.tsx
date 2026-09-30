@@ -33,6 +33,7 @@ import {
 } from '@intelligence/providerTypes'
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 
 import MentionPopup from './MentionPopup'
 import ChatMessageUI from './ChatMessage'
@@ -63,6 +64,7 @@ import { ScrollToBottomButton } from './chatPanel/components/ScrollToBottomButto
 import { DeleteSelectionBar } from './chatPanel/components/DeleteSelectionBar'
 import { ArchiveTimelineItemView } from './chatPanel/components/ArchiveTimelineItemView'
 import { ChatInputWrapper } from './chatPanel/components/ChatInputWrapper'
+import { useVoiceDialog } from '@hooks/voice/useVoiceDialog'
 import { MessageIndexBar, type MessageIndexItem } from './chatPanel/components/MessageIndexBar'
 import { PredictionBubble } from './chatPanel/components/PredictionBubble'
 import PendingChangesBar from './PendingChangesBar'
@@ -125,6 +127,8 @@ export default function ChatPanel() {
     activeWorkspaceSession,
     teamModeEnabled,
     setTeamModeEnabled,
+    voiceDialogActive,
+    setVoiceDialogActive,
   } = useStore(
     useShallow(s => ({
       llmConfig: s.llmConfig,
@@ -142,6 +146,8 @@ export default function ChatPanel() {
       activeWorkspaceSession: s.activeWorkspaceSession,
       teamModeEnabled: s.teamModeEnabled,
       setTeamModeEnabled: s.setTeamModeEnabled,
+      voiceDialogActive: s.voiceDialogActive,
+      setVoiceDialogActive: s.setVoiceDialogActive,
     })),
   )
 
@@ -171,6 +177,7 @@ export default function ChatPanel() {
     contextItems,
     currentThreadId,
     messageListVersion,
+    streamState,
   } = useAgentViewState()
 
   /** 所有待批准工具 id 集合，用于批量批准面板 */
@@ -314,7 +321,89 @@ export default function ChatPanel() {
     [activeFilePath, workspacePath],
   )
 
-  useAutoSpeak({ isStreaming, messages })
+  // ===== 内联语音对话（输入框长按进入，语音产物落在当前会话）=====
+  // 长按麦克风是否跳过「要不要播报」面板：在面板里勾过「下次不再询问」即为 true
+  const [voiceSkipPrompt, setVoiceSkipPrompt] = useState(
+    () => StorageService.get<string>('voice_dialog_skip_prompt') === 'true',
+  )
+  const handleVoiceSkipPromptChange = useCallback((skip: boolean) => {
+    setVoiceSkipPrompt(skip)
+    StorageService.set('voice_dialog_skip_prompt', skip ? 'true' : 'false')
+  }, [])
+
+  // 语音对话播报偏好：长按麦克风后的面板里切换，记住后全局沿用
+  const [voiceSpeakEnabled, setVoiceSpeakEnabled] = useState(
+    () => StorageService.get<string>('voice_dialog_speak') !== 'false',
+  )
+  const handleVoiceSpeakEnabledChange = useCallback((enabled: boolean) => {
+    setVoiceSpeakEnabled(enabled)
+    StorageService.set('voice_dialog_speak', enabled ? 'true' : 'false')
+  }, [])
+
+  // 语音对话自己分句播报，自动播报需让位，避免同一句被念两遍
+  useAutoSpeak({ isStreaming, messages, muted: voiceDialogActive })
+
+  const voiceDialog = useVoiceDialog({
+    messages,
+    isStreaming,
+    streamState,
+    isAwaitingApproval,
+    pendingApprovalToolCalls: streamState.pendingApprovalToolCalls ?? [],
+    currentThreadId,
+    sendMessage,
+    abort,
+    approveAllTools,
+    rejectAllTools,
+    language,
+    speakEnabled: voiceSpeakEnabled,
+  })
+
+  // enter/exit 用 ref 桥接：它们随依赖重建，直接进 effect 依赖会反复触发
+  const voiceDialogEnterRef = useRef(voiceDialog.enter)
+  voiceDialogEnterRef.current = voiceDialog.enter
+  const voiceDialogExitRef = useRef(voiceDialog.exit)
+  voiceDialogExitRef.current = voiceDialog.exit
+  /** 已按 store 标记发起过进入/退出，避免重复调用 */
+  const voiceDialogRequestedRef = useRef(false)
+
+  useEffect(() => {
+    if (voiceDialogActive && !voiceDialogRequestedRef.current) {
+      voiceDialogRequestedRef.current = true
+      voiceDialogEnterRef.current()
+    } else if (!voiceDialogActive && voiceDialogRequestedRef.current) {
+      voiceDialogRequestedRef.current = false
+      voiceDialogExitRef.current()
+    }
+  }, [voiceDialogActive])
+
+  // hook 自行结束（说出「结束对话」）或启动失败时，把 store 标记同步收回，
+  // 否则界面已退出、标记仍为 true，下一次长按会被当成「无变化」而进不去。
+  // 判据用「是否曾离开 idle」而非 active：active 要等麦克风授权后才为真，
+  // 若以它为准，授权被拒（从未 active）这一路就永远收不回标记。
+  const voiceDialogActiveRef = useRef(voiceDialogActive)
+  voiceDialogActiveRef.current = voiceDialogActive
+  const voiceDialogEngagedRef = useRef(false)
+  useEffect(() => {
+    const engaged = voiceDialog.state !== 'idle'
+    if (engaged) {
+      voiceDialogEngagedRef.current = true
+      return
+    }
+    if (voiceDialogEngagedRef.current) {
+      voiceDialogEngagedRef.current = false
+      if (voiceDialogActiveRef.current) setVoiceDialogActive(false)
+    }
+  }, [voiceDialog.state, setVoiceDialogActive])
+
+  // 面板卸载（切到设置等全屏页会卸载 ChatSection）时收回标记，
+  // 否则返回聊天后标记仍为 true，会莫名自动重进语音对话
+  useEffect(() => {
+    return () => {
+      if (useStore.getState().voiceDialogActive) {
+        useStore.getState().setVoiceDialogActive(false)
+      }
+    }
+  }, [])
 
   // ===== 主动式助手 high/critical 级派发订阅（s10-06）=====
   // 订阅 'proactive:invoke-agent' 和 'proactive:execute-action' 频道
@@ -1040,6 +1129,17 @@ export default function ChatPanel() {
                       language={language}
                       onOpenSettings={handleCreateAgent}
                       onEditAgent={handleEditAgent}
+                      voiceDialogState={voiceDialog.state}
+                      voiceDialogStream={voiceDialog.stream}
+                      voiceDialogNotice={voiceDialog.notice}
+                      voiceDialogPendingSend={voiceDialog.pendingSend}
+                      voiceDialogAwaitingConfirm={voiceDialog.awaitingConfirm}
+                      onVoiceDialogEnd={() => setVoiceDialogActive(false)}
+                      onVoiceDialogInterrupt={voiceDialog.interrupt}
+                      voiceSpeakEnabled={voiceSpeakEnabled}
+                      onVoiceSpeakEnabledChange={handleVoiceSpeakEnabledChange}
+                      voiceSkipPrompt={voiceSkipPrompt}
+                      onVoiceSkipPromptChange={handleVoiceSkipPromptChange}
                     />
                   </div>
                 </div>
@@ -1200,6 +1300,17 @@ export default function ChatPanel() {
                   language={language}
                   onOpenSettings={handleCreateAgent}
                   onEditAgent={handleEditAgent}
+                  voiceDialogState={voiceDialog.state}
+                  voiceDialogStream={voiceDialog.stream}
+                  voiceDialogNotice={voiceDialog.notice}
+                  voiceDialogPendingSend={voiceDialog.pendingSend}
+                  voiceDialogAwaitingConfirm={voiceDialog.awaitingConfirm}
+                  onVoiceDialogEnd={() => setVoiceDialogActive(false)}
+                  onVoiceDialogInterrupt={voiceDialog.interrupt}
+                  voiceSpeakEnabled={voiceSpeakEnabled}
+                  onVoiceSpeakEnabledChange={handleVoiceSpeakEnabledChange}
+                  voiceSkipPrompt={voiceSkipPrompt}
+                  onVoiceSkipPromptChange={handleVoiceSkipPromptChange}
                 />
               </div>
             </div>

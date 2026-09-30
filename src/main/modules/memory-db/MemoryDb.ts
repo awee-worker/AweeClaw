@@ -185,6 +185,15 @@ export class MemoryDb {
 
     try {
       const { DatabaseSync } = await import('node:sqlite')
+      // 打包器若把 node:sqlite 当成浏览器模块替换成空 stub，这里会拿到
+      // undefined，而原生报错只有一句「DatabaseSync is not a constructor」，
+      // 极难定位，故显式校验并给出可诊断的原因。
+      if (typeof DatabaseSync !== 'function') {
+        throw new Error(
+          `[MemoryDb] 运行时未提供 node:sqlite 的 DatabaseSync（当前 Node ${process.versions.node}）` +
+          '。请确认主进程构建没有把 node:sqlite 外部化为浏览器模块（vite.config.ts 中主进程 rollupOptions.external）。',
+        )
+      }
       this.db = new DatabaseSync(this.dbPath, { open: true })
       this.db.exec('PRAGMA journal_mode=WAL')
       this.db.exec('PRAGMA foreign_keys=ON')

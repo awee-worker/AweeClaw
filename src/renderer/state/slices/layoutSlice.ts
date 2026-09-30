@@ -271,6 +271,16 @@ export interface LayoutSlice {
   /** 语音对话模式是否激活（覆盖整个聊天区域的实时语音对话界面） */
   voiceConversationActive: boolean
 
+  /* ===== 内联语音对话（并入当前会话） ===== */
+  /**
+   * 输入框长按进入的内联语音对话是否激活。
+   *
+   * 与 voiceConversationActive 区分：后者是自闭环的独立语音会话（自带 LLM 会话、
+   * 独立历史归档，整块覆盖聊天区）；本标记驱动的语音对话把语音产物直接写进当前
+   * 会话，只借用麦克风与扬声器，因此 UI 只是叠加在聊天之上的轻层，不替换聊天界面。
+   */
+  voiceDialogActive: boolean
+
   /* ===== 场景工具直达 ===== */
   /** 欢迎页点击工具卡片时暂存的目标工具 ID，SceneToolsPanel 工具就绪后自动跳转 */
   pendingSceneToolId: string | null
@@ -339,6 +349,10 @@ export interface LayoutSlice {
   /** 切换语音对话模式 */
   toggleVoiceConversation: () => void
 
+  /* ===== 内联语音对话操作 ===== */
+  /** 进入/退出内联语音对话（输入框长按触发） */
+  setVoiceDialogActive: (active: boolean) => void
+
   /* ===== 场景配置版本（用于强制布局重算） ===== */
   /** 场景配置版本号，每次场景安装/更新时递增 */
   scenarioConfigVersion: number
@@ -388,6 +402,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
 
   /* ----- 语音对话模式初始状态 ----- */
   voiceConversationActive: false,
+  voiceDialogActive: false,
 
   /* ----- 场景工具直达初始状态 ----- */
   pendingSceneToolId: null,
@@ -497,6 +512,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   /* ----- 语音对话模式操作 ----- */
   setVoiceConversationActive: (active) => set({ voiceConversationActive: active }),
   toggleVoiceConversation: () => set((state) => ({ voiceConversationActive: !state.voiceConversationActive })),
+  setVoiceDialogActive: (active) => set({ voiceDialogActive: active }),
 
   /* ----- 场景工具直达操作 ----- */
   setPendingSceneToolId: (id) => set({ pendingSceneToolId: id }),

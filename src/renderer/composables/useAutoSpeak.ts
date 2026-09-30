@@ -8,9 +8,16 @@ import type { ChatMessage } from '@intelligence/providerTypes';
 interface UseAutoSpeakOptions {
   isStreaming: boolean;
   messages: ChatMessage[];
+  /**
+   * 让位开关：内联语音对话激活时置 true。
+   *
+   * 语音对话自己会分句播报，若此处再整段播一遍，同一句 AI 回复会被念两次。
+   * 让位而不是停用，是为了对话结束后无需重新挂载即可恢复自动播报。
+   */
+  muted?: boolean;
 }
 
-export function useAutoSpeak({ isStreaming, messages }: UseAutoSpeakOptions): void {
+export function useAutoSpeak({ isStreaming, messages, muted = false }: UseAutoSpeakOptions): void {
   const prevStreamingRef = useRef(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const blobUrlRef = useRef<string | null>(null);
@@ -33,6 +40,12 @@ export function useAutoSpeak({ isStreaming, messages }: UseAutoSpeakOptions): vo
   }, []);
 
   useEffect(() => {
+    // 让位期间只同步基线，不发声：否则解除让位那一刻会补念上一轮早已播过的整段
+    if (muted) {
+      prevStreamingRef.current = isStreaming;
+      return;
+    }
+
     if (prevStreamingRef.current && !isStreaming) {
       const autoSpeak = StorageService.get<string>('voice_auto_speak') === 'true';
       if (!autoSpeak) {
@@ -107,5 +120,5 @@ export function useAutoSpeak({ isStreaming, messages }: UseAutoSpeakOptions): vo
     }
 
     prevStreamingRef.current = isStreaming;
-  }, [isStreaming]);
+  }, [isStreaming, muted]);
 }

@@ -27,6 +27,12 @@ import {
   Crop,
   File as FileIcon,
   Puzzle,
+  Volume2,
+  VolumeX,
+  Check,
+  ShieldAlert,
+  Hourglass,
+  AlertTriangle,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -43,10 +49,16 @@ import AgentSelector from './AgentSelector'
 import ExpertSelector from './ExpertSelector'
 import ScreenPermissionGuide from '../ui/ScreenPermissionGuide'
 import { useVoiceInput, appendVoiceText } from '../../composables/useVoiceInput'
+import type { VoiceDialogState } from '../../composables/voice/useVoiceDialog'
 import VoiceVisualizer from '../voice/VoiceVisualizer'
+import { VOICE_STATE_STYLE, voiceStateLabel } from '../voice/voiceDialogTheme'
 import { ContextItem, FileContext } from '@intelligence/providerTypes'
 import { api } from '../../adapters/electronBridge'
 import { getEffectiveLLMConfig } from '@services/modelConfigHelper'
+import { toast } from '@components/foundation/NotificationProvider'
+
+/** 长按麦克风的判定时长（ms）：超过即进入语音对话，未超过按短按听写处理 */
+const VOICE_LONG_PRESS_MS = 420
 
 export interface PendingAttachment {
   id: string
@@ -82,6 +94,28 @@ interface ChatInputProps {
   onOpenSettings?: () => void
   /** 编辑指定智能体 */
   onEditAgent?: (agentId: string) => void
+  /** 语音对话运行时状态（由 ChatPanel 的 useVoiceDialog 提供）：就地呈现在麦克风按钮上 */
+  voiceDialogState?: VoiceDialogState | null
+  voiceDialogStream?: MediaStream | null
+  /** 提示文案（抢话排队、审批等） */
+  voiceDialogNotice?: string | null
+  /** 是否已进入「即将发送」倒数 */
+  voiceDialogPendingSend?: boolean
+  /** 是否在等待语音确认审批 */
+  voiceDialogAwaitingConfirm?: boolean
+  /** 结束语音对话（点击麦克风按钮） */
+  onVoiceDialogEnd?: () => void
+  /** 打断当前播报 / 生成（空格键） */
+  onVoiceDialogInterrupt?: () => void
+  /** 语音对话是否播报 AI 回复（长按麦克风后的面板可切换） */
+  voiceSpeakEnabled?: boolean
+  /** 切换语音播报偏好（持久化由上层负责） */
+  onVoiceSpeakEnabledChange?: (enabled: boolean) => void
+
+  /** 是否跳过「要不要播报」面板：长按直接沿用上次选择进入对话 */
+  voiceSkipPrompt?: boolean
+  /** 记住「下次不再询问」（持久化由上层负责） */
+  onVoiceSkipPromptChange?: (skip: boolean) => void
 }
 
 const ChatInput = memo(function ChatInput({
@@ -107,13 +141,36 @@ const ChatInput = memo(function ChatInput({
   language: propLanguage,
   onOpenSettings,
   onEditAgent,
+  voiceDialogState,
+  voiceDialogStream,
+  voiceDialogNotice,
+  voiceDialogPendingSend,
+  voiceDialogAwaitingConfirm,
+  onVoiceDialogEnd,
+  onVoiceDialogInterrupt,
+  voiceSpeakEnabled,
+  onVoiceSpeakEnabledChange,
+  voiceSkipPrompt,
+  onVoiceSkipPromptChange,
 }: ChatInputProps) {
   const { language: storeLanguage, editorConfig } = useStore(useShallow(s => ({ language: s.language, editorConfig: s.editorConfig })))
+  const { voiceDialogActive, setVoiceDialogActive } = useStore(useShallow(s => ({
+    voiceDialogActive: s.voiceDialogActive,
+    setVoiceDialogActive: s.setVoiceDialogActive,
+  })))
   const language = (propLanguage || storeLanguage) as Language
   const lt = (zh: string, en: string) => language === 'zh' ? zh : en
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isFocused, setIsFocused] = useState(false)
   const [isOptimizing, setIsOptimizing] = useState(false)
+
+  /** 长按麦克风后弹出的语音对话面板：先确认是否播报，再进入对话 */
+  const [voiceMenuOpen, setVoiceMenuOpen] = useState(false)
+
+  /** 「下次不再询问」勾选：只在本次面板内有效，点「开始对话」时才落盘 */
+  const [voiceSkipPromptChecked, setVoiceSkipPromptChecked] = useState(false)
+  /** 面板与麦克风按钮的共同容器：点其中任意处都不算「点了外部」 */
+  const voiceMenuRef = useRef<HTMLDivElement>(null)
   // macOS 屏幕录制权限引导弹窗（截图返回 SCREEN_PERMISSION_DENIED 时打开）
   const [permissionGuideOpen, setPermissionGuideOpen] = useState(false)
 
@@ -149,6 +206,123 @@ const ChatInput = memo(function ChatInput({
     void voiceInput.startRecording()
   }, [input, voiceInput.startRecording])
 
+  // --------------------------------------------
+  // 麦克风按钮：短按听写，长按进入语音对话
+  // 两种方式都独占麦克风，故彼此互斥：听写进行中不接管；语音对话激活时按钮不开听写。
+  // --------------------------------------------
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 本次按下是否已由长按消费：消费后抬起不再触发听写 */
+  const longPressFiredRef = useRef(false)
+
+  const clearLongPressTimer = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }, [])
+
+  // 组件卸载时兜底清掉未触发的计时器
+  useEffect(() => clearLongPressTimer, [clearLongPressTimer])
+
+  /** 面板是否展开的最新值：pointerdown 里读取，免得把回调绑死在某一次渲染的 state 上 */
+  const voiceMenuOpenRef = useRef(false)
+  voiceMenuOpenRef.current = voiceMenuOpen
+
+  /** 跳过询问的最新值：长按定时器里读取，避免绑死在旧渲染上 */
+  const voiceSkipPromptRef = useRef(false)
+  voiceSkipPromptRef.current = voiceSkipPrompt === true
+
+  /** 面板展开期间：点面板外部或按 Esc 收起 */
+  useEffect(() => {
+    if (!voiceMenuOpen) return
+    const handleDocPointerDown = (e: PointerEvent) => {
+      if (voiceMenuRef.current && !voiceMenuRef.current.contains(e.target as Node)) {
+        setVoiceMenuOpen(false)
+      }
+    }
+    const handleEscKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setVoiceMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', handleDocPointerDown)
+    window.addEventListener('keydown', handleEscKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handleDocPointerDown)
+      window.removeEventListener('keydown', handleEscKeyDown)
+    }
+  }, [voiceMenuOpen])
+
+  /** 每次唤出面板都从「未勾选」开始：勾选是主动写进偏好的意图，不该沿用上次 */
+  useEffect(() => {
+    if (voiceMenuOpen) setVoiceSkipPromptChecked(false)
+  }, [voiceMenuOpen])
+
+  const handleMicPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.button !== 0) return
+      if (!hasApiKey || isStreaming) return
+      if (voiceInput.state !== 'idle') return
+      clearLongPressTimer()
+      // 面板已展开：本次按下表示收起，既不开听写也不重新计时
+      if (voiceMenuOpenRef.current) {
+        longPressFiredRef.current = true
+        setVoiceMenuOpen(false)
+        return
+      }
+      longPressFiredRef.current = false
+      // 记住了「下次不再询问」就直接进对话；否则先弹面板问一句是否播报
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null
+        longPressFiredRef.current = true
+        if (voiceSkipPromptRef.current) {
+          setVoiceDialogActive(true)
+          return
+        }
+        setVoiceMenuOpen(true)
+      }, VOICE_LONG_PRESS_MS)
+    },
+    [hasApiKey, isStreaming, voiceInput.state, clearLongPressTimer],
+  )
+
+  const handleMicPointerUp = useCallback(() => {
+    const fired = longPressFiredRef.current
+    longPressFiredRef.current = false
+    clearLongPressTimer()
+    // 长按已进入语音对话：抬起不再开听写
+    if (fired) return
+    handleVoiceStart()
+  }, [clearLongPressTimer, handleVoiceStart])
+
+  const handleMicKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        handleVoiceStart()
+      }
+    },
+    [handleVoiceStart],
+  )
+
+  /** 切换语音播报偏好：只改偏好，不进入对话 */
+  const handleVoiceSpeakToggle = useCallback(() => {
+    onVoiceSpeakEnabledChange?.(voiceSpeakEnabled === false)
+  }, [onVoiceSpeakEnabledChange, voiceSpeakEnabled])
+
+  /** 从面板进入语音对话；勾了「下次不再询问」就把它记下来 */
+  const handleVoiceMenuStart = useCallback(() => {
+    if (voiceSkipPromptChecked) {
+      onVoiceSkipPromptChange?.(true)
+      // 静默记住会让下次「长按不弹面板」看起来像坏了，这里明确交代一次，并给出改回的位置
+      toast.info(
+        language === 'zh'
+          ? '已记住：以后长按麦克风直接进入语音对话。可在「设置 → 语音」里改回'
+          : 'Saved: holding the mic will start voice chat directly. Change it in Settings → Voice',
+        5000,
+      )
+    }
+    setVoiceMenuOpen(false)
+    setVoiceDialogActive(true)
+  }, [voiceSkipPromptChecked, onVoiceSkipPromptChange, setVoiceDialogActive, language])
+
   /**
    * 输入框变更：录音期间用户手动编辑时，把编辑后的内容作为新基线
    * （并剥离已上屏的语音文本），后续实时识别才不会覆盖用户输入。
@@ -168,6 +342,41 @@ const ChatInput = memo(function ChatInput({
     },
     [voiceInput.state, onInputChange],
   )
+
+  // --------------------------------------------
+  // 语音对话：状态就地长在麦克风按钮上
+  // 原先是居中浮层，会遮住会话；改为按钮变色 + 左侧波形 + 上方状态气泡，
+  // 手感与听写一致 —— 单击按钮结束，正在播报/思考时开口说话由 hook 自动打断。
+  // --------------------------------------------
+  const voiceDialogStyle = VOICE_STATE_STYLE[voiceDialogState ?? 'idle']
+  const voiceDialogLabel = voiceStateLabel(voiceDialogState ?? 'idle', language === 'zh')
+  /** 播报 / 思考中才可手动打断 */
+  const voiceDialogCanInterrupt = voiceDialogState === 'speaking' || voiceDialogState === 'processing'
+  /** 波形只在真的收着音时画（聆听、说话、播报），避免空转 */
+  const voiceDialogShowWave =
+    !!voiceDialogStream &&
+    (voiceDialogState === 'listening' || voiceDialogState === 'recording' || voiceDialogState === 'speaking')
+  /** 脉冲环表示「它在听」，与听写录音时的红环同一套语言 */
+  const voiceDialogPulsing = voiceDialogState === 'recording' || voiceDialogState === 'listening'
+  /** 语音对话播报偏好：未收到 props 时默认开启，与改造前行为一致 */
+  const voiceSpeakOn = voiceSpeakEnabled !== false
+
+  // 键位沿用原浮层：空格打断、Esc 结束，用户不必重新记
+  useEffect(() => {
+    if (!voiceDialogActive) return
+    const onVoiceKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && voiceDialogCanInterrupt) {
+        e.preventDefault()
+        onVoiceDialogInterrupt?.()
+      }
+      if (e.code === 'Escape') {
+        e.preventDefault()
+        onVoiceDialogEnd?.()
+      }
+    }
+    window.addEventListener('keydown', onVoiceKeyDown)
+    return () => window.removeEventListener('keydown', onVoiceKeyDown)
+  }, [voiceDialogActive, voiceDialogCanInterrupt, onVoiceDialogInterrupt, onVoiceDialogEnd])
 
   // Auto-resize
   useLayoutEffect(() => {
@@ -635,7 +844,93 @@ const ChatInput = memo(function ChatInput({
                 </>
               )}
 
-              {isStreaming ? (
+              {voiceDialogActive ? (
+                /* 语音对话中：状态全部收在按钮上 —— 左侧波形、上方状态气泡、按钮随状态变色脉冲。
+                   单击结束；正在播报/思考时开口说话由 hook 自动打断（空格键同样可打断）。 */
+                <div className="relative flex items-center gap-2">
+                  {voiceDialogShowWave && voiceDialogStream && (
+                    <div className="w-20 h-8 flex items-center">
+                      <VoiceVisualizer
+                        stream={voiceDialogStream}
+                        isActive
+                        color={voiceDialogStyle.wave}
+                        height={32}
+                        barCount={16}
+                        barGap={1}
+                      />
+                    </div>
+                  )}
+
+                  {/* 状态气泡：锚在按钮正上方，只交代当前处于哪一环，不遮挡会话 */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                    className="absolute right-0 bottom-full mb-3 z-30 pointer-events-none"
+                  >
+                    <div className="flex flex-col items-end gap-1 px-3 py-2 rounded-xl bg-surface/95 backdrop-blur-xl border border-border/50 shadow-xl max-w-[240px]">
+                      <div className={`text-xs font-medium whitespace-nowrap ${voiceDialogStyle.text}`}>
+                        {voiceDialogLabel}
+                      </div>
+
+                      {/* 对话中也能随手切换播报：勾过「不再询问」之后，
+                          这里是唯一不用进设置就能改的地方 */}
+                      {onVoiceSpeakEnabledChange && (
+                        <button
+                          type="button"
+                          onClick={() => onVoiceSpeakEnabledChange(voiceSpeakEnabled === false)}
+                          className="pointer-events-auto flex items-center gap-1 text-[11px] text-text-muted hover:text-text-primary transition-colors"
+                          title={lt('切换是否朗读 AI 回复', 'Toggle reply playback')}
+                        >
+                          {voiceSpeakOn
+                            ? <Volume2 className="w-3 h-3" />
+                            : <VolumeX className="w-3 h-3" />}
+                          <span>{voiceSpeakOn ? lt('朗读中', 'Reading') : lt('已静音', 'Muted')}</span>
+                        </button>
+                      )}
+                      {voiceDialogNotice && (
+                        <div className="text-[11px] text-text-muted whitespace-nowrap">{voiceDialogNotice}</div>
+                      )}
+                      {(voiceDialogPendingSend || voiceDialogAwaitingConfirm) && (
+                        <div className="flex items-center gap-1 text-[11px] text-amber-500 whitespace-nowrap">
+                          <Hourglass className="w-3 h-3" />
+                          <span>
+                            {voiceDialogAwaitingConfirm
+                              ? lt('请说「确认」或「取消」', 'Say "confirm" or "cancel"')
+                              : lt('即将发送…', 'Sending…')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+
+                  <button
+                    type="button"
+                    onClick={onVoiceDialogEnd}
+                    className={`relative flex items-center justify-center rounded-full w-9 h-9 text-white transition-all duration-200 focus:outline-none active:scale-95 ${voiceDialogStyle.solid}`}
+                    title={lt('点击结束语音对话（空格打断）', 'Click to end voice chat (Space to interrupt)')}
+                  >
+                    {voiceDialogPulsing && (
+                      <motion.span
+                        className={`absolute inset-0 rounded-full border-2 ${voiceDialogStyle.ring}`}
+                        animate={{ scale: [1, 1.3, 1], opacity: [0.6, 0, 0.6] }}
+                        transition={{ duration: 1.5, repeat: Infinity }}
+                      />
+                    )}
+                    {voiceDialogState === 'connecting' || voiceDialogState === 'processing' ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : voiceDialogState === 'speaking' ? (
+                      <Volume2 className="w-4 h-4" />
+                    ) : voiceDialogState === 'paused' ? (
+                      <ShieldAlert className="w-4 h-4" />
+                    ) : voiceDialogState === 'error' ? (
+                      <AlertTriangle className="w-4 h-4" />
+                    ) : (
+                      <Square className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              ) : isStreaming ? (
                 <button
                   onClick={onAbort}
                   className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 bg-surface/50 text-text-primary border border-text-primary/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20"
@@ -701,19 +996,100 @@ const ChatInput = memo(function ChatInput({
                   <ArrowUp className="w-5 h-5 stroke-[3]" />
                 </button>
               ) : (
-                <button
-                  onClick={handleVoiceStart}
-                  disabled={!hasApiKey}
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
-                    ${hasApiKey
-                      ? 'bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95'
-                      : 'bg-text-primary/5 text-text-muted/75 cursor-not-allowed border border-transparent'
-                    }
-                    `}
-                  title={lt('语音输入', 'Voice input')}
-                >
-                  <Mic className="w-4 h-4" />
-                </button>
+                <div ref={voiceMenuRef} className="relative">
+                  {/* 长按后先问一句「要不要播报」，再进对话；偏好被记住，下次沿用 */}
+                  <AnimatePresence>
+                    {voiceMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                        transition={{ duration: 0.16, ease: 'easeOut' }}
+                        className="absolute bottom-full right-0 mb-2 z-40 w-[236px] rounded-xl bg-surface/95 backdrop-blur-xl border border-border/50 shadow-2xl p-3 origin-bottom-right"
+                      >
+                        <div className="text-[13px] font-semibold text-text-primary">
+                          {lt('语音对话', 'Voice chat')}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleVoiceSpeakToggle}
+                          className="mt-2 w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-surface-active transition-colors text-left"
+                        >
+                          {voiceSpeakOn
+                            ? <Volume2 className="w-4 h-4 text-accent flex-shrink-0" />
+                            : <VolumeX className="w-4 h-4 text-text-muted flex-shrink-0" />}
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-[13px] text-text-primary">
+                              {lt('语音播报', 'Speak replies')}
+                            </span>
+                            <span className="block text-[11px] text-text-muted truncate">
+                              {voiceSpeakOn
+                                ? lt('AI 回复会朗读出来', 'Replies are read aloud')
+                                : lt('只听不说，保持安静', 'Listen only, stay silent')}
+                            </span>
+                          </span>
+                          <span
+                            className={`relative flex-shrink-0 w-8 h-[18px] rounded-full transition-colors duration-200 ${
+                              voiceSpeakOn ? 'bg-accent' : 'bg-border'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-all duration-200 ${
+                                voiceSpeakOn ? 'left-[16px]' : 'left-[2px]'
+                              }`}
+                            />
+                          </span>
+                        </button>
+
+                        {/* 记住这次的选择：以后长按直接进，不再问一遍 */}
+                        <button
+                          type="button"
+                          onClick={() => setVoiceSkipPromptChecked((v) => !v)}
+                          className="mt-1 w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-active transition-colors text-left"
+                        >
+                          <span
+                            className={`flex-shrink-0 w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center transition-colors ${
+                              voiceSkipPromptChecked ? 'bg-accent border-accent' : 'border-border'
+                            }`}
+                          >
+                            {voiceSkipPromptChecked && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                          </span>
+                          <span className="text-[11px] text-text-muted">
+                            {lt('下次不再询问', "Don't ask again")}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleVoiceMenuStart}
+                          className="mt-2 w-full h-8 rounded-lg bg-accent text-white text-[13px] font-medium hover:bg-accent/90 active:scale-[0.98] transition-all"
+                        >
+                          {lt('开始对话', 'Start')}
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <button
+                    type="button"
+                    onPointerDown={handleMicPointerDown}
+                    onPointerUp={handleMicPointerUp}
+                    onPointerLeave={clearLongPressTimer}
+                    onPointerCancel={clearLongPressTimer}
+                    onKeyDown={handleMicKeyDown}
+                    onContextMenu={(e) => e.preventDefault()}
+                    disabled={!hasApiKey}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 select-none touch-none
+                      ${hasApiKey
+                        ? 'bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95'
+                        : 'bg-text-primary/5 text-text-muted/75 cursor-not-allowed border border-transparent'
+                      }
+                      `}
+                    title={lt('点击听写，长按语音对话', 'Tap to dictate, hold for voice chat')}
+                  >
+                    <Mic className="w-4 h-4" />
+                  </button>
+                </div>
               )}
             </div>
           </div>

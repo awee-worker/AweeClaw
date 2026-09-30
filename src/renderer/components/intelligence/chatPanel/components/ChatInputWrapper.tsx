@@ -5,6 +5,7 @@
 import { memo } from 'react'
 import { ChatInput, type PendingAttachment } from '../../../conversation'
 import type { ContextItem } from '@intelligence/providerTypes'
+import type { VoiceDialogState } from '@hooks/voice/useVoiceDialog'
 
 interface ChatInputWrapperProps {
   input: string
@@ -30,6 +31,22 @@ interface ChatInputWrapperProps {
   onOpenSettings?: () => void
   /** 编辑指定智能体 */
   onEditAgent?: (agentId: string) => void
+  /** 语音对话运行时状态：输入框据此在麦克风按钮上就地呈现，不再另起浮层 */
+  voiceDialogState?: VoiceDialogState | null
+  voiceDialogStream?: MediaStream | null
+  voiceDialogNotice?: string | null
+  voiceDialogPendingSend?: boolean
+  voiceDialogAwaitingConfirm?: boolean
+  onVoiceDialogEnd?: () => void
+  onVoiceDialogInterrupt?: () => void
+  /** 语音对话是否播报 AI 回复（长按麦克风后的面板可切换） */
+  voiceSpeakEnabled?: boolean
+  /** 切换语音播报偏好（持久化由上层负责） */
+  onVoiceSpeakEnabledChange?: (enabled: boolean) => void
+  /** 是否跳过「要不要播报」面板：长按直接沿用上次选择进入对话 */
+  voiceSkipPrompt?: boolean
+  /** 记住「下次不再询问」（持久化由上层负责） */
+  onVoiceSkipPromptChange?: (skip: boolean) => void
 }
 
 function ChatInputWrapperBase({
@@ -55,6 +72,17 @@ function ChatInputWrapperBase({
   language,
   onOpenSettings,
   onEditAgent,
+  voiceDialogState,
+  voiceDialogStream,
+  voiceDialogNotice,
+  voiceDialogPendingSend,
+  voiceDialogAwaitingConfirm,
+  onVoiceDialogEnd,
+  onVoiceDialogInterrupt,
+  voiceSpeakEnabled,
+  onVoiceSpeakEnabledChange,
+  voiceSkipPrompt,
+  onVoiceSkipPromptChange,
 }: ChatInputWrapperProps) {
   return (
     <ChatInput
@@ -80,6 +108,17 @@ function ChatInputWrapperBase({
       language={language}
       onOpenSettings={onOpenSettings}
       onEditAgent={onEditAgent}
+      voiceDialogState={voiceDialogState}
+      voiceDialogStream={voiceDialogStream}
+      voiceDialogNotice={voiceDialogNotice}
+      voiceDialogPendingSend={voiceDialogPendingSend}
+      voiceDialogAwaitingConfirm={voiceDialogAwaitingConfirm}
+      onVoiceDialogEnd={onVoiceDialogEnd}
+      onVoiceDialogInterrupt={onVoiceDialogInterrupt}
+      voiceSpeakEnabled={voiceSpeakEnabled}
+      onVoiceSpeakEnabledChange={onVoiceSpeakEnabledChange}
+      voiceSkipPrompt={voiceSkipPrompt}
+      onVoiceSkipPromptChange={onVoiceSkipPromptChange}
     />
   )
 }
