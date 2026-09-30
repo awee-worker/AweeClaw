@@ -715,7 +715,9 @@ const ChatInput = memo(function ChatInput({
                       return `@${skillItem.displayName || skillItem.name || skillItem.skillId || 'skill'}`
                     }
                     case 'Plugin': {
-                      return `@${(item as import('@intelligence/providerTypes').PluginContext).name || 'plugin'}`
+                      // 优先展示插件中文名，便于中文界面识别
+                      const pluginItem = item as import('@intelligence/providerTypes').PluginContext
+                      return `@${pluginItem.displayName || pluginItem.name || 'plugin'}`
                     }
                     default: return 'Context'
                   }

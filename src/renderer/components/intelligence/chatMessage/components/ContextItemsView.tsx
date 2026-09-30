@@ -58,7 +58,7 @@ function getContextLabel(item: ContextItemTag): string {
     case 'Skill':
       return `@${item.displayName || item.name || item.skillId || 'skill'}`
     case 'Plugin':
-      return `@${item.name || item.pluginId || 'plugin'}`
+      return `@${item.displayName || item.name || item.pluginId || 'plugin'}`
     default:
       return 'Context'
   }

@@ -80,6 +80,8 @@ export interface PluginContext {
   /** 插件唯一标识（pluginKey，如 3d-webpage-gen） */
   pluginId: string
   name: string
+  /** 界面展示名：中文界面下优先显示插件中文名，缺省回退到 name */
+  displayName?: string
   description?: string
   /** 插件连接对应的 MCP server id（如 plugin:3d-webpage-gen） */
   mcpServerId?: string

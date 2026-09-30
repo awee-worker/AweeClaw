@@ -93,7 +93,8 @@ export function useMentionController({
 
       switch (candidate.type) {
         case 'skill':
-          replacement = `@${candidate.data.skillId} `
+          // 技能以 ContextItem 随消息下发，输入框不再回填 @英文技能名，保持正文干净
+          replacement = ''
           contextItem = {
             type: 'Skill',
             skillId: candidate.data.skillId,
@@ -102,11 +103,13 @@ export function useMentionController({
           }
           break
         case 'plugin':
-          replacement = `@${candidate.data.name} `
+          // 插件同样通过 ContextItem 下发，输入框不保留 @插件名
+          replacement = ''
           contextItem = {
             type: 'Plugin',
             pluginId: candidate.data.pluginKey,
             name: candidate.data.name,
+            displayName: candidate.labelZh ? candidate.labelZh.replace(/^@/, '') : undefined,
             description: candidate.description,
             mcpServerId: candidate.data.mcpServerId,
           }
