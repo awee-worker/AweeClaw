@@ -37,8 +37,17 @@ const RELOAD_EXTENSIONS = new Set([
     '.astro',
 ])
 
-/** 不参与自动刷新的目录名：依赖与版本库，变动频繁且与预览内容无关 */
-const IGNORED_DIRS = new Set(['node_modules', '.git'])
+/**
+ * 不参与自动刷新的目录名（事件过滤的第一道闸）
+ *
+ * - node_modules：依赖树，启动监听与运行期的事件量都最大
+ * - .git / .aweeclaw / .history：版本库与应用自身的记录目录，后者会被应用
+ *   自己反复写入（工作区状态、文件快照），当成页面内容就会把标签页一直拉起来
+ *
+ * 点开头的目录在 shouldReload 里还会被统一拦一次，这里点名列出是为了在最外层
+ * 就快速跳过，并让下面交给 watcher 的忽略 glob 有据可依。
+ */
+const IGNORED_DIRS = new Set(['node_modules', '.git', '.aweeclaw', '.history'])
 
 /**
  * 订阅时必须交给 watcher 的忽略规则
@@ -48,7 +57,7 @@ const IGNORED_DIRS = new Set(['node_modules', '.git'])
  * 预览目录落在工作区之上时启动监听就要遍历整棵依赖树。
  * 刻意不忽略 dist / build：预览构建产物时正需要跟踪它们的变化。
  */
-const IGNORED_GLOBS = ['**/node_modules/**', '**/.git/**']
+const IGNORED_GLOBS = ['**/node_modules/**', '**/.git/**', '**/.aweeclaw/**', '**/.history/**']
 
 /** 合并节拍：一次构建会连续产生大量文件事件 */
 const FLUSH_INTERVAL_MS = 180
@@ -75,10 +84,28 @@ function targetKey(ownerId: number, url: string): string {
     return `${ownerId}::${url}`
 }
 
-/** 该文件路径是否值得触发重载 */
-function shouldReload(filePath: string): boolean {
+/**
+ * 该文件路径是否值得触发重载
+ *
+ * 点开头的路径段一律不算页面内容：那里放的是应用自身的记录（.aweeclaw / .history /
+ * .git / .DS_Store 等），而预览静态服务本身也拒绝服务这些路径，页面根本引用不到。
+ * 只按「相对预览根目录」判断，免得工作区祖先目录名里的点被误伤。
+ */
+export function shouldReload(rootDir: string, filePath: string): boolean {
     const segments = filePath.split(/[\\/]/)
     if (segments.some((segment) => IGNORED_DIRS.has(segment))) return false
+
+    const relativeSegments = path.isAbsolute(filePath)
+        ? path.relative(rootDir, filePath).split(/[\\/]/)
+        : segments
+    if (
+        relativeSegments.some(
+            (segment) => segment.startsWith('.') && segment !== '.' && segment !== '..',
+        )
+    ) {
+        return false
+    }
+
     return RELOAD_EXTENSIONS.has(path.extname(filePath).toLowerCase())
 }
 
@@ -220,7 +247,7 @@ class PreviewAutoReload {
 
     /** 收集值得重载的事件并安排节拍推送 */
     private handleEvents(root: WatchedRoot, events: watcher.Event[]): void {
-        const worthReloading = events.some((event) => shouldReload(event.path))
+        const worthReloading = events.some((event) => shouldReload(root.dir, event.path))
         if (!worthReloading) return
 
         root.targets.forEach((_target, key) => root.pending.add(key))

@@ -255,7 +255,9 @@ export class PreviewSessionService {
       return
     }
 
-    if (session.url !== url) {
+    const urlChanged = session.url !== url
+
+    if (urlChanged) {
       this.sessionByUrl.delete(session.url)
       this.sessionByUrl.set(url, session.id)
     }
@@ -269,6 +271,17 @@ export class PreviewSessionService {
     this.sessions.set(sessionId, nextSession)
     this.rebuildState()
     this.emit()
+
+    // 地址没变就不回写持久化元数据
+    //
+    // 页面自身重载、以及 webview 重挂载后的 did-navigate 回执都会走到这里，此时地址
+    // 与当前会话完全一致，写元数据只会把 openFiles 换成新的对象（lastAccessed 变了），
+    // 触发工作区状态落盘。而落盘文件一旦位于预览根目录内（预览工作区根目录时就是这种
+    // 情况），自动刷新监听会把它当成「页面文件变了」再拉一次页面，于是形成
+    // 重载 → 落盘 → 重载 的自持回环，会话结束后也停不下来。
+    if (!urlChanged) {
+      return
+    }
 
     const previewPath = buildPreviewDocumentPath(sessionId)
     useStore.getState().updatePreviewMetadata(previewPath, { url })

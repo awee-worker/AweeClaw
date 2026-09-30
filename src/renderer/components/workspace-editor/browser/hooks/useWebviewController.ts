@@ -318,10 +318,12 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
       }
 
       // 取消目录监听：标签页关掉后不必再为它做自动刷新
-      const previewRoot = sessionRef.current?.previewRoot
-      const currentUrl = sessionRef.current?.url
-      if (previewRoot && currentUrl) {
-        void api.preview.unwatchAutoReload(previewRoot, currentUrl)
+      //
+      // 必须用挂载时登记的那一组值：会话在生命周期内可能已经导航到别的地址，
+      // 此时再读 sessionRef.current 拿到的是新地址，按新地址退订只会删掉一个
+      // 不存在的键，登记还在原地留着，之后每次文件变动都还会往这个标签页推刷新。
+      if (autoReloadRoot && autoReloadUrl) {
+        void api.preview.unwatchAutoReload(autoReloadRoot, autoReloadUrl)
       }
     }
   })
