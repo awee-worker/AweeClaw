@@ -792,7 +792,8 @@ const ChatInput = memo(function ChatInput({
                   e.target.value = ''
                 }}
               />
-              {voiceInput.state === 'idle' && (
+              {/* 语音听写 / 语音对话进行中：隐藏附件、截图、AI 优化，腾出空间给录音可视化 */}
+              {voiceInput.state === 'idle' && !voiceDialogActive && (
                 <>
                   <ActionButton
                     variant="ghost"
