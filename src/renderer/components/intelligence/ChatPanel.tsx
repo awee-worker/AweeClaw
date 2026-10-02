@@ -189,6 +189,36 @@ export default function ChatPanel() {
     [pendingApprovalToolCalls],
   )
 
+  /**
+   * 已过期的「继续任务」卡片消息 id 集合
+   *
+   * 卡片是 AI 收尾时给的一次性续做入口。用户既没点「继续执行」也没点「暂不执行」，
+   * 而是直接继续对话时，这张卡片已被新的会话内容取代：不处理的话，它会在时间线上
+   * 一直保持可点，AI 每再发一张就多堆一张，点任意一张都会重复派发续做内容。
+   * 因此：卡片所在消息之后一旦出现新的用户消息，即视为过期，收成静态记录。
+   *
+   * 结果用字符串签名承载 id 列表：字符串按值比较，消息内容逐帧变化而角色序列不变时
+   * 签名保持相等，下游 useMemo 即可复用同一个 Set，避免整条消息列表随之重渲染。
+   */
+  const continuationObsoleteSignature = useMemo(() => {
+    const ids: string[] = []
+    let seenUserAfter = false
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (isUserMessage(m)) {
+        seenUserAfter = true
+      } else if (seenUserAfter && isAssistantMessage(m)) {
+        ids.push(m.id)
+      }
+    }
+    return ids.join('\n')
+  }, [messages])
+
+  const obsoleteContinuationIds = useMemo(
+    () => new Set(continuationObsoleteSignature ? continuationObsoleteSignature.split('\n') : []),
+    [continuationObsoleteSignature],
+  )
+
   // AI 回复完成（isStreaming 从 true→false）统一处理：
   // 1. 有待接受文件变更时播放提示音
   // 2. 云端模式下刷新配额
@@ -980,6 +1010,7 @@ export default function ChatPanel() {
               selectionMode={deleteSelectionMode}
               isSelected={selectedMessageIds.has(msg.id)}
               onToggleSelect={handleToggleSelectMessage}
+              interactiveObsolete={obsoleteContinuationIds.has(msg.id)}
             />
           </div>
         </CommitProbe>
@@ -997,8 +1028,10 @@ export default function ChatPanel() {
       pendingToolCall?.id,
       pendingToolIds,
       selectedMessageIds,
+      obsoleteContinuationIds,
     ],
   )
+
 
   /**
    * itemContent 的稳定引用。

@@ -34,6 +34,8 @@ interface ChatMessageProps {
   selectionMode?: boolean
   isSelected?: boolean
   onToggleSelect?: (messageId: string) => void
+  /** 继续任务卡片专用：该消息之后已出现新的用户消息，卡片过期 */
+  interactiveObsolete?: boolean
 }
 
 function ChatMessageBase({
@@ -52,6 +54,7 @@ function ChatMessageBase({
   selectionMode,
   isSelected,
   onToggleSelect,
+  interactiveObsolete,
 }: ChatMessageProps) {
   const { editorConfig } = useStore(useShallow(s => ({
     editorConfig: s.editorConfig,
@@ -114,6 +117,7 @@ function ChatMessageBase({
                   onDeleteRound={onDeleteRound}
                   textContent={textContent}
                   fontSize={fontSize}
+                  interactiveObsolete={interactiveObsolete}
                 />
               </div>
             )}
@@ -155,6 +159,7 @@ function ChatMessageBase({
             onDeleteRound={onDeleteRound}
             textContent={textContent}
             fontSize={fontSize}
+            interactiveObsolete={interactiveObsolete}
           />
         )}
       </div>

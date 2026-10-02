@@ -90,18 +90,26 @@ function ContinuationBarBase() {
                   {t('continue.bar.pending', language, { count: pendingItems.length })}
                 </span>
               </div>
-              <p className="mt-0.5 text-xs text-text-secondary truncate" title={pendingItems[0]}>
+              <p className="mt-0.5 text-xs text-text-secondary line-clamp-2 break-words" title={pendingItems[0]}>
                 {pendingItems[0]}
               </p>
             </div>
 
-            <button
-              onClick={handleContinue}
-              className="shrink-0 flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-accent/12 hover:bg-accent/20 text-accent text-xs font-medium transition-colors"
-            >
-              <Play className="w-3.5 h-3.5" />
-              {t('continue.bar.continue', language)}
-            </button>
+            <div className="shrink-0 flex items-center gap-1.5">
+              <button
+                onClick={() => setDismissed(true)}
+                className="h-7 px-2.5 rounded-lg text-text-muted hover:bg-text-primary/[0.04] text-xs transition-colors"
+              >
+                {t('continue.bar.skip', language)}
+              </button>
+              <button
+                onClick={handleContinue}
+                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-accent/12 hover:bg-accent/20 text-accent text-xs font-medium transition-colors"
+              >
+                <Play className="w-3.5 h-3.5" />
+                {t('continue.bar.continue', language)}
+              </button>
+            </div>
           </div>
         </motion.div>
       )}

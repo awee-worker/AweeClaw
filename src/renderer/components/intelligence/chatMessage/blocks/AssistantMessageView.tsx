@@ -48,6 +48,8 @@ interface AssistantMessageViewProps {
   onDeleteRound?: (messageId: string) => void
   textContent: string
   fontSize: number
+  /** 继续任务卡片专用：该消息之后已出现新的用户消息，卡片过期 */
+  interactiveObsolete?: boolean
 }
 
 /** 文件变更弹层内容（基于历史记录，支持单个接受/拒绝，接受/拒绝后显示状态） */
@@ -157,6 +159,7 @@ function AssistantMessageViewBase({
   onDeleteRound,
   textContent,
   fontSize,
+  interactiveObsolete,
 }: AssistantMessageViewProps) {
   const [copied, setCopied] = React.useState(false)
   const { language } = useStore(useShallow(s => ({ language: s.language })))
@@ -455,6 +458,7 @@ function AssistantMessageViewBase({
                 window.dispatchEvent(new CustomEvent('chat-send-message', { detail: { content: response, messageId: message.id } }))
               }}
               disabled={!!assistantInteractive.selectedIds?.length}
+              obsolete={interactiveObsolete}
             />
           </div>
         )}

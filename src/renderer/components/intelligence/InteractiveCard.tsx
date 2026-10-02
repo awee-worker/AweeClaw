@@ -6,7 +6,7 @@
  *  - 子组件拆分：头部、选项行、自定义输入、提交栏各自独立
  */
 import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react'
-import { Check, ChevronDown, CheckCircle2, ArrowRight, Send, ListChecks, Play } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, CheckCircle2, ArrowRight, Send, ListChecks, Play } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { InteractiveContent } from '@intelligence/providerTypes'
 import { useStore } from '@store'
@@ -17,6 +17,8 @@ interface InteractiveCardProps {
   content: InteractiveContent
   onSelect: (selectedIds: string[], customText?: string) => void
   disabled?: boolean
+  /** 继续任务卡片专用：卡片之后已出现新的用户消息，该入口已过期 */
+  obsolete?: boolean
 }
 
 /** 选项基础结构 */
@@ -389,11 +391,13 @@ function ExpandPanel({ expanded, children }: { expanded: boolean; children: Reac
   )
 }
 
-export function InteractiveCard({ content, onSelect, disabled }: InteractiveCardProps) {
+export function InteractiveCard({ content, onSelect, disabled, obsolete }: InteractiveCardProps) {
   // 继续任务卡片与普通选项卡片的交互与视觉完全不同（清单 + 一键续做），
   // 这里只做分发，避免把两套状态机挤在同一个组件里。
   if (content.kind === 'continue_task') {
-    return <ContinueTaskCard content={content} onSelect={onSelect} disabled={disabled} />
+    return (
+      <ContinueTaskCard content={content} onSelect={onSelect} disabled={disabled} obsolete={obsolete} />
+    )
   }
   return <OptionCard content={content} onSelect={onSelect} disabled={disabled} />
 }
@@ -488,16 +492,23 @@ function OptionCard({ content, onSelect, disabled }: InteractiveCardProps) {
 }
 
 /**
+ * 继续任务卡片的清单超过该条数时先折叠，展开后容器内滚动。
+ * 未完成任务动辄十几条，全部铺开会把上方的会话内容挤出视野。
+ */
+const CONTINUATION_PREVIEW_COUNT = 3
+
+/**
  * 继续任务卡片
  *
  * 与普通选项卡片不同：它不是「让用户在若干选项中挑一个」，而是把 AI 这一轮
  * 没做完的事项列清楚，给用户一个一键续做的入口——省去手动复制清单再发给 AI。
  * 来源：AI 主动调用 offer_continuation，或系统在存在未完成待办时确定性渲染。
  */
-function ContinueTaskCard({ content, onSelect, disabled }: InteractiveCardProps) {
+function ContinueTaskCard({ content, onSelect, disabled, obsolete }: InteractiveCardProps) {
   const language = useStore((s) => s.language)
   const remaining = content.continuation?.remaining ?? []
   const [picked, setPicked] = useState<'continue' | 'skip' | null>(null)
+  const [expanded, setExpanded] = useState(false)
 
   // 首次出现播放提示音（与选项卡片一致）
   useEffect(() => {
@@ -521,6 +532,33 @@ function ContinueTaskCard({ content, onSelect, disabled }: InteractiveCardProps)
     onSelect([id])
   }
 
+  // 用户既没点「继续执行」也没点「暂不执行」，而是直接继续对话：这张卡片已被新的
+  // 会话内容取代。收成一条不可点的静态记录，既避免陈旧入口在时间线上堆积，也避免
+  // 误点旧卡片重复派发续做内容。已点击过的卡片不在此列 —— 那是用户的有效选择。
+  if (obsolete && settled === null) {
+    return (
+      <div className="my-0.5 rounded-xl border border-border/40 bg-text-primary/[0.02] overflow-hidden">
+        <div className="flex items-center gap-2.5 px-3 py-2">
+          <ListChecks className="w-4 h-4 shrink-0 text-text-muted/70" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-medium text-text-muted">
+              {t('continue.card.pending', language, { count: remaining.length })}
+            </div>
+            <p className="mt-0.5 text-xs text-text-muted/70">
+              {t('continue.card.obsolete', language)}
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // 清单过长：先只显示前几条，其余折叠；展开时容器内滚动，卡片高度仍可控
+  const collapsible = remaining.length > CONTINUATION_PREVIEW_COUNT
+  const hiddenCount = remaining.length - CONTINUATION_PREVIEW_COUNT
+  const visibleItems =
+    collapsible && !expanded ? remaining.slice(0, CONTINUATION_PREVIEW_COUNT) : remaining
+
   return (
     <div className="my-0.5 rounded-xl border border-accent/25 bg-accent/[0.05] overflow-hidden">
       <div className="flex items-start gap-2.5 px-3 py-2.5">
@@ -531,19 +569,43 @@ function ContinueTaskCard({ content, onSelect, disabled }: InteractiveCardProps)
             {t('continue.card.pending', language, { count: remaining.length })}
           </div>
           {content.continuation?.summary && (
-            <p className="mt-0.5 text-xs text-text-secondary break-words">
+            <p
+              className={`mt-0.5 text-xs text-text-secondary break-words ${expanded ? '' : 'line-clamp-3'}`}
+              title={content.continuation.summary}
+            >
               {content.continuation.summary}
             </p>
           )}
           {remaining.length > 0 && (
-            <ol className="mt-1.5 space-y-0.5">
-              {remaining.map((item, index) => (
+            <ol
+              className={`mt-1.5 space-y-0.5 ${collapsible && expanded ? 'max-h-48 overflow-y-auto pr-1' : ''}`}
+            >
+              {visibleItems.map((item, index) => (
                 <li key={`${index}-${item}`} className="flex gap-1.5 text-xs text-text-secondary">
                   <span className="shrink-0 text-text-muted tabular-nums">{index + 1}.</span>
                   <span className="min-w-0 break-words">{item}</span>
                 </li>
               ))}
             </ol>
+          )}
+          {collapsible && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="mt-1.5 flex items-center gap-1 text-[11px] text-accent/90 hover:text-accent transition-colors"
+            >
+              {expanded ? (
+                <>
+                  <ChevronUp className="w-3 h-3" />
+                  {t('continue.card.collapse', language)}
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-3 h-3" />
+                  {t('continue.card.expand', language, { count: hiddenCount })}
+                </>
+              )}
+            </button>
           )}
         </div>
       </div>
@@ -559,6 +621,13 @@ function ContinueTaskCard({ content, onSelect, disabled }: InteractiveCardProps)
         ) : (
           <>
             <button
+              onClick={() => pick('skip')}
+              disabled={disabled}
+              className="h-7 px-2.5 rounded-lg text-text-muted hover:bg-text-primary/[0.04] text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {t('continue.card.skip', language)}
+            </button>
+            <button
               onClick={() => pick('continue')}
               disabled={disabled}
               className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-accent/12 hover:bg-accent/20 text-accent text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -566,16 +635,10 @@ function ContinueTaskCard({ content, onSelect, disabled }: InteractiveCardProps)
               <Play className="w-3.5 h-3.5" />
               {t('continue.card.continue', language)}
             </button>
-            <button
-              onClick={() => pick('skip')}
-              disabled={disabled}
-              className="h-7 px-2.5 rounded-lg text-text-muted hover:bg-text-primary/[0.04] text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {t('continue.card.skip', language)}
-            </button>
           </>
         )}
       </div>
     </div>
   )
 }
+
