@@ -81,6 +81,8 @@ export function useAllThreads(): ChatThread[] {
     cachedThreadsRef = state.threads
     cachedUserId = currentUserId
     cachedSortedThreads = Object.values(state.threads)
+      // 计划任务工作线程不对用户展示：它们只是执行载体，不是用户会话
+      .filter((thread) => thread.origin !== 'plan-task')
       .filter((thread) => (currentUserId ? thread.userId === currentUserId : !thread.userId))
       .sort((a, b) => b.lastModified - a.lastModified)
     return cachedSortedThreads

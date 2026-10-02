@@ -210,11 +210,23 @@ export interface ExecutionSession {
      */
     graphScheduler?: import('../graph/GraphScheduler').GraphScheduler
     /**
-     * 当前等待人工审批的节点 id（human 节点 HITL 专用）
+     * 当前等待人工审批的节点 id
      * - status === 'awaiting_approval' 时必有值
      * - resumeHumanNode(approved) 时据此节点恢复执行
+     *
+     * 两类等待共用该字段，靠节点自身区分语义：
+     * - nodeType === 'human'：节点本身即审批关卡，通过后直接标记完成
+     * - 其余（requireApproval=true 的 task/tool/llm 节点）：节点有真实执行内容，
+     *   放行后需回到 pending 重新执行，因此配合 approvedGateIds 记录已放行节点
      */
     awaitingNodeId?: string
+    /**
+     * 已人工放行的门禁节点 id 集合
+     *
+     * 仅存在于内存：崩溃恢复后丢失，意味着等待过审批的节点会被重新问一次，
+     * 这是偏安全的一侧（宁可多问，不可静默放行）。
+     */
+    approvedGateIds?: Set<string>
 }
 
 // ============================================

@@ -21,6 +21,7 @@ import type {
     SourcesPart,
     InteractiveContent,
     FormContent,
+    TaskPlanPart,
 } from '@intelligence/providerTypes'
 import type { LLMStreamSource } from '@shared/protocols/modelGateway'
 import { createIdleHandoffState, getMessageText } from '@intelligence/providerTypes'
@@ -94,6 +95,8 @@ export interface MessageActions {
     // 交互式内容操作
     setInteractive: (messageId: string, interactive: InteractiveContent, targetThreadId?: string) => void
     addFormPart: (messageId: string, form: FormContent, targetThreadId?: string) => void
+    /** 在会话流中内嵌任务规划卡（替代打开编辑器标签页） */
+    addTaskPlanPart: (messageId: string, planId: string, targetThreadId?: string) => void
 
     // 多智能体工作流操作
     addMultiAgentWorkflowPart: (messageId: string, part: import('../../types/conversationModel').MultiAgentWorkflowPart, targetThreadId?: string) => void
@@ -1395,6 +1398,43 @@ export const createMessageSlice: StateCreator<
                         type: 'form',
                         form,
                     }
+                    return { ...assistantMsg, parts: [...assistantMsg.parts, newPart], isStreaming: false }
+                }
+                return msg
+            })
+
+            return {
+                threadMessageVersions: bumpThreadMessageVersion(state.threadMessageVersions, threadId),
+                threads: {
+                    ...state.threads,
+                    [threadId]: {
+                        ...thread,
+                        messages,
+                        streamState: { ...thread.streamState, phase: 'idle' },
+                        lastModified: Date.now(),
+                    },
+                },
+            }
+        })
+    },
+
+    addTaskPlanPart: (messageId, planId, targetThreadId) => {
+        const threadId = targetThreadId || get().currentThreadId
+        if (!threadId) return
+
+        set(state => {
+            const thread = state.threads[threadId]
+            if (!thread) return state
+
+            const messages = thread.messages.map(msg => {
+                if (msg.id === messageId && msg.role === 'assistant') {
+                    const assistantMsg = msg as AssistantMessage
+                    // 幂等：同一 planId 已内嵌时不再重复追加
+                    const exists = assistantMsg.parts.some(
+                        p => p.type === 'task_plan' && (p as TaskPlanPart).planId === planId
+                    )
+                    if (exists) return { ...assistantMsg, isStreaming: false }
+                    const newPart: AssistantPart = { type: 'task_plan', planId }
                     return { ...assistantMsg, parts: [...assistantMsg.parts, newPart], isStreaming: false }
                 }
                 return msg

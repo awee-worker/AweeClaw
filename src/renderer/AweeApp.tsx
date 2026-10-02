@@ -39,6 +39,7 @@ const BillingCenterPage = lazy(() => import('@components/user/BillingCenterPage'
 const SessionHistoryPage = lazy(() => import('@components/user/SessionHistoryPage'))
 const PluginCenterPage = lazy(() => import('@components/plugin/PluginCenterPage'))
 const ScenarioManagerView = lazy(() => import('@components/scenario/ScenarioManagerView').then(m => ({ default: m.ScenarioManagerView })))
+const PlanPanelDrawer = lazy(() => import('./components/plan/PlanPanelDrawer').then(m => ({ default: m.PlanPanelDrawer })))
 
 initializeScenarios()
 registerBuiltinScenarios()
@@ -351,6 +352,12 @@ function AppContent() {
           )
         )}
       </div>
+
+      {/* 计划任务面板（右侧抽屉）：固定宽度覆盖层，挂应用根层，不受会话面板宽度影响 */}
+      <Suspense fallback={null}>
+        <PlanPanelDrawer />
+      </Suspense>
+
 
       <GlobalOverlays
         showKeyboardShortcuts={showKeyboardShortcuts}

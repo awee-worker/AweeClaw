@@ -130,11 +130,25 @@ export type AssistantPart =
   | ContextSnapshotPart
   | SourcesPart
   | FormPart
+  | TaskPlanPart
   | MultiAgentWorkflowPart
 
 export interface FormPart {
   type: 'form'
   form: FormContent
+}
+
+/**
+ * 任务规划部分
+ *
+ * 把任务规划看板内嵌到会话流中渲染，取代原先「把规划 JSON 作为编辑器标签页打开」
+ * 的做法：编辑器标签页会被后续的文件预览顶掉，导致执行控制找不到入口。
+ * 只记录 planId，卡片运行时从 store 读取该规划的最新状态。
+ */
+export interface TaskPlanPart {
+  type: 'task_plan'
+  /** 关联的规划 ID */
+  planId: string
 }
 
 /** Token 使用统计 */
@@ -322,6 +336,10 @@ export function isSourcesPart(part: AssistantPart): part is SourcesPart {
 
 export function isFormPart(part: AssistantPart): part is FormPart {
   return part.type === 'form'
+}
+
+export function isTaskPlanPart(part: AssistantPart): part is TaskPlanPart {
+  return part.type === 'task_plan'
 }
 
 export function isMultiAgentWorkflowPart(part: AssistantPart): part is MultiAgentWorkflowPart {

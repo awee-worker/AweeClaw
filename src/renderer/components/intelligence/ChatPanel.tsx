@@ -70,10 +70,12 @@ import { PredictionBubble } from './chatPanel/components/PredictionBubble'
 import PendingChangesBar from './PendingChangesBar'
 import PendingApprovalBar from './PendingApprovalBar'
 import { MountedTaskBar } from './MountedTaskBar'
+import { PlanStatusBar } from '../plan/PlanStatusBar'
 import { MountedTaskPromptCard } from './chatPanel/components/MountedTaskPromptCard'
 import { HumanApprovalCard } from './HumanApprovalCard'
 import { settleMountedTaskResume } from '@intelligence/runtime/mountedTaskService'
 import { playPendingReviewSound } from '@renderer/utils/sound'
+import { toast } from '@components/foundation/NotificationProvider'
 import { ProactiveSuggestionsContainer } from './proactive/ProactiveSuggestionsContainer'
 import { useProactiveInvoker } from './proactive/useProactiveInvoker'
 import { useAutomationCronExecutor } from './proactive/useAutomationCronExecutor'
@@ -490,6 +492,32 @@ export default function ChatPanel() {
   const messageOpsRef = useRef(messageOps)
   messageOpsRef.current = messageOps
 
+  /**
+   * 提交前轻提示：有计划在后台执行时，提醒用户本条消息只发给当前对话。
+   *
+   * 计划任务跑在独立线程里，用户在普通对话里打字不会插进正在执行的任务；
+   * 但「正在跑的计划」和「眼前这个对话」在视觉上离得很近，容易被误解为发出去
+   * 就会影响计划。这里用一次性轻提示把边界说清楚，并做时间节流，避免每次发消息都弹。
+   */
+  const lastPlanHintAtRef = useRef(0)
+  const handleSubmitWithPlanHint = useCallback(() => {
+    const running = useAgentStore
+      .getState()
+      .plans.filter((p) => p.status === 'executing' || p.status === 'pausing' || p.status === 'stopping')
+    const now = Date.now()
+    if (running.length > 0 && now - lastPlanHintAtRef.current > 30000) {
+      lastPlanHintAtRef.current = now
+      const names = running.map((p) => p.name).join('、')
+      toast.info(
+        language === 'zh' ? `计划「${names}」仍在后台执行` : `Plan "${names}" is still running in the background`,
+        language === 'zh'
+          ? '本条消息只发给当前对话，不会插入正在执行的任务'
+          : 'This message goes to the current chat only — it will not interrupt the running plan',
+      )
+    }
+    messageOps.handleSubmit(input, isStreaming)
+  }, [input, isStreaming, messageOps, language])
+
 
   useFileEventBridge({
     workspacePath,
@@ -633,7 +661,7 @@ export default function ChatPanel() {
     showFileMention: mentionController.showFileMention,
     setShowFileMention: mentionController.closeMention,
     setMentionQuery: mentionController.closeMention,
-    onSubmit: () => messageOps.handleSubmit(input, isStreaming),
+    onSubmit: handleSubmitWithPlanHint,
   })
 
   // ===== UI3：快捷引导卡片点击发送 =====
@@ -1070,6 +1098,9 @@ export default function ChatPanel() {
 
         {/* 消息区域 */}
         <div className="flex-1 min-h-0 relative z-0 flex flex-col">
+          {/* 计划任务状态栏：常驻展示所有计划，点击从右侧打开任务面板 */}
+          <PlanStatusBar />
+
           {/* 工作区/聊天切换栏 */}
           {activeWorkspaceSession && !teamModeEnabled && (
             <WorkspaceToggleBar
@@ -1110,7 +1141,7 @@ export default function ChatPanel() {
             needsCloudLogin={needsCloudLogin}
             hasPendingToolCall={!!pendingToolCall}
             isStreaming={isStreaming}
-            onSubmit={() => messageOps.handleSubmit(input, isStreaming)}
+            onSubmit={handleSubmitWithPlanHint}
             onAbort={handleAbort}
                       onInputChange={handleInputChange}
                       onKeyDown={handleKeyDown}
@@ -1281,7 +1312,7 @@ export default function ChatPanel() {
                   needsCloudLogin={needsCloudLogin}
                   hasPendingToolCall={!!pendingToolCall}
                   isStreaming={isStreaming}
-                  onSubmit={() => messageOps.handleSubmit(input, isStreaming)}
+                  onSubmit={handleSubmitWithPlanHint}
                   onAbort={handleAbort}
                   onInputChange={handleInputChange}
                   onKeyDown={handleKeyDown}

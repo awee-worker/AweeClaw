@@ -167,6 +167,7 @@ const LAYOUT_DEFAULTS = {
   navRailExpanded: true,
   dockPanelVisible: false,
   activeDockTab: 'terminal' as DockTab,
+  planPanelPlanId: null,
 } satisfies Record<string, unknown>
 
 /** 构建全屏页面初始状态 */
@@ -327,6 +328,14 @@ export interface LayoutSlice {
   toggleDockPanel: () => void
   openDockPanel: (tab: DockTab) => void
 
+  /* ===== 计划任务面板（右侧抽屉） ===== */
+  /** 当前打开的计划面板所展示的 planId；null 表示面板收起 */
+  planPanelPlanId: string | null
+  /** 打开计划面板并定位到指定计划 */
+  openPlanPanel: (planId: string) => void
+  /** 收起计划面板 */
+  closePlanPanel: () => void
+
   /* ===== 面板尺寸操作 ===== */
   setSidebarWidth: (width: number) => void
   setChatWidth: (width: number) => void
@@ -398,6 +407,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   terminalLayout: LAYOUT_DEFAULTS.terminalLayout,
   dockPanelVisible: LAYOUT_DEFAULTS.dockPanelVisible,
   activeDockTab: LAYOUT_DEFAULTS.activeDockTab,
+  planPanelPlanId: LAYOUT_DEFAULTS.planPanelPlanId,
   ...buildInitialFullscreenPages(),
 
   /* ----- 语音对话模式初始状态 ----- */
@@ -493,6 +503,10 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   setActiveDockTab: (tab) => set({ activeDockTab: tab }),
   toggleDockPanel: () => set((state) => ({ dockPanelVisible: !state.dockPanelVisible })),
   openDockPanel: (tab) => set({ dockPanelVisible: true, activeDockTab: tab }),
+
+  /* ----- 计划任务面板操作 ----- */
+  openPlanPanel: (planId) => set({ planPanelPlanId: planId }),
+  closePlanPanel: () => set({ planPanelPlanId: null }),
 
   /* ----- 面板尺寸操作 ----- */
   setSidebarWidth: (width) => set({ sidebarWidth: width }),

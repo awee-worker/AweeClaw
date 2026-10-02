@@ -93,7 +93,8 @@ describe('Plan Builder (阶段六)', () => {
 
             expect(plan.tasks[0].provider).toBe('anthropic')
             expect(plan.tasks[0].model).toBe('claude-sonnet-4-20250514')
-            expect(plan.tasks[0].role).toBe('coder')
+            // 未指定角色 → 留空（均衡档），执行期按任务内容自动匹配场景专家
+            expect(plan.tasks[0].role).toBe('')
         })
     })
 

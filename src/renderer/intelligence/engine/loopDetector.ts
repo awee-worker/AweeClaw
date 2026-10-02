@@ -1317,10 +1317,13 @@ export async function executeAgentCycle(
     if (waitingResult) {
       const interactive = waitingResult.result.meta?.interactive as InteractiveContent | undefined
       const form = waitingResult.result.meta?.form as FormContent | undefined
+      const taskPlan = waitingResult.result.meta?.taskPlan as { planId?: string } | undefined
       if (interactive) {
         threadStore.setInteractive(assistantId, interactive)
       } else if (form) {
         threadStore.addFormPart(assistantId, form)
+      } else if (taskPlan?.planId) {
+        threadStore.addTaskPlanPart(assistantId, taskPlan.planId)
       } else {
         threadStore.finalizeAssistant(assistantId)
       }

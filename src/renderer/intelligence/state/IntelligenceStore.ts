@@ -165,6 +165,7 @@ export interface ThreadBoundStore {
     // 交互式内容操作
     setInteractive: (messageId: string, interactive: import('../providerTypes').InteractiveContent) => void
     addFormPart: (messageId: string, form: import('../providerTypes').FormContent) => void
+    addTaskPlanPart: (messageId: string, planId: string) => void
 
     // 多智能体工作流操作
     addMultiAgentWorkflowPart: (messageId: string, part: import('../types/conversationModel').MultiAgentWorkflowPart) => void
@@ -499,6 +500,9 @@ export const useAgentStore = create<AgentStore>()(
 
                 addFormPart: (messageId, form) =>
                     messageSlice.addFormPart(messageId, form, threadId),
+
+                addTaskPlanPart: (messageId, planId) =>
+                    messageSlice.addTaskPlanPart(messageId, planId, threadId),
 
                 // 多智能体工作流操作
                 addMultiAgentWorkflowPart: (messageId, part) =>

@@ -29,10 +29,19 @@ import { MarkdownPreview } from '@components/workspace-editor/FilePreviewPanel'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { BRAND } from '@shared/brand'
 import { useStore } from '@store'
+import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
+import { useRoleLibraryStore } from '@renderer/modes/roleLibraryStore'
 import { toast } from '@components/foundation/NotificationProvider'
 import { api } from '../../adapters/electronBridge'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
-import { getPendingHumanApproval } from '@intelligence/planner'
+import { approvalService } from '@intelligence/engine'
+import {
+    getPendingHumanApproval,
+    getPlanPendingToolApprovals,
+    resumeHumanNode,
+    type PlanPendingToolApproval,
+} from '@intelligence/planner'
+import { HumanApprovalCard } from '@components/intelligence/HumanApprovalCard'
 import { BUILTIN_PROVIDERS } from '@configuration/aiProviders'
 import {
     getPromptTemplateSummary,
@@ -186,7 +195,13 @@ const ModelSelector = memo(function ModelSelector({
     )
 })
 
-/** 角色选择器 */
+/**
+ * 角色选择器
+ *
+ * 候选来自「当前会话场景的专家角色」（与聊天输入框下方的专家选择器同源），
+ * 而不是固定的一套提示词模板：任务由哪个专家来做，应和用户在会话里选的是同一批人。
+ * 选中值写入 task.role，执行期由 taskExecutor 解析角色人设并注入子任务提示词。
+ */
 const RoleSelector = memo(function RoleSelector({
     role,
     onChange,
@@ -196,13 +211,29 @@ const RoleSelector = memo(function RoleSelector({
     onChange: (role: string) => void
     disabled?: boolean
 }) {
-    const templates = useMemo(() => getPromptTemplateSummary(), [])
+    const currentSceneMode = useSceneModeStore((s) => s.currentSceneMode)
+    const getRolesByScene = useRoleLibraryStore((s) => s.getRolesByScene)
+    const language = useStore((s) => s.language)
+    const isZh = language === 'zh'
+
     const options = useMemo(() => {
-        return templates.map(t => ({
-            value: t.id,
-            label: t.nameZh || t.name
-        }))
-    }, [templates])
+        const sceneRoles = getRolesByScene(currentSceneMode).filter(r => r.enabled)
+        // 首位固定为「均衡」：不锁定具体专家，执行期按任务内容自动匹配场景专家。
+        // 未指定角色时不再落到固定模板（此前一律是程序员），与场景无关。
+        const opts = [
+            { value: '', label: isZh ? '均衡（按任务自动匹配）' : 'Balanced (auto-match)' },
+            ...sceneRoles.map(r => ({
+                value: r.id,
+                label: r.nameZh || r.name,
+            })),
+        ]
+        // 当前角色不在候选中（历史计划或旧的模板 id）时补一条，否则选择器会显示空白
+        if (role && !opts.some(o => o.value === role)) {
+            const known = getPromptTemplateSummary().find(t => t.id === role)
+            opts.push({ value: role, label: known ? (known.nameZh || known.name) : role })
+        }
+        return opts
+    }, [currentSceneMode, getRolesByScene, role, isZh])
 
     return (
         <div className="flex gap-2 items-center">
@@ -452,6 +483,9 @@ export const ExecutionBoard = memo(function ExecutionBoard({ planId }: TaskBoard
     const [requirementsContent, setRequirementsContent] = useState<string>('')
     // HITL 等待审批节点 id（Graph Runtime 阶段四）
     const [awaitingNodeId, setAwaitingNodeId] = useState<string | undefined>(undefined)
+    // 计划内被审批门禁拦下的工具调用（手动审批模式下才会出现）
+    const [pendingToolApprovals, setPendingToolApprovals] = useState<PlanPendingToolApproval[]>([])
+    const [isResumingApproval, setIsResumingApproval] = useState(false)
     const plan = useAgentStore((s) => s.plans.find((p) => p.id === planId))
     const updatePlan = useAgentStore((s) => s.updatePlan)
     const workspacePath = useStore((s) => s.workspacePath)
@@ -498,6 +532,27 @@ export const ExecutionBoard = memo(function ExecutionBoard({ planId }: TaskBoard
             unsubResumed()
         }
     }, [planId])
+
+    // 计划线程不在会话列表里，其待批工具不会出现在会话底部的审批条上；
+    // 这里按计划聚合，供本面板展示与放行。审批是低频动作，1 秒粒度足够。
+    useEffect(() => {
+        if (!isExecuting) {
+            setPendingToolApprovals(prev => (prev.length === 0 ? prev : []))
+            return
+        }
+        const refresh = () => {
+            const next = getPlanPendingToolApprovals(planId)
+            setPendingToolApprovals(prev => {
+                const same = prev.length === next.length
+                    && next.every((item, index) =>
+                        item.threadId === prev[index].threadId && item.toolCallId === prev[index].toolCallId)
+                return same ? prev : next
+            })
+        }
+        refresh()
+        const timer = window.setInterval(refresh, 1000)
+        return () => window.clearInterval(timer)
+    }, [planId, isExecuting, awaitingNodeId])
 
     // 统计
     const stats = useMemo(() => {
@@ -547,6 +602,35 @@ export const ExecutionBoard = memo(function ExecutionBoard({ planId }: TaskBoard
         const { resumePlanExecution } = await import('@intelligence/planner/taskExecutor')
         await resumePlanExecution(planId)
     }, [planId])
+
+    // 放行/拒绝人工审批关卡：与人工审批卡片同一决议入口，成功与否由事件驱动刷新
+    const handleResumeApproval = useCallback(async (approved: boolean, feedback?: string): Promise<boolean> => {
+        if (!awaitingNodeId) return false
+        setIsResumingApproval(true)
+        try {
+            const result = await resumeHumanNode(planId, awaitingNodeId, approved, feedback)
+            if (!result.success) {
+                toast.error(
+                    getLocalizedText(language, '审批提交失败', 'Failed to submit approval'),
+                    result.message,
+                )
+                return false
+            }
+            return true
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            toast.error(getLocalizedText(language, '审批提交失败', 'Failed to submit approval'), message)
+            return false
+        } finally {
+            setIsResumingApproval(false)
+        }
+    }, [awaitingNodeId, planId, language])
+
+    // 待批工具在 approvalService 中的键：与登记时 `${requestId}_${toolCallId}` 保持一致
+    const resolveApprovalKey = useCallback(
+        (item: PlanPendingToolApproval) => (item.requestId ? `${item.requestId}_${item.toolCallId}` : item.toolCallId),
+        [],
+    )
 
     if (!plan) {
         return (
@@ -606,6 +690,52 @@ export const ExecutionBoard = memo(function ExecutionBoard({ planId }: TaskBoard
                     </div>
                 </div>
             </div>
+
+            {/* 待审批区：人工审批关卡 + 被授权门禁拦下的工具调用 */}
+            {(awaitingNodeId || pendingToolApprovals.length > 0) && (
+                <div className="flex-shrink-0 border-b border-amber-500/30 bg-amber-500/5 px-4 py-3 space-y-2">
+                    {awaitingNodeId && (
+                        <HumanApprovalCard
+                            info={{ planId, nodeId: awaitingNodeId }}
+                            onResume={handleResumeApproval}
+                            isResuming={isResumingApproval}
+                        />
+                    )}
+                    {pendingToolApprovals.map(item => (
+                        <div
+                            key={`${item.threadId}_${item.toolCallId}`}
+                            className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-background/60 px-3 py-2"
+                        >
+                            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                                <div className="text-xs font-medium text-text-primary truncate">
+                                    {getLocalizedText(language, '等待确认：', 'Awaiting confirmation: ')}
+                                    {item.toolName}
+                                </div>
+                                {item.arguments && Object.keys(item.arguments).length > 0 && (
+                                    <div className="text-[11px] text-text-muted truncate">
+                                        {JSON.stringify(item.arguments)}
+                                    </div>
+                                )}
+                            </div>
+                            <ActionButton
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => approvalService.reject(resolveApprovalKey(item))}
+                            >
+                                {getLocalizedText(language, '拒绝', 'Reject')}
+                            </ActionButton>
+                            <ActionButton
+                                variant="primary"
+                                size="sm"
+                                onClick={() => approvalService.approve(resolveApprovalKey(item))}
+                            >
+                                {getLocalizedText(language, '允许', 'Allow')}
+                            </ActionButton>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* 内容区 */}
             <div className="flex-1 flex overflow-hidden">

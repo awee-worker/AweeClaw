@@ -83,6 +83,21 @@ export interface BuildPlanParams {
     planId: string
     /** 时间戳（createdAt/updatedAt） */
     timestamp: number
+    /**
+     * 任务模型默认值（来自当前会话模型）
+     *
+     * 规划阶段模型往往不会逐个任务指定 provider/model，而硬编码默认厂商用户
+     * 很可能没配过凭据，执行必然失败。因此把当前会话正在用的模型作为缺省，
+     * 使「未指定」= 「跟随当前会话」而不是「跟随某个写死的厂商」。
+     */
+    defaultProvider?: string
+    defaultModel?: string
+}
+
+/** 任务模型默认值（会话模型 / 角色偏好之外的兜底） */
+export interface PlanModelDefaults {
+    provider?: string
+    model?: string
 }
 
 // ============================================
@@ -91,7 +106,15 @@ export interface BuildPlanParams {
 
 const DEFAULT_PROVIDER = 'anthropic'
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
-const DEFAULT_ROLE = 'coder'
+
+/**
+ * 未指定角色时的默认值：空字符串 = 「均衡」
+ *
+ * 代表不锁定具体专家，由执行期按任务内容在当前场景的专家里自动匹配。
+ * 早先硬编码 'coder' 会把所有未指定角色的任务都变成「程序员」，
+ * 与场景和任务内容都无关（办公场景里也会冒出「程序员」）。
+ */
+const DEFAULT_ROLE = ''
 
 // ============================================
 // 角色库解析钩子（设计文档 6.3 改动 1）
@@ -272,6 +295,7 @@ export function buildPlanTask(
     arg: PlanTaskArg,
     index: number,
     edgesBySource: Map<string, GraphEdge[]>,
+    defaults?: PlanModelDefaults,
 ): PlanTask {
     const taskId = `task-${index + 1}`
 
@@ -283,8 +307,9 @@ export function buildPlanTask(
         id: taskId,
         title: arg.title,
         description: arg.description,
-        provider: resolveDefault(arg.suggestedProvider, roleResolution?.provider ?? DEFAULT_PROVIDER),
-        model: resolveDefault(arg.suggestedModel, roleResolution?.model ?? DEFAULT_MODEL),
+        // 优先级：任务显式指定 > 角色模型偏好 > 当前会话模型 > 兜底厂牌
+        provider: resolveDefault(arg.suggestedProvider, roleResolution?.provider ?? defaults?.provider ?? DEFAULT_PROVIDER),
+        model: resolveDefault(arg.suggestedModel, roleResolution?.model ?? defaults?.model ?? DEFAULT_MODEL),
         role: roleId,
         dependencies: arg.dependencies || [],
         status: 'pending' as TaskStatus,
@@ -327,8 +352,12 @@ export function buildPlanFromToolArgs(params: BuildPlanParams): TaskPlan {
     // 分组 edges 到节点级
     const edgesBySource = args.edges ? groupEdgesBySource(args.edges) : new Map<string, GraphEdge[]>()
 
-    // 构建任务列表
-    const tasks = args.tasks.map((arg, idx) => buildPlanTask(arg, idx, edgesBySource))
+    // 构建任务列表（模型缺省随当前会话模型，避免落到用户未配凭据的硬编码厂牌）
+    const modelDefaults: PlanModelDefaults = {
+        provider: params.defaultProvider,
+        model: params.defaultModel,
+    }
+    const tasks = args.tasks.map((arg, idx) => buildPlanTask(arg, idx, edgesBySource, modelDefaults))
 
     // 构建 plan 基础对象
     const plan: TaskPlan = {
@@ -374,6 +403,7 @@ export function buildAddedTask(
     arg: PlanTaskArg,
     timestamp: number,
     index: number,
+    defaults?: PlanModelDefaults,
 ): PlanTask {
     // 角色解析：与 buildPlanTask 同口径
     const roleResolution = resolvePlanRole(arg.suggestedRole ?? '')
@@ -383,8 +413,9 @@ export function buildAddedTask(
         id: `task-${timestamp}-${index}`,
         title: arg.title,
         description: arg.description,
-        provider: resolveDefault(arg.suggestedProvider, roleResolution?.provider ?? DEFAULT_PROVIDER),
-        model: resolveDefault(arg.suggestedModel, roleResolution?.model ?? DEFAULT_MODEL),
+        // 优先级：任务显式指定 > 角色模型偏好 > 当前会话模型 > 兜底厂牌
+        provider: resolveDefault(arg.suggestedProvider, roleResolution?.provider ?? defaults?.provider ?? DEFAULT_PROVIDER),
+        model: resolveDefault(arg.suggestedModel, roleResolution?.model ?? defaults?.model ?? DEFAULT_MODEL),
         role: roleId,
         dependencies: arg.dependencies || [],
         status: 'pending' as TaskStatus,

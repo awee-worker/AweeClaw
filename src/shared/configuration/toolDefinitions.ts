@@ -1367,7 +1367,7 @@ TIPS:
         detailedDescription: `Generate a task plan file that will be displayed in the ExecutionBoard.
 - Creates a plan file in ${BRAND.dirName}/planner/ directory
 - Automatically opens the ExecutionBoard tab
-- Each task includes suggested provider/model/role
+- Provider/model/role are optional per task: omit them to reuse the current chat session model and let the system auto-match an expert role
 - User can modify assignments before execution
 
 **Graph Runtime (graphVersion=2)** — use when tasks need:
@@ -1380,13 +1380,13 @@ Set \`graphVersion=2\` and optionally \`allowDynamicExpansion=true\` + \`edges\`
 Nodes with \`nodeType="task"\` (default) use sub-agent loops; \`nodeType="llm/tool/decision/human"\` use lightweight executors.
 Loop edges (\`type="loop"\`) point back to a node for retry; set \`maxIterations\` (default 2) and \`reflectionPrompt\` on the source node.`,
         examples: [
-            'create_task_plan name="Login Page" requirementsDoc="..." tasks=[{title:"Create form",suggestedProvider:"anthropic",suggestedModel:"claude-sonnet-4",suggestedRole:"coder"}]',
+            'create_task_plan name="Login Page" requirementsDoc="..." tasks=[{title:"Create form",suggestedRole:"dev.frontend"}]',
             'create_task_plan name="Refactor with Retry" graphVersion=2 requirementsDoc="..." tasks=[{title:"Implement core",nodeType:"task",maxIterations:3,reflectionPrompt:"If tests fail, fix the root cause"}] edges=[{source:"task-1",target:"task-1",type:"loop"}]',
         ],
         criticalRules: [
             'Always gather requirements with ask_user before creating a plan',
             'Break complex requests into atomic tasks',
-            'Suggest appropriate models based on task complexity',
+            'Omit suggestedProvider/suggestedModel unless a task genuinely needs a different model — the current chat session model is used by default',
             'Include clear task descriptions',
             'Use graphVersion=2 only when conditional routing or retry loops are needed; default graphVersion=1 for linear tasks',
             'When using edges, every edge source/target must reference an existing task id',
@@ -1409,9 +1409,9 @@ Loop edges (\`type="loop"\`) point back to a node for retry; set \`maxIterations
                     properties: {
                         title: { type: 'string', description: 'Task title', required: true },
                         description: { type: 'string', description: 'Detailed task description', required: true },
-                        suggestedProvider: { type: 'string', description: 'Recommended provider', required: true, enum: ['anthropic', 'openai', 'gemini', 'ollama'] },
-                        suggestedModel: { type: 'string', description: 'Recommended model ID (e.g., "claude-sonnet-4-6", "gpt-4o", "gemini-2.0-flash")', required: true },
-                        suggestedRole: { type: 'string', description: 'Recommended role/persona (e.g., "coder", "reviewer", "planner", "tester")', required: true },
+                        suggestedProvider: { type: 'string', description: 'Optional. Provider id for this task. Omit to reuse the current chat session model (recommended). Only set it when this task genuinely needs another provider, and it must be one the user has configured.' },
+                        suggestedModel: { type: 'string', description: 'Optional. Model id for this task. Omit to reuse the current chat session model (recommended).' },
+                        suggestedRole: { type: 'string', description: 'Optional. Expert role id from the current scene (e.g., "dev.frontend", "work.legal-counsel"). Omit to let the system auto-match a role from the task description.' },
                         dependencies: { type: 'array', description: 'IDs of tasks this depends on', items: { type: 'string', description: 'Task ID' } },
                         nodeType: { type: 'string', description: 'Node type for graphVersion=2 (default "task"). "task"=sub-agent loop, "llm"=single LLM call, "tool"=direct tool execution, "decision"=pure routing, "human"=HITL pause', enum: ['task', 'llm', 'tool', 'decision', 'human'] },
                         maxIterations: { type: 'number', description: 'Max retry iterations for loop nodes (default 2, range 1-10)' },
@@ -1477,9 +1477,9 @@ You can:
                     properties: {
                         title: { type: 'string', description: 'Task title', required: true },
                         description: { type: 'string', description: 'Task description', required: true },
-                        suggestedProvider: { type: 'string', description: 'Provider' },
-                        suggestedModel: { type: 'string', description: 'Model' },
-                        suggestedRole: { type: 'string', description: 'Role' },
+                        suggestedProvider: { type: 'string', description: 'Optional. Provider id. Omit to reuse the current chat session model.' },
+                        suggestedModel: { type: 'string', description: 'Optional. Model id. Omit to reuse the current chat session model.' },
+                        suggestedRole: { type: 'string', description: 'Optional. Expert role id from the current scene. Omit to auto-match a role from the task description.' },
                         insertAfter: { type: 'string', description: 'Insert after this task ID' },
                         nodeType: { type: 'string', description: 'Node type for graphVersion=2', enum: ['task', 'llm', 'tool', 'decision', 'human'] },
                         maxIterations: { type: 'number', description: 'Max retry iterations for loop nodes (range 1-10)' },

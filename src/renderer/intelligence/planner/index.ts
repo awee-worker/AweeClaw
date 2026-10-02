@@ -34,4 +34,7 @@ export {
     getPendingHumanApproval,
     getExecutionStatus,
     getCurrentPhase,
+    getPlanPendingToolApprovals,
 } from './taskExecutor'
+
+export type { PlanPendingToolApproval } from './taskExecutor'

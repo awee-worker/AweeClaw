@@ -3796,6 +3796,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             internalWriteTracker.mark(mdPath)
             await api.file.write(mdPath, requirementsDoc)
 
+            // 任务模型缺省跟随当前会话：规划阶段很少逐任务指定 provider/model，
+            // 若落到硬编码厂商，用户没配该厂商凭据时执行必然失败，因此以会话模型兜底
+            const sessionConfig = useStore.getState().llmConfig
             // 构建规划对象（通过 planBuilder 纯函数，支持 graphVersion=2 图扩展字段）
             const plan = buildPlanFromToolArgs({
                 args: {
@@ -3809,6 +3812,8 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 },
                 planId,
                 timestamp,
+                defaultProvider: sessionConfig?.provider,
+                defaultModel: sessionConfig?.model,
             })
 
             // 保存规划文件 (json)
@@ -3816,11 +3821,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             internalWriteTracker.mark(jsonPath)
             await api.file.write(jsonPath, JSON.stringify(plan, null, 2))
 
-            // 添加到 store 并打开 ExecutionBoard
+            // 添加到 store：会话顶部状态栏订阅 store.plans，会自动出现该计划条目
             agentStorePlanBridge.addPlan(plan)
-
-            // 打开 plan 文件（触发 ExecutionBoard 渲染）
-            useStore.getState().openFile(jsonPath, JSON.stringify(plan, null, 2))
+            // 自动从右侧打开任务面板，便于用户立即审核需求与任务
+            useStore.getState().openPlanPanel(planId)
 
             // 根据是否图计划构造反馈信息
             const isGraphPlan = plan.graphVersion === 2
@@ -3836,10 +3840,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 success: true,
                 result: getLocalizedText(
                     getCurrentLanguage(),
-                    `已创建任务规划“${name}”，共 ${plan.tasks.length} 个任务${graphHint}。\n规划文件：${jsonPath}\n需求文档：${mdPath}\n\nTaskBoard 已打开，请先审核规划，再点击“开始执行”。`,
-                    `Created task plan "${name}" with ${plan.tasks.length} task(s)${graphHint}.\nPlan file: ${jsonPath}\nRequirements: ${mdPath}\n\nThe ExecutionBoard has been opened for user review. Please review the plan and click "Start Execution" to proceed.`,
+                    `已创建任务规划“${name}”，共 ${plan.tasks.length} 个任务${graphHint}。\n规划文件：${jsonPath}\n需求文档：${mdPath}\n\n已从右侧打开任务面板，请先审核需求与任务，再点击「开始执行」。`,
+                    `Created task plan "${name}" with ${plan.tasks.length} task(s)${graphHint}.\nPlan file: ${jsonPath}\nRequirements: ${mdPath}\n\nThe task panel has been opened on the right. Review the plan, then click "Start".`,
                 ),
-                meta: { planId, planPath: jsonPath, stopLoop: true },
+                meta: { waitingForUser: true, taskPlan: { planId }, planId, planPath: jsonPath },
             }
         } catch (err) {
             const error = toAppError(err)
@@ -3902,7 +3906,12 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             // 添加任务（复用 planBuilder.buildAddedTask，支持图扩展字段）
             if (addTasks?.length) {
                 const timestamp = Date.now()
-                const newTasks = addTasks.map((t, i) => buildAddedTask(t, timestamp, i))
+                // 新增任务的模型缺省同样跟随当前会话模型
+                const sessionConfig = useStore.getState().llmConfig
+                const newTasks = addTasks.map((t, i) => buildAddedTask(t, timestamp, i, {
+                    provider: sessionConfig?.provider,
+                    model: sessionConfig?.model,
+                }))
 
                 const currentPlan = store.getPlanById(planId)
                 if (currentPlan) {
@@ -3998,8 +4007,8 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 success: true,
                 result: getLocalizedText(
                     getCurrentLanguage(),
-                    `规划已更新：\n${changes.map(c => `- ${c}`).join('\n')}\n\n请在 ExecutionBoard 中审核这些变更。`,
-                    `Plan updated:\n${changes.map(c => `- ${c}`).join('\n')}\n\nPlease review the changes in the ExecutionBoard.`,
+                    `规划已更新：\n${changes.map(c => `- ${c}`).join('\n')}\n\n会话中的规划卡已同步更新。`,
+                    `Plan updated:\n${changes.map(c => `- ${c}`).join('\n')}\n\nThe plan card in the conversation has been updated.`,
                 ),
                 meta: { stopLoop: true },
             }
@@ -4077,12 +4086,15 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 return { success: false, result: result.message }
             }
 
+            // 自动打开右侧任务面板，让用户直接看到执行进度
+            useStore.getState().openPlanPanel(plan.id)
+
             return {
                 success: true,
                 result: getLocalizedText(
                     getCurrentLanguage(),
-                    `已开始执行规划“${plan.name}”，共 ${plan.tasks.length} 个任务。\n\n进度会显示在 ExecutionBoard 中。`,
-                    `Started executing plan "${plan.name}" with ${plan.tasks.length} tasks.\n\nProgress will be shown in the ExecutionBoard.`,
+                    `已开始执行规划“${plan.name}”，共 ${plan.tasks.length} 个任务。\n\n进度显示在右侧任务面板中。`,
+                    `Started executing plan "${plan.name}" with ${plan.tasks.length} tasks.\n\nProgress is shown in the task panel on the right.`,
                 ),
                 meta: { stopLoop: true },
             }

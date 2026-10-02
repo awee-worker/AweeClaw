@@ -11,7 +11,7 @@
  * - 复用 buildAgentSystemPrompt() 构建提示词
  * - 复用 Agent.send() 执行任务
  * - task.role 映射到 promptTemplateId
- * - task.provider + task.model 直接使用
+ * - task.provider + task.model 作为模型偏好使用，凭据缺失时回退到当前会话模型
  */
 
 import { useAgentStore } from '../state/IntelligenceStore'
@@ -20,11 +20,14 @@ import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { EventBus } from '../engine/EventDispatcher'
 import { Agent } from '../engine/IntelligenceCore'
+import { approvalService, requiresApprovalGate } from '../engine/toolOrchestrator'
+import { collectUntrustedSignal } from '../runtime/untrustedContextTracker'
 import { setupPlanCompletionReporter } from '../engine/planCompletionReporter'
 import { BRAND } from '@shared/brand'
 import { gitService } from '@services/gitAdapter'
 import { ExecutionScheduler } from './TaskScheduler'
 import { getLLMConfigForTask } from '../runtime/modelConfigService'
+import type { LLMConfig } from '@shared/protocols/modelGateway'
 import { toolManager } from '../toolkit/providers'
 import {
     type TaskPlan,
@@ -38,7 +41,7 @@ import {
 } from '@intelligence/providerTypes'
 import { isGraphNode, type GraphNode, type ExecutionGraph, type GraphExecutionContext } from '../graph/graphTypes'
 import { loopController } from '../graph/LoopController'
-import { createStateAccessor } from '../graph/GraphStateAdapter'
+import { createStateAccessor, nodeRequiresApproval } from '../graph/GraphStateAdapter'
 import { GraphScheduler } from '../graph/GraphScheduler'
 import { graphExecutionBridge } from '../graph/GraphExecutionBridge'
 import { checkpointManager } from '../graph/CheckpointManager'
@@ -60,6 +63,7 @@ import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { buildSceneRolePersonaSection } from '../prompt-engine/PromptComposer'
 import { setPlanRoleResolver, type PlanRoleResolution } from '../toolkit/planBuilder'
 import type { RoleDescriptor } from '../capabilities/role/RoleDescriptor'
+import { resolveSceneRole } from '../capabilities/role/sceneRoleMatcher'
 import type { TaskExecutionClass } from '../planner/planTypes'
 
 // ===== Graph Runtime 真实执行器惰性注入 =====
@@ -116,6 +120,29 @@ function resolveTaskRole(roleRef: string | undefined): RoleDescriptor | undefine
     }
     return undefined
 }
+
+/**
+ * 「均衡」档的角色解析
+ *
+ * 任务未指定角色时（role 为空），按任务标题与描述自动匹配当前场景的专家角色：
+ * 命中则用该角色的人设与模板执行，未命中则继续走通用模板。
+ * 显式指定的角色（用户在任务面板选定的专家）始终优先，不被自动匹配覆盖。
+ */
+function resolveBalancedRoleId(task: PlanTask): string {
+    if (task.role) return task.role
+    try {
+        const sceneMode = useSceneModeStore.getState().currentSceneMode
+        const match = resolveSceneRole({
+            userMessage: `${task.title}\n${task.description}`,
+            sceneMode,
+        })
+        return match.role?.id ?? ''
+    } catch {
+        /* 匹配失败回落到通用模板，不阻断执行 */
+        return ''
+    }
+}
+
 
 /** 组装子任务角色人设段落：人设 + 技能 + 输出契约 + 边界约束 */
 function buildSubtaskRolePersona(role: RoleDescriptor): string {
@@ -290,6 +317,7 @@ function createSession(planId: string, workspacePath: string): ExecutionSession 
         status: 'running',
         bindings: new Map(),
         abortControllers: new Map(),
+        approvedGateIds: new Set(),
     }
     session.scheduler.start()
     sessions.set(sessionId, session)
@@ -431,21 +459,71 @@ function isCancellationReason(reason?: string): boolean {
     return reason === 'aborted' || reason === 'user_rejected' || reason === 'Aborted'
 }
 
+/**
+ * 解析任务执行所需的 LLM 配置。
+ *
+ * task.provider / task.model 由规划期写入（suggestedProvider/Model 或角色 modelPreference），
+ * 属于「偏好」而非「可用性保证」：当前会话未必为这些 provider 配过凭据。
+ * 偏好不可用时回退到会话正在使用的模型，避免整个计划因单个任务的模型偏好而无法启动。
+ */
+async function resolveTaskLLMConfigOrDefault(
+    providerId: string | undefined,
+    modelId: string | undefined,
+): Promise<{ config: LLMConfig; provider: string; model: string; fellBack: boolean } | null> {
+    if (providerId && modelId) {
+        const config = await getLLMConfigForTask(providerId, modelId)
+        if (config) {
+            return { config, provider: providerId, model: modelId, fellBack: false }
+        }
+    }
+
+    const sessionConfig = useStore.getState().llmConfig
+    if (!sessionConfig) return null
+
+    return {
+        config: sessionConfig,
+        provider: sessionConfig.provider,
+        model: sessionConfig.model,
+        fellBack: true,
+    }
+}
+
 async function validatePlanTaskModels(plan: TaskPlan): Promise<string | null> {
+    const store = useAgentStore.getState()
+
     for (const task of plan.tasks) {
         if (task.status !== 'pending') continue
-        const config = await getLLMConfigForTask(task.provider, task.model)
-        if (!config) {
-            return `Task "${task.title}" has invalid LLM config: ${task.provider}/${task.model}`
+
+        const resolved = await resolveTaskLLMConfigOrDefault(task.provider, task.model)
+        if (!resolved) {
+            return `Task "${task.title}" has no usable LLM config: ${task.provider}/${task.model}`
+        }
+
+        // 偏好模型没有可用凭据：回退会话模型并同步回计划，保证界面与实际执行一致
+        if (resolved.fellBack) {
+            logger.agent.warn(
+                `[PlanExecutor] Task ${task.id} model ${task.provider}/${task.model} is unavailable, ` +
+                `falling back to the active session model ${resolved.provider}/${resolved.model}`,
+            )
+            store.updateTask(plan.id, task.id, {
+                provider: resolved.provider,
+                model: resolved.model,
+            })
         }
     }
 
     return null
 }
 
-function createTaskThreadBinding(_task: PlanTask) {
+function createTaskThreadBinding(task: PlanTask, planId: string) {
     const store = useAgentStore.getState()
-    const threadId = store.createThread({ activate: false })
+    // 标记为 plan-task 来源：任务线程不出现在会话列表，且在线程触顶时被优先回收
+    const threadId = store.createThread({
+        activate: false,
+        origin: 'plan-task',
+        planId,
+        taskId: task.id,
+    })
     const requestId = crypto.randomUUID()
     return { threadId, requestId }
 }
@@ -895,10 +973,21 @@ export async function resumeHumanNode(
         `[PlanExecutor] Resuming human node ${nodeId} (approved=${approved}, feedback=${feedback || 'none'})`,
     )
 
-    // 根据 approved 决议节点状态
+    // 决议语义按节点类型区分：
+    // - human 节点本身即审批关卡，没有执行内容，通过即完成；
+    // - 带 requireApproval 的 task/tool/llm 节点有真实执行内容，
+    //   通过只是解除门禁，必须让它回到待调度状态真正跑一遍（拒绝才判失败）。
+    const node = plan.tasks.find(candidate => candidate.id === nodeId)
+    const isPureApprovalNode = !!node && isGraphNode(node) && node.nodeType === 'human'
+
     if (approved) {
-        session.scheduler.markTaskCompleted({ id: nodeId } as PlanTask, 'Approved by human')
-        store.markTaskCompleted(planId, nodeId, 'Approved by human')
+        if (isPureApprovalNode) {
+            session.scheduler.markTaskCompleted({ id: nodeId } as PlanTask, 'Approved by human')
+            store.markTaskCompleted(planId, nodeId, 'Approved by human')
+        } else {
+            session.approvedGateIds?.add(nodeId)
+            logger.agent.info(`[PlanExecutor] Node ${nodeId} approved, re-dispatching for execution`)
+        }
     } else {
         const errorMsg = feedback || 'Rejected by human'
         session.scheduler.markTaskFailed({ id: nodeId } as PlanTask, errorMsg)
@@ -955,6 +1044,50 @@ export function getPendingHumanApproval(planId?: string): {
         }
     }
     return null
+}
+
+/**
+ * 计划内被审批门禁拦下的工具调用
+ *
+ * 计划任务跑在 origin='plan-task' 的线程里，这类线程不出现在会话列表，
+ * 其 pendingApprovalToolCalls 因此不会渲染到会话底部的审批条上 ——
+ * 手动审批模式下用户看不到「计划正卡在哪一步等确认」。
+ * 本函数按计划聚合这些待批项，供任务面板展示与操作。
+ */
+export interface PlanPendingToolApproval {
+    planId: string
+    taskId: string
+    threadId: string
+    toolCallId: string
+    toolName: string
+    arguments?: Record<string, unknown>
+    requestId?: string
+}
+
+export function getPlanPendingToolApprovals(planId: string): PlanPendingToolApproval[] {
+    const session = getSessionByPlanId(planId)
+    if (!session) return []
+
+    const threads = useAgentStore.getState().threads
+    const approvals: PlanPendingToolApproval[] = []
+
+    for (const binding of session.bindings.values()) {
+        const pending = threads[binding.threadId]?.streamState?.pendingApprovalToolCalls
+        if (!pending || pending.length === 0) continue
+        for (const toolCall of pending) {
+            approvals.push({
+                planId,
+                taskId: binding.taskId,
+                threadId: binding.threadId,
+                toolCallId: toolCall.id,
+                toolName: toolCall.name,
+                arguments: toolCall.arguments,
+                requestId: toolCall.requestId,
+            })
+        }
+    }
+
+    return approvals
 }
 
 export function getExecutionStatus(): {
@@ -1126,9 +1259,50 @@ function buildGraphExecutionContext(
                 threadId,
                 requestId,
                 toolCallId: `${requestId}_tool_${name}`,
-                skipMainApproval: false,
+                // 主进程审批要等渲染进程回执，而计划线程不在会话列表、没有对应 UI，
+                // 交给主进程只会在 60 秒后超时失败。审批改在渲染层判定与收集（见下）。
+                skipMainApproval: true,
                 abortSignal,
             }
+
+            // 渲染层审批门禁：与主会话、子 Agent 同源判定，保证授权方式对 tool 节点同样生效
+            const untrusted = collectUntrustedSignal(
+                useAgentStore.getState().threads[threadId]?.messages,
+                { currentTurnOnly: true },
+            )
+            if (requiresApprovalGate({ name, arguments: args }, 'agent', untrusted, workspacePath)) {
+                const approvalToolId = `node_${node.id}_${name}`
+                const threadStore = useAgentStore.getState().forThread(threadId)
+                // 登记到线程状态：任务面板据此列出待批项并提供放行入口
+                threadStore.setStreamState({
+                    phase: 'tool_pending',
+                    streamDetail: 'tool_awaiting',
+                    requestId,
+                    pendingApprovalToolCalls: [
+                        {
+                            id: approvalToolId,
+                            name,
+                            arguments: args,
+                            status: 'awaiting',
+                            requestId,
+                        },
+                    ],
+                    statusText: `等待确认: ${name}`,
+                })
+
+                const approved = await approvalService.waitForApproval(`${requestId}_${approvalToolId}`)
+
+                threadStore.setStreamState({
+                    phase: 'streaming',
+                    streamDetail: 'tool_executing',
+                    pendingApprovalToolCalls: undefined,
+                })
+
+                if (!approved) {
+                    return { success: false, output: '', error: `Tool ${name} rejected by user` }
+                }
+            }
+
             const result = await toolManager.execute(name, args, context)
             return {
                 // 命令/脚本跑完但报错属于业务结果，不算工具调用失败：节点不因此被判失败
@@ -1146,14 +1320,15 @@ function buildGraphExecutionContext(
     // llm 节点执行回调：调用 api.llm.generateObject
     const executeLlmCall: GraphExecutionContext['executeLlmCall'] = async (prompt) => {
         try {
-            const config = await getLLMConfigForTask(node.provider, node.model)
-            if (!config) {
+            const resolved = await resolveTaskLLMConfigOrDefault(node.provider, node.model)
+            if (!resolved) {
                 return {
                     success: false,
                     output: '',
                     error: `No LLM config for ${node.provider}/${node.model}`,
                 }
             }
+            const config = resolved.config
             const response = await api.llm.generateObject({
                 config,
                 schema: {
@@ -1246,13 +1421,40 @@ async function executeTask(
 ): Promise<void> {
     const store = useAgentStore.getState()
     const existingTask = store.getPlan(plan.id)?.tasks.find(candidate => candidate.id === task.id) || task
-    const { threadId, requestId } = createTaskThreadBinding(existingTask)
+    const { threadId, requestId } = createTaskThreadBinding(existingTask, plan.id)
     bindTaskRun(session, existingTask.id, {
         planId: plan.id,
         taskId: existingTask.id,
         threadId,
         requestId,
     })
+
+    // Graph Runtime：节点级人工审批门禁（requireApproval=true）
+    //
+    // human 节点由 NodeExecutor 自身返回 pending，不在此拦截；
+    // 其余节点（task/tool/llm）带真实执行内容，放行后必须回到待执行状态重新跑一遍，
+    // 因此这里只登记等待状态就退出 —— 不 markTaskRunning，节点留在待调度集合里，
+    // resumeHumanNode 放行后再由 runExecutionLoop 取出执行。
+    if (
+        isGraphNode(existingTask) &&
+        nodeRequiresApproval(existingTask) &&
+        existingTask.nodeType !== 'human' &&
+        !session.approvedGateIds?.has(existingTask.id)
+    ) {
+        session.status = 'awaiting_approval'
+        session.awaitingNodeId = existingTask.id
+        EventBus.emit({
+            type: 'task:awaiting_approval',
+            taskId: existingTask.id,
+            planId: plan.id,
+            threadId,
+            requestId,
+        })
+        logger.agent.info(`[PlanExecutor] Node ${existingTask.id} requires approval before execution`)
+        // 关键状态：立即持久化，崩溃后仍能恢复出审批入口
+        persistRuntimeState(session, plan, true)
+        return
+    }
 
     session.scheduler.markTaskRunning(existingTask)
     store.setCurrentTask(existingTask.id)
@@ -1507,12 +1709,14 @@ async function runTaskWithAgent(
     requestId: string,
 ): Promise<{ success: boolean; output: string; error?: string; threadId: string; assistantId?: string; requestId: string }> {
     try {
-        const isCoderTask = /coder|developer|engineer/i.test(task.role || '')
+        // 均衡档：任务未显式指定角色时，按任务内容自动匹配当前场景的专家角色
+        const resolvedRoleId = resolveBalancedRoleId(task)
+        const isCoderTask = /coder|developer|engineer/i.test(resolvedRoleId)
         const maxReviewLoops = 3
         let currentLoop = 0
-        let currentRole = task.role || 'default'
+        let currentRole = resolvedRoleId || 'default'
         // coder 任务回退用的执行角色引用（复核结束后回到原角色）
-        const coderRoleRef = task.role || 'coder'
+        const coderRoleRef = resolvedRoleId || 'coder'
         // 是否处于 reviewer 复核阶段：复核角色可能是角色库 id（用户自建），
         // 不能用 currentRole !== 'reviewer' 字面量判断
         let reviewing = false
@@ -1522,10 +1726,11 @@ async function runTaskWithAgent(
         let activeRequestId = requestId
 
         while (currentLoop < maxReviewLoops && session.status === 'running') {
-            const llmConfig = await getLLMConfigForTask(task.provider, task.model)
-            if (!llmConfig) {
-                return { success: false, output: '', error: `Failed to get LLM config for ${task.provider}/${task.model}`, threadId, requestId: activeRequestId }
+            const resolved = await resolveTaskLLMConfigOrDefault(task.provider, task.model)
+            if (!resolved) {
+                return { success: false, output: '', error: `No usable LLM config for ${task.provider}/${task.model}`, threadId, requestId: activeRequestId }
             }
+            const llmConfig = resolved.config
 
             const templateId = mapRoleToTemplateId(currentRole)
             // 角色库命中时注入角色人设 + 输出契约；未命中维持模板人设

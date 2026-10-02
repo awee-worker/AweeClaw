@@ -174,7 +174,8 @@ export default memo(function PlanListContent({
     const activePlanId = useAgentStore(state => state.activePlanId)
     const setActivePlan = useAgentStore(state => state.setActivePlan)
     const deletePlan = useAgentStore(state => state.deletePlan)
-    const openFile = useStore(state => state.openFile)
+    const threads = useAgentStore(state => state.threads)
+    const switchThread = useAgentStore(state => state.switchThread)
     const workspacePath = useStore(state => state.workspacePath)
 
     const sortedPlans = useMemo(() => {
@@ -199,10 +200,10 @@ export default memo(function PlanListContent({
 
     const handlePlanClick = (plan: TaskPlan) => {
         setActivePlan(plan.id)
-        if (workspacePath) {
-            const jsonPath = `${workspacePath}/${BRAND.dirName}/planner/${plan.id}.json`
-            openFile(jsonPath, JSON.stringify(plan, null, 2))
-        }
+        // 计划卡已内嵌到会话流，不再打开编辑器标签页：
+        // 若该规划有归属会话，切换到该会话以查看内嵌的计划卡
+        const owner = Object.values(threads).find(t => t.planId === plan.id)
+        if (owner) void switchThread(owner.id)
         onPlanSelect?.()
     }
 
