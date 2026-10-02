@@ -13,7 +13,6 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { BRAND } from '@shared/brand'
 import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
-import * as cp from 'child_process'
 import {
   CallToolResultSchema,
   ToolListChangedNotificationSchema,
@@ -23,6 +22,8 @@ import {
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { pickLatestVersionDir } from '@shared/toolkit/versionHelper'
+import { signalProcessTree } from '../../process/processTree'
+
 import { McpOAuthProvider } from './ToolOAuthProvider'
 import { mcpManager } from './ToolProtocolManager'
 import { pythonManager } from '../python-runtime'
@@ -895,12 +896,8 @@ export class McpClient extends EventEmitter {
           const subProcess = this.state.transport._process
           if (subProcess && subProcess.pid) {
             logger.mcp?.info(`[MCP:${this.id}] Force killing process tree for PID ${subProcess.pid}`)
-            if (process.platform === 'win32') {
-              // Windows: 使用 taskkill /F /T 杀死整个进程树
-              cp.execSync(`taskkill /F /T /PID ${subProcess.pid}`, { stdio: 'ignore' })
-            } else {
-              subProcess.kill('SIGKILL')
-            }
+            // npx / uvx 等包装器会再派生出真正的服务进程，只杀直接子进程会留下孙进程
+            signalProcessTree(subProcess.pid, 'SIGKILL')
           }
         } catch (err) {
           logger.mcp?.warn(`[MCP:${this.id}] Force kill error:`, err)
@@ -1158,11 +1155,8 @@ export class McpClient extends EventEmitter {
           const subProcess = this.state.transport._process
           if (subProcess && subProcess.pid) {
             logger.mcp?.info(`[MCP:${this.id}] Force killing process tree for PID ${subProcess.pid}`)
-            if (process.platform === 'win32') {
-              cp.execSync(`taskkill /F /T /PID ${subProcess.pid}`, { stdio: 'ignore' })
-            } else {
-              subProcess.kill('SIGKILL')
-            }
+            // npx / uvx 等包装器会再派生出真正的服务进程，只杀直接子进程会留下孙进程
+            signalProcessTree(subProcess.pid, 'SIGKILL')
           }
         } catch (err) {
           logger.mcp?.warn(`[MCP:${this.id}] Force kill error:`, err)

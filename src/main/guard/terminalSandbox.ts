@@ -18,7 +18,7 @@
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { BrowserWindow, ipcMain } from 'electron'
-import { spawn, execSync, execFile, type ChildProcessWithoutNullStreams } from 'child_process'
+import { spawn, execFile, type ChildProcessWithoutNullStreams } from 'child_process'
 import { promisify } from 'util'
 import * as path from 'path'
 const execFileAsync = promisify(execFile)
@@ -31,6 +31,7 @@ import {
   PROTECTED_APP_DIR_NAME,
 } from '@shared/appConstants'
 import { DANGEROUS_COMMAND_PATTERNS } from '@shared/configuration/dangerousCommands'
+import { hardKillProcessTree } from '../process/processTree'
 import { safeIpcHandle } from '../bridge/core/ipcGuard'
 import { normalizePipeTerminalInput } from './terminalInputFilter'
 export { normalizePipeTerminalInput }
@@ -117,15 +118,15 @@ export function getBlacklist() {
 }
 
 // Terminal instances storage (模块级别，便于清理)
-const terminals = new Map<string, any>() // IPty instances
-const backgroundProcesses = new Map<number, import('child_process').ChildProcess>() // shell:executeBackground 子进程
+const terminals = new Map<string, any>() // IPty / PipeShellSession instances
+const backgroundProcesses = new Map<number, import('child_process').ChildProcess>() // 一次性 / 后台命令子进程
 
 /**
- * 可靠地终止 PTY 进程树
+ * 可靠地终止交互式终端进程树
  *
- * node-pty 的 ConPTY 模式在 Windows 上 kill() 存在异步竞态，
- * 可能导致 PowerShell/conhost 子进程残留。
- * 使用 taskkill /F /T 强制终止整个进程树。
+ * node-pty 的 ConPTY 模式在 Windows 上 kill() 存在异步竞态，可能残留
+ * PowerShell/conhost 子进程；PipeShellSession 虽已按进程组终止，但缺少 SIGKILL 升级。
+ * 这里统一补上「整树终止 + 强制升级」，确保终端外壳及其子命令都被回收。
  */
 function killPtyReliably(ptyProcess: any): void {
   try {
@@ -134,30 +135,27 @@ function killPtyReliably(ptyProcess: any): void {
   } catch { /* ignore */ }
 
   const pid = ptyProcess.pid
+  hardKillProcessTree(typeof pid === 'number' ? pid : undefined)
+
+  // 兜底：调用终端自身 kill（Windows 下已由 taskkill 处理，避免二次竞态）
   try {
-    if (process.platform === 'win32' && pid) {
-      // Windows: taskkill /F /T 强制杀死整个进程树（PowerShell + conhost）
-      execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore', timeout: 5000 })
-    } else {
+    if (!(process.platform === 'win32' && typeof pid === 'number')) {
       ptyProcess.kill()
     }
-  } catch {
-    // taskkill 失败时 fallback 到 node-pty 原生 kill
-    try { ptyProcess.kill() } catch { /* ignore */ }
-  }
+  } catch { /* ignore */ }
 }
 
 /**
- * 清理所有终端进程
+ * 清理所有终端与命令子进程
  */
 export function cleanupTerminals(): void {
   for (const [id, ptyProcess] of terminals) {
     killPtyReliably(ptyProcess)
     terminals.delete(id)
   }
-  // 清理后台进程
+  // 清理一次性 / 后台命令子进程（含其整棵进程树）
   for (const [pid, child] of backgroundProcesses) {
-    try { child.kill('SIGTERM') } catch { /* ignore */ }
+    hardKillProcessTree(child.pid ?? pid)
     backgroundProcesses.delete(pid)
   }
   logger.security.info(`[Terminal] All terminals and background processes cleaned up`)
@@ -261,7 +259,9 @@ interface SecurityCheckResult {
       // 使用 spawn 直接执行（不经过 shell），防止注入攻击
       const child = spawn(command, args, {
         cwd,
-        timeout,
+        // 独立进程组：超时/清理时可按进程组一次性终止整棵树，
+        // 避免「只杀直接子进程、孙进程继续占用 CPU」
+        detached: process.platform !== 'win32',
         env: {
           ...process.env,
           PATH: process.env.PATH,
@@ -271,8 +271,22 @@ interface SecurityCheckResult {
         },
       })
 
+      // 登记以便应用退出时统一回收
+      if (child.pid) backgroundProcesses.set(child.pid, child)
+
       let stdout = ''
       let stderr = ''
+      let settled = false
+
+      // 超时兜底：终止整棵进程树（Node 内置 timeout 只杀直接子进程）
+      const timeoutId = timeout > 0
+        ? setTimeout(() => { hardKillProcessTree(child.pid) }, timeout)
+        : null
+
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId)
+        if (child.pid) backgroundProcesses.delete(child.pid)
+      }
 
       child.stdout.on('data', (data) => {
         stdout += data.toString()
@@ -283,10 +297,16 @@ interface SecurityCheckResult {
       })
 
       child.on('close', (code) => {
+        if (settled) return
+        settled = true
+        cleanup()
         resolve({ stdout, stderr, exitCode: code || 0 })
       })
 
       child.on('error', (err) => {
+        if (settled) return
+        settled = true
+        cleanup()
         reject(err)
       })
     })
@@ -1461,6 +1481,8 @@ export function registerSecureTerminalHandlers(
       const child = spawn(shell, shellArgs, {
         cwd: workingDir,
         env: { ...process.env, TERM: 'dumb' },
+        // 独立进程组：超时/清理时可按进程组终止整棵进程树（shell + python/node 等子进程）
+        detached: process.platform !== 'win32',
         windowsHide: true,
       })
 
@@ -1471,17 +1493,15 @@ export function registerSecureTerminalHandlers(
       let stderr = ''
       let timedOut = false
 
-      // 超时处理
-      const timeoutId = setTimeout(() => {
-        timedOut = true
-        child.kill('SIGTERM')
-        // Windows 上 SIGTERM 可能不够，延迟后强制 kill
-        setTimeout(() => {
-          if (!child.killed) {
-            child.kill('SIGKILL')
-          }
-        }, 1000)
-      }, timeout)
+      // 超时处理：终止整棵进程树（SIGTERM → 宽限后 SIGKILL），
+      // 避免只杀 shell 而让 python/node 等子进程残留继续占用 CPU。
+      // timeout = 0 表示不限制超时（长驻命令）。
+      const timeoutId = timeout > 0
+        ? setTimeout(() => {
+            timedOut = true
+            hardKillProcessTree(child.pid)
+          }, timeout)
+        : null
 
       // 实时推送输出
       child.stdout?.on('data', (data: Buffer) => {
@@ -1511,7 +1531,7 @@ export function registerSecureTerminalHandlers(
       })
 
       child.on('close', (code, signal) => {
-        clearTimeout(timeoutId)
+        if (timeoutId) clearTimeout(timeoutId)
         if (child.pid) backgroundProcesses.delete(child.pid)
 
         // 清理输出（移除 ANSI 序列）
@@ -1539,7 +1559,9 @@ export function registerSecureTerminalHandlers(
       })
 
       child.on('error', (err) => {
-        clearTimeout(timeoutId)
+        if (timeoutId) clearTimeout(timeoutId)
+        // 启动/执行异常时也回收整棵进程树，避免留下半启动的子进程
+        hardKillProcessTree(child.pid)
         if (child.pid) backgroundProcesses.delete(child.pid)
         logger.security.error(`[Shell] Command error:`, err)
         resolve({

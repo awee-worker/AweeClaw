@@ -1060,28 +1060,43 @@ export class TerminalManagerClass {
   }
 
   /**
-   * 中断所有正在执行的 Agent 终端命令
+   * 结束会话：中断并回收本次会话产生的命令进程
    *
-   * 当用户点击"结束对话"时调用，确保正在运行的 shell 命令（如 npm install）
-   * 被及时终止，而不是继续在后台执行。
+   * 当用户点击"结束对话"（或停止按钮）时调用，确保会话过程中运行的 shell 命令
+   * （npm install、python 脚本等）被真正终止，而不是继续在后台占用 CPU。
    *
    * 实现步骤：
-   * 1. 向每个有活跃命令的终端发送 Ctrl+C（\x03）中断信号
-   * 2. 调用 finalize 结束命令执行 Promise，使 run_command 工具返回
-   * 3. 更新命令会话状态为 'cancelled'
+   * 1. 向每个有活跃命令的终端发送 Ctrl+C（\x03），并 finalize 结束命令执行 Promise，
+   *    使等待中的 run_command 立即返回
+   * 2. 关闭承载「一次性命令」的 Agent 终端 —— 由主进程终止其整棵进程树，
+   *    覆盖忽略 SIGINT 的 python / node 残留进程
+   * 3. 保留用户显式启动的长驻服务（detached 后台进程，如 dev server / watch），
+   *    交由 stop_terminal 或应用退出统一回收
    */
   abortActiveAgentCommands(): void {
+    // 1. 中断活跃命令并结束其执行 Promise
     for (const [termId, execution] of this.activeExecutions.entries()) {
-      // 发送 Ctrl+C 中断信号到终端
       try {
         this.writeToTerminal(termId, '\x03')
       } catch {
         // 终端可能已关闭，忽略写入错误
       }
-      // 结束命令执行 Promise，使等待的 run_command 返回
       execution.finalize('cleanup', {
         finalStatus: 'cancelled',
       })
+    }
+
+    // 2. 关闭一次性命令终端，保留长驻服务
+    for (const terminal of [...this.state.terminals]) {
+      if (!terminal.isAgent) continue
+
+      const info = this.getTerminalCommandState(terminal.id)
+      const isLongRunningService =
+        info.current?.status === 'detached' ||
+        info.last?.status === 'detached'
+      if (isLongRunningService) continue
+
+      this.closeTerminal(terminal.id)
     }
   }
 
@@ -1174,18 +1189,21 @@ export class TerminalManagerClass {
           commandInfo.current?.status === 'queued' ||
           commandInfo.current?.status === 'running'
 
+        // shell 已退出（例如命令超时/中止后被强制终止）→ 终端不可复用，重建
+        const lastStatus = commandInfo.last?.status
+        if (lastStatus === 'shell_exited') {
+          this.agentTerminalId = null
+        }
         // 空闲终端：直接复用
-        if (!occupiedByDetachedWork && !occupiedByActiveCommand) {
-          // 上次命令异常结束（超时/中断/被错误终止/shell 退出）时，终端里可能残留
+        else if (!occupiedByDetachedWork && !occupiedByActiveCommand) {
+          // 上次命令异常结束（超时/中断/被错误终止）时，终端里可能残留
           // 未被杀死的挂起进程（如无超时的 fetch/网络脚本）。此时直接复用会把新命令
           // 写入被占用 stdin 的 shell，导致新命令无人执行、再次超时（连锁超时）。
           // 因此复用前发送 Ctrl+C + 换行，把终端恢复到干净可用的状态。
-          const lastStatus = commandInfo.last?.status
           const lastAbnormal =
             lastStatus === 'timed_out' ||
             lastStatus === 'interrupted' ||
             lastStatus === 'failed' ||
-            lastStatus === 'shell_exited' ||
             lastStatus === 'cancelled'
           if (lastAbnormal) {
             this.interruptStaleAgentCommand(this.agentTerminalId)
@@ -1194,7 +1212,7 @@ export class TerminalManagerClass {
         }
 
         // 长进程（detached）正确占用终端：不能中断，创建新终端
-        if (occupiedByDetachedWork) {
+        else if (occupiedByDetachedWork) {
           this.agentTerminalId = null
         } else {
           // 命令卡在 running 状态（sentinel 失败等导致状态残留）
@@ -1563,6 +1581,16 @@ export class TerminalManagerClass {
               partialOutput: getVisibleOutput(),
               output: getVisibleOutput(),
             })
+
+            // SIGINT 可能被 python/node 等进程忽略（C 扩展、守护线程、无超时的网络脚本），
+            // 仅靠 Ctrl+C 会让命令进程继续占用 CPU。宽限期后强制关闭终端，
+            // 由主进程终止整棵进程树（含忽略信号残留的子进程）。
+            setTimeout(() => {
+              const target = this.state.terminals.find(t => t.id === termId)
+              if (target?.isAgent) {
+                this.closeTerminal(termId)
+              }
+            }, 1500)
           }, timeoutMs)
         : null
 
