@@ -13,6 +13,7 @@ export function ReasoningPartView(part: AssistantPart, ctx: PartRenderContext): 
       content={reasoningPart.content || ''}
       startTime={reasoningPart.startTime}
       isStreaming={!!reasoningPart.isStreaming}
+      isActiveTail={ctx.isActiveTail}
       fontSize={ctx.fontSize}
     />
   )

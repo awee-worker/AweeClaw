@@ -482,20 +482,22 @@ textarea,
 
 /* --- Streaming block-reveal animation ---
  *
- * 只使用 opacity + transform：两者均为合成属性，动画不进入绘制阶段。
+ * 只使用 opacity：单一合成属性，动画不进入绘制阶段。
  * 历史实现包含 filter: blur(4px) -> blur(0)，配合 fill-mode: both 会让动画结束后
  * 元素永久保留 filter 计算样式，从而独立成为带滤波的渲染表面；一段长回复往往有
  * 几十个块级元素（p / li / h1-h3 / pre / blockquote / table），每个都占据一张
  * 表面，叠加流式期间 className 反复切换导致的动画重启，是会话区最重的渲染开销。
  *
- * fill-mode 取 backwards 而非 both：both 会把 100% 的 `translateY(0)` 留在元素上，
- * 而「非 none 的 transform」本身就会让元素保留一张合成层 —— 同样的几十个块级元素
- * 于是各自占一层，合成与显存开销常驻。backwards 只在动画开始前填 0% 值，结束后
- * 交还给静态样式（transform: none），动画仍在合成器上跑，层却在结束即释放。
- * 末帧本就是 opacity 1 / translateY(0)，与静态样式一致，因此没有视觉差异。 */
+ * 入场位移（translateY(2px)）已移除：流式期间新块随内容推进连续出现，每个块都做
+ * 一次 2px 位移，叠加起来就是会话区持续的上下抖动。纯透明度淡入足以表达「新内容
+ * 出现」，且不再触碰几何属性 —— 相邻内容不会被推动。
+ *
+ * fill-mode 取 backwards 而非 both：both 会把 100% 值留在元素上，非 none 的
+ * transform 会让元素保留一张合成层。backwards 只在动画开始前填 0% 值，结束后
+ * 交还给静态样式，动画仍在合成器上跑，层却在结束即释放。 */
 @keyframes block-reveal {
-  0% { opacity: 0; transform: translateY(2px); }
-  100% { opacity: 1; transform: translateY(0); }
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }
 .animate-block-reveal {
   animation: block-reveal 0.24s ease-out backwards;

@@ -31,6 +31,13 @@ interface MarkdownContentViewProps {
   content: string
   fontSize: number
   isStreaming?: boolean
+  /**
+   * 该内容块是否仍是消息时间线上的活跃尾部
+   *
+   * 缺省按 true 处理（单块渲染的调用方没有时间线概念）。为 false 时说明这块内容
+   * 后面已经渲染出新的正文 / 思考 / 工具卡，内容已定型，需要立即补全显示。
+   */
+  isActiveTail?: boolean
   preserveLineBreaks?: boolean
 }
 
@@ -106,7 +113,7 @@ const StreamingFenceBlock = React.memo(function StreamingFenceBlock({
 })
 StreamingFenceBlock.displayName = 'StreamingFenceBlock'
 
-function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, preserveLineBreaks }: MarkdownContentViewProps) {
+function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, isActiveTail, preserveLineBreaks }: MarkdownContentViewProps) {
   const content = typeof rawContent === 'string' ? rawContent : String(rawContent ?? '')
   const language = useStore(s => s.language)
 
@@ -163,9 +170,18 @@ function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, p
    * 这里曾叠加过 useDeferredValue 来合并中间态，但插值器本身已按 66ms 节拍推进，
    * 而外部 store 每收到一块内容就会触发同步更新，低优先级的 deferred 渲染会被反复
    * 打断并重启，流式内容只能等输出结束、更新停止后才提交，表现为「结束后一次性出现」。
+   *
+   * 平滑推进只对活跃尾部启用：尾部内容仍在接收增量，慢速推进换取连续观感；已定型的块
+   * 若继续慢速补字，就会与下方已经渲染出的工具卡形成时间差，表现为会话内容上下跳动。
    */
-  const { displayedContent: smoothContent } = useSmoothStream(contentWithoutAlert || '', !!isStreaming, 1.5)
-  const enableBlockReveal = !!isStreaming
+  const smoothStreaming = !!isStreaming && isActiveTail !== false
+  const { displayedContent: smoothContent } = useSmoothStream(
+    contentWithoutAlert || '',
+    smoothStreaming,
+    1.5,
+    { immediate: isActiveTail === false },
+  )
+  const enableBlockReveal = smoothStreaming
 
   const { workspacePath, openFile, setActiveFile } = useStore(useShallow(s => ({
     workspacePath: s.workspacePath,

@@ -26,11 +26,17 @@ const BASE_CHARS_PER_SECOND = 40
 /** 收尾阶段基础速率（字符/秒），略快于流式以减少等待 */
 const CATCH_UP_CHARS_PER_SECOND = 120
 
-/** 积压每增加这么多字符，推进速率提升一档 */
-const BACKLOG_TIER_CHARS = 150
+/**
+ * 积压每增加这么多字符，推进速率提升一档
+ *
+ * 门槛偏高会让积压长期存在：尾部内容持续落后于上游真实输出，一直追不上，
+ * 直到后面出现新内容（工具卡 / 新正文）触发定型补全，才一次性涌出 —— 观感
+ * 仍是一次突跳。把门槛压低，让推进更早提速，缩短这段「追赶期」。
+ */
+const BACKLOG_TIER_CHARS = 80
 
 /** 每档提升的速率（字符/秒） */
-const BACKLOG_CHARS_PER_SECOND = 30
+const BACKLOG_CHARS_PER_SECOND = 40
 
 /** 流式阶段速率上限：避免积压过大时一帧跳出整段文本 */
 const MAX_CHARS_PER_SECOND = 300
@@ -133,6 +139,18 @@ function advanceCatchUp(
   return { nextLen, slice: content.slice(0, nextLen) }
 }
 
+export interface UseSmoothStreamOptions {
+  /**
+   * 立即补全显示长度，不做渐进推进
+   *
+   * 供「已定型的内容单元」使用：当一段正文后面已经渲染出新的正文、思考或工具卡，
+   * 它就不再是时间线上的活跃尾部。此时若继续按流式速率慢慢补字，会出现「后面的
+   * 内容已经出现、前面的文字还在补」的重叠窗口，表现为会话内容上下跳动。
+   * 置为 true 时直接跳到全文，把滞后一次性抹平。
+   */
+  immediate?: boolean
+}
+
 /**
  * 平滑流式文本插值器
  *
@@ -143,12 +161,14 @@ export function useSmoothStream(
   content: string,
   isStreaming: boolean,
   speedMultiplier = 1,
+  options: UseSmoothStreamOptions = {},
 ): { displayedContent: string } {
+  const { immediate = false } = options
   const [displayedContent, setDisplayedContent] = useState(() =>
-    isStreaming ? '' : content,
+    isStreaming && !immediate ? '' : content,
   )
   const contentRef = useRef(content)
-  const displayedLenRef = useRef(isStreaming ? 0 : content.length)
+  const displayedLenRef = useRef(isStreaming && !immediate ? 0 : content.length)
   const catchUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   /** 清理收尾动画定时器 */
@@ -159,13 +179,23 @@ export function useSmoothStream(
     }
   }
 
-  // 同步内容引用，并处理内容回退或收尾动画
+  // 同步内容引用，并处理内容回退、定型补全或收尾动画
   useEffect(() => {
     contentRef.current = content
 
     if (content.length < displayedLenRef.current) {
       displayedLenRef.current = content.length
       setDisplayedContent(content)
+      return
+    }
+
+    // 已定型的内容单元：立即补齐，并终止可能正在跑的收尾推进
+    if (immediate) {
+      clearCatchUp()
+      if (displayedLenRef.current !== content.length) {
+        displayedLenRef.current = content.length
+        setDisplayedContent(content)
+      }
       return
     }
 
@@ -197,11 +227,11 @@ export function useSmoothStream(
       setDisplayedContent(content)
       displayedLenRef.current = content.length
     }
-  }, [content, isStreaming, speedMultiplier])
+  }, [content, isStreaming, speedMultiplier, immediate])
 
   // 流式期间推进循环
   useEffect(() => {
-    if (!isStreaming) return
+    if (!isStreaming || immediate) return
 
     clearCatchUp()
 
@@ -229,7 +259,7 @@ export function useSmoothStream(
     scheduleFrameTask(runStream, resolveTickMs(STREAM_TICK_MS, contentRef.current.length))
 
     return () => cancelFrameTask(runStream)
-  }, [isStreaming, speedMultiplier])
+  }, [isStreaming, speedMultiplier, immediate])
 
   // 卸载时清理收尾动画定时器（流式推进任务由上面的 effect 自行取消）
   useEffect(() => () => clearCatchUp(), [])

@@ -14,6 +14,7 @@ export function TextPartView(part: AssistantPart, ctx: PartRenderContext): React
       content={textStr}
       fontSize={ctx.fontSize}
       isStreaming={ctx.isStreaming}
+      isActiveTail={ctx.isActiveTail}
     />
   )
 }

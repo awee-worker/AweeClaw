@@ -101,9 +101,26 @@ function AssistantMessageContentViewBase({ parts, hideTodoList, previewToolCalls
     return result
   }, [parts, previewToolCalls])
 
+  /**
+   * 活跃尾部判定
+   *
+   * 只有最后一个渲染单元才是「仍在接收增量」的位置。末尾是工具组或任务列表
+   * （含流式预览工具落下的分组）时，说明正文已经写完、后续内容已经出现，此刻正文
+   * 若还在做平滑推进，就会与下方即时渲染的工具卡形成时间差 —— 用户看到的是上方
+   * 文字一边慢慢补、下方内容一边被推下去。只有活跃尾部的正文才继续平滑。
+   *
+   * 判定不掺 isStreaming：流式结束后最后一块仍是尾部，需要走收尾补齐；
+   * 而非尾部判定的依据是「后面有没有新内容」，与整体是否还在流式无关。
+   */
+  const activeTailGroupIndex = useMemo(() => {
+    const lastIndex = groups.length - 1
+    if (lastIndex < 0) return -1
+    return groups[lastIndex].type === 'part' ? lastIndex : -1
+  }, [groups])
+
   return (
     <CommitProbe scope="assistant-content">
-      {groups.map((group) => {
+      {groups.map((group, index) => {
         // 任务列表：在 AI 调用 todo_write 的位置嵌入渲染
         // 合并快照与最新状态：已完成任务同步更新为 completed，避免历史列表停留在 in_progress
         // hideTodoList=true 时跳过渲染（项目执行场景：左侧已有项目任务列表）
@@ -121,7 +138,7 @@ function AssistantMessageContentViewBase({ parts, hideTodoList, previewToolCalls
         if (group.type === 'part') {
           return (
             <div key={`wrap-part-${group.index}`} className="w-full">
-              {renderPart(group.part, ctx)}
+              {renderPart(group.part, { ...ctx, isActiveTail: index === activeTailGroupIndex })}
             </div>
           )
         }

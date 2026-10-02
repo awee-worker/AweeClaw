@@ -14,6 +14,13 @@ interface ThinkingBlockViewProps {
   content: string
   startTime?: number
   isStreaming: boolean
+  /**
+   * 该思考块是否仍是消息时间线上的活跃尾部
+   *
+   * 为 false 时说明它后面已经渲染出新的思考 / 正文 / 工具卡，内容已定型。
+   * 此时立即补齐插值，避免「下方内容已经出现、上方思考还在慢慢补」的错位观感。
+   */
+  isActiveTail?: boolean
   fontSize: number
 }
 
@@ -28,7 +35,7 @@ const ThinkingTextChunk = React.memo(function ThinkingTextChunk({ text }: { text
 })
 ThinkingTextChunk.displayName = 'ThinkingTextChunk'
 
-function ThinkingBlockViewBase({ content, startTime, isStreaming, fontSize }: ThinkingBlockViewProps) {
+function ThinkingBlockViewBase({ content, startTime, isStreaming, isActiveTail, fontSize }: ThinkingBlockViewProps) {
   const language = useStore(s => s.language)
   const expandThinkingByDefault = useStore(s => s.agentConfig.expandThinkingByDefault ?? true)
   const [isExpanded, setIsExpanded] = useState(expandThinkingByDefault)
@@ -72,7 +79,11 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, fontSize }: Th
     return () => clearInterval(timer)
   }, [startTime, isStreaming])
 
-  const { displayedContent: fluidContent } = useSmoothStream(content, isStreaming, 1.5)
+  // 本块已不是时间线尾部（后面出现了新内容）时立即补全：此时再慢速推进，
+  // 就会与下方已经渲染出的正文 / 工具卡形成时间差，观感是会话内容上下跳动。
+  const { displayedContent: fluidContent } = useSmoothStream(content, isStreaming, 1.5, {
+    immediate: isActiveTail === false,
+  })
 
   /**
    * 分块渲染插值结果

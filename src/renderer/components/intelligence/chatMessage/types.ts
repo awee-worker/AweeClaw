@@ -13,6 +13,14 @@ export interface PartRenderContext {
   onOpenDiff?: (path: string, oldContent: string, newContent: string) => void
   fontSize: number
   isStreaming?: boolean
+  /**
+   * 该 Part 是否仍是消息时间线上的活跃尾部
+   *
+   * 只有仍在接收增量的最后一个渲染单元才需要平滑推进；一旦它后面渲染出了新的
+   * 正文 / 思考 / 工具卡，内容即已定型，必须立即补全显示，否则会出现「后面的
+   * 内容已经出现、前面的文字还在慢慢补」的重叠窗口，观感就是会话内容上下跳动。
+   */
+  isActiveTail?: boolean
   messageId: string
 }
 
