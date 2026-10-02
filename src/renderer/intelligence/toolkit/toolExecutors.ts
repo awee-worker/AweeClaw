@@ -3774,6 +3774,44 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         }
     },
 
+    // 收尾续做入口：本轮结束了但还有未完成的事项时，把清单结构化地交给用户
+    // 一键续做。这里只负责产出交互卡片，点击后的续接由前端按清单派发。
+    async offer_continuation(args, _ctx) {
+        const summary = typeof args.summary === 'string' ? args.summary.trim() : ''
+        const rawRemaining = args.remaining as unknown
+
+        if (!Array.isArray(rawRemaining)) {
+            return { success: false, result: '', error: 'remaining must be an array of task descriptions' }
+        }
+
+        const remaining = rawRemaining
+            .map(item => String(item ?? '').trim())
+            .filter(Boolean)
+
+        if (remaining.length === 0) {
+            return { success: false, result: '', error: 'remaining must contain at least one non-empty task' }
+        }
+
+        return {
+            success: true,
+            result: `Offered the user a continuation card with ${remaining.length} remaining task(s). Waiting for the user to continue.`,
+            meta: {
+                waitingForUser: true,
+                interactive: {
+                    type: 'interactive' as const,
+                    kind: 'continue_task' as const,
+                    question: summary || '还有未完成的任务，是否继续？',
+                    continuation: { summary, remaining },
+                    // 选项仅用于卡片状态机（选中置灰 / 回传标识），文案由前端本地化渲染
+                    options: [
+                        { id: 'continue', label: '继续执行剩余任务' },
+                        { id: 'skip', label: '暂时不用' },
+                    ],
+                },
+            },
+        }
+    },
+
     async create_task_plan(args, ctx) {
         const name = args.name as string
         const requirementsDoc = args.requirementsDoc as string

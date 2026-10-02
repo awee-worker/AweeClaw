@@ -31,7 +31,7 @@ const CORE_SAMPLE = [
   'extract_document', 'ask_user', 'remember', 'knowledge_search',
   'companion_control', 'open_preview', 'inspect_preview',
   // 任务与规划（此前仅专家模式可用）
-  'todo_write', 'schedule', 'apply_skill',
+  'todo_write', 'offer_continuation', 'schedule', 'apply_skill',
   'create_task_plan', 'update_task_plan', 'start_task_execution',
   'add_node', 'add_edge',
   // 角色专属（此前仅 uiux-designer 角色可用）

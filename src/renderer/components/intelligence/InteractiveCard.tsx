@@ -6,7 +6,7 @@
  *  - 子组件拆分：头部、选项行、自定义输入、提交栏各自独立
  */
 import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react'
-import { Check, ChevronDown, CheckCircle2, ArrowRight, Send } from 'lucide-react'
+import { Check, ChevronDown, CheckCircle2, ArrowRight, Send, ListChecks, Play } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { InteractiveContent } from '@intelligence/providerTypes'
 import { useStore } from '@store'
@@ -390,6 +390,15 @@ function ExpandPanel({ expanded, children }: { expanded: boolean; children: Reac
 }
 
 export function InteractiveCard({ content, onSelect, disabled }: InteractiveCardProps) {
+  // 继续任务卡片与普通选项卡片的交互与视觉完全不同（清单 + 一键续做），
+  // 这里只做分发，避免把两套状态机挤在同一个组件里。
+  if (content.kind === 'continue_task') {
+    return <ContinueTaskCard content={content} onSelect={onSelect} disabled={disabled} />
+  }
+  return <OptionCard content={content} onSelect={onSelect} disabled={disabled} />
+}
+
+function OptionCard({ content, onSelect, disabled }: InteractiveCardProps) {
   const language = useStore((s) => s.language)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const state = useInteractionState(content, disabled)
@@ -474,6 +483,99 @@ export function InteractiveCard({ content, onSelect, disabled }: InteractiveCard
           )}
         </div>
       </ExpandPanel>
+    </div>
+  )
+}
+
+/**
+ * 继续任务卡片
+ *
+ * 与普通选项卡片不同：它不是「让用户在若干选项中挑一个」，而是把 AI 这一轮
+ * 没做完的事项列清楚，给用户一个一键续做的入口——省去手动复制清单再发给 AI。
+ * 来源：AI 主动调用 offer_continuation，或系统在存在未完成待办时确定性渲染。
+ */
+function ContinueTaskCard({ content, onSelect, disabled }: InteractiveCardProps) {
+  const language = useStore((s) => s.language)
+  const remaining = content.continuation?.remaining ?? []
+  const [picked, setPicked] = useState<'continue' | 'skip' | null>(null)
+
+  // 首次出现播放提示音（与选项卡片一致）
+  useEffect(() => {
+    if (!content.selectedIds?.length) playNotificationSound('interaction')
+  }, [])
+
+  // 已提交过（组件重挂载）时按历史选择回显，避免重复点击
+  const settled: 'continue' | 'skip' | null =
+    picked ??
+    (content.selectedIds?.includes('skip')
+      ? 'skip'
+      : content.selectedIds?.includes('continue')
+        ? 'continue'
+        : null)
+
+  const locked = disabled || settled !== null
+
+  const pick = (id: 'continue' | 'skip') => {
+    if (locked) return
+    setPicked(id)
+    onSelect([id])
+  }
+
+  return (
+    <div className="my-0.5 rounded-xl border border-accent/25 bg-accent/[0.05] overflow-hidden">
+      <div className="flex items-start gap-2.5 px-3 py-2.5">
+        <ListChecks className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
+
+        <div className="flex-1 min-w-0">
+          <div className="text-[11px] font-medium text-accent">
+            {t('continue.card.pending', language, { count: remaining.length })}
+          </div>
+          {content.continuation?.summary && (
+            <p className="mt-0.5 text-xs text-text-secondary break-words">
+              {content.continuation.summary}
+            </p>
+          )}
+          {remaining.length > 0 && (
+            <ol className="mt-1.5 space-y-0.5">
+              {remaining.map((item, index) => (
+                <li key={`${index}-${item}`} className="flex gap-1.5 text-xs text-text-secondary">
+                  <span className="shrink-0 text-text-muted tabular-nums">{index + 1}.</span>
+                  <span className="min-w-0 break-words">{item}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 px-3 pb-2.5 pl-[34px]">
+        {settled === 'continue' ? (
+          <span className="flex items-center gap-1.5 text-xs text-accent">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            {t('continue.card.progressed', language)}
+          </span>
+        ) : settled === 'skip' ? (
+          <span className="text-xs text-text-muted">{t('continue.card.declined', language)}</span>
+        ) : (
+          <>
+            <button
+              onClick={() => pick('continue')}
+              disabled={disabled}
+              className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-accent/12 hover:bg-accent/20 text-accent text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Play className="w-3.5 h-3.5" />
+              {t('continue.card.continue', language)}
+            </button>
+            <button
+              onClick={() => pick('skip')}
+              disabled={disabled}
+              className="h-7 px-2.5 rounded-lg text-text-muted hover:bg-text-primary/[0.04] text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {t('continue.card.skip', language)}
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

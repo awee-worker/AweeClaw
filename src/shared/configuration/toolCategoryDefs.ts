@@ -160,6 +160,8 @@ const CORE_TOOLS: string[] = [
   'apply_skill',
   // 任务列表
   'todo_write',
+  // 收尾续做：任务只完成一部分时，给用户一个一键继续的入口
+  'offer_continuation',
   // Graph Runtime 动态建图（graphVersion=2 执行期可用，无活跃图时工具返回友好错误）
   'add_node',
   'add_edge',
@@ -403,6 +405,7 @@ export const CAPABILITY_GROUPS: CapabilityGroupConfig[] = [
     tools: [
       'todo_write',
       'ask_user',
+      'offer_continuation',
       'create_task_plan',
       'update_task_plan',
       'start_task_execution',

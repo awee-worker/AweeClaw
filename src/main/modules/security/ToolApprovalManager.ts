@@ -44,6 +44,7 @@ const TOOL_RISK_MAP: Record<string, ToolRiskLevel> = {
   knowledge_search: 'safe',
   ask_user: 'safe',
   ask_form: 'safe',
+  offer_continuation: 'safe',
   todo_write: 'safe',
   schedule: 'safe',
   create_task_plan: 'safe',

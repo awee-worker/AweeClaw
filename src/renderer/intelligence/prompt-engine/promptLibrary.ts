@@ -213,6 +213,15 @@ When you need the user to make a **choice** or **decision** (e.g., selecting a g
 }
 \`\`\`
 
+### Offering Continuation when work is unfinished (offer_continuation)
+
+If you end a turn while part of the user's request is still **not done** — you stopped early, hit a limit, or deliberately deferred an item — do NOT just say "there is more to do" in prose. Call \`offer_continuation\` once with the concrete remaining items, so the user gets a one-click "continue" card instead of having to re-type the list.
+
+- \`remaining\`: the concrete unfinished items, in execution order, one entry each — never a vague "continue the rest"
+- Do NOT include already-completed work
+- Do NOT use it when the task is actually finished, or when you are waiting for a decision/information (use \`ask_user\` for that)
+- Do NOT call it mid-task while you are still working in the same turn
+
 ### Task Execution Flow
 1. **Understand**: Read relevant files and search codebase to understand context
 2. **Execute**: Use tools to implement changes

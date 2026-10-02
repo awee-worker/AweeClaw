@@ -449,6 +449,17 @@ export const zh = {
   'tool.label.uiux_recommend': 'UI/UX 推荐',
   'tool.label.apply_skill': '应用技能',
   'tool.label.todo_write': '任务列表',
+  'tool.label.offer_continuation': '继续执行',
+
+  // 继续执行剩余任务（交互卡片 + 会话底部续做入口）
+  'continue.card.pending': '还有 {count} 项未完成',
+  'continue.card.continue': '继续执行剩余任务',
+  'continue.card.skip': '暂时不用',
+  'continue.card.progressed': '已继续执行',
+  'continue.card.declined': '已暂停',
+  'continue.bar.title': '还有未完成的任务',
+  'continue.bar.pending': '{count} 项待完成',
+  'continue.bar.continue': '继续执行',
   'tool.label.companion_control': '桌面伴侣控制',
   'tool.label.open_preview': '内置浏览器预览',
 'tool.label.inspect_preview': '预览页面自检',

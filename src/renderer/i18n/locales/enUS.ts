@@ -448,6 +448,17 @@ export const en = {
   'tool.label.uiux_recommend': 'UI/UX Recommend',
   'tool.label.apply_skill': 'Apply Skill',
   'tool.label.todo_write': 'Task List',
+  'tool.label.offer_continuation': 'Continue Task',
+
+  // Continue-remaining-tasks (interactive card + footer bar)
+  'continue.card.pending': '{count} task(s) left',
+  'continue.card.continue': 'Continue remaining tasks',
+  'continue.card.skip': 'Not now',
+  'continue.card.progressed': 'Continuing',
+  'continue.card.declined': 'Paused',
+  'continue.bar.title': 'Unfinished tasks',
+  'continue.bar.pending': '{count} left',
+  'continue.bar.continue': 'Continue',
   'tool.label.companion_control': 'Companion Control',
   'tool.label.open_preview': 'Open Preview',
 'tool.label.inspect_preview': 'Inspect Preview',

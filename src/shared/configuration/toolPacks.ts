@@ -109,6 +109,7 @@ const CODE_TOOL_PACK: ToolPack = {
     // 交互与规划
     'ask_user',
     'todo_write',
+    'offer_continuation',
     'schedule',
     // Graph Runtime 动态建图（graphVersion=2）
     'add_node',

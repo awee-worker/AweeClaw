@@ -28,6 +28,7 @@ import { StreamingPhaseIndicator } from './StreamingPhaseIndicator'
 import { MessageActionsBar } from '../components/MessageActionsBar'
 import { InteractiveCard } from '../../InteractiveCard'
 import { MessageMetaGroupView } from './MessageMetaGroupView'
+import { buildContinuationPrompt, CONTINUATION_DECLINE_MESSAGE } from '@intelligence/utils/continuationReply'
 
 const EMPTY_PREVIEWS: Record<string, ToolStreamingPreview> = {}
 const EMPTY_TODOS: TodoItem[] = []
@@ -444,7 +445,12 @@ function AssistantMessageViewBase({
                 const selectedLabels = assistantInteractive.options
                   .filter((opt: any) => selectedIds.includes(opt.id))
                   .map((opt: any) => opt.label)
-                const response = customText || selectedLabels.join(', ')
+                // 继续任务卡片：把未完成清单转成续做正文；普通选项卡片维持原语义
+                const response = assistantInteractive.kind === 'continue_task'
+                  ? (selectedIds.includes('skip')
+                      ? CONTINUATION_DECLINE_MESSAGE
+                      : buildContinuationPrompt(assistantInteractive.continuation?.remaining ?? []))
+                  : (customText || selectedLabels.join(', '))
                 window.dispatchEvent(new CustomEvent('chat-update-interactive', { detail: { messageId: message.id, selectedIds } }))
                 window.dispatchEvent(new CustomEvent('chat-send-message', { detail: { content: response, messageId: message.id } }))
               }}

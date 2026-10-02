@@ -41,9 +41,10 @@ const AVAILABLE_BUILTIN_TOOLS: ReadonlySet<string> = new Set([
   'read_url',
   'ask_user',
   'todo_write',
+  'offer_continuation',
   // 数据类：以下 5 项已在 toolDefinitions.ts 定义工具描述，但 toolExecutors.ts
   // 尚未实现执行器（预留能力）。保留在此是为了维持与 BUILTIN_TOOL_OPTIONS /
-  // BUILTIN_TOOLS / 双语 i18n 的 37 项一一对应；isAvailable() 会通过
+// BUILTIN_TOOLS / 双语 i18n 的 38 项一一对应；isAvailable() 会通过
   // toolRegistry.has() 二次校验并返回 false，不会产生静默误判。
   'sql_query',
   'data_transform',
@@ -54,7 +55,7 @@ const AVAILABLE_BUILTIN_TOOLS: ReadonlySet<string> = new Set([
   'knowledge_search',
   'companion_control',
 ])
-// 说明：本白名单的语义是「允许声明式场景引用的内置工具集合」（共 37 项），
+// 说明：本白名单的语义是「允许声明式场景引用的内置工具集合」（共 38 项），
 // 因此包含上述 5 项预留能力；真正的可执行性以 toolRegistry.has() 为准（见 isAvailable）。
 //
 // 与工具包（toolPacks.ts）的区别：

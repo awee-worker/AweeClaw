@@ -70,6 +70,7 @@ import { PredictionBubble } from './chatPanel/components/PredictionBubble'
 import PendingChangesBar from './PendingChangesBar'
 import PendingApprovalBar from './PendingApprovalBar'
 import { MountedTaskBar } from './MountedTaskBar'
+import { ContinuationBar } from './ContinuationBar'
 import { PlanStatusBar } from '../plan/PlanStatusBar'
 import { MountedTaskPromptCard } from './chatPanel/components/MountedTaskPromptCard'
 import { HumanApprovalCard } from './HumanApprovalCard'
@@ -1302,6 +1303,7 @@ export default function ChatPanel() {
                   )}
                 </AnimatePresence>
                 <MountedTaskBar />
+                <ContinuationBar />
 
                 <ChatInputWrapper
                   input={input}

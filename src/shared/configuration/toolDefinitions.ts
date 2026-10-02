@@ -1360,6 +1360,57 @@ TIPS:
         },
     },
 
+    offer_continuation: {
+        name: 'offer_continuation',
+        displayName: 'Offer Continuation',
+        description: 'Offer the user a one-click continuation card when a task is only partially finished. Call it at the end of a turn when work remains, so the user can continue without re-typing the remaining tasks.',
+        detailedDescription: `Show a "continue" card that lists the tasks still left to do.
+
+WHEN TO USE:
+- You finished this turn but part of the user's request is still NOT done (stopped early, hit a limit, or deliberately deferred an item).
+- The user should be able to continue with one click instead of re-stating what is left.
+
+WHEN NOT TO USE:
+- The task is fully complete — just wrap up normally.
+- You are waiting for a required decision or missing information — use ask_user instead.
+- You are still mid-task and about to keep working in this same turn.
+
+RULES:
+- \`remaining\` must list the concrete unfinished items, in execution order, one per entry — never a vague "continue the rest".
+- Do not include already-completed work in \`remaining\`.
+- Call it at most once per turn. After calling, stop and wait for the user.`,
+        examples: [
+            'offer_continuation summary="接口已完成，前端页面还没接" remaining=["编写登录页表单组件","对接 /api/login 并处理错误态","补充表单校验的单元测试"]',
+            'offer_continuation remaining=["生成 B 相用户的对比报表","导出结果包"]',
+        ],
+        criticalRules: [
+            'Only call when part of the request is genuinely unfinished',
+            'List the concrete remaining items in execution order — never a vague restatement',
+            'Do not include already-completed work in remaining',
+            'Call at most once per turn, then stop and wait for the user',
+            'Waiting for a required choice or missing info → use ask_user instead',
+        ],
+        category: 'interaction',
+        approvalType: 'none',
+        parallel: false,
+        concurrencyMode: 'approval-gated',
+        resourceScope: ['interaction:user'],
+        resultSemantics: 'interactive',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'strict',
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            summary: { type: 'string', description: 'One-line note on what is still left to do' },
+            remaining: {
+                type: 'array',
+                description: 'Concrete unfinished tasks, in the order they should be done',
+                required: true,
+                items: { type: 'string', description: 'A single unfinished task' },
+            },
+        },
+    },
+
     create_task_plan: {
         name: 'create_task_plan',
         displayName: 'Create Task Plan',

@@ -167,6 +167,7 @@ export const BUILTIN_TOOL_OPTIONS: BuiltinToolOption[] = [
   // 交互
   { value: 'ask_user', labelKey: 'builder.config.tool.ask_user', descKey: 'builder.config.tool.ask_user.desc', group: 'interaction' },
   { value: 'todo_write', labelKey: 'builder.config.tool.todo_write', descKey: 'builder.config.tool.todo_write.desc', group: 'interaction' },
+  { value: 'offer_continuation', labelKey: 'builder.config.tool.offer_continuation', descKey: 'builder.config.tool.offer_continuation.desc', group: 'interaction' },
   { value: 'remember', labelKey: 'builder.config.tool.remember', descKey: 'builder.config.tool.remember.desc', group: 'interaction' },
   { value: 'companion_control', labelKey: 'builder.config.tool.companion_control', descKey: 'builder.config.tool.companion_control.desc', group: 'interaction' },
 ]
