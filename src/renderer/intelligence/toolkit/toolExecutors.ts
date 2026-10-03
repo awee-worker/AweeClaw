@@ -2515,7 +2515,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
                 return {
                     success: true,
-                    result: `[后台进程已启动]\n命令: ${command}\n终端 ID: ${termId}\n会话 ID: ${detachedSession.commandSessionId}\n\n该进程已在 Agent 终端面板中运行，不会自动退出。命令已成功启动，你可以继续执行下一步任务。\n\n不要重复执行这条启动命令（会造成端口占用/多实例），需要确认是否就绪时请调用 read_terminal_output 查看日志，或用一个短命令探测端口。\n\n如需查看实时日志：调用 read_terminal_output（terminal_id="${termId}"）\n如需发送输入或 Ctrl+C：调用 send_terminal_input（is_ctrl=true 发送中断）\n如需停止进程：调用 stop_terminal`,
+                    result: `[后台进程已启动]\n命令: ${command}\n终端 ID: ${termId}\n会话 ID: ${detachedSession.commandSessionId}\n\n该进程已在 Agent 终端面板中运行，不会自动退出。命令已成功启动，你可以继续执行下一步任务。\n\n不要重复执行这条启动命令（会造成端口占用/多实例），需要确认是否就绪时请调用 read_terminal_output 查看日志，或用一个短命令探测端口。\n\n如需查看实时日志：调用 read_terminal_output（terminal_id="${termId}"）\n如需发送输入或 Ctrl+C：调用 send_terminal_input（is_ctrl=true 发送中断）\n任务完成或不再需要该进程时，必须调用 stop_terminal（terminal_id="${termId}"）结束它——后台进程不会自动退出，会持续占用 CPU，不要把它留到会话结束`,
                     meta: {
                         command,
                         cwd: resolvedCwd,

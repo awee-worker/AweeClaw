@@ -102,15 +102,22 @@ export function signalProcessTree(pid: number, signal: NodeJS.Signals = 'SIGTERM
 export function hardKillProcessTree(pid: number | undefined | null): void {
   if (!pid || pid <= 0) return
 
+  // 先快照整棵树的 PID：SIGTERM 发出后父进程可能先退出，届时再按父子关系枚举
+  // 会丢失后代（pgrep -P 查不到已故父进程的子孙），忽略 SIGTERM 的 python / node
+  // 残留就无法升级为 SIGKILL，长期占用 CPU。快照保证这些后代仍能被强杀。
+  const snapshot =
+    process.platform === 'win32' ? [pid] : [...listDescendantPids(pid), pid]
+
   signalProcessTree(pid, 'SIGTERM')
 
   const killer = setTimeout(() => {
-    try {
-      // 探活：进程仍存活时才升级为 SIGKILL
-      process.kill(pid, 0)
-    } catch {
-      return
+    if (process.platform !== 'win32') {
+      // 按「先子后父」逐个 SIGKILL：即使根进程已退出，也能清掉快照里的后代
+      for (const target of snapshot) {
+        try { process.kill(target, 'SIGKILL') } catch { /* 进程已退出，忽略 */ }
+      }
     }
+    // 兜底：进程组仍存活（detached 启动）时按组再补一次，覆盖快照后新生的子进程
     signalProcessTree(pid, 'SIGKILL')
   }, TREE_KILL_GRACE_MS)
   killer.unref?.()

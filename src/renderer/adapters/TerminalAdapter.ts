@@ -1070,8 +1070,10 @@ export class TerminalManagerClass {
    *    使等待中的 run_command 立即返回
    * 2. 关闭承载「一次性命令」的 Agent 终端 —— 由主进程终止其整棵进程树，
    *    覆盖忽略 SIGINT 的 python / node 残留进程
-   * 3. 保留用户显式启动的长驻服务（detached 后台进程，如 dev server / watch），
-   *    交由 stop_terminal 或应用退出统一回收
+   * 3. AI 通过 run_command(is_background) 启动的后台进程同样随会话回收 ——
+   *    这类长命令（python 监听脚本、耗时任务等）若被保留，会话结束后仍会驻留并占满 CPU。
+   *    只放行 source !== 'agent' 的终端，即用户手动启动的长驻服务（dev server / watch），
+   *    交由 stop_terminal 或应用退出统一回收。
    */
   abortActiveAgentCommands(): void {
     // 1. 中断活跃命令并结束其执行 Promise
@@ -1086,15 +1088,20 @@ export class TerminalManagerClass {
       })
     }
 
-    // 2. 关闭一次性命令终端，保留长驻服务
+    // 2. 关闭一次性命令终端；AI 启动的后台长进程一并回收，避免会话结束后残留占满 CPU
     for (const terminal of [...this.state.terminals]) {
       if (!terminal.isAgent) continue
 
       const info = this.getTerminalCommandState(terminal.id)
-      const isLongRunningService =
-        info.current?.status === 'detached' ||
-        info.last?.status === 'detached'
-      if (isLongRunningService) continue
+      const detachedSession =
+        info.current?.status === 'detached'
+          ? info.current
+          : info.last?.status === 'detached'
+            ? info.last
+            : null
+
+      // 用户手动启动的长驻服务保留；AI 启动的后台进程随会话回收
+      if (detachedSession && detachedSession.source !== 'agent') continue
 
       this.closeTerminal(terminal.id)
     }

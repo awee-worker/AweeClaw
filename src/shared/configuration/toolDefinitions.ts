@@ -473,8 +473,8 @@ For long-running servers or watch tasks:
 - Set is_background=true to run in a UI terminal panel
 - The command returns a terminal ID immediately
 - Use read_terminal_output to check logs
-- Use send_terminal_input to interact (e.g. typing 'y' or sending Ctrl+C)
-- Use stop_terminal to kill it later`,
+            - Use send_terminal_input to interact (e.g. typing 'y' or sending Ctrl+C)
+            - You MUST call stop_terminal to terminate it once the task no longer needs it. Never leave a background process running after the task is done — it keeps consuming CPU after the session ends.`,
         examples: [
             'run_command command="npm install"',
             'run_command command="npm test" cwd="packages/engine"',
@@ -485,6 +485,7 @@ For long-running servers or watch tasks:
             'Use cwd parameter instead of cd — NEVER write "cd path && command" or "cd path; command" inside command field',
             'NEVER use && in command — it is not supported on Windows PowerShell 5 (use cwd parameter for directory changes)',
             'Always use is_background=true for servers and dev tasks',
+            'When a background task finishes or is no longer needed, you MUST call stop_terminal to kill it — never leave it running when the conversation ends',
             'NEVER scan the whole filesystem (e.g. `find / -name ...`, `grep -r foo /`) — it times out and wastes the user\'s time; scope to the workspace (`find . -name ...`) or use search_files',
         ],
         category: 'terminal',
