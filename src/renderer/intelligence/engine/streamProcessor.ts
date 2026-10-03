@@ -571,9 +571,16 @@ export function createStreamProcessor(
             const resolvedArgs = finalArgs || tc.lastPreviewArgs || {}
             if (finalArgs) {
               void synchronizeEditPreviewStream(tc.id, tc.name, finalArgs)
-              store.updateToolCall(assistantId, tc.id, {
-                arguments: finalArgs,
-                streamingState: undefined,
+              // 参数已完整：把预览内容更新为最终值，但保留预览条目 ——
+              // 工具此刻尚未写入 parts（要等 orchestrator 调 addToolCallPart）。
+              // 原先这里传 streamingState: undefined，会经 updateToolCall 触发
+              // clearToolStreamingPreview，在正式卡片渲染出来之前就把预览删掉：
+              // 卡片先消失、待 parts 写入后再出现，即用户看到的「隐藏 | 显示」跳动。
+              store.setToolStreamingPreview(tc.id, {
+                isStreaming: true,
+                name: tc.name,
+                partialArgs: finalArgs,
+                lastUpdateTime: Date.now(),
               })
             }
 
@@ -636,9 +643,10 @@ export function createStreamProcessor(
             partialArgs: args,
             lastUpdateTime: Date.now(),
           })
+          // 同 delta_end：工具尚未写入 parts 时不能清预览，否则卡片会先消失再出现。
+          // 预览的清除交给 orchestrator 在 addToolCallPart 之后执行。
           store.updateToolCall(assistantId, tcId, {
             arguments: args,
-            streamingState: undefined,
           })
         }
 
