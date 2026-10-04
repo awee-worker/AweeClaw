@@ -11,7 +11,7 @@
  * 暴露的状态（authorizedCloseWindows / appQuitInProgress / isCleanupDone）
  * 由 appBootstrap 通过 setter 注入，避免双向依赖。
  */
-import { app, BrowserWindow, screen } from 'electron'
+import { app, BrowserWindow, screen, webContents } from 'electron'
 import * as path from 'path'
 import { logger } from '@shared/toolkit/LogEngine'
 import { safeOpenExternal } from '../guard/safeExternalUrl'
@@ -367,6 +367,15 @@ function registerCsp(win: BrowserWindow): void {
   cspRegistered = true
 
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    // 内置浏览器的第三方页面与主界面共用默认 session，但不该被应用自身的 CSP 约束：
+    // 该 CSP 的 style-src / script-src / font-src 均未放行 https:，一旦注入，
+    // 远程 CSS、JS 与 Web 字体会被拦下，表现为「网页样式加载不出来、版面错乱」。
+    // 只对非 webview 响应注入 CSP，webview 页面保持其自身的 CSP。
+    if (isWebviewGuestRequest(details.webContentsId)) {
+      callback({ responseHeaders: details.responseHeaders })
+      return
+    }
+
     callback({
       responseHeaders: {
         ...details.responseHeaders,
@@ -399,6 +408,19 @@ function registerCsp(win: BrowserWindow): void {
     })
   })
 }
+
+/**
+ * 判断某个响应是否由 <webview> 内的页面发起。
+ *
+ * 内置浏览器与主界面共用默认 session，而 CSP 头是 session 级、无法按窗口区分，
+ * 只能通过发起请求的 webContents 类型来判断：webview guest 不再注入应用 CSP。
+ */
+function isWebviewGuestRequest(webContentsId?: number): boolean {
+  if (typeof webContentsId !== 'number') return false
+  const guest = webContents.fromId(webContentsId)
+  return guest?.getType() === 'webview'
+}
+
 
 /** 注册窗口生命周期事件（close 拦截、closed 清理） */
 function registerWindowLifecycle(win: BrowserWindow): void {

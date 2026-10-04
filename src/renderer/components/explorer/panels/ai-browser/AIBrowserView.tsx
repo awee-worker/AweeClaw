@@ -434,6 +434,7 @@ export function AIBrowserView() {
   const [imageItems, setImageItems] = useState<ImageResultItem[]>([])
   const [videoItems, setVideoItems] = useState<VideoResultItem[]>([])
   const [brokenImages, setBrokenImages] = useState<Set<string>>(() => new Set())
+  const [brokenCovers, setBrokenCovers] = useState<Set<string>>(() => new Set())
   const [history, setHistory] = useState<string[]>(() => loadHistory())
   const [aiBusy, setAiBusy] = useState(false)
   /** 已加载到第几页（从 1 开始），用于「加载更多」翻页 */
@@ -471,6 +472,7 @@ export function AIBrowserView() {
     setImageItems([])
     setVideoItems([])
     setBrokenImages(new Set())
+    setBrokenCovers(new Set())
     // 清空结果即回到「未检索」状态，避免残留关键词让界面停在「未找到相关结果」
     setSearchedQuery('')
   }, [])
@@ -795,7 +797,7 @@ export function AIBrowserView() {
       </div>
 
       {/* 右侧：检索结果 / 内置浏览器（浏览网页时保留检索状态） */}
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
         {internalBrowserUrl ? (
           <Suspense fallback={null}>
             <InternalBrowser />
@@ -889,7 +891,7 @@ export function AIBrowserView() {
           </div>
 
           {/* 结果区 */}
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-8 py-6">
+          <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar px-8 py-6">
             {loading && (
               <div className="flex flex-col items-center justify-center h-full text-text-muted">
                 <Loader2 className="w-5 h-5 animate-spin mb-2 text-accent" />
@@ -939,22 +941,22 @@ export function AIBrowserView() {
                   return (
                     <div
                       key={`${item.url}-${index}`}
-                      className="group rounded-xl border border-border/30 bg-surface/40 hover:border-accent/40 hover:bg-surface-hover transition-colors p-4"
+                      className="group rounded-xl border border-border/30 bg-surface/40 hover:border-accent/40 hover:bg-surface-hover transition-colors p-4 min-w-0 overflow-hidden"
                     >
                       <button
                         onClick={() => openResult(item.url, item.title)}
                         className="block w-full text-left"
                       >
-                        <div className="text-sm font-medium text-accent group-hover:underline break-words">
+                        <div className="text-sm font-medium text-accent group-hover:underline [overflow-wrap:anywhere]">
                           {item.title || item.url}
                         </div>
                         <div className="text-[11px] text-text-muted mt-0.5 truncate">{item.url}</div>
                         {item.snippet && (
-                          <p className="text-[12px] text-text-secondary mt-2 leading-relaxed break-words">{item.snippet}</p>
+                          <p className="text-[12px] text-text-secondary mt-2 leading-relaxed [overflow-wrap:anywhere]">{item.snippet}</p>
                         )}
                         {/* 学术结果的 content 是「[PDF]: url」标记，改用下方按钮暴露，不当作正文展示 */}
                         {item.content && !pdfUrl && (
-                          <p className="text-[11px] text-text-muted mt-1.5 leading-relaxed line-clamp-3 break-words">
+                          <p className="text-[11px] text-text-muted mt-1.5 leading-relaxed line-clamp-3 [overflow-wrap:anywhere]">
                             {item.content}
                           </p>
                         )}
@@ -1015,7 +1017,7 @@ export function AIBrowserView() {
                   return (
                     <div
                       key={key}
-                      className="group relative rounded-xl overflow-hidden border border-border/30 bg-surface/40 hover:border-accent/40 transition-colors"
+                      className="group relative min-w-0 rounded-xl overflow-hidden border border-border/30 bg-surface/40 hover:border-accent/40 transition-colors"
                     >
                       {/* 图片区用 div 承载点击（内部还有悬浮操作按钮，避免 button 嵌套） */}
                       <div
@@ -1127,24 +1129,34 @@ export function AIBrowserView() {
                   return (
                     <div
                       key={key}
-                      className="group rounded-xl border border-border/30 bg-surface/40 hover:border-accent/40 hover:bg-surface-hover transition-colors p-3"
+                      className="group rounded-xl border border-border/30 bg-surface/40 hover:border-accent/40 hover:bg-surface-hover transition-colors p-3 min-w-0 overflow-hidden"
                     >
                       <div className="flex items-stretch gap-3">
                         <button
                           onClick={() => openResult(item.url, item.title)}
                           title={isZh ? '在内置浏览器中播放' : 'Play in built-in browser'}
-                          className="relative w-40 shrink-0 aspect-video rounded-lg overflow-hidden bg-text-primary/[0.06] flex items-center justify-center"
+                          className="group/thumb relative w-40 shrink-0 max-w-[45%] aspect-video rounded-lg overflow-hidden bg-text-primary/[0.06] flex items-center justify-center"
                         >
-                          {item.thumbnail ? (
+                          {item.thumbnail && !brokenCovers.has(key) ? (
                             <img
                               src={item.thumbnail}
                               alt={item.title}
                               loading="lazy"
                               referrerPolicy="no-referrer"
+                              onError={() =>
+                                setBrokenCovers((prev) => {
+                                  const next = new Set(prev)
+                                  next.add(key)
+                                  return next
+                                })
+                              }
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <Video className="w-5 h-5 text-text-muted" />
+                            <div className="flex flex-col items-center justify-center gap-1 text-text-muted">
+                              <Video className="w-6 h-6" />
+                              <span className="text-[10px]">{isZh ? '暂无封面' : 'No cover'}</span>
+                            </div>
                           )}
                           <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover/thumb:bg-black/30 transition-colors">
                             <Play className="w-6 h-6 text-white opacity-0 group-hover/thumb:opacity-100 transition-opacity" />
@@ -1153,7 +1165,7 @@ export function AIBrowserView() {
                         <div className="min-w-0 flex-1 py-0.5 flex flex-col">
                           <button
                             onClick={() => openResult(item.url, item.title)}
-                            className="text-left text-[13px] font-medium text-text-primary group-hover:text-accent transition-colors line-clamp-2 break-words"
+                            className="text-left text-[13px] font-medium text-text-primary group-hover:text-accent transition-colors line-clamp-2 [overflow-wrap:anywhere]"
                           >
                             {item.title || item.url}
                           </button>
