@@ -96,7 +96,8 @@ export const BRAND = {
     structuralIndex: '.aweeclaw/structural-index.json',
     indexStatus: '.aweeclaw/index-status.json',
     index: '.aweeclaw/index',
-    // 内联脚本临时目录已迁出工作区（见 shared/appConstants 的 APP_TEMP_ROOT_NAME）
+    /** AI 执行过程产生的临时文件目录（工作区内，AI 可见、可清理） */
+    temp: '.aweeclaw/temp',
     uploads: '.aweeclaw/uploads',
     screenshot: '.aweeclaw/screenshot',
     /** 项目附件（本地优先：跟随工作区走，后端仅作跨设备同步兜底） */

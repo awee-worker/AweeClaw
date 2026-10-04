@@ -422,11 +422,14 @@ function buildEnvironment(ctx: PromptContext): string {
   const historyDir = ctx.workspacePath ? `${ctx.workspacePath}/.history` : ''
   // 用户上传的附件默认落盘目录（与 useAttachmentManager / useAvatarMiniChat 的写入路径一致）
   const uploadsDir = ctx.workspacePath ? `${ctx.workspacePath}/${BRAND.paths.uploads}` : ''
+  // AI 临时文件统一目录（与 toolExecutors / PythonRuntimeManager 的写入路径一致）
+  const tempDir = ctx.workspacePath ? `${ctx.workspacePath}/${BRAND.paths.temp}` : ''
 
   return `## Environment
 - OS: ${ctx.os}
 - Workspace: ${ctx.workspacePath || 'No workspace open'}
 - User Uploads: ${ctx.workspacePath ? uploadsDir : `${BRAND.paths.uploads} (under the app user-data dir when no workspace is open)`}
+- Temp Files: ${ctx.workspacePath ? tempDir : `${BRAND.paths.temp} (under the app user-data dir when no workspace is open)`}
 - Active File: ${ctx.activeFile || 'None'}
 - Open Files: ${ctx.openFiles.length > 0 ? ctx.openFiles.join(', ') : 'None'}
 - Current Date: ${dateStr} ${weekday}
@@ -438,6 +441,8 @@ ${historyDir ? `\nIMPORTANT: Before a file is edited or deleted, the app automat
 - deleting a folder snapshots every file inside it the same way
 To inspect or restore the pre-change content of a path, read the newest matching file under \`.history\` (e.g. to review the previous \`src/utils/a.ts\`, list \`${historyDir}/src/utils\` and read the latest \`a_*.ts\`). Do NOT create, edit or delete files inside \`.history\` yourself.\n` : ''}
 IMPORTANT: Files the user uploads (images/documents pasted, dragged or attached in the chat) are saved on disk to \`${BRAND.paths.uploads}\` under the workspace root (absolute path: ${uploadsDir || 'the app user-data dir'}), named \`{timestamp}_{originalName}\`. Each user message that carries an attachment always states the exact absolute path of every uploaded file inline — take the path from that message and pass it to tools/plugins/scripts verbatim. Only if a request refers to an uploaded file while the message truly contains no path at all, fall back to listing that directory and choosing the newest file. Never guess a filename, and never treat "the newest file in the uploads directory" as a substitute for the inline path. Do NOT ask the user where the upload is.
+
+IMPORTANT: All temporary files produced while working (intermediate artifacts, downloaded or extracted bundles, generated inline scripts, conversion temp files, scratch output) MUST be written under the workspace temp dir '${BRAND.paths.temp}' (absolute path: ${tempDir || 'the app user-data temp dir when no workspace is open'}). Never use the OS temp directory (/tmp, $TMPDIR, os.tmpdir()) or scatter temp files elsewhere in the workspace. This directory is whitelisted for deletion: once a task is done you may delete files no longer needed, and removing the whole '.aweeclaw/temp' directory will not trigger the '.aweeclaw' protection.
 IMPORTANT: The above date and time are the REAL current time from the user's system. Always use this as the current time reference. Do NOT rely on your training data's knowledge cutoff date for any time-sensitive information.`
 }
 

@@ -240,10 +240,10 @@ export function registerSettingsHandlers(
   })
 
   /**
-   * 应用级临时目录
+   * 应用级回退临时目录
    *
-   * 位于 userData 下（已注册为可信应用路径），用于内联脚本等易失产物：
-   * 既不占用工作区，也不落入工作区的 .aweeclaw，可被正常读写与清理。
+   * 位于 userData 下（已注册为可信应用路径）。AI 产生的临时文件优先写入工作区的
+   * `.aweeclaw/temp`，仅在没有打开工作区时回退到本目录。
    */
   safeIpcHandle('settings:getTempDir', () => {
     const path = require('path')

@@ -17,7 +17,8 @@ import * as https from 'https'
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import Store from 'electron-store'
-import { APP_TEMP_ROOT_NAME, PYTHON_TEMP_SUBDIR } from '@shared/appConstants'
+import { BRAND } from '@shared/brand'
+import { APP_TEMP_ROOT_NAME, WORKSPACE_TEMP_DIR_NAME } from '@shared/appConstants'
 
 /**
  * 懒初始化 electron-store
@@ -2118,9 +2119,11 @@ class PythonManager {
   }): Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number | null; error?: string; tempFile?: string }> {
     const { script, dependencies = [], args = [], cwd, timeout = 120000 } = params
 
-    // 临时脚本落在应用级临时目录（userData/tmp/python-temp），不写入工作区，
-    // 避免落入 .aweeclaw 受保护目录。
-    const tempDir = path.join(app.getPath('userData'), APP_TEMP_ROOT_NAME, PYTHON_TEMP_SUBDIR)
+    // 临时脚本统一落在工作区的 .aweeclaw/temp（AI 可见、可清理，删除不受 .aweeclaw 保护拦截）；
+    // cwd 由调用方传入工作区根目录，无工作区时回退到应用级临时目录。
+    const tempDir = cwd && fs.existsSync(cwd)
+      ? path.join(cwd, BRAND.dirName, WORKSPACE_TEMP_DIR_NAME)
+      : path.join(app.getPath('userData'), APP_TEMP_ROOT_NAME)
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true })
 
     const tempFile = path.join(tempDir, `script-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.py`)

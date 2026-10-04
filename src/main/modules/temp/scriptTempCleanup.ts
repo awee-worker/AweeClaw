@@ -1,27 +1,23 @@
 /**
- * 内联脚本临时目录清理
+ * AI 临时目录兜底清理
  *
- * 内联脚本（Node / Python 等运行时）执行时会把脚本写到应用级临时目录
- * （userData/tmp/agent-temp、userData/tmp/python-temp）。这些产物属于易失数据，
- * 正常情况下由执行方在 finally 中删除，但进程被强杀、崩溃或清理失败时仍可能残留。
+ * AI 产生的临时文件统一存放在工作区的 `.aweeclaw/temp`（见 shared/brand 的 paths.temp）。
+ * 该目录位于工作区内、且已列入可删除白名单，用户与 AI 都能自由清理，
+ * 因此不需要应用侧定时清理。
  *
- * 本模块在主进程侧兜底：
- * - 应用启动时清空这两个目录（此时不会有正在执行的脚本）；
+ * 本模块只负责清理「应用级回退临时目录」（userData/tmp）——即没有打开工作区、
+ * 无法使用工作区临时目录时的兜底位置：
+ * - 应用启动时清空一次（此时不会有正在执行的脚本）；
  * - 运行期间定时清理超过 TTL 的残留文件。
  *
- * 放在主进程执行，是为了不经过渲染进程的工作区边界与 .aweeclaw 保护校验，
- * 确保临时目录始终能被清干净。
+ * 放在主进程执行，是为了不经过渲染进程的工作区边界与 .aweeclaw 保护校验。
  */
 
 import { app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { logger } from '@shared/toolkit/LogEngine'
-import {
-  APP_TEMP_ROOT_NAME,
-  AGENT_TEMP_SUBDIR,
-  PYTHON_TEMP_SUBDIR,
-} from '@shared/appConstants'
+import { APP_TEMP_ROOT_NAME } from '@shared/appConstants'
 
 /** 定时清理周期：30 分钟 */
 const CLEANUP_INTERVAL_MS = 30 * 60 * 1000
@@ -30,13 +26,9 @@ const STALE_TTL_MS = 2 * 60 * 60 * 1000
 
 let timer: NodeJS.Timeout | null = null
 
-/** 应用级临时目录下需要清理的脚本子目录 */
-function scriptTempDirs(): string[] {
-  const root = path.join(app.getPath('userData'), APP_TEMP_ROOT_NAME)
-  return [
-    path.join(root, AGENT_TEMP_SUBDIR),
-    path.join(root, PYTHON_TEMP_SUBDIR),
-  ]
+/** 应用级回退临时目录（无工作区时使用） */
+function fallbackTempDir(): string {
+  return path.join(app.getPath('userData'), APP_TEMP_ROOT_NAME)
 }
 
 /**
@@ -70,11 +62,9 @@ function cleanDir(dir: string, force: boolean): void {
   }
 }
 
-/** 执行一次临时目录清理 */
+/** 执行一次回退临时目录清理 */
 export function cleanupScriptTempDirs(force = false): void {
-  for (const dir of scriptTempDirs()) {
-    cleanDir(dir, force)
-  }
+  cleanDir(fallbackTempDir(), force)
 }
 
 /**
