@@ -4768,6 +4768,155 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             return { success: false, result: '', error: `Failed to send file: ${toAppError(err).message}` }
         }
     },
+
+    /**
+     * 读取邮件（IMAP 本地索引）
+     *
+     * 数据来自主进程已同步的本地缓存，不触发网络；正文由 with_body 决定是否按需拉取。
+     * 多账户且未指定 account_id 时，返回账户清单并提示 AI 先用 ask_user 让用户选择。
+     */
+    async mail_read(args, _ctx) {
+        const accounts = await loadMailAccounts()
+        if (accounts.length === 0) {
+            return {
+                success: false,
+                result: '',
+                error: '未配置任何收件账户，请先在「设置 → 邮件服务」添加 IMAP 账户。',
+            }
+        }
+
+        const requestedId = typeof args.account_id === 'string' ? args.account_id.trim() : ''
+        if (!requestedId && accounts.length > 1) {
+            // 多账户：不替用户默认选一个，交给 AI 用 ask_user 收敛
+            return {
+                success: false,
+                result:
+                    `检测到 ${accounts.length} 个邮件账户，请先调用 ask_user 让用户选择要读取哪个账户，` +
+                    `再带上选定的 account_id 重新调用 mail_read。\n\n可选账户：\n${buildMailAccountHint(accounts)}`,
+                error: 'account_id is required when multiple mail accounts exist',
+            }
+        }
+        const account = requestedId
+            ? accounts.find((a) => a.id === requestedId)
+            : accounts[0]
+        if (!account) {
+            return {
+                success: false,
+                result: `account_id「${requestedId}」未匹配到账户。可选账户：\n${buildMailAccountHint(accounts)}`,
+                error: 'Unknown account_id',
+            }
+        }
+
+        const view = args.unread_only === true ? ('unread' as const) : undefined
+        const folder = typeof args.folder === 'string' && args.folder.trim() ? args.folder.trim() : undefined
+        const rawLimit = typeof args.limit === 'number' ? args.limit : Number(args.limit)
+        const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(50, Math.floor(rawLimit)) : 10
+        const withBody = args.with_body === true
+
+        try {
+            // unread 视图与 folder 互斥：给定时以视图为准，避免主进程二次筛选歧义
+            const listRes = await api.mail.messageList({
+                accountId: account.id,
+                folder: view ? undefined : folder,
+                view,
+            })
+            const all = listRes?.messages ?? []
+            const picked = all.slice(0, limit)
+            const scopeText = view === 'unread' ? '未读邮件' : folder ? `「${folder}」` : '收件箱'
+
+            if (picked.length === 0) {
+                return { success: true, result: `账户「${account.label}」${scopeText}中没有邮件。` }
+            }
+
+            const lines: string[] = []
+            lines.push(`账户「${account.label}」${scopeText}共 ${all.length} 封，返回最新 ${picked.length} 封：`)
+            for (let i = 0; i < picked.length; i++) {
+                const m = picked[i]
+                const from = m.from?.[0]?.name || m.from?.[0]?.address || '(未知发件人)'
+                lines.push('')
+                lines.push(`【${i + 1}】${m.subject || '(无主题)'}`)
+                lines.push(`发件人：${from}  |  时间：${formatMailDate(m.date)}  |  ${m.seen ? '已读' : '未读'}`)
+                if (m.ai?.summary) lines.push(`AI 摘要：${m.ai.summary}`)
+                if (withBody) {
+                    const detail = await api.mail.messageGet({
+                        accountId: account.id,
+                        folder: m.folder,
+                        uid: m.uid,
+                    })
+                    const text = detail?.success ? detail.data?.body?.text || '' : ''
+                    lines.push(`正文：${text ? text.slice(0, 1500) : '(未能读取正文)'}`)
+                }
+            }
+            return { success: true, result: lines.join('\n') }
+        } catch (err) {
+            return { success: false, result: '', error: `读取邮件失败：${toAppError(err).message}` }
+        }
+    },
+
+    /**
+     * 发送邮件（发件服务器由所选账户自动推导）
+     *
+     * 多账户且未指定 account_id 时，返回账户清单并提示 AI 先用 ask_user 让用户选择。
+     */
+    async mail_send(args, _ctx) {
+        const to = typeof args.to === 'string' ? args.to.trim() : ''
+        const subject = typeof args.subject === 'string' ? args.subject.trim() : ''
+        const body = typeof args.body === 'string' ? args.body : ''
+        if (!to) return { success: false, result: '', error: '缺少收件人（to）' }
+        if (!subject) return { success: false, result: '', error: '缺少邮件主题（subject）' }
+        if (!body.trim()) return { success: false, result: '', error: '缺少邮件正文（body）' }
+
+        const accounts = await loadMailAccounts()
+        if (accounts.length === 0) {
+            return {
+                success: false,
+                result: '',
+                error: '未配置任何发件账户，请先在「设置 → 邮件服务」添加 IMAP 账户。',
+            }
+        }
+
+        const requestedId = typeof args.account_id === 'string' ? args.account_id.trim() : ''
+        if (!requestedId && accounts.length > 1) {
+            return {
+                success: false,
+                result:
+                    `检测到 ${accounts.length} 个邮件账户，请先调用 ask_user 让用户选择用哪个账户发送，` +
+                    `再带上选定的 account_id 重新调用 mail_send。\n\n可选账户：\n${buildMailAccountHint(accounts)}`,
+                error: 'account_id is required when multiple mail accounts exist',
+            }
+        }
+        const account = requestedId
+            ? accounts.find((a) => a.id === requestedId)
+            : accounts[0]
+        if (!account) {
+            return {
+                success: false,
+                result: `account_id「${requestedId}」未匹配到账户。可选账户：\n${buildMailAccountHint(accounts)}`,
+                error: 'Unknown account_id',
+            }
+        }
+
+        const cc = typeof args.cc === 'string' ? args.cc.trim() : ''
+        try {
+            const res = await api.mail.sendMessage({
+                accountId: account.id,
+                to,
+                cc: cc || undefined,
+                subject,
+                body,
+                html: false,
+            })
+            if (res?.success) {
+                return {
+                    success: true,
+                    result: `邮件已通过账户「${account.label}」发送给 ${to}（主题：${subject}）。`,
+                }
+            }
+            return { success: false, result: '', error: res?.error || '发送失败' }
+        } catch (err) {
+            return { success: false, result: '', error: `发送失败：${toAppError(err).message}` }
+        }
+    },
 }
 
 
@@ -4885,6 +5034,36 @@ function formatRecommendation(
     return lines.join('\n')
 }
 
+
+
+/** 读取当前配置的邮件账户（仅已启用项，供 mail_* 工具解析发件/收件账户） */
+async function loadMailAccounts(): Promise<Array<{ id: string; label: string }>> {
+    try {
+        const appSettings = (await api.settings.get('app-settings')) as
+            | { emailConfig?: { accounts?: Array<{ id: string; label?: string; address?: string; enabled?: boolean }> } }
+            | undefined
+        return (appSettings?.emailConfig?.accounts ?? [])
+            .filter((a) => a.enabled !== false)
+            .map((a) => ({ id: a.id, label: a.label || a.address || a.id }))
+    } catch {
+        return []
+    }
+}
+
+/** 多账户未指定 account_id 时，给 AI 的账户清单提示（引导其先用 ask_user 选择） */
+function buildMailAccountHint(accounts: Array<{ id: string; label: string }>): string {
+    return accounts.map((a) => `- ${a.label}（account_id: ${a.id}）`).join('\n')
+}
+
+/** 邮件时间戳 → 本地可读时间 */
+function formatMailDate(ts: number): string {
+    if (!ts) return '(未知时间)'
+    try {
+        return new Date(ts).toLocaleString('zh-CN', { hour12: false })
+    } catch {
+        return String(ts)
+    }
+}
 export const toolExecutors = Object.fromEntries(
     Object.entries(rawToolExecutors).map(([name, executor]) => [
         name,

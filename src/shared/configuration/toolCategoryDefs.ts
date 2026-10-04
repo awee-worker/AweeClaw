@@ -148,6 +148,9 @@ const CORE_TOOLS: string[] = [
   // 交互与记忆
   'remember',
   'knowledge_search',
+  // 邮件（IMAP 账户）：读取与发送，多账户时由 AI 用 ask_user 选择
+  'mail_read',
+  'mail_send',
   // 桌面伴侣控制（VRM 角色动作 / 表情 / 说话）
   'companion_control',
   // 内置浏览器预览（本地页面 / 本地服务地址在应用内打开）

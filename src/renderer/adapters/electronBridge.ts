@@ -1132,6 +1132,77 @@ function createGroupedAPI() {
       ) => raw.meetingNotes.onOrganizeProgress(callback),
     },
 
+    // 邮件收件（IMAP）
+    mail: {
+      /** 显示邮件中心窗口 */
+      showWindow: () => raw.mail.showWindow(),
+      /** 隐藏邮件中心窗口 */
+      hideWindow: () => raw.mail.hideWindow(),
+      /** 测试 IMAP 连接 */
+    accountTest: (params: Parameters<typeof raw.mail.accountTest>[0]) =>
+      raw.mail.accountTest(params),
+
+    accountTestSmtp: (accountId: string) => raw.mail.accountTestSmtp(accountId),
+      /** 保存账户凭据 */
+      accountSetSecret: (params: Parameters<typeof raw.mail.accountSetSecret>[0]) =>
+        raw.mail.accountSetSecret(params),
+      /** 查询是否已保存凭据 */
+      accountHasSecret: (accountId: string) => raw.mail.accountHasSecret(accountId),
+      /** 删除账户凭据 */
+      accountDeleteSecret: (accountId: string) => raw.mail.accountDeleteSecret(accountId),
+      /** 同步账户 */
+      syncAccount: (accountId: string) => raw.mail.syncAccount(accountId),
+      /** 列出已同步邮件 */
+      messageList: (params: Parameters<typeof raw.mail.messageList>[0]) =>
+        raw.mail.messageList(params),
+      /** 统计未读邮件数 */
+      unreadCount: () => raw.mail.unreadCount(),
+      /** 读取单封邮件 */
+      messageGet: (params: Parameters<typeof raw.mail.messageGet>[0]) =>
+        raw.mail.messageGet(params),
+      /** 保存邮件的 AI 整理结果 */
+      messageSetAi: (params: Parameters<typeof raw.mail.messageSetAi>[0]) =>
+        raw.mail.messageSetAi(params),
+      /** 下载附件 */
+      downloadAttachment: (params: Parameters<typeof raw.mail.downloadAttachment>[0]) =>
+        raw.mail.downloadAttachment(params),
+      /** 更新定时自动整理设置 */
+      updateAutoOrganize: (params: Parameters<typeof raw.mail.updateAutoOrganize>[0]) =>
+        raw.mail.updateAutoOrganize(params),
+      /** 列出账户在服务器上的文件夹 */
+      folderList: (accountId: string) => raw.mail.folderList(accountId),
+      /** 标记邮件的已读 / 星标状态 */
+      messageSetFlags: (params: Parameters<typeof raw.mail.messageSetFlags>[0]) =>
+        raw.mail.messageSetFlags(params),
+      /** 发送邮件 */
+      sendMessage: (params: Parameters<typeof raw.mail.sendMessage>[0]) =>
+        raw.mail.sendMessage(params),
+      /** 保存草稿 */
+      draftSave: (params: Parameters<typeof raw.mail.draftSave>[0]) =>
+        raw.mail.draftSave(params),
+      /** 列出草稿 */
+      draftList: (accountId: string) => raw.mail.draftList(accountId),
+      /** 删除草稿 */
+      draftDelete: (id: string) => raw.mail.draftDelete(id),
+      /** 列出发件箱条目 */
+      outboxList: (accountId: string) => raw.mail.outboxList(accountId),
+      /** 重试发送发件箱条目 */
+      outboxRetry: (params: Parameters<typeof raw.mail.outboxRetry>[0]) =>
+        raw.mail.outboxRetry(params),
+      /** 删除发件箱条目 */
+      outboxDelete: (id: string) => raw.mail.outboxDelete(id),
+      /** 同步进度订阅 */
+      onSyncProgress: (callback: Parameters<typeof raw.mail.onSyncProgress>[0]) =>
+        raw.mail.onSyncProgress(callback),
+      /** 定时整理完成事件订阅 */
+      onDigestCreated: (callback: Parameters<typeof raw.mail.onDigestCreated>[0]) =>
+        raw.mail.onDigestCreated(callback),
+      /** 未读总数变化订阅 */
+      onUnreadChanged: (callback: Parameters<typeof raw.mail.onUnreadChanged>[0]) =>
+        raw.mail.onUnreadChanged(callback),
+    },
+
+
     // PPT 预览窗口（供 mcp-pptx 插件实时预览生成过程）
     pptPreview: {
       /** 隐藏预览窗口（不销毁，便于下次快速显示） */

@@ -63,7 +63,12 @@ import { initializeCharacterCardModule } from '../modules/character-card'
 import { initializeEmotionModule } from '../modules/emotion'
 import { SettingsDb } from '../modules/settings-db/SettingsDb'
 import { initCapabilityGuardModule } from '../modules/capability-guard'
-import { registerVideoTranscodeIpc } from '../modules/video-transcode/VideoTranscodeIpc'
+import {
+  registerMailIpc,
+  mailCenterManager,
+  mailDigestScheduler,
+  imapIdleManager,
+} from '../modules/mail'
 import { initPerfTraceModule } from '../modules/perf-trace'
 
 export type Language = 'zh' | 'en'
@@ -215,7 +220,17 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   // 初始化 ONLYOFFICE 在线编辑模块（IPC 注册 + 会话管理，不阻塞启动）
   await safeInit('OoEditModule', initOoEditModule)
   // 注册视频转码 IPC 处理器（用 ffmpeg-static 转码不支持的视频编码，如 H.265 → H.264）
-  await safeInit('VideoTranscodeIpc', registerVideoTranscodeIpc)
+  // 注册邮件收件 IPC 处理器（IMAP 账户 / 同步 / 邮件读取）
+  await safeInit('MailIpc', registerMailIpc)
+  // 注册邮件中心窗口 IPC（懒创建窗口，不阻塞启动）
+  // 同时按配置应用定时自动整理任务（CronScheduler 已在其之前启动并恢复任务）
+  await safeInit('MailCenter', () => {
+    void mailCenterManager
+    mailDigestScheduler.applyConfig()
+    // 启动 IDLE 实时收信（异步建连，不阻塞启动）
+    imapIdleManager.startAll()
+  })
+  await safeInit('MailIpc', registerMailIpc)
   // 初始化设备联动模块（WebSocket 长连接 + RPC 处理器 + 事件桥接）
   // 不阻塞启动：WebSocket 连接在 renderer 推送 token 后才发起
   await safeInit('DeviceLinkModule', initDeviceLinkModule)

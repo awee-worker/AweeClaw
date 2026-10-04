@@ -63,6 +63,7 @@ import { createFloatingAvatarApi } from './preload/api/floatingAvatar'
 import { createScreenshotOverlayApi } from './preload/api/screenshotOverlay'
 import { createScreenshotApi } from './preload/api/screenshot'
 import { createMeetingNotesApi } from './preload/api/meetingNotes'
+import { createMailApi } from './preload/api/mail'
 import { createPptPreviewApi } from './preload/api/pptPreview'
 import { createOnlyOfficeApi } from './preload/api/onlyOffice'
 import { createProjectExecutionApi } from './preload/api/projectExecution'
@@ -121,6 +122,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   screenshotOverlay: createScreenshotOverlayApi(),
   screenshot: createScreenshotApi(),
   meetingNotes: createMeetingNotesApi(),
+  mail: createMailApi(),
   pptPreview: createPptPreviewApi(),
   onlyOffice: createOnlyOfficeApi(),
   projectExecution: createProjectExecutionApi(),

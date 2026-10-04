@@ -1,10 +1,20 @@
-import { useState, useCallback } from 'react'
-import { Mail, Server, Shield, Eye, EyeOff, Send, TestTube, CheckCircle, XCircle, Loader2 } from 'lucide-react'
-import { ActionButton, ToggleSwitch } from '@components/ui'
-import { toast } from '@components/foundation/NotificationProvider'
-import { api } from '../../../adapters/electronBridge'
-import type { EmailConfig, EmailSmtpConfig } from '@shared/configuration/configTypes'
+/**
+ * 邮件服务设置面板
+ *
+ * 只维护「邮箱账户」：一个账户同时承载收信（IMAP）与发信（SMTP）能力，
+ * 登录账号与密码/授权码只需填写一次；发件服务器默认按服务商规则从收件
+ * 服务器推导，若发件地址/端口与收件不同，可在账户的「外发设置」中单独覆盖。
+ *
+ * 因此这里不再提供独立的 SMTP 账号/密码表单，避免同一套凭据填写两遍。
+ */
+
+import { useCallback } from 'react'
+import { Mail, Send } from 'lucide-react'
+import { ToggleSwitch } from '@components/ui'
+import type { EmailConfig } from '@shared/configuration/configTypes'
 import { t, type Language } from '@renderer/i18n'
+
+import MailAccountsPanel from './MailAccountsPanel'
 
 interface EmailServicePanelProps {
   language: 'en' | 'zh'
@@ -12,31 +22,12 @@ interface EmailServicePanelProps {
   setEmailConfig: (config: EmailConfig) => void
 }
 
-const SMTP_PRESETS: Array<{ label: string; labelZh: string; host: string; port: number; secure: boolean }> = [
-  { label: 'Gmail', labelZh: 'Gmail', host: 'smtp.gmail.com', port: 465, secure: true },
-  { label: 'Outlook', labelZh: 'Outlook', host: 'smtp.office365.com', port: 587, secure: false },
-  { label: 'QQ Mail', labelZh: 'QQ邮箱', host: 'smtp.qq.com', port: 465, secure: true },
-  { label: '163 Mail', labelZh: '163邮箱', host: 'smtp.163.com', port: 465, secure: true },
-  { label: 'Aliyun', labelZh: '阿里邮箱', host: 'smtp.aliyun.com', port: 465, secure: true },
-  { label: 'Custom', labelZh: '自定义', host: '', port: 465, secure: true },
-]
-
-export default function EmailServicePanel({ language, emailConfig, setEmailConfig }: EmailServicePanelProps) {
-  const [showPassword, setShowPassword] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
-
-  const smtp = emailConfig.smtp ?? { host: '', port: 465, secure: true, user: '', pass: '' }
-
-  const updateSmtp = useCallback(
-    (updates: Partial<EmailSmtpConfig>) => {
-      setEmailConfig({
-        ...emailConfig,
-        smtp: { ...smtp, ...updates },
-      })
-    },
-    [emailConfig, smtp, setEmailConfig],
-  )
+export default function EmailServicePanel({
+  language,
+  emailConfig,
+  setEmailConfig,
+}: EmailServicePanelProps) {
+  const zh = language === 'zh'
 
   const updateConfig = useCallback(
     (updates: Partial<EmailConfig>) => {
@@ -44,58 +35,6 @@ export default function EmailServicePanel({ language, emailConfig, setEmailConfi
     },
     [emailConfig, setEmailConfig],
   )
-
-  const handlePresetSelect = useCallback(
-    (preset: (typeof SMTP_PRESETS)[number]) => {
-      updateSmtp({
-        host: preset.host,
-        port: preset.port,
-        secure: preset.secure,
-      })
-    },
-    [updateSmtp],
-  )
-
-  const handleTestConnection = useCallback(async () => {
-    if (!smtp.host || !smtp.user || !smtp.pass) {
-      toast.error(t('app.pleasefillinsmtp', language as Language))
-      return
-    }
-
-    setTesting(true)
-    setTestResult(null)
-
-    try {
-      const result = await api.email.testConnection({
-        host: smtp.host,
-        port: smtp.port,
-        secure: smtp.secure,
-        user: smtp.user,
-        pass: smtp.pass,
-      })
-
-      if (result.success) {
-        setTestResult({ success: true, message: t('app.connectionsuccessful', language as Language) })
-        toast.success(t('app.emailserviceconnectiontest', language as Language))
-      } else {
-        setTestResult({
-          success: false,
-          message: result.error ?? t('app.connectionfailed', language as Language),
-        })
-        toast.error(t('app.emailserviceconnectiontest2', language as Language))
-      }
-    } catch (err) {
-      setTestResult({
-        success: false,
-        message: err instanceof Error ? err.message : String(err),
-      })
-      toast.error(t('app.emailserviceconnectiontest3', language as Language))
-    } finally {
-      setTesting(false)
-    }
-  }, [smtp, t])
-
-  const matchedPreset = SMTP_PRESETS.find((p) => p.host && p.host === smtp.host)
 
   return (
     <div className="space-y-6">
@@ -108,7 +47,9 @@ export default function EmailServicePanel({ language, emailConfig, setEmailConfi
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-text-muted">
-            {emailConfig.enabled ? t('app.enabled', language as Language) : t('app.disabled', language as Language)}
+            {emailConfig.enabled
+              ? t('app.enabled', language as Language)
+              : t('app.disabled', language as Language)}
           </span>
           <ToggleSwitch
             checked={emailConfig.enabled}
@@ -118,125 +59,31 @@ export default function EmailServicePanel({ language, emailConfig, setEmailConfi
       </div>
 
       <p className="text-xs text-text-muted leading-relaxed">
-        {t('email.smtpdesc', language as Language)}
+        {zh
+          ? '每个邮箱只需填写一次账号与密码（授权码）：收件走 IMAP，发件服务器默认按服务商规则自动推导（如 imap.qq.com → smtp.qq.com）。若发件服务器地址或端口与收件不同，可在账户的「外发设置」中单独指定。'
+          : 'Set up each mailbox once — receiving uses IMAP, and the outgoing server is derived from your provider (e.g. imap.qq.com → smtp.qq.com). Override the outgoing server only when it differs.'}
       </p>
 
       {emailConfig.enabled && (
         <div className="space-y-5">
-          <div className="space-y-3">
-            <label className="text-xs font-medium text-text-secondary flex items-center gap-1.5">
-              <Server className="w-3.5 h-3.5" />
-              {t('app.smtppresets', language as Language)}
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {SMTP_PRESETS.map((preset) => {
-                const isActive = matchedPreset === preset
-                return (
-                  <button
-                    key={preset.host || 'custom'}
-                    onClick={() => handlePresetSelect(preset)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border ${
-                      isActive
-                        ? 'bg-accent/15 text-accent border-accent/40'
-                        : 'bg-surface/60 text-text-secondary border-border/40 hover:border-accent/30 hover:text-text-primary'
-                    }`}
-                  >
-                    {language === 'zh' ? preset.labelZh : preset.label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          {/* 邮箱账户：同一账户同时承载收信与发信能力 */}
+          <MailAccountsPanel
+            language={language}
+            emailConfig={emailConfig}
+            setEmailConfig={setEmailConfig}
+          />
 
-          <div className="space-y-3">
-            <label className="text-xs font-medium text-text-secondary">
-              {t('app.smtpserver', language as Language)}
-            </label>
-            <div className="flex gap-3">
-              <input
-                type="text"
-                value={smtp.host}
-                onChange={(e) => updateSmtp({ host: e.target.value })}
-                placeholder={t('app.egsmtpgmailcom', language as Language)}
-                className="flex-1 px-3 py-2 rounded-lg bg-background/50 border border-border text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/50 transition-colors"
-              />
-              <input
-                type="number"
-                value={smtp.port || ''}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10)
-                  if (!isNaN(val) && val > 0 && val <= 65535) {
-                    updateSmtp({ port: val })
-                  }
-                }}
-                placeholder="465"
-                className="w-20 px-3 py-2 rounded-lg bg-background/50 border border-border text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/50 transition-colors"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <label className="text-xs font-medium text-text-secondary flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5" />
-              {t('email.ssltls', language as Language)}
-            </label>
-            <ToggleSwitch
-              checked={smtp.secure}
-              onChange={() => updateSmtp({ secure: !smtp.secure })}
-            />
-            <span className="text-[10px] text-text-muted">
-              {smtp.secure
-                ? t('app.sslencryptedportusually', language as Language)
-                : t('app.starttlsportusually587', language as Language)}
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            <label className="text-xs font-medium text-text-secondary">
-              {t('app.authusername', language as Language)}
-            </label>
-            <input
-              type="text"
-              value={smtp.user}
-              onChange={(e) => updateSmtp({ user: e.target.value })}
-              placeholder={t('app.emailaddressorusername', language as Language)}
-              className="w-full px-3 py-2 rounded-lg bg-background/50 border border-border text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/50 transition-colors"
-            />
-          </div>
-
-          <div className="space-y-3">
-            <label className="text-xs font-medium text-text-secondary">
-              {t('app.authpassword', language as Language)}
-            </label>
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={smtp.pass}
-                onChange={(e) => updateSmtp({ pass: e.target.value })}
-                placeholder={t('app.emailpasswordorappspecific', language as Language)}
-                className="w-full px-3 py-2 pr-9 rounded-lg bg-background/50 border border-border text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/50 transition-colors"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors"
-              >
-                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-            <p className="text-[10px] text-text-muted leading-relaxed">
-              {t('email.apppasswordhint', language as Language)}
-            </p>
-          </div>
-
-          <div className="pt-4 border-t border-border/30 space-y-3">
+          {/* 发件人显示信息（发送邮件时的 From 头，可选） */}
+          <div className="pt-5 border-t border-border/30 space-y-3">
             <label className="text-xs font-medium text-text-secondary flex items-center gap-1.5">
               <Send className="w-3.5 h-3.5" />
               {t('app.senderinfo', language as Language)}
             </label>
             <div className="flex gap-3">
               <div className="flex-1 space-y-1">
-                <span className="text-[10px] text-text-muted">{t('app.sendername', language as Language)}</span>
+                <span className="text-xs text-text-muted">
+                  {t('app.sendername', language as Language)}
+                </span>
                 <input
                   type="text"
                   value={emailConfig.fromName ?? ''}
@@ -246,7 +93,9 @@ export default function EmailServicePanel({ language, emailConfig, setEmailConfi
                 />
               </div>
               <div className="flex-1 space-y-1">
-                <span className="text-[10px] text-text-muted">{t('app.senderaddress', language as Language)}</span>
+                <span className="text-xs text-text-muted">
+                  {t('app.senderaddress', language as Language)}
+                </span>
                 <input
                   type="email"
                   value={emailConfig.fromAddress ?? ''}
@@ -256,32 +105,11 @@ export default function EmailServicePanel({ language, emailConfig, setEmailConfi
                 />
               </div>
             </div>
-          </div>
-
-          <div className="pt-4 border-t border-border/30">
-            <div className="flex items-center gap-3">
-              <ActionButton
-                variant="secondary"
-                size="sm"
-                onClick={handleTestConnection}
-                disabled={testing || !smtp.host || !smtp.user || !smtp.pass}
-                className="flex items-center gap-1.5"
-              >
-                {testing ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <TestTube className="w-3.5 h-3.5" />
-                )}
-                {testing ? t('app.testing', language as Language) : t('app.testconnection', language as Language)}
-              </ActionButton>
-
-              {testResult && (
-                <div className={`flex items-center gap-1.5 text-xs ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>
-                  {testResult.success ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                  <span>{testResult.message}</span>
-                </div>
-              )}
-            </div>
+            <p className="text-xs text-text-muted leading-relaxed">
+              {zh
+                ? '留空时以实际发件账户的邮箱地址作为发件人。'
+                : 'Leave empty to use the sending account address as the sender.'}
+            </p>
           </div>
         </div>
       )}

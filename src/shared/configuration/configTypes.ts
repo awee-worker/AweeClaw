@@ -276,11 +276,115 @@ export interface EmailSmtpConfig {
   pass: string
 }
 
+/** 常见邮箱服务商标识（用于预填 IMAP 主机与端口） */
+export type MailProviderId = 'qq' | '163' | '126' | 'gmail' | 'outlook' | 'aliyun' | 'custom'
+
+/** IMAP 连接参数（不含凭据） */
+export interface EmailImapConfig {
+  host: string
+  port: number
+  /** true = 直连 TLS（通常 993），false = STARTTLS（通常 143） */
+  secure: boolean
+}
+
+/**
+ * SMTP 外发连接参数（不含凭据）
+ *
+ * 收发同源：登录账号与密码/授权码复用同一份收件凭据，只有服务器地址与端口
+ * 可能与收件不同（例如 Outlook 收 993 直连、发 587 STARTTLS），
+ * 因此外发端点可单独指定；留空时按服务商规则自动推导。
+ */
+export interface EmailSmtpEndpoint {
+  host: string
+  port: number
+  /** true = 直连 TLS（通常 465），false = STARTTLS（通常 587） */
+  secure: boolean
+}
+
+/**
+ * 账户认证方式
+ *
+ * 注意：真正的密码/授权码密文由主进程安全存储（safeStorage）单独持有，
+ * 绝不会出现在本配置对象内，避免明文进入 config.json 或被同步到后端。
+ * 此处仅记录认证类型、登录用户名与「是否已保存凭据」的布尔标记。
+ */
+export interface EmailAuthConfig {
+  type: 'password' | 'oauth2'
+  /** 登录用户名，通常即邮箱地址 */
+  user: string
+  /** 主进程安全存储中是否已存在该账户的凭据 */
+  hasSecret?: boolean
+}
+
+/** 单个邮箱账户：同时承载该账户的收信（IMAP）与外发（SMTP）能力 */
+export interface EmailAccount {
+  id: string
+  /** 用户自定义显示名，如「工作邮箱」 */
+  label: string
+  /** 邮箱地址 */
+  address: string
+  provider: MailProviderId
+  imap: EmailImapConfig
+  /**
+   * 外发（SMTP）服务器参数
+   *
+   * 省略或 host 为空时，按 provider / imap.host 自动推导；
+   * 发件服务器地址或端口与收件不同时，在此单独覆盖。
+   * 登录账号与凭据复用本账户，无需重复配置。
+   */
+  smtp?: EmailSmtpEndpoint
+  auth: EmailAuthConfig
+  /** 是否启用 IDLE 实时收信 */
+  idleEnabled?: boolean
+  /** 参与同步的文件夹（默认 ['INBOX']） */
+  folders?: string[]
+  /** 是否启用该账户 */
+  enabled?: boolean
+  createdAt?: number
+}
+
+/**
+ * 新增收件账户的表单草稿
+ *
+ * 只承载非敏感字段：密码/授权码始终由主进程安全存储单独持有，
+ * 不进入本结构。草稿随设置一起保存，使「收件」表单的填写状态
+ * 能被设置面板的未保存变更检测捕获（与发件 SMTP 表单行为一致）。
+ */
+export interface EmailAccountDraft {
+  label: string
+  address: string
+  provider: MailProviderId
+  host: string
+  port: number
+  secure: boolean
+  /** 外发服务器地址；留空表示按收件服务器自动推导 */
+  smtpHost?: string
+  /** 外发服务器端口 */
+  smtpPort?: number
+  /** 外发是否直连 TLS（通常 465 为 true，587 为 false） */
+  smtpSecure?: boolean
+}
+
+/** 定时自动整理设置 */
+export interface EmailAutoOrganizeConfig {
+  enabled: boolean
+  /** 5 段 cron 表达式 */
+  expression: string
+  /** 关联的 CronScheduler 任务 ruleId */
+  ruleId: string
+}
+
 export interface EmailConfig {
   enabled: boolean
   smtp?: EmailSmtpConfig
   fromName?: string
   fromAddress?: string
+  /** 收件账户列表（IMAP，新增能力） */
+  accounts?: EmailAccount[]
+  /** 新增收件账户的表单草稿（非敏感字段，随设置保存） */
+  accountDraft?: EmailAccountDraft
+  /** 定时自动整理（新增能力） */
+  autoOrganize?: EmailAutoOrganizeConfig
 }
 
 export interface PersistedLLMConfig {

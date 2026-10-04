@@ -403,6 +403,51 @@ export interface AppSettingsSchema {
     }
     fromName?: string
     fromAddress?: string
+    /**
+     * 收件账户列表（IMAP）
+     *
+     * 仅保留非敏感元信息；密码/授权码密文由主进程 safeStorage 单独持有，
+     * 不写入 config.json，也不随设置同步到后端。
+     */
+    accounts?: Array<{
+      id?: string
+      label?: string
+      address?: string
+      provider?: string
+      imap?: { host?: string; port?: number; secure?: boolean }
+      /** 外发（SMTP）服务器；省略时按服务商规则自动推导 */
+      smtp?: { host?: string; port?: number; secure?: boolean }
+      auth?: { type?: string; user?: string; hasSecret?: boolean }
+      idleEnabled?: boolean
+      folders?: string[]
+      enabled?: boolean
+      createdAt?: number
+    }>
+    /**
+     * 新增收件账户的表单草稿（非敏感字段）
+     *
+     * 不含密码/授权码，仅承载收件与外发表单的未保存编辑态。
+     */
+    accountDraft?: {
+      label?: string
+      address?: string
+      provider?: string
+      host?: string
+      port?: number
+      secure?: boolean
+      /** 外发服务器地址；留空表示自动推导 */
+      smtpHost?: string
+      /** 外发服务器端口 */
+      smtpPort?: number
+      /** 外发是否直连 TLS */
+      smtpSecure?: boolean
+    }
+    /** 定时自动整理设置 */
+    autoOrganize?: {
+      enabled?: boolean
+      expression?: string
+      ruleId?: string
+    }
   }
   /**
    * 以下三项除独立持久化键外，也会随 app-settings 一并写入。
@@ -498,6 +543,89 @@ export function cleanAppSettings(config: Record<string, unknown>): AppSettingsSc
     }
     if (typeof email.fromName === 'string') cleaned.emailConfig.fromName = email.fromName
     if (typeof email.fromAddress === 'string') cleaned.emailConfig.fromAddress = email.fromAddress
+
+    // 收件账户：逐字段白名单清洗，任何疑似凭据字段（pass/password/token）一律丢弃。
+    // 凭据由主进程安全存储持有，此结构只承载连接元信息与 hasSecret 标记。
+    // 账户可携带 smtp 端点（外发服务器与收件不同时使用），同样只保留非敏感连接参数。
+    type SanitizedAccount = {
+      id: string
+      label?: string
+      address?: string
+      provider?: string
+      imap?: { host?: string; port?: number; secure?: boolean }
+      smtp?: { host?: string; port?: number; secure?: boolean }
+      auth?: { type?: string; user?: string; hasSecret?: boolean }
+      idleEnabled?: boolean
+      folders?: string[]
+      enabled?: boolean
+      createdAt?: number
+    }
+    if (Array.isArray(email.accounts)) {
+      const accounts: SanitizedAccount[] = []
+      for (const raw of email.accounts) {
+        if (!raw || typeof raw !== 'object') continue
+        const a = raw as Record<string, unknown>
+        if (typeof a.id !== 'string' || !a.id) continue
+        const acc: SanitizedAccount = { id: a.id }
+        if (typeof a.label === 'string') acc.label = a.label
+        if (typeof a.address === 'string') acc.address = a.address
+        if (typeof a.provider === 'string') acc.provider = a.provider
+        if (typeof a.enabled === 'boolean') acc.enabled = a.enabled
+        if (typeof a.idleEnabled === 'boolean') acc.idleEnabled = a.idleEnabled
+        if (typeof a.createdAt === 'number') acc.createdAt = a.createdAt
+        if (Array.isArray(a.folders)) {
+          acc.folders = a.folders.filter((f): f is string => typeof f === 'string')
+        }
+        if (a.imap && typeof a.imap === 'object') {
+          const im = a.imap as Record<string, unknown>
+          acc.imap = {}
+          if (typeof im.host === 'string') acc.imap.host = im.host
+          if (typeof im.port === 'number') acc.imap.port = im.port
+          if (typeof im.secure === 'boolean') acc.imap.secure = im.secure
+        }
+        if (a.smtp && typeof a.smtp === 'object') {
+          const sm = a.smtp as Record<string, unknown>
+          acc.smtp = {}
+          if (typeof sm.host === 'string') acc.smtp.host = sm.host
+          if (typeof sm.port === 'number') acc.smtp.port = sm.port
+          if (typeof sm.secure === 'boolean') acc.smtp.secure = sm.secure
+        }
+        if (a.auth && typeof a.auth === 'object') {
+          const au = a.auth as Record<string, unknown>
+          acc.auth = {}
+          if (typeof au.type === 'string') acc.auth.type = au.type
+          if (typeof au.user === 'string') acc.auth.user = au.user
+          if (typeof au.hasSecret === 'boolean') acc.auth.hasSecret = au.hasSecret
+        }
+        accounts.push(acc)
+      }
+      cleaned.emailConfig.accounts = accounts
+    }
+
+    // 新增账户表单草稿：逐字段白名单，凭据字段一律不在此结构中出现
+    if (email.accountDraft && typeof email.accountDraft === 'object') {
+      const draft = email.accountDraft as Record<string, unknown>
+      const cleanDraft: NonNullable<AppSettingsSchema['emailConfig']>['accountDraft'] = {}
+      if (typeof draft.label === 'string') cleanDraft.label = draft.label
+      if (typeof draft.address === 'string') cleanDraft.address = draft.address
+      if (typeof draft.provider === 'string') cleanDraft.provider = draft.provider
+      if (typeof draft.host === 'string') cleanDraft.host = draft.host
+      if (typeof draft.port === 'number') cleanDraft.port = draft.port
+      if (typeof draft.secure === 'boolean') cleanDraft.secure = draft.secure
+      if (typeof draft.smtpHost === 'string') cleanDraft.smtpHost = draft.smtpHost
+      if (typeof draft.smtpPort === 'number') cleanDraft.smtpPort = draft.smtpPort
+      if (typeof draft.smtpSecure === 'boolean') cleanDraft.smtpSecure = draft.smtpSecure
+      cleaned.emailConfig.accountDraft = cleanDraft
+    }
+
+    // 定时自动整理
+    if (email.autoOrganize && typeof email.autoOrganize === 'object') {
+      const ao = email.autoOrganize as Record<string, unknown>
+      cleaned.emailConfig.autoOrganize = {}
+      if (typeof ao.enabled === 'boolean') cleaned.emailConfig.autoOrganize.enabled = ao.enabled
+      if (typeof ao.expression === 'string') cleaned.emailConfig.autoOrganize.expression = ao.expression
+      if (typeof ao.ruleId === 'string') cleaned.emailConfig.autoOrganize.ruleId = ao.ruleId
+    }
   }
 
   // editorConfig / securitySettings / privacySettings 原样透传。

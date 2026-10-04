@@ -228,6 +228,7 @@ export default defineConfig({
         // 不再作为 Vite 多入口构建：避免 React vendor chunk 与 agent/ui-core 共享 chunk
         // 循环依赖导致打包后覆盖窗口 React 无法挂载（forwardRef undefined，蒙版不渲染）
         'meeting-notes': path.resolve(__dirname, 'meeting-notes.html'),
+        'mail-center': path.resolve(__dirname, 'mail-center.html'),
         'ppt-preview': path.resolve(__dirname, 'ppt-preview.html'),
         execution: path.resolve(__dirname, 'execution.html'),
         'vrm-companion': path.resolve(__dirname, 'vrm-companion.html'),

@@ -40,6 +40,7 @@ export type SidePanel =
   | 'schedule'
   | 'plugin-market'
   | 'ai-browser'
+  | 'mail-center'
   | 'scene-tools'
   | null
 

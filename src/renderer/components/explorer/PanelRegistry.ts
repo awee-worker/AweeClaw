@@ -8,6 +8,7 @@ import { TaskWorkspace } from './panels/tasks/TaskWorkspace'
 import { AutomationView } from './panels/automation/AutomationView'
 import { PluginMarketView } from './panels/plugin-market/PluginMarketView'
 import { AIBrowserView } from './panels/ai-browser/AIBrowserView'
+import { MailCenterView } from './panels/mail-center/MailCenterView'
 import { ScenarioManagerView } from '../scenario/ScenarioManagerView'
 import { SceneToolsPanel } from '../scene-tools/SceneToolsPanel'
 
@@ -30,6 +31,7 @@ const BUILTIN_PANEL_COMPONENTS: Record<string, PanelComponent> = {
   AutomationView,
   PluginMarketView,
   AIBrowserView,
+  MailCenterView,
   ScenarioManagerView,
   SceneToolsPanel,
 }

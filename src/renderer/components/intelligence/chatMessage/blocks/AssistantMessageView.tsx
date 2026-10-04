@@ -304,7 +304,14 @@ function AssistantMessageViewBase({
   const previewToolCalls = useMemo(() => {
     if (!isAssistantMessage(message)) return []
 
-    const persistedIds = new Set((assistantMessage.toolCalls || []).map((tc: any) => tc.id))
+    // 判定「工具是否已正式落定」不能只看 props 上的 message.toolCalls：流式期间
+    // props 可能滞后一拍，工具已写进 parts 却仍被当作未落定，于是同一次调用会同时
+    // 渲染「正式卡片 + 流式预览卡」，预览卡恒为 pending，一直显示「正在读取 / 编辑中」，
+    // 直到消息结束清空预览表才消失。这里把当前实时 parts 一并纳入已落定集合。
+    const persistedIds = new Set<string>((assistantMessage.toolCalls || []).map((tc: any) => tc.id))
+    for (const part of assistantParts || []) {
+      if (part.type === 'tool_call') persistedIds.add((part as any).toolCall.id)
+    }
 
     // 顺序必须恒定，故直接沿用 previewMap 的键序：它等于 tool_call_start 的到达顺序，
     // 也就是模型的调用声明顺序，并与工具正式写入 parts 的先后一致。
@@ -324,7 +331,7 @@ function AssistantMessageViewBase({
       }))
 
     return streamingPreviews
-  }, [assistantMessage, previewMap])
+  }, [assistantMessage, assistantParts, previewMap])
 
   const handleCopy = React.useCallback(() => {
     navigator.clipboard.writeText(textContent)

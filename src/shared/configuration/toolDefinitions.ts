@@ -2509,6 +2509,55 @@ The tool returns the full skill content which you MUST follow as project-specifi
         },
     },
 
+    mail_read: {
+        name: 'mail_read',
+        displayName: 'Read Mail',
+        description: 'List and read emails from the user\'s configured mail accounts (IMAP). Use this when the user asks you to check, read, summarize, or find their emails.',
+        detailedDescription: `Read emails from the user's configured mail accounts.
+- Lists messages in a folder (default: inbox), newest first
+- Returns subject / sender / date / read state for each message (plus the stored AI summary when available)
+- Set with_body=true to also fetch the plain-text body of each message (slower)
+- When the user has several mail accounts and no account_id is given, this tool returns the account list and asks you to choose one via ask_user first`, 
+        category: 'office',
+        approvalType: 'none',
+        parallel: false,
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            account_id: { type: 'string', description: 'Mail account id. Omit when the user has only one account; if several accounts exist, ask the user via ask_user and pass the chosen id.' },
+            folder: { type: 'string', description: 'Folder to read from', enum: ['inbox', 'sent', 'trash', 'junk'] },
+            unread_only: { type: 'boolean', description: 'Only return unread messages' },
+            limit: { type: 'number', description: 'Maximum number of messages to return (default 10, max 50)' },
+            with_body: { type: 'boolean', description: 'Also fetch each message body text (default false)' },
+        },
+    },
+
+    mail_send: {
+        name: 'mail_send',
+        displayName: 'Send Mail',
+        description: 'Send an email through the user\'s configured mail account. Only use when the user explicitly asks to send an email.',
+        detailedDescription: `Send an email using the user's configured mail account.
+- The sending server (SMTP) is derived automatically from the chosen account
+- When the user has several mail accounts and no account_id is given, this tool returns the account list and asks you to choose one via ask_user first
+- Recipients must be explicit; never guess an email address`, 
+        criticalRules: [
+            'Only send when the user explicitly asks to send an email; never send on your own initiative.',
+            'Confirm recipient, subject and body content before sending.',
+        ],
+        category: 'office',
+        approvalType: 'interaction',
+        parallel: false,
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            to: { type: 'string', description: 'Recipient email address(es), comma-separated', required: true },
+            subject: { type: 'string', description: 'Email subject', required: true },
+            body: { type: 'string', description: 'Email body (plain text; newlines allowed)', required: true },
+            cc: { type: 'string', description: 'CC recipients, comma-separated' },
+            account_id: { type: 'string', description: 'Mail account id. Omit when the user has only one account; if several accounts exist, ask the user via ask_user and pass the chosen id.' },
+        },
+    },
+
     send_file_to_channel: {
         name: 'send_file_to_channel',
         displayName: 'Send File to Channel',

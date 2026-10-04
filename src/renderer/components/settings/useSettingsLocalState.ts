@@ -25,6 +25,10 @@ import type { LLMConfig } from '@shared/protocols/modelProtocol'
 import type { PersistedLLMConfig, EditorConfig, SecurityPolicyPanel, AutoApproveSettings, AgentConfig } from '@shared/configuration/configTypes'
 import type { ProviderModelConfig } from '@shared/configuration/preferenceSync'
 import type { WebSearchConfig, McpConfig, EmailConfig } from '@shared/configuration/configTypes'
+import {
+  buildEmailAccountFromDraft,
+  isAccountDraftCompletable,
+} from '@shared/configuration/mailAccounts'
 import type { PrivacySettings } from '@shared/configuration/defaultProfile'
 import type { EditorSettingsState, SettingsTab } from './preferencesTypes'
 
@@ -163,6 +167,28 @@ function toEditorSettingsState(config: EditorConfig): EditorSettingsState {
     saveDebounceMs: config.performance?.saveDebounceMs ?? 1000,
     flushIntervalMs: config.performance?.flushIntervalMs ?? 5000,
   }
+}
+
+/**
+ * 保存前把「已填写完整的收件账户草稿」落库为正式账户。
+ *
+ * 设置页只有一个全局「保存」，用户填完邮箱后直接点保存是自然操作，
+ * 因此这里统一把完整草稿提升为账户，避免“看似已配置、邮件中心却提示未配置”。
+ * 账户 id 由邮箱地址派生，与密码失焦时预存的凭据 id 一致。
+ */
+function promoteDraftAccount(config: EmailConfig): EmailConfig {
+  const draft = config.accountDraft
+  if (!isAccountDraftCompletable(draft)) return config
+
+  const account = buildEmailAccountFromDraft(draft as NonNullable<typeof draft>)
+  if (!account) return config
+
+  const accounts = config.accounts ?? []
+  // 已存在同名账户（用户已点过「添加账户」）则只清空草稿，不重复落库
+  if (accounts.some((a) => a.id === account.id)) {
+    return { ...config, accountDraft: undefined }
+  }
+  return { ...config, accounts: [...accounts, account], accountDraft: undefined }
 }
 
 // ===== Hook =====
@@ -438,7 +464,7 @@ export function useSettingsLocalState(embedded: boolean) {
       set('aiInstructions', state.localAiInstructions)
       set('webSearchConfig', state.localWebSearchConfig)
       set('mcpConfig', state.localMcpConfig)
-      set('emailConfig', state.localEmailConfig)
+      set('emailConfig', promoteDraftAccount(state.localEmailConfig))
       set('enableFileLogging', state.localEnableFileLogging)
       set('securitySettings', state.localSecuritySettings)
       set('privacySettings', state.localPrivacySettings)

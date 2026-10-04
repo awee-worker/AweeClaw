@@ -22,6 +22,8 @@ import { formatUserDisplayName } from '@shared/toolkit/formatHelper'
 import { t, type Language } from '@renderer/i18n'
 import { usePluginExtensions } from '@renderer/plugins/usePluginExtensions'
 import AddCustomMenuDialog from '../browser/AddCustomMenuDialog'
+import { useMailUnreadCount } from '@renderer/hooks/useMailUnreadCount'
+
 import {
   useUserNotificationStore,
   SCENARIO_NOTIFICATION_TYPES,
@@ -44,6 +46,15 @@ const DEFAULT_ITEMS: SidebarItemDescriptor[] = [
   { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0, hidden: true },
   { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1 },
 ]
+
+/**
+ * 邮件中心导航项 id
+ *
+ * 该入口不是侧边栏面板，而是独立邮件中心窗口的入口，
+ * 因此在渲染分支中集中处理，避免散落的字符串字面量。
+ */
+const MAIL_CENTER_ITEM_ID = 'mail-center'
+
 
 // 场景工具入口是否在导航栏显示。
 // 面板本身始终注册在 PanelRegistry 中（可被 AI 工具调用激活），
@@ -545,6 +556,8 @@ export default function NavigationRail() {
   }, [])
 
   const hasUpdateAvailable = updateStatus?.status === 'available' || updateStatus?.status === 'downloaded'
+  const mailUnread = useMailUnreadCount()
+
 
   const scenario = scenarioRegistry.get(activeScenarioId)
   const rawSidebarItems = scenario?.ui?.sidebarItems?.length
@@ -1045,11 +1058,16 @@ export default function NavigationRail() {
         {sidebarItems.map((item) => {
           const IconComponent = getLucideIcon(item.icon)
           const label = language === 'zh' ? item.labelZh : item.label
-          const isActive = !showWelcomePage && !showSettingsPage && !showUserProfilePage && activeSidePanel === item.id
+          // 邮件中心在主窗口内以宽屏面板打开，与其它侧边栏面板同一套选中逻辑；
+          // 仅额外挂一个未读角标
+          const badge = item.id === MAIL_CENTER_ITEM_ID ? mailUnread : 0
+          const isActive =
+            !showWelcomePage && !showSettingsPage && !showUserProfilePage && activeSidePanel === item.id
+          const onSelect = () => handleMenuItemClick(item.id, isActive)
           return navRailExpanded ? (
             <button
               key={item.id}
-              onClick={() => handleMenuItemClick(item.id, isActive)}
+              onClick={onSelect}
               className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
               data-active={isActive}
             >
@@ -1060,19 +1078,32 @@ export default function NavigationRail() {
               <span className={`${p}-nav-rail-label ${isActive ? 'text-accent' : ''}`}>
                 {label}
               </span>
+              {badge > 0 && (
+                <MenuBadge
+                  count={badge}
+                  title={language === 'zh' ? '有未读邮件' : 'Unread mail'}
+                />
+              )}
             </button>
           ) : (
             <HintOverlay key={item.id} content={label} side="right" delay={400}>
               <button
-                onClick={() => handleMenuItemClick(item.id, isActive)}
+                onClick={onSelect}
                 className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
                 data-active={isActive}
               >
                 <NavPill active={isActive} />
-                <IconComponent
-                  className={`w-[18px] h-[18px] transition-all duration-200 ${isActive ? 'scale-105' : 'opacity-60'}`}
-                  strokeWidth={isActive ? 2 : 1.5}
-                />
+                <span className="relative inline-flex">
+                  <IconComponent
+                    className={`w-[18px] h-[18px] transition-all duration-200 ${isActive ? 'scale-105' : 'opacity-60'}`}
+                    strokeWidth={isActive ? 2 : 1.5}
+                  />
+                  {badge > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] px-[3px] flex items-center justify-center text-[9px] font-semibold bg-accent text-white rounded-full leading-none">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
+                </span>
               </button>
             </HintOverlay>
           )

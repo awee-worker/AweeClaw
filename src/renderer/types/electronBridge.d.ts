@@ -3050,6 +3050,103 @@ export interface ElectronAPI {
   }
 
   // ============================================
+  // 邮件收件（IMAP）
+  // ============================================
+  mail: {
+    /** 显示邮件中心窗口 */
+    showWindow: () => Promise<{ success: boolean }>
+    /** 隐藏邮件中心窗口 */
+    hideWindow: () => Promise<{ success: boolean }>
+    /** 测试 IMAP 连接 */
+    accountTest: (
+      params: import('@protocols/mail').MailAccountTestParams,
+    ) => Promise<import('@protocols/mail').MailAccountTestResult>
+    /** 测试账户对应的 SMTP 发件能力（发件服务器由收件账户自动推导） */
+    accountTestSmtp: (accountId: string) => Promise<{ success: boolean; error?: string }>
+    /** 保存账户凭据（safeStorage 加密存储） */
+    accountSetSecret: (
+      params: import('@protocols/mail').MailSetSecretParams,
+    ) => Promise<{ success: boolean; error?: string }>
+    /** 查询是否已保存凭据 */
+    accountHasSecret: (accountId: string) => Promise<{ success: boolean; hasSecret: boolean }>
+    /** 删除账户凭据 */
+    accountDeleteSecret: (accountId: string) => Promise<{ success: boolean }>
+    /** 同步账户（增量收信） */
+    syncAccount: (
+      accountId: string,
+    ) => Promise<import('@protocols/mail').MailSyncAccountResult>
+    /** 列出已同步邮件 */
+    messageList: (
+      params: import('@protocols/mail').MailMessageListParams,
+    ) => Promise<{ success: boolean; messages: import('@protocols/mail').MailMessageMeta[] }>
+    /** 统计未读邮件数（导航角标用） */
+    unreadCount: () => Promise<{ success: boolean; count: number }>
+    /** 读取单封邮件（含正文） */
+    messageGet: (
+      params: import('@protocols/mail').MailMessageGetParams,
+    ) => Promise<{
+      success: boolean
+      data?: import('@protocols/mail').MailMessageDetail
+      error?: string
+    }>
+    /** 保存邮件的 AI 整理结果 */
+    messageSetAi: (
+      params: import('@protocols/mail').MailMessageSetAiParams,
+    ) => Promise<{ success: boolean }>
+    /** 下载附件（主进程弹出保存对话框） */
+    downloadAttachment: (
+      params: import('@protocols/mail').MailAttachmentDownloadParams,
+    ) => Promise<{ success: boolean; path?: string; error?: string }>
+    /** 更新定时自动整理设置 */
+    updateAutoOrganize: (
+      params: import('@protocols/mail').MailAutoOrganizeUpdateParams,
+    ) => Promise<{ success: boolean }>
+    /** 列出账户在服务器上的文件夹（含已发送/已删除/垃圾邮件识别） */
+    folderList: (
+      accountId: string,
+    ) => Promise<import('@protocols/mail').MailFolderListResult>
+    /** 标记邮件的已读 / 星标状态 */
+    messageSetFlags: (
+      params: import('@protocols/mail').MailSetFlagsParams,
+    ) => Promise<{ success: boolean; error?: string }>
+    /** 发送邮件（发件服务器由账户自动推导） */
+    sendMessage: (
+      params: import('@protocols/mail').MailSendParams,
+    ) => Promise<import('@protocols/mail').MailSendResult>
+    /** 保存草稿 */
+    draftSave: (
+      params: import('@protocols/mail').MailDraftSaveParams,
+    ) => Promise<{ success: boolean; draft: import('@protocols/mail').MailDraft }>
+    /** 列出草稿 */
+    draftList: (
+      accountId: string,
+    ) => Promise<{ success: boolean; drafts: import('@protocols/mail').MailDraft[] }>
+    /** 删除草稿 */
+    draftDelete: (id: string) => Promise<{ success: boolean }>
+    /** 列出待重发的发件箱条目 */
+    outboxList: (
+      accountId: string,
+    ) => Promise<{ success: boolean; items: import('@protocols/mail').MailOutboxItem[] }>
+    /** 重试发送发件箱条目 */
+    outboxRetry: (
+      params: import('@protocols/mail').MailOutboxRetryParams,
+    ) => Promise<import('@protocols/mail').MailSendResult>
+    /** 删除发件箱条目 */
+    outboxDelete: (id: string) => Promise<{ success: boolean }>
+    /** 同步进度订阅（main→render） */
+    onSyncProgress: (
+      callback: (progress: import('@protocols/mail').MailSyncProgress) => void,
+    ) => () => void
+    /** 定时整理完成事件订阅（main→render） */
+    onDigestCreated: (
+      callback: (payload: import('@protocols/mail').MailDigestPayload) => void,
+    ) => () => void
+    /** 未读总数变化订阅（main→render，标记已读 / 同步后触发） */
+    onUnreadChanged: (callback: (payload: { count: number }) => void) => () => void
+  }
+
+
+  // ============================================
   // PPT 预览窗口（独立常驻窗口，供 mcp-pptx 插件实时预览）
   // ============================================
   pptPreview: {

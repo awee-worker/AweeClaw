@@ -118,9 +118,12 @@ const GENERAL_ASSISTANT_UI: ScenarioUI = {
     // 工作区由「新建任务」按需激活，不作为常驻导航项（与 NavigationRail 的兜底项一致）
     { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0, hidden: true },
     { id: 'projects', icon: 'FolderKanban', label: 'Projects', labelZh: '项目', component: 'ProjectsView', position: 1, wideMode: true },
-    { id: 'tasks', icon: 'CheckSquare', label: 'Tasks', labelZh: '任务', component: 'TaskWorkspace', position: 2, wideMode: true },
-    { id: 'automation', icon: 'Zap', label: 'Automation', labelZh: '自动化', component: 'AutomationView', position: 3, wideMode: true },
-    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 4, wideMode: true },
+    { id: 'automation', icon: 'Zap', label: 'Automation', labelZh: '自动化', component: 'AutomationView', position: 2, wideMode: true },
+    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 3, wideMode: true },
+    // 邮件中心：在主窗口内以宽屏面板打开（不再单独开窗口）。
+    // hideChat 让面板独占主内容区（进入时自动隐藏对话，可手动恢复）；
+    // 有未读邮件时导航项右侧显示数字角标（见 NavigationRail 对 id 的特殊处理）。
+    { id: 'mail-center', icon: 'Mail', label: 'Mail Center', labelZh: '邮件中心', component: 'MailCenterView', position: 4, wideMode: true, hideChat: true },
     // AI 浏览器：用设置里配置的搜索引擎检索网页 / 图片 / 视频，结果在内置浏览器中打开。
     // 检索 + 浏览需要整块主区域，因此声明 hideChat（进入时自动隐藏对话，可手动恢复）。
     { id: 'ai-browser', icon: 'Compass', label: 'AI Browser', labelZh: 'AI浏览器', component: 'AIBrowserView', position: 5, wideMode: true, hideChat: true },

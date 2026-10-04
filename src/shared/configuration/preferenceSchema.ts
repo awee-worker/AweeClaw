@@ -228,6 +228,7 @@ const defaultMcpConfig: McpConfig = {
 
 const defaultEmailConfig: EmailConfig = {
   enabled: false,
+  accounts: [],
 }
 
 export type BrowserMode = 'internal' | 'external'

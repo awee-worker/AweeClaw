@@ -42,6 +42,7 @@ const TOOL_RISK_MAP: Record<string, ToolRiskLevel> = {
   // 安全：交互/记忆/知识/任务（无副作用）
   remember: 'safe',
   knowledge_search: 'safe',
+  mail_read: 'safe',
   ask_user: 'safe',
   ask_form: 'safe',
   offer_continuation: 'safe',
@@ -87,6 +88,7 @@ const TOOL_RISK_MAP: Record<string, ToolRiskLevel> = {
   npm_install: 'dangerous',
   npm_run: 'dangerous',
     email_send: 'dangerous',
+    mail_send: 'dangerous',
     send_file_to_channel: 'dangerous',
     // 外部编码智能体：delegate 可编辑文件并执行命令（等效高危命令），status/abort 只读或停止
     external_agent_delegate: 'dangerous',

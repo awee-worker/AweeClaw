@@ -37,6 +37,18 @@ export const STORE_KEYS = {
   PROACTIVE_PERMISSION: 'proactive_permission',
   // 阶段10 s10-10：ProactiveLearner 自适应阈值（保留最近一次校准结果）
   PROACTIVE_LEARNER_STATS: 'proactive_learner_stats',
+  // 邮件收件：账户密码/授权码密文（safeStorage 加密后的 base64）
+  MAIL_SECRETS: 'mail_secrets',
+  // 邮件收件：已同步邮件的元数据索引（不含正文，正文按 uid 分文件缓存）
+  MAIL_MESSAGES: 'mail_messages',
+  // 邮件收件：每账户每文件夹的增量同步游标（uidValidity + lastUid）
+  MAIL_SYNC_STATE: 'mail_sync_state',
+  // 邮件收件：每账户的标准文件夹映射（别名 → 服务器真实路径）
+  MAIL_FOLDER_MAP: 'mail_folder_map',
+  // 邮件收件：本地草稿箱
+  MAIL_DRAFTS: 'mail_drafts',
+  // 邮件收件：本地发件箱（发送失败待重试）
+  MAIL_OUTBOX: 'mail_outbox',
 } as const
 
 // ============================================
