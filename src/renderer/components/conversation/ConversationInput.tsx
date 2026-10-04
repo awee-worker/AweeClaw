@@ -41,7 +41,7 @@ import { getFileName } from '@shared/toolkit/pathHelper'
 import { motion, AnimatePresence } from 'framer-motion'
 // VoiceRealtimePanel 已迁移到独立的 VoiceConversationOverlay 全屏语音对话界面
 import {t, type Language} from '@renderer/i18n'
-import { ActionButton } from '../ui'
+import { ActionButton, HintOverlay } from '../ui'
 
 import ModelSelector from './AIModelSelector'
 import AuthorizationModeSelector from './AuthorizationModeSelector'
@@ -633,27 +633,34 @@ const ChatInput = memo(function ChatInput({
                   </div>
                 )}
                 {att.isImage && (
-                  <button
-                    onClick={() => toggleAnalyzeMode(att.id)}
-                    className={`absolute top-1 left-1 p-1 backdrop-blur rounded-full transition-all opacity-0 group-hover/att:opacity-100 scale-90 hover:scale-100 ${
-                      att.analyzeMode
-                        ? 'bg-accent/80 text-white'
-                        : 'bg-black/50 text-white/70 hover:text-white'
-                    }`}
-                    title={att.analyzeMode
-                      ? lt('app.visualanalysisonai', language as Language)
-                      : lt('app.clicktoenablevisual', language as Language)
-                    }
-                  >
-                    {att.analyzeMode ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                  </button>
+                  <div className="absolute top-1 left-1 z-10">
+                    <HintOverlay content={att.analyzeMode
+                      ? t('app.visualanalysisonai', language as Language)
+                      : t('app.clicktoenablevisual', language as Language)
+                    }>
+                      <button
+                        onClick={() => toggleAnalyzeMode(att.id)}
+                        className={`p-1 backdrop-blur rounded-full transition-all opacity-0 group-hover/att:opacity-100 scale-90 hover:scale-100 ${
+                          att.analyzeMode
+                            ? 'bg-accent/80 text-white'
+                            : 'bg-black/50 text-white/70 hover:text-white'
+                        }`}
+                      >
+                        {att.analyzeMode ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                      </button>
+                    </HintOverlay>
+                  </div>
                 )}
-                <button
-                  onClick={() => removeAttachment(att.id)}
-                  className="absolute top-1 right-1 p-1 bg-black/60 backdrop-blur rounded-full text-white hover:bg-red-500 transition-all opacity-0 group-hover/att:opacity-100 scale-90 hover:scale-100"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+                <div className="absolute top-1 right-1 z-10">
+                  <HintOverlay content={lt('移除附件', 'Remove attachment')}>
+                    <button
+                      onClick={() => removeAttachment(att.id)}
+                      className="p-1 bg-black/60 backdrop-blur rounded-full text-white hover:bg-red-500 transition-all opacity-0 group-hover/att:opacity-100 scale-90 hover:scale-100"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </HintOverlay>
+                </div>
               </div>
             ))}
           </div>
@@ -795,55 +802,58 @@ const ChatInput = memo(function ChatInput({
               {/* 语音听写 / 语音对话进行中：隐藏附件、截图、AI 优化，腾出空间给录音可视化 */}
               {voiceInput.state === 'idle' && !voiceDialogActive && (
                 <>
-                  <ActionButton
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => !isStreaming && fileInputRef.current?.click()}
-                    disabled={isStreaming}
-                    title={t('app.uploadattachment', language as Language)}
-                    className={`rounded-xl w-8 h-8 transition-all active:scale-95 ${
-                      isStreaming
-                        ? 'opacity-40 cursor-not-allowed text-text-muted'
-                        : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
-                    }`}
-                  >
-                    <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
-                  </ActionButton>
+                  <HintOverlay content={t('app.uploadattachment', language as Language)}>
+                    <ActionButton
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => !isStreaming && fileInputRef.current?.click()}
+                      disabled={isStreaming}
+                      className={`rounded-xl w-8 h-8 transition-all active:scale-95 ${
+                        isStreaming
+                          ? 'opacity-40 cursor-not-allowed text-text-muted'
+                          : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
+                      }`}
+                    >
+                      <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                    </ActionButton>
+                  </HintOverlay>
                   {/* 截图提问按钮：触发全屏区域选择，截图完成后作为附件添加到输入框 */}
-                  <ActionButton
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleScreenshot}
-                    disabled={isStreaming}
-                    title={lt('截图提问', 'Screenshot & Ask')}
-                    className={`rounded-xl w-8 h-8 transition-all active:scale-95 ${
-                      isStreaming
-                        ? 'opacity-40 cursor-not-allowed text-text-muted'
-                        : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
-                    }`}
-                  >
-                    <Crop className="w-4 h-4 opacity-70 group-hover:opacity-100" />
-                  </ActionButton>
+                  <HintOverlay content={lt('截图提问', 'Screenshot & Ask')}>
+                    <ActionButton
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleScreenshot}
+                      disabled={isStreaming}
+                      className={`rounded-xl w-8 h-8 transition-all active:scale-95 ${
+                        isStreaming
+                          ? 'opacity-40 cursor-not-allowed text-text-muted'
+                          : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
+                      }`}
+                    >
+                      <Crop className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                    </ActionButton>
+                  </HintOverlay>
 
-                  <button
-                    onClick={handleOptimize}
-                    disabled={!input.trim() || isOptimizing || isStreaming || !hasApiKey}
-                    title={t('app.optimizeinput', language as Language)}
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
-                      ${isOptimizing
-                        ? 'bg-accent/10 text-accent border border-accent/20'
-                        : input.trim() && hasApiKey && !isStreaming
-                          ? 'bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95'
-                          : 'bg-transparent text-text-muted/30 cursor-not-allowed border border-transparent'
-                      }
-                      `}
-                  >
-                    {isOptimizing ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Sparkles className="w-4 h-4" />
-                    )}
-                  </button>
+                  <HintOverlay content={t('app.optimizeinput', language as Language)}>
+                    <button
+                      onClick={handleOptimize}
+                      disabled={!input.trim() || isOptimizing || isStreaming || !hasApiKey}
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
+                        ${isOptimizing
+                          ? 'bg-accent/10 text-accent border border-accent/20'
+                          : input.trim() && hasApiKey && !isStreaming
+                            ? 'bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95'
+                            : 'bg-transparent text-text-muted/30 cursor-not-allowed border border-transparent'
+                        }
+                        `}
+                    >
+                      {isOptimizing ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4" />
+                      )}
+                    </button>
+                  </HintOverlay>
                 </>
               )}
 
@@ -879,17 +889,22 @@ const ChatInput = memo(function ChatInput({
                       {/* 对话中也能随手切换播报：勾过「不再询问」之后，
                           这里是唯一不用进设置就能改的地方 */}
                       {onVoiceSpeakEnabledChange && (
-                        <button
-                          type="button"
-                          onClick={() => onVoiceSpeakEnabledChange(voiceSpeakEnabled === false)}
-                          className="pointer-events-auto flex items-center gap-1 text-[11px] text-text-muted hover:text-text-primary transition-colors"
-                          title={lt('切换是否朗读 AI 回复', 'Toggle reply playback')}
+                        <HintOverlay
+                          content={lt('切换是否朗读 AI 回复', 'Toggle reply playback')}
+                          side="left"
+                          className="pointer-events-auto"
                         >
-                          {voiceSpeakOn
-                            ? <Volume2 className="w-3 h-3" />
-                            : <VolumeX className="w-3 h-3" />}
-                          <span>{voiceSpeakOn ? lt('朗读中', 'Reading') : lt('已静音', 'Muted')}</span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => onVoiceSpeakEnabledChange(voiceSpeakEnabled === false)}
+                            className="flex items-center gap-1 text-[11px] text-text-muted hover:text-text-primary transition-colors"
+                          >
+                            {voiceSpeakOn
+                              ? <Volume2 className="w-3 h-3" />
+                              : <VolumeX className="w-3 h-3" />}
+                            <span>{voiceSpeakOn ? lt('朗读中', 'Reading') : lt('已静音', 'Muted')}</span>
+                          </button>
+                        </HintOverlay>
                       )}
                       {voiceDialogNotice && (
                         <div className="text-[11px] text-text-muted whitespace-nowrap">{voiceDialogNotice}</div>
@@ -907,39 +922,42 @@ const ChatInput = memo(function ChatInput({
                     </div>
                   </motion.div>
 
-                  <button
-                    type="button"
-                    onClick={onVoiceDialogEnd}
-                    className={`relative flex items-center justify-center rounded-full w-9 h-9 text-white transition-all duration-200 focus:outline-none active:scale-95 ${voiceDialogStyle.solid}`}
-                    title={lt('点击结束语音对话（空格打断）', 'Click to end voice chat (Space to interrupt)')}
-                  >
-                    {voiceDialogPulsing && (
-                      <motion.span
-                        className={`absolute inset-0 rounded-full border-2 ${voiceDialogStyle.ring}`}
-                        animate={{ scale: [1, 1.3, 1], opacity: [0.6, 0, 0.6] }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
-                      />
-                    )}
-                    {voiceDialogState === 'connecting' || voiceDialogState === 'processing' ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : voiceDialogState === 'speaking' ? (
-                      <Volume2 className="w-4 h-4" />
-                    ) : voiceDialogState === 'paused' ? (
-                      <ShieldAlert className="w-4 h-4" />
-                    ) : voiceDialogState === 'error' ? (
-                      <AlertTriangle className="w-4 h-4" />
-                    ) : (
-                      <Square className="w-3.5 h-3.5" />
-                    )}
-                  </button>
+                  <HintOverlay content={lt('点击结束语音对话（空格打断）', 'Click to end voice chat (Space to interrupt)')} side="left">
+                    <button
+                      type="button"
+                      onClick={onVoiceDialogEnd}
+                      className={`relative flex items-center justify-center rounded-full w-9 h-9 text-white transition-all duration-200 focus:outline-none active:scale-95 ${voiceDialogStyle.solid}`}
+                    >
+                      {voiceDialogPulsing && (
+                        <motion.span
+                          className={`absolute inset-0 rounded-full border-2 ${voiceDialogStyle.ring}`}
+                          animate={{ scale: [1, 1.3, 1], opacity: [0.6, 0, 0.6] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                        />
+                      )}
+                      {voiceDialogState === 'connecting' || voiceDialogState === 'processing' ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : voiceDialogState === 'speaking' ? (
+                        <Volume2 className="w-4 h-4" />
+                      ) : voiceDialogState === 'paused' ? (
+                        <ShieldAlert className="w-4 h-4" />
+                      ) : voiceDialogState === 'error' ? (
+                        <AlertTriangle className="w-4 h-4" />
+                      ) : (
+                        <Square className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </HintOverlay>
                 </div>
               ) : isStreaming ? (
-                <button
-                  onClick={onAbort}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 bg-surface/50 text-text-primary border border-text-primary/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20"
-                >
-                  <div className="w-2.5 h-2.5 bg-current rounded-[1px] animate-pulse" />
-                </button>
+                <HintOverlay content={lt('停止生成', 'Stop generating')}>
+                  <button
+                    onClick={onAbort}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 bg-surface/50 text-text-primary border border-text-primary/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20"
+                  >
+                    <div className="w-2.5 h-2.5 bg-current rounded-[1px] animate-pulse" />
+                  </button>
+                </HintOverlay>
               ) : voiceInput.state !== 'idle' ? (
                 <div className="relative flex items-center gap-2">
                   {voiceInput.state === 'recording' && voiceInput.stream && (
@@ -954,50 +972,61 @@ const ChatInput = memo(function ChatInput({
                       />
                     </div>
                   )}
-                  <button
-                    type="button"
-                    onClick={voiceInput.state === 'recording' ? voiceInput.stopRecording : undefined}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      if (voiceInput.state === 'recording') {
-                        voiceInput.cancelRecording();
-                      }
-                    }}
-                    disabled={voiceInput.state === 'requesting' || voiceInput.state === 'processing'}
-                    className={`relative flex items-center justify-center rounded-full transition-all duration-200 focus:outline-none
-                      ${voiceInput.state === 'recording'
-                        ? 'w-9 h-9 bg-red-500 text-white shadow-lg shadow-red-500/30 hover:bg-red-600'
-                        : 'w-8 h-8 bg-blue-500/20 text-blue-400 cursor-wait'
-                      }`}
-                    title={voiceInput.state === 'recording' ? 'Stop recording' : voiceInput.state === 'processing' ? 'Processing...' : 'Requesting microphone...'}
+                  <HintOverlay
+                    content={
+                      voiceInput.state === 'recording'
+                        ? lt('停止录音', 'Stop recording')
+                        : voiceInput.state === 'processing'
+                          ? lt('处理中…', 'Processing…')
+                          : lt('正在请求麦克风…', 'Requesting microphone…')
+                    }
                   >
-                    {voiceInput.state === 'recording' && (
-                      <motion.div
-                        className="absolute inset-0 rounded-full border-2 border-red-400"
-                        animate={{ scale: [1, 1.3, 1], opacity: [0.6, 0, 0.6] }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
-                      />
-                    )}
-                    {(voiceInput.state === 'requesting' || voiceInput.state === 'processing') ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Square className="w-3.5 h-3.5" />
-                    )}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={voiceInput.state === 'recording' ? voiceInput.stopRecording : undefined}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        if (voiceInput.state === 'recording') {
+                          voiceInput.cancelRecording();
+                        }
+                      }}
+                      disabled={voiceInput.state === 'requesting' || voiceInput.state === 'processing'}
+                      className={`relative flex items-center justify-center rounded-full transition-all duration-200 focus:outline-none
+                        ${voiceInput.state === 'recording'
+                          ? 'w-9 h-9 bg-red-500 text-white shadow-lg shadow-red-500/30 hover:bg-red-600'
+                          : 'w-8 h-8 bg-blue-500/20 text-blue-400 cursor-wait'
+                        }`}
+                    >
+                      {voiceInput.state === 'recording' && (
+                        <motion.div
+                          className="absolute inset-0 rounded-full border-2 border-red-400"
+                          animate={{ scale: [1, 1.3, 1], opacity: [0.6, 0, 0.6] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                        />
+                      )}
+                      {(voiceInput.state === 'requesting' || voiceInput.state === 'processing') ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Square className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </HintOverlay>
                 </div>
               ) : isSendable ? (
-                <button
-                  onClick={onSubmit}
-                  disabled={!hasApiKey || hasPendingToolCall}
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
-                    ${hasApiKey && !hasPendingToolCall
-                      ? 'bg-accent text-white shadow-md shadow-accent/20 hover:shadow-accent/40 hover:-translate-y-0.5 active:translate-y-0 border border-transparent'
-                      : 'bg-text-primary/5 text-text-muted/75 cursor-not-allowed border border-transparent'
-                    }
-                    `}
-                >
-                  <ArrowUp className="w-5 h-5 stroke-[3]" />
-                </button>
+                <HintOverlay content={t('ai.send', language as Language)}>
+                  <button
+                    onClick={onSubmit}
+                    disabled={!hasApiKey || hasPendingToolCall}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
+                      ${hasApiKey && !hasPendingToolCall
+                        ? 'bg-accent text-white shadow-md shadow-accent/20 hover:shadow-accent/40 hover:-translate-y-0.5 active:translate-y-0 border border-transparent'
+                        : 'bg-text-primary/5 text-text-muted/75 cursor-not-allowed border border-transparent'
+                      }
+                      `}
+                  >
+                    <ArrowUp className="w-5 h-5 stroke-[3]" />
+                  </button>
+                </HintOverlay>
               ) : (
                 <div ref={voiceMenuRef} className="relative">
                   {/* 长按后先问一句「要不要播报」，再进对话；偏好被记住，下次沿用 */}
@@ -1073,25 +1102,26 @@ const ChatInput = memo(function ChatInput({
                     )}
                   </AnimatePresence>
 
-                  <button
-                    type="button"
-                    onPointerDown={handleMicPointerDown}
-                    onPointerUp={handleMicPointerUp}
-                    onPointerLeave={clearLongPressTimer}
-                    onPointerCancel={clearLongPressTimer}
-                    onKeyDown={handleMicKeyDown}
-                    onContextMenu={(e) => e.preventDefault()}
-                    disabled={!hasApiKey}
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 select-none touch-none
-                      ${hasApiKey
-                        ? 'bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95'
-                        : 'bg-text-primary/5 text-text-muted/75 cursor-not-allowed border border-transparent'
-                      }
-                      `}
-                    title={lt('点击听写，长按语音对话', 'Tap to dictate, hold for voice chat')}
-                  >
-                    <Mic className="w-4 h-4" />
-                  </button>
+                  <HintOverlay content={lt('点击听写，长按语音对话', 'Tap to dictate, hold for voice chat')}>
+                    <button
+                      type="button"
+                      onPointerDown={handleMicPointerDown}
+                      onPointerUp={handleMicPointerUp}
+                      onPointerLeave={clearLongPressTimer}
+                      onPointerCancel={clearLongPressTimer}
+                      onKeyDown={handleMicKeyDown}
+                      onContextMenu={(e) => e.preventDefault()}
+                      disabled={!hasApiKey}
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 select-none touch-none
+                        ${hasApiKey
+                          ? 'bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95'
+                          : 'bg-text-primary/5 text-text-muted/75 cursor-not-allowed border border-transparent'
+                        }
+                        `}
+                    >
+                      <Mic className="w-4 h-4" />
+                    </button>
+                  </HintOverlay>
                 </div>
               )}
             </div>
