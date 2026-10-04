@@ -17,7 +17,7 @@ import * as https from 'https'
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import Store from 'electron-store'
-import { BRAND } from '@shared/brand'
+import { APP_TEMP_ROOT_NAME, PYTHON_TEMP_SUBDIR } from '@shared/appConstants'
 
 /**
  * 懒初始化 electron-store
@@ -2118,8 +2118,9 @@ class PythonManager {
   }): Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number | null; error?: string; tempFile?: string }> {
     const { script, dependencies = [], args = [], cwd, timeout = 120000 } = params
 
-    const baseDir = cwd || getDefaultPythonDir()
-    const tempDir = path.join(baseDir, BRAND.dirName, 'python-temp')
+    // 临时脚本落在应用级临时目录（userData/tmp/python-temp），不写入工作区，
+    // 避免落入 .aweeclaw 受保护目录。
+    const tempDir = path.join(app.getPath('userData'), APP_TEMP_ROOT_NAME, PYTHON_TEMP_SUBDIR)
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true })
 
     const tempFile = path.join(tempDir, `script-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.py`)

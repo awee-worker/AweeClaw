@@ -15,7 +15,7 @@ import * as fs from 'fs'
 import Store from 'electron-store'
 import { getBootstrapStore, getUserConfigDir, setUserConfigDir } from '../../modules/configPath'
 import { cleanConfigValue } from '@shared/configuration/configSanitizer'
-import { SECURITY_DEFAULTS } from '@shared/appConstants'
+import { SECURITY_DEFAULTS, APP_TEMP_ROOT_NAME } from '@shared/appConstants'
 
 interface SecurityModuleRef {
   securityManager: any
@@ -237,6 +237,17 @@ export function registerSettingsHandlers(
 
   safeIpcHandle('settings:getUserDataPath', () => {
     return getUserConfigDir()
+  })
+
+  /**
+   * 应用级临时目录
+   *
+   * 位于 userData 下（已注册为可信应用路径），用于内联脚本等易失产物：
+   * 既不占用工作区，也不落入工作区的 .aweeclaw，可被正常读写与清理。
+   */
+  safeIpcHandle('settings:getTempDir', () => {
+    const path = require('path')
+    return path.join(app.getPath('userData'), APP_TEMP_ROOT_NAME)
   })
 
   /**

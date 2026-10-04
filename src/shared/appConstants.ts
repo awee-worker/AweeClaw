@@ -85,6 +85,35 @@ export function hasPathTraversal(path: string): boolean {
 /** 受保护的应用数据目录名（工作区内的 .aweeclaw） */
 export const PROTECTED_APP_DIR_NAME = BRAND.dirName
 
+/**
+ * .aweeclaw 下不纳入核心数据保护的子目录（允许删除）
+ *
+ * 这些子目录存放的是用户资料或易失产物，而非项目配置/记忆/索引：
+ * - uploads / attachments：用户上传与项目附件，用户有权清理；
+ * - agent-temp / python-temp：旧版内联脚本临时目录（现已迁移到应用临时目录），
+ *   在此保留是为了让历史遗留目录也能被删除。
+ *
+ * .aweeclaw 根目录及其余子目录仍一律禁止删除。
+ */
+export const DELETABLE_APP_SUBDIRS = [
+  'uploads',
+  'attachments',
+  'agent-temp',
+  'python-temp',
+] as const
+
+/**
+ * 应用级临时目录名（相对 app.getPath('userData')）
+ *
+ * 用于存放内联脚本等易失产物：不随工作区走，也不在工作区的 .aweeclaw 内，
+ * 因此不受工作区边界与 .aweeclaw 删除保护影响，可被正常清理。
+ */
+export const APP_TEMP_ROOT_NAME = 'tmp'
+/** 内联脚本临时子目录（Node 等非 Python 运行时） */
+export const AGENT_TEMP_SUBDIR = 'agent-temp'
+/** Python 内联脚本临时子目录 */
+export const PYTHON_TEMP_SUBDIR = 'python-temp'
+
 /** 删除类命令动词（覆盖 POSIX / Windows / PowerShell） */
 const DELETE_VERB_PATTERN =
   /(?:^|[\s;&|()])(rm|rmdir|rd|del|erase|unlink|remove-item|ri)\b/i
@@ -93,11 +122,19 @@ const DELETE_VERB_PATTERN =
  * 路径是否位于受保护的应用数据目录（.aweeclaw）内（含目录本身）
  *
  * 该目录存储项目配置、记忆、索引等核心数据，禁止删除及破坏性操作。
+ * 例外：DELETABLE_APP_SUBDIRS 中的子目录（用户资料 / 临时产物）允许删除。
  */
 export function isProtectedAppDirPath(targetPath: string): boolean {
   if (!targetPath) return false
   const normalized = targetPath.replace(/\\/g, '/')
-  return normalized.split('/').includes(PROTECTED_APP_DIR_NAME)
+  const segments = normalized.split('/').filter(Boolean)
+  const appDirIndex = segments.lastIndexOf(PROTECTED_APP_DIR_NAME)
+  if (appDirIndex === -1) return false
+  // .aweeclaw 目录本身（无下级子路径）始终受保护
+  const subDir = segments[appDirIndex + 1]
+  if (!subDir) return true
+  // .aweeclaw 下的可删除子目录放行（用户上传、项目附件、临时产物）
+  return !(DELETABLE_APP_SUBDIRS as readonly string[]).includes(subDir)
 }
 
 /**

@@ -547,6 +547,7 @@ function createGroupedAPI() {
       getBlacklist: () => raw.getBlacklist(),
       resetBlacklist: () => raw.resetBlacklist(),
       getUserDataPath: () => raw.getUserDataPath(),
+      getTempDir: () => raw.getTempDir(),
       getAppDataRoots: () => raw.getAppDataRoots(),
       getAppConfig: () => raw.getAppConfig(),
       getRecentLogs: () => raw.getRecentLogs(),

@@ -38,6 +38,7 @@ import { requestRendererShutdown } from './bootstrap/shutdownCoordinator'
 import { performGlobalCleanup, performFastCleanup, withTimeout } from './bootstrap/globalCleanup'
 import { initializeModules } from './bootstrap/moduleInitializer'
 import { FloatingAvatarManager } from './modules/floating-avatar/FloatingAvatarManager'
+import { startScriptTempCleanup } from './modules/temp/scriptTempCleanup'
 
 // 重新导出 Language 类型，保持向后兼容（menu 模块从 appBootstrap 导入）
 export type { Language } from './bootstrap/moduleInitializer'
@@ -184,6 +185,9 @@ app.whenReady().then(async () => {
 
   // 8. 模块就绪，加载页面内容
   loadWindowContent(firstWin, false)
+
+  // 9. 启动内联脚本临时目录兜底清理（启动清空 + 周期清理）
+  startScriptTempCleanup()
 })
 
 // ==========================================

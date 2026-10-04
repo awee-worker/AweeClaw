@@ -58,6 +58,7 @@ import {
     isProtectedAppDirDeletion,
     isProtectedAppDirPath,
     PROTECTED_APP_DIR_NAME,
+    AGENT_TEMP_SUBDIR,
 } from '@shared/appConstants'
 import type { ExternalAgentId, AgentPermissionMode } from '@shared/externalAgents'
 import { publishAgentRunStart } from './agentRunBus'
@@ -912,8 +913,10 @@ async function runInlineScriptViaTempFile(
         }
     }
 
-    const baseDir = ctx.workspacePath || await api.settings.getUserDataPath()
-    const tempDir = joinPath(baseDir, BRAND.dirName, 'agent-temp')
+    // 临时脚本落在应用级临时目录（userData/tmp/agent-temp），不写入工作区，
+    // 避免落入 .aweeclaw 受保护目录导致执行后无法清理。
+    const tempBaseDir = await api.settings.getTempDir()
+    const tempDir = joinPath(tempBaseDir, AGENT_TEMP_SUBDIR)
     const tempFile = joinPath(
         tempDir,
         `inline-${parsed.runtime}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${parsed.extension}`
