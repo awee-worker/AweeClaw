@@ -1411,6 +1411,16 @@ function ModelStep({
     return found?.models || []
   }, [cloudModels, providerConfig.provider])
 
+  // 云端模型展示名称：key 为模型 id，缺省时回退显示模型 id
+  const cloudModelNames = useMemo(() => {
+    if (!cloudModels || cloudModels.length === 0) return {} as Record<string, string>
+    const currentProvider = providerConfig.provider || ''
+    const found = cloudModels.find((cp) =>
+      cp.provider.toLowerCase() === currentProvider.toLowerCase()
+    )
+    return found?.modelNames || {}
+  }, [cloudModels, providerConfig.provider])
+
   // 自定义模式：拉取模型
   const handleFetchModels = useCallback(async () => {
     if (!providerConfig.provider) {
@@ -1543,6 +1553,7 @@ function ModelStep({
             isAuthenticated={isAuthenticated}
             cloudProviderOptions={cloudProviderOptions}
             cloudModelOptions={cloudModelOptions}
+            cloudModelNames={cloudModelNames}
             currentProviderId={providerConfig.provider}
             currentModelId={providerConfig.model}
             onSelectProvider={handleSelectCloudProvider}
@@ -1583,6 +1594,7 @@ function CloudModelContent({
   isAuthenticated,
   cloudProviderOptions,
   cloudModelOptions,
+  cloudModelNames,
   currentProviderId,
   currentModelId,
   onSelectProvider,
@@ -1593,6 +1605,7 @@ function CloudModelContent({
   isAuthenticated: boolean
   cloudProviderOptions: Array<{ id: string; name: string; models: string[]; baseUrl?: string; logo?: string }>
   cloudModelOptions: string[]
+  cloudModelNames?: Record<string, string>
   currentProviderId: string
   currentModelId: string
   onSelectProvider: (cp: { id: string; models: string[]; baseUrl?: string }) => void
@@ -1737,7 +1750,7 @@ function CloudModelContent({
                       : 'border-border bg-white/5 text-text-secondary hover:border-accent/30 hover:text-text-primary'
                   }`}
                 >
-                  <span className="truncate text-sm font-mono">{m}</span>
+                  <span className="truncate text-sm">{cloudModelNames?.[m] || m}</span>
                   {active && <Check className="w-3.5 h-3.5 shrink-0" />}
                 </button>
               )

@@ -16,6 +16,8 @@ export interface FlatModel {
   providerId: string
   providerName: string
   isCustom?: boolean
+  /** 免费模型：云端模式调用不扣 Token（仅云端模型会标记） */
+  isFree?: boolean
 }
 
 /**
@@ -48,7 +50,7 @@ export function buildEnabledLocalModels(
       seen.add(key)
       models.push({
         id,
-        name: id.split('/').pop() || id,
+        name: modelConfigs[id]?.displayName?.trim() || id.split('/').pop() || id,
         providerId,
         providerName: provider.displayName,
         isCustom: true,
@@ -72,7 +74,7 @@ export function buildEnabledLocalModels(
       seen.add(key)
       models.push({
         id,
-        name: id.split('/').pop() || id,
+        name: modelConfigs[id]?.displayName?.trim() || id.split('/').pop() || id,
         providerId,
         providerName,
         isCustom: true,

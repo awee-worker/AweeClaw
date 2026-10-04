@@ -738,6 +738,7 @@ export function ModelProviderPanel({
   commitProviderConfigs,
 }: ProviderSettingsProps) {
   const [newModelName, setNewModelName] = useState('')
+  const [newModelDisplayName, setNewModelDisplayName] = useState('')
   const [isAddingCustom, setIsAddingCustom] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [logitBiasString, setLogitBiasString] = useState('')
@@ -848,7 +849,8 @@ export function ModelProviderPanel({
     const currentProvider = (localConfig.provider || '').toUpperCase()
     const found = cloudModels?.find((cp) => cp.provider === currentProvider || (localConfig.provider && cp.provider.toLowerCase() === localConfig.provider))
     if (!found) return []
-    return found.models.map((m) => ({ value: m, label: m }))
+    const modelNames = found.modelNames || {}
+    return found.models.map((m) => ({ value: m, label: modelNames[m]?.trim() || m }))
   }, [cloudModels, localConfig.provider])
 
   // Headers 状态
@@ -1006,12 +1008,13 @@ export function ModelProviderPanel({
     if (!modelName.trim()) return
 
     const namesToAdd = modelName.split(',').map(s => s.trim()).filter(Boolean)
-    handleBatchAddModels(namesToAdd)
+    handleBatchAddModels(namesToAdd, newModelDisplayName.trim() || undefined)
     if (!name) setNewModelName('')
+    setNewModelDisplayName('')
   }
 
   // 批量添加模型
-  const handleBatchAddModels = useCallback((models: string[]) => {
+  const handleBatchAddModels = useCallback((models: string[], displayName?: string) => {
     if (models.length === 0) return
 
     const currentConfig = localProviderConfigs[localConfig.provider] || {}
@@ -1031,6 +1034,14 @@ export function ModelProviderPanel({
         // 能力为空时按模型名推断，避免落到列表里没有任何能力标签
         capabilities: existing?.capabilities?.length ? existing.capabilities : inferCapabilities(m),
         enabled: true,
+      }
+    }
+
+    // 展示名称只在单个新增模型时可对应，批量添加时无法与模型一一匹配，忽略。
+    if (displayName && newModels.length === 1) {
+      updatedModelConfigs[newModels[0]] = {
+        ...updatedModelConfigs[newModels[0]],
+        displayName,
       }
     }
 
@@ -1738,6 +1749,13 @@ export function ModelProviderPanel({
                     value={newModelName}
                     onChange={(e) => setNewModelName(e.target.value)}
                     placeholder={t('provider.enterModelName', language as Language)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddModel()}
+                    className="flex-1 h-9 text-xs bg-background/50 border-border"
+                  />
+                  <TextField
+                    value={newModelDisplayName}
+                    onChange={(e) => setNewModelDisplayName(e.target.value)}
+                    placeholder={t('provider.modelDisplayNamePlaceholder', language as Language)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddModel()}
                     className="flex-1 h-9 text-xs bg-background/50 border-border"
                   />

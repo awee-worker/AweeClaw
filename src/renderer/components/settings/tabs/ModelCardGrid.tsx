@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Trash, Settings2, X, Eye, Sparkles, Cpu, Image, Wrench, Brain, Code, Mic, RotateCcw, Sliders } from 'lucide-react'
+import { Check, Trash, Settings2, X, Eye, Sparkles, Cpu, Image, Wrench, Brain, Code, Mic, RotateCcw, Sliders, Pencil } from 'lucide-react'
 import {
   type ModelCapability,
   type ModelConfig,
@@ -277,7 +277,9 @@ function ModelCard({
   onRemove,
   onEditCapabilities,
   onEditParams,
+  onEditDisplayName,
   onToggleEnabled,
+  displayName,
   language,
 }: {
   model: string
@@ -289,7 +291,9 @@ function ModelCard({
   onRemove: () => void
   onEditCapabilities: () => void
   onEditParams: () => void
+  onEditDisplayName: () => void
   onToggleEnabled: () => void
+  displayName?: string
   language: Language
 }) {
   return (
@@ -308,9 +312,14 @@ function ModelCard({
           {isSelected && enabled && (
             <Check className="w-3.5 h-3.5 text-accent flex-shrink-0" strokeWidth={3} />
           )}
-          <span className={`text-xs font-medium truncate ${isSelected && enabled ? 'text-accent' : 'text-text-primary'}`}>
-            {model}
+          <span className={`text-xs font-medium truncate ${isSelected && enabled ? 'text-accent' : 'text-text-primary'}`} title={model}>
+            {displayName || model}
           </span>
+          {displayName && displayName !== model && (
+            <span className="text-[10px] text-text-muted/60 font-mono truncate max-w-[140px]" title={model}>
+              {model}
+            </span>
+          )}
           {!enabled && (
             <span className="text-[9px] text-text-muted bg-surface-active/50 px-1.5 py-0.5 rounded">
               {t('provider.modelDisabled', language)}
@@ -333,6 +342,13 @@ function ModelCard({
           ))}
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button
+            onClick={e => { e.stopPropagation(); onEditDisplayName() }}
+            className={`p-1 rounded hover:bg-accent/10 transition-colors ${displayName ? 'text-accent' : 'text-text-muted hover:text-accent'}`}
+            title={t('provider.editModelDisplayName', language)}
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
           <button
             onClick={e => { e.stopPropagation(); onEditCapabilities() }}
             className="p-1 rounded hover:bg-accent/10 text-text-muted hover:text-accent transition-colors"
@@ -415,6 +431,74 @@ function CapabilityEditorDialog({
   )
 }
 
+function DisplayNameEditorDialog({
+  model,
+  displayName,
+  onSave,
+  onCancel,
+  language,
+}: {
+  model: string
+  displayName: string
+  onSave: (name: string) => void
+  onCancel: () => void
+  language: Language
+}) {
+  const [value, setValue] = useState(displayName)
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative bg-surface border border-border/50 rounded-2xl shadow-2xl w-[440px] max-h-[70vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-accent/10 rounded-md text-accent">
+              <Pencil className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">
+                {t('provider.editModelDisplayName', language)}
+              </h3>
+              <p className="text-[11px] text-text-muted font-mono truncate max-w-[280px]">{model}</p>
+            </div>
+          </div>
+          <button onClick={onCancel} className="p-1 rounded-md hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-2">
+          <input
+            type="text"
+            value={value}
+            autoFocus
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') onSave(value.trim())
+            }}
+            placeholder={t('provider.modelDisplayNamePlaceholder', language)}
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-text-primary placeholder:text-text-muted/85 focus:outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all"
+          />
+          <p className="text-[11px] text-text-muted leading-relaxed">
+            {t('provider.modelDisplayNameDesc', language)}
+          </p>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-border/30">
+          <ActionButton variant="secondary" size="sm" onClick={onCancel} className="text-xs h-8 px-4">
+            {t('provider.cancelEdit', language)}
+          </ActionButton>
+          <ActionButton variant="primary" size="sm" onClick={() => onSave(value.trim())} className="text-xs h-8 px-4">
+            <Check className="w-3.5 h-3.5 mr-1.5" />
+            {t('provider.save', language)}
+          </ActionButton>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 export const ModelCardGrid = memo(function ModelCardGrid({
   models,
   selectedModel,
@@ -427,6 +511,7 @@ export const ModelCardGrid = memo(function ModelCardGrid({
 }: ModelCardGridProps) {
   const [editingCapModel, setEditingCapModel] = useState<string | null>(null)
   const [editingParamsModel, setEditingParamsModel] = useState<string | null>(null)
+  const [editingNameModel, setEditingNameModel] = useState<string | null>(null)
 
   const getModelCapabilities = useCallback((model: string): ModelCapability[] => {
     const config = modelConfigs[model]
@@ -453,6 +538,16 @@ export const ModelCardGrid = memo(function ModelCardGrid({
       generationParams: params,
     })
     setEditingParamsModel(null)
+  }, [modelConfigs, onUpdateModelConfig])
+
+  const handleSaveDisplayName = useCallback((model: string, name: string) => {
+    const existing = modelConfigs[model]
+    onUpdateModelConfig(model, {
+      ...existing,
+      capabilities: existing?.capabilities ?? inferCapabilities(model),
+      displayName: name || undefined,
+    })
+    setEditingNameModel(null)
   }, [modelConfigs, onUpdateModelConfig])
 
   const groupedModels = useMemo(() => {
@@ -501,6 +596,8 @@ export const ModelCardGrid = memo(function ModelCardGrid({
                     onRemove={() => onRemoveModel(model)}
                     onEditCapabilities={() => setEditingCapModel(model)}
                     onEditParams={() => setEditingParamsModel(model)}
+                    onEditDisplayName={() => setEditingNameModel(model)}
+                    displayName={modelConfig?.displayName}
                     onToggleEnabled={() => {
                       const existing = modelConfigs[model]
                       onUpdateModelConfig(model, {
@@ -517,6 +614,16 @@ export const ModelCardGrid = memo(function ModelCardGrid({
           </div>
         )
       })}
+
+      {editingNameModel && (
+        <DisplayNameEditorDialog
+          model={editingNameModel}
+          displayName={modelConfigs[editingNameModel]?.displayName ?? ''}
+          onSave={name => handleSaveDisplayName(editingNameModel, name)}
+          onCancel={() => setEditingNameModel(null)}
+          language={language}
+        />
+      )}
 
       {editingCapModel && (
         <CapabilityEditorDialog

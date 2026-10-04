@@ -1631,6 +1631,9 @@ export const en = {
   'provider.disableModel': 'Disable Model',
   'provider.providerDisabled': 'Disabled',
   'provider.modelDisabled': 'Disabled',
+  'provider.editModelDisplayName': 'Set Model Display Name',
+  'provider.modelDisplayNamePlaceholder': 'Display name (optional, defaults to model ID)',
+  'provider.modelDisplayNameDesc': 'Shown in the chat model picker. Leave empty to use the model ID.',
 
   // Search Engine (additional)
   'search.providerTypeSelect': 'Select Provider Type',

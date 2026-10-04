@@ -151,6 +151,10 @@ export interface CloudQuota {
 export interface CloudProviderModel {
   provider: string
   models: string[]
+  /** 模型展示名称映射（key 为模型 id），仅有展示名称时才包含该模型 */
+  modelNames?: Record<string, string>
+  /** 免费模型 id 列表：云端模式调用不扣 Token */
+  freeModels?: string[]
   baseUrl?: string
   displayName?: string
   logo?: string

@@ -32,6 +32,8 @@ export interface ModelConfig {
   capabilities: ModelCapability[]
   generationParams?: ModelGenerationParams
   enabled?: boolean
+  /** 模型展示名称（可选），为空时界面回退展示模型 id */
+  displayName?: string
 }
 
 export interface ProviderModelConfig {

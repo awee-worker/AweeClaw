@@ -1637,6 +1637,9 @@ export const zh = {
   'provider.disableModel': '禁用模型',
   'provider.providerDisabled': '已禁用',
   'provider.modelDisabled': '已禁用',
+  'provider.editModelDisplayName': '设置模型展示名称',
+  'provider.modelDisplayNamePlaceholder': '展示名称（选填，默认模型 ID）',
+  'provider.modelDisplayNameDesc': '用于聊天界面模型选择器的显示名称，留空则显示模型 ID。',
 
   'settings.interfacelanguage': '界面语言',
   'settings.chooseyourpreferredinterfacelanguage': '选择你偏好的界面显示语言，更改将立即生效。',

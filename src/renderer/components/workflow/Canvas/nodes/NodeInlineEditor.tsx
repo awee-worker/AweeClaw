@@ -394,14 +394,14 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
     const serverUrl = getServerUrl()
     if (!serverUrl) return
     backendApi
-      .get<Array<{ provider: string; models: string[] }>>('/api/v1/llm/models')
+      .get<Array<{ provider: string; models: string[]; modelNames?: Record<string, string> }>>('/api/v1/llm/models')
       .then((data) => {
         const flat: Array<{ id: string; label: string }> = []
         for (const item of data) {
           for (const modelId of item.models) {
             flat.push({
               id: modelId,
-              label: `${item.provider} · ${modelId.split('/').pop() || modelId}`,
+              label: `${item.provider} · ${item.modelNames?.[modelId]?.trim() || modelId.split('/').pop() || modelId}`,
             })
           }
         }

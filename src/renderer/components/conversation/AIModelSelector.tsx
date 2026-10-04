@@ -8,6 +8,82 @@ import { backendApi, getServerUrl } from '@services/backendApi'
 import { ProviderIcon } from '@components/ui/ProviderIcon'
 import { buildEnabledLocalModels, type FlatModel } from './availableModels'
 
+/**
+ * 截断文本标签：文本溢出时鼠标悬浮显示完整内容的浮层。
+ * 浮层经 portal + fixed 定位渲染，避免被弹窗滚动容器裁剪；
+ * 未溢出时不挂载浮层，减少列表中的冗余节点。
+ */
+function TruncatedText({ text, className = '', delay = 80 }: { text: string; className?: string; delay?: number }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [tip, setTip] = useState<{ top: number; left: number; below: boolean } | null>(null)
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+  }, [])
+
+  useEffect(() => clearTimer, [clearTimer])
+
+  // 浮层显示期间发生滚动，位置会失效，直接收起
+  useEffect(() => {
+    if (!tip) return
+    const hide = () => {
+      clearTimer()
+      setTip(null)
+    }
+    window.addEventListener('scroll', hide, true)
+    return () => window.removeEventListener('scroll', hide, true)
+  }, [tip, clearTimer])
+
+  const handleEnter = useCallback(() => {
+    const el = ref.current
+    if (!el || el.scrollWidth <= el.clientWidth) return
+    clearTimer()
+    timerRef.current = setTimeout(() => {
+      const rect = el.getBoundingClientRect()
+      const below = rect.top < 48
+      setTip({
+        top: below ? rect.bottom + 6 : rect.top - 6,
+        left: Math.min(Math.max(rect.left + rect.width / 2, 12), window.innerWidth - 12),
+        below,
+      })
+    }, delay)
+  }, [clearTimer, delay])
+
+  const handleLeave = useCallback(() => {
+    clearTimer()
+    setTip(null)
+  }, [clearTimer])
+
+  return (
+    <>
+      <span ref={ref} className={className} onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
+        {text}
+      </span>
+      {tip &&
+        createPortal(
+          <div
+            className="fixed z-[9999] px-2.5 py-1 text-[12px] font-medium text-text-primary bg-surface-active/95 backdrop-blur-md border border-border rounded-lg shadow-xl pointer-events-none whitespace-nowrap select-none"
+            style={{
+              top: tip.top,
+              left: tip.left,
+              maxWidth: 'calc(100vw - 24px)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              transform: tip.below ? 'translateX(-50%)' : 'translate(-50%, -100%)',
+            }}
+          >
+            {text}
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
+
 interface ModelSelectorProps {
   className?: string
   alignLeft?: boolean
@@ -101,16 +177,17 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
     if (!sUrl) return
 
     backendApi
-      .get<Array<{ provider: string; models: string[] }>>('/api/v1/llm/models')
+      .get<Array<{ provider: string; models: string[]; modelNames?: Record<string, string>; freeModels?: string[] }>>('/api/v1/llm/models')
       .then((data) => {
         const flat: FlatModel[] = []
         for (const item of data) {
           for (const modelId of item.models) {
             flat.push({
               id: modelId,
-              name: modelId.split('/').pop() || modelId,
+              name: item.modelNames?.[modelId]?.trim() || modelId.split('/').pop() || modelId,
               providerId: item.provider.toLowerCase(),
               providerName: item.provider,
+              isFree: item.freeModels?.includes(modelId) === true,
             })
           }
         }
@@ -212,9 +289,10 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
         `}
       >
         <ProviderIcon providerId={currentModel?.providerId || llmConfig.provider} size={14} className="opacity-80 flex-shrink-0" />
-        <span className="truncate max-w-[200px]" title={currentModel?.name || llmConfig.model}>
-          {currentModel?.name || llmConfig.model || '选择模型'}
-        </span>
+        <TruncatedText
+          text={currentModel?.name || llmConfig.model || '选择模型'}
+          className="truncate max-w-[200px]"
+        />
         {isCloud && <Cloud className="w-3 h-3 text-accent flex-shrink-0" />}
         <ChevronDown className={`w-3 h-3 text-text-muted transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -302,7 +380,18 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
                   >
                     <span className="flex items-center gap-2 min-w-0">
                       <ProviderIcon providerId={model.providerId} size={14} className="flex-shrink-0 opacity-60" />
-                      <span className="truncate" title={model.name}>{model.name}</span>
+                      <TruncatedText text={model.name} className="truncate" />
+                      {model.isFree && (
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-medium flex-shrink-0">
+                          免费
+                        </span>
+                      )}
+                      {model.id !== model.name && (
+                        <TruncatedText
+                          text={model.id}
+                          className="text-[10px] text-text-muted/60 font-mono truncate max-w-[120px]"
+                        />
+                      )}
                       {activeTab === 'cloud' && <Cloud className="w-3 h-3 text-accent flex-shrink-0" />}
                     </span>
                     {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0 ml-2" />}

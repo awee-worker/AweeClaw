@@ -311,7 +311,9 @@ export function useFloatingAvatarSync(): void {
               const { backendApi, getServerUrl } = await import('@services/backendApi')
               const url = getServerUrl() || sUrl
               if (url) {
-                const data = await backendApi.get<Array<{ provider: string; models: string[] }>>(
+                const data = await backendApi.get<
+                  Array<{ provider: string; models: string[]; modelNames?: Record<string, string> }>
+                >(
                   '/api/v1/llm/models',
                 )
                 logger.system.info('[FloatingAvatarSync] Cloud models fetched:', data.length, 'providers')
@@ -323,7 +325,7 @@ export function useFloatingAvatarSync(): void {
                     seenCloud.add(key)
                     models.push({
                       id: modelId,
-                      name: modelId.split('/').pop() || modelId,
+                      name: item.modelNames?.[modelId]?.trim() || modelId.split('/').pop() || modelId,
                       provider: item.provider.toLowerCase(),
                       providerName: item.provider,
                       isCloud: true,
@@ -565,7 +567,7 @@ function buildAvailableModels(options: {
         seen.add(key)
         models.push({
           id,
-          name: id.split('/').pop() || id,
+          name: modelConfigs[id]?.displayName?.trim() || id.split('/').pop() || id,
           provider: providerId,
           providerName: provider.displayName,
           isCloud: false,
@@ -591,7 +593,7 @@ function buildAvailableModels(options: {
         seen.add(key)
         models.push({
           id,
-          name: id.split('/').pop() || id,
+          name: modelConfigs[id]?.displayName?.trim() || id.split('/').pop() || id,
           provider: providerId,
           providerName,
           isCloud: false,

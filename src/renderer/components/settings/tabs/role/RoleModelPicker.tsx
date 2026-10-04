@@ -103,16 +103,17 @@ export function RoleModelPicker({ value, onChange, disabled = false }: RoleModel
     if (!sUrl) return
 
     backendApi
-      .get<Array<{ provider: string; models: string[] }>>('/api/v1/llm/models')
+      .get<Array<{ provider: string; models: string[]; modelNames?: Record<string, string>; freeModels?: string[] }>>('/api/v1/llm/models')
       .then(data => {
         const flat: FlatModel[] = []
         for (const item of data) {
           for (const modelId of item.models) {
             flat.push({
               id: modelId,
-              name: modelId.split('/').pop() || modelId,
+              name: item.modelNames?.[modelId]?.trim() || modelId.split('/').pop() || modelId,
               providerId: item.provider.toLowerCase(),
               providerName: item.provider,
+              isFree: item.freeModels?.includes(modelId) === true,
             })
           }
         }
@@ -304,6 +305,16 @@ export function RoleModelPicker({ value, onChange, disabled = false }: RoleModel
                       <span className="flex items-center gap-2 min-w-0">
                         <ProviderIcon providerId={model.providerId} size={14} className="flex-shrink-0 opacity-60" />
                         <span className="truncate" title={model.name}>{model.name}</span>
+                        {model.isFree && (
+                          <span className="text-[10px] px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-medium flex-shrink-0">
+                            免费
+                          </span>
+                        )}
+                        {model.id !== model.name && (
+                          <span className="text-[10px] text-text-muted/60 font-mono truncate max-w-[120px]" title={model.id}>
+                            {model.id}
+                          </span>
+                        )}
                         <span className="text-[10px] text-text-muted/70 truncate">{model.providerName}</span>
                       </span>
                       {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0 ml-2" />}
