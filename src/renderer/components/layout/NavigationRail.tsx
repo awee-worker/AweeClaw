@@ -23,6 +23,7 @@ import { t, type Language } from '@renderer/i18n'
 import { usePluginExtensions } from '@renderer/plugins/usePluginExtensions'
 import AddCustomMenuDialog from '../browser/AddCustomMenuDialog'
 import { useMailUnreadCount } from '@renderer/hooks/useMailUnreadCount'
+import { useTodoHubStore } from '../todo-hub/todoHubStore'
 
 import {
   useUserNotificationStore,
@@ -54,6 +55,14 @@ const DEFAULT_ITEMS: SidebarItemDescriptor[] = [
  * 因此在渲染分支中集中处理，避免散落的字符串字面量。
  */
 const MAIL_CENTER_ITEM_ID = 'mail-center'
+
+/**
+ * 待办中心导航项 id
+ *
+ * 与邮件中心一样需要额外处理：有未完成待办时在标签后显示数量（如「待办（5）」），
+ * 收起模式下以角标呈现在图标右上角。
+ */
+const TODO_HUB_ITEM_ID = 'todo-hub'
 
 
 // 场景工具入口是否在导航栏显示。
@@ -568,6 +577,8 @@ export default function NavigationRail() {
 
   const hasUpdateAvailable = updateStatus?.status === 'available' || updateStatus?.status === 'downloaded'
   const mailUnread = useMailUnreadCount()
+  /** 未完成待办数量：用于待办入口的「待办（N）」显示与角标 */
+  const pendingTodoCount = useTodoHubStore(s => s.items.filter(i => i.status !== 'done').length)
 
 
   const scenario = scenarioRegistry.get(activeScenarioId)
@@ -1075,10 +1086,19 @@ export default function NavigationRail() {
       <div className="flex-shrink-0 w-full flex flex-col gap-0.5">
         {sidebarItems.map((item) => {
           const IconComponent = getLucideIcon(item.icon)
-          const label = language === 'zh' ? item.labelZh : item.label
-          // 邮件中心在主窗口内以宽屏面板打开，与其它侧边栏面板同一套选中逻辑；
-          // 仅额外挂一个未读角标
-          const badge = item.id === MAIL_CENTER_ITEM_ID ? mailUnread : 0
+          const baseLabel = language === 'zh' ? item.labelZh : item.label
+          // 待办项在标签后直接显示未完成数量，如「待办（5）」
+          const label =
+            item.id === TODO_HUB_ITEM_ID && pendingTodoCount > 0
+              ? `${baseLabel}（${pendingTodoCount}）`
+              : baseLabel
+          // 邮件中心 / 待办中心各自挂一个角标（待办已在标签显示数量，不再重复挂角标）
+          const badge =
+            item.id === MAIL_CENTER_ITEM_ID
+              ? mailUnread
+              : item.id === TODO_HUB_ITEM_ID
+                ? pendingTodoCount
+                : 0
           const isActive =
             !showWelcomePage && !showSettingsPage && !showUserProfilePage && activeSidePanel === item.id
           const onSelect = () => handleMenuItemClick(item.id, isActive)
@@ -1096,7 +1116,7 @@ export default function NavigationRail() {
               <span className={`${p}-nav-rail-label ${isActive ? 'text-accent' : ''}`}>
                 {label}
               </span>
-              {badge > 0 && (
+              {badge > 0 && item.id !== TODO_HUB_ITEM_ID && (
                 <MenuBadge
                   count={badge}
                   title={language === 'zh' ? '有未读邮件' : 'Unread mail'}

@@ -160,6 +160,13 @@ export async function mountThreadTask(threadId: string): Promise<MountedTaskInfo
 
   useAgentStore.getState().setMountedTask(mounted, threadId)
   logger.agent.info(`[MountedTask] Mounted task on thread ${threadId} (source=${mounted.source})`)
+
+  // 汇入待办中心：用户主动挂载的任务需要出现在待办清单里。
+  // 走事件通道解耦，由 TodoHubCollector 统一采集（事件名与 collector 保持一致）。
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('aweeclaw:todo-collect-thread', { detail: threadId }))
+  }
+
   return mounted
 }
 

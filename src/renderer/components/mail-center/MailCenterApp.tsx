@@ -23,6 +23,7 @@ import {
   Trash2,
   ShieldAlert,
   Plus,
+  Check,
   AlertCircle,
   Sparkles,
   FileText,
@@ -30,6 +31,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { api } from '../../adapters/electronBridge'
+import { useTodoHubStore } from '../todo-hub/todoHubStore'
+import { collectFromMail } from '../todo-hub/todoHubActions'
 import { MailListView } from './MailListView'
 import { MailReaderView } from './MailReaderView'
 import { MailComposerView, type MailComposerInitial } from './MailComposerView'
@@ -160,6 +163,9 @@ export function MailCenterApp() {
   const [digest, setDigest] = useState<MailDigest | null>(null)
   const [digestOpen, setDigestOpen] = useState(false)
 
+  /** 待办中心现有条目：用于判断某条邮件待办是否已加入，避免重复展示 */
+  const hubItems = useTodoHubStore((s) => s.items)
+
   // 追踪当前请求，避免快速切换时旧响应覆盖新数据
   const loadSeq = useRef(0)
 
@@ -195,6 +201,30 @@ export function MailCenterApp() {
     })
     return unsubscribe
   }, [loadAccounts])
+
+  // 从待办中心点击「邮件」来源跳转过来：按定位信息（账户 / 文件夹 / uid）直接打开对应邮件
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent<{ accountId?: string; folder?: string; uid?: string }>).detail
+      if (!d?.accountId || !d.folder || !d.uid) return
+      const uid = Number(d.uid)
+      if (!Number.isFinite(uid)) return
+      setActiveAccountId(d.accountId)
+      setSelectedKey(`${d.accountId}#${d.folder}#${uid}`)
+      setDetailLoading(true)
+      api.mail
+        .messageGet({ accountId: d.accountId, folder: d.folder, uid })
+        .then((res) => {
+          if (res?.success && res.data) setDetail(res.data)
+        })
+        .catch(() => {
+          /* 定位失败时仅停留在邮件中心，不打断用户 */
+        })
+        .finally(() => setDetailLoading(false))
+    }
+    window.addEventListener('aweeclaw:mail-locate', handler)
+    return () => window.removeEventListener('aweeclaw:mail-locate', handler)
+  }, [])
 
   // --------------------------------------------
   // LLM 配置加载（复用语音上下文缓存）
@@ -510,6 +540,17 @@ export function MailCenterApp() {
           m.accountId === accountId && m.folder === folder && m.uid === uid ? { ...m, ai } : m,
         ),
       )
+
+      // AI 整理出的待办自动汇入待办中心（按来源去重，重复整理不会重复添加）
+      if (ai.todos.length > 0) {
+        collectFromMail({
+          accountId,
+          folder,
+          uid,
+          subject: detail.meta.subject,
+          todos: ai.todos,
+        })
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -585,7 +626,8 @@ export function MailCenterApp() {
         </div>
       )
     }
-    const ai = detail.meta.ai
+    const meta = detail.meta
+    const ai = meta.ai
     if (!ai) return null
     return (
       <div className="px-6 py-3 border-b border-border/20 space-y-2 bg-accent/5 shrink-0">
@@ -598,13 +640,37 @@ export function MailCenterApp() {
         {ai.todos.length > 0 && (
           <div className="space-y-1 pt-1">
             <div className="text-[10px] text-text-muted">待办</div>
-            {ai.todos.map((t, i) => (
-              <div key={i} className="text-[11px] text-text-secondary flex items-center gap-1.5">
-                <span className="w-1 h-1 rounded-full bg-accent shrink-0" />
-                <span>{t.task}</span>
-                {t.dueDate && <span className="text-text-muted shrink-0">{t.dueDate}</span>}
-              </div>
-            ))}
+            {ai.todos.map((t, i) => {
+              const locator = `${meta.accountId}:${meta.folder}:${meta.uid}`
+              const dedupeKey = `mail:${locator}:${t.task}`
+              const collected = hubItems.some((h) => h.dedupeKey === dedupeKey && h.status !== 'done')
+              return (
+                <div key={i} className="text-[11px] text-text-secondary flex items-center gap-1.5">
+                  <span className="w-1 h-1 rounded-full bg-accent shrink-0" />
+                  <span className="min-w-0 truncate">{t.task}</span>
+                  {t.dueDate && <span className="text-text-muted shrink-0">{t.dueDate}</span>}
+                  <button
+                    type="button"
+                    title={collected ? '已加入待办中心' : '加入待办中心'}
+                    onClick={() =>
+                      collectFromMail({
+                        accountId: meta.accountId,
+                        folder: meta.folder,
+                        uid: meta.uid,
+                        subject: meta.subject,
+                        todos: [t],
+                      })
+                    }
+                    className={`ml-auto shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] transition-colors ${
+                      collected ? 'text-green-500' : 'text-text-muted hover:text-accent hover:bg-accent/10'
+                    }`}
+                  >
+                    {collected ? <Check className="w-2.5 h-2.5" /> : <Plus className="w-2.5 h-2.5" />}
+                    {collected ? '已加入' : '加入待办'}
+                  </button>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

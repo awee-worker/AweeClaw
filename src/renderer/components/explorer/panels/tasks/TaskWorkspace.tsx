@@ -29,6 +29,8 @@ import { TaskFormDialog } from './TaskFormDialog'
 import { useTaskExecution } from './useTaskExecution'
 import { CopyTaskDialog } from './CopyTaskDialog'
 import { BackendLoginRequired } from '../common/BackendLoginRequired'
+import { collectFromTasks } from '../../../todo-hub/todoHubActions'
+import { useTodoHubStore } from '../../../todo-hub/todoHubStore'
 
 type ViewMode = 'kanban' | 'list'
 
@@ -83,6 +85,8 @@ export function TaskWorkspace() {
     if (data) {
       setTasks(data.items)
       setError(null)
+      // 未完成的任务汇入待办中心（按任务 id 去重）
+      collectFromTasks(data.items)
     } else {
       setError(err)
     }
@@ -94,6 +98,16 @@ export function TaskWorkspace() {
     if (!isAuthenticated) return
     loadTasks(true)
   }, [loadTasks, isAuthenticated])
+
+  // 任务在面板内被标记完成 / 取消后，从待办中心同步移除，二者状态保持一致
+  useEffect(() => {
+    const { removeByDedupe } = useTodoHubStore.getState()
+    for (const task of tasks) {
+      if (task.status === 'DONE' || task.status === 'CANCELED') {
+        removeByDedupe(`task:${task.id}`)
+      }
+    }
+  }, [tasks])
 
   // ─── 操作回调 ───────────────────────────────────────
 

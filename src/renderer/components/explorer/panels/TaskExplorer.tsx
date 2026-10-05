@@ -6,13 +6,7 @@ import {
 import { useStore } from '@store'
 import { t, type Language } from '@renderer/i18n'
 import { useTodoStore, type WorkTodoItem } from '@renderer/components/scene-tools/stores'
-
-/** 向 ChatPanel 发送 prompt，触发 AI 执行任务 */
-function executeTask(item: WorkTodoItem, update: (id: string, patch: Partial<WorkTodoItem>) => void): void {
-    update(item.id, { status: 'executing' })
-    const prompt = `请帮我执行以下任务，完成后告知结果：\n\n${item.text}`
-    window.dispatchEvent(new CustomEvent('aweeclaw:quick-prompt', { detail: prompt }))
-}
+import { executeWorkTodo } from '@renderer/components/scene-tools/work/workTodoExec'
 
 export function TasksView() {
     const language = useStore(s => s.language)
@@ -56,8 +50,8 @@ export function TasksView() {
     }, [remove])
 
     const handleExecute = useCallback((item: WorkTodoItem) => {
-        executeTask(item, update)
-    }, [update])
+        executeWorkTodo(item)
+    }, [])
 
     return (
         <div className="h-full flex flex-col bg-transparent">

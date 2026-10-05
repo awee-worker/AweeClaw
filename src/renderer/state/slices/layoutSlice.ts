@@ -42,6 +42,7 @@ export type SidePanel =
   | 'ai-browser'
   | 'mail-center'
   | 'scene-tools'
+  | 'todo-hub'
   | null
 
 /** 终端布局模式 */
@@ -52,10 +53,28 @@ export type DockTab = 'problems' | 'output' | 'debug' | 'terminal' | 'references
 
 /** 各场景模式工作台默认卡片集合（macOS 桌面小组件式） */
 export const WORKBENCH_DEFAULT_WIDGETS: Record<SceneMode, string[]> = {
-  work: ['new-chat', 'work-todo', 'work-weekly', 'work-pomodoro', 'recent-workspaces'],
+  work: ['new-chat', 'work-weekly', 'work-pomodoro', 'recent-workspaces'],
   life: ['new-chat', 'life-ledger', 'life-water', 'life-mood', 'recent-workspaces'],
   study: ['new-chat', 'study-flashcards', 'study-planner', 'study-pomodoro', 'recent-workspaces'],
   dev: ['new-chat', 'open-folder', 'recent-workspaces'],
+}
+
+/**
+ * 已下线的历史工作台卡片 id。
+ *
+ * 这些卡片已迁移到其他入口（work-todo 由「通用 · 待办」取代），
+ * 加载持久化配置时必须剔除，否则老用户工作台上会残留失效卡片。
+ */
+const RETIRED_WORKBENCH_WIDGET_IDS = ['work-todo']
+
+/**
+ * 恢复某模式的卡片集合：优先采用已保存配置并剔除已下线卡片；
+ * 剔除后为空（或本就没有保存）时回落到该模式的默认集合。
+ */
+function resolveWorkbenchWidgets(saved: string[] | undefined, defaults: string[]): string[] {
+  if (!saved?.length) return [...defaults]
+  const cleaned = saved.filter((id) => !RETIRED_WORKBENCH_WIDGET_IDS.includes(id))
+  return cleaned.length > 0 ? cleaned : [...defaults]
 }
 
 /* ===================== 工作台配置持久化 ===================== */
@@ -435,10 +454,10 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
 
   /* ----- 工作台自定义初始状态（优先恢复上次保存的配置） ----- */
   workbenchWidgets: {
-    work: persistedWorkbench.widgets?.work?.length ? [...persistedWorkbench.widgets.work] : [...WORKBENCH_DEFAULT_WIDGETS.work],
-    life: persistedWorkbench.widgets?.life?.length ? [...persistedWorkbench.widgets.life] : [...WORKBENCH_DEFAULT_WIDGETS.life],
-    study: persistedWorkbench.widgets?.study?.length ? [...persistedWorkbench.widgets.study] : [...WORKBENCH_DEFAULT_WIDGETS.study],
-    dev: persistedWorkbench.widgets?.dev?.length ? [...persistedWorkbench.widgets.dev] : [...WORKBENCH_DEFAULT_WIDGETS.dev],
+    work: resolveWorkbenchWidgets(persistedWorkbench.widgets?.work, WORKBENCH_DEFAULT_WIDGETS.work),
+    life: resolveWorkbenchWidgets(persistedWorkbench.widgets?.life, WORKBENCH_DEFAULT_WIDGETS.life),
+    study: resolveWorkbenchWidgets(persistedWorkbench.widgets?.study, WORKBENCH_DEFAULT_WIDGETS.study),
+    dev: resolveWorkbenchWidgets(persistedWorkbench.widgets?.dev, WORKBENCH_DEFAULT_WIDGETS.dev),
   },
   workbenchPositions: {
     work: persistedWorkbench.positions?.work ?? {},

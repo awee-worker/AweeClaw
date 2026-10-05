@@ -11,6 +11,7 @@ import { AIBrowserView } from './panels/ai-browser/AIBrowserView'
 import { MailCenterView } from './panels/mail-center/MailCenterView'
 import { ScenarioManagerView } from '../scenario/ScenarioManagerView'
 import { SceneToolsPanel } from '../scene-tools/SceneToolsPanel'
+import { TodoHubView } from '../todo-hub/TodoHubView'
 
 type PanelComponent = ComponentType<unknown>
 
@@ -34,6 +35,7 @@ const BUILTIN_PANEL_COMPONENTS: Record<string, PanelComponent> = {
   MailCenterView,
   ScenarioManagerView,
   SceneToolsPanel,
+  TodoHubView,
 }
 
 /** 注册表条目：组件 + 可选的插件宿主 API */

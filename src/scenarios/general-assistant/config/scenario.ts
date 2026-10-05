@@ -117,6 +117,9 @@ const GENERAL_ASSISTANT_UI: ScenarioUI = {
   sidebarItems: [
     // 工作区由「新建任务」按需激活，不作为常驻导航项（与 NavigationRail 的兜底项一致）
     { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0, hidden: true },
+    // 待办中心：汇总会话 / 挂载任务 / 邮件 / 项目任务中的未完成事项，也支持手动新增。
+    // 存在未完成待办时导航项右侧显示数量（见 NavigationRail 对 id 的特殊处理）。
+    { id: 'todo-hub', icon: 'ListTodo', label: 'Todo Hub', labelZh: '待办', component: 'TodoHubView', position: 0.5, wideMode: true },
     { id: 'projects', icon: 'FolderKanban', label: 'Projects', labelZh: '项目', component: 'ProjectsView', position: 1, wideMode: true },
     { id: 'automation', icon: 'Zap', label: 'Automation', labelZh: '自动化', component: 'AutomationView', position: 2, wideMode: true },
     { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 3, wideMode: true },

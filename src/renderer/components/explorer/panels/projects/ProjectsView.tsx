@@ -27,6 +27,7 @@ import { ProjectAttachmentsPanel } from './ProjectAttachmentsPanel'
 import { ProjectExecutionTab } from './ProjectExecutionTab'
 import { ProjectFilesTab } from './ProjectFilesTab'
 import { BackendLoginRequired } from '../common/BackendLoginRequired'
+import { collectFromTasks } from '../../../todo-hub/todoHubActions'
 
 type DetailTab = 'overview' | 'files' | 'attachments' | 'tasks' | 'execution' | 'automation' | 'settings'
 
@@ -99,6 +100,8 @@ export function ProjectsView() {
       setProjectTasks(tasks)
       setProjectRules(rules)
       setTasksLoading(false)
+      // 未完成的项目任务汇入待办中心（按任务 id 去重）
+      collectFromTasks(tasks)
     })
   }, [selectedId])
 

@@ -11,7 +11,7 @@
  * - 添加卡片弹层：macOS 小组件库风格，按场景模式分组展示全部工具
  *
  * 模式默认卡片（见 layoutSlice WORKBENCH_DEFAULT_WIDGETS）：
- *   work  → 新建任务、待办清单、工作周报、番茄专注钟、最近工作
+ *   work  → 新建任务、工作周报、番茄专注钟、最近工作
  *   life  → 新建任务、记账本、喝水打卡、心情日记、最近工作
  *   study → 新建任务、闪卡复习、学习计划、学习番茄钟、最近工作
  */
@@ -30,6 +30,7 @@ import {
   Heart,
   ImagePlus,
   LayoutGrid,
+  ListTodo,
   Maximize2,
   MessageSquare,
   Move,
@@ -86,6 +87,7 @@ import {
   useReadingStore,
   usePlanStore,
 } from '@components/scene-tools/stores'
+import { useTodoHubStore } from '@components/todo-hub/todoHubStore'
 
 /* ===================== 常量定义 ===================== */
 
@@ -110,6 +112,7 @@ interface ActionCardDef {
 
 const ACTION_CARDS: ActionCardDef[] = [
   { id: 'new-chat', icon: MessageSquare, color: '#3B82F6', titleZh: '新建任务', titleEn: 'New Task', descZh: '与 AI 助手开始一项新任务', descEn: 'Start a new task with AI' },
+  { id: 'todo', icon: ListTodo, color: '#F59E0B', titleZh: '待办', titleEn: 'Todo', descZh: '待办中心：任务、会话与邮件待办汇总', descEn: 'Todos from tasks, chats & mail' },
   { id: 'open-folder', icon: FolderOpen, color: '#8B5CF6', titleZh: '打开文件夹', titleEn: 'Open Folder', descZh: '打开或切换工作目录', descEn: 'Open or switch workspace' },
   { id: 'open-market', icon: Store, color: '#F97316', titleZh: '场景市场', titleEn: 'Scenario Market', descZh: '发现并安装新场景', descEn: 'Discover new scenarios' },
   { id: 'open-scene-tools', icon: Blocks, color: '#10B981', titleZh: '场景工具', titleEn: 'Scene Tools', descZh: '全部工具面板', descEn: 'All scene tools' },
@@ -275,6 +278,49 @@ function TodoCardPreview() {
   const pending = items.filter((i) => i.status !== 'done').length
   const executing = items.filter((i) => i.status === 'executing').length
   return <PreviewStat value={String(pending)} unit="项待办" hint={executing > 0 ? `${executing} 项执行中` : '点击查看详情'} />
+}
+
+/**
+ * 通用待办卡片预览：列出未完成待办，点击卡片进入待办中心。
+ */
+function TodoHubCardPreview({ isZh }: { isZh: boolean }) {
+  const items = useTodoHubStore((s) => s.items)
+  const pending = items.filter((i) => i.status !== 'done')
+  if (pending.length === 0) {
+    return (
+      <div className="flex items-center gap-1.5 text-[12px] text-text-muted min-w-0">
+        <Check className="w-3.5 h-3.5 shrink-0" strokeWidth={2.2} />
+        <span className="truncate">{isZh ? '暂无待办' : 'No pending todos'}</span>
+      </div>
+    )
+  }
+  const visible = pending.slice(0, 4)
+  const rest = pending.length - visible.length
+  return (
+    <div className="flex flex-col gap-1 w-full min-w-0">
+      {visible.map((item) => (
+        <div key={item.id} className="flex items-center gap-1.5 min-w-0">
+          <span
+            className="w-1.5 h-1.5 rounded-full shrink-0"
+            style={{
+              background:
+                item.status === 'executing'
+                  ? '#3B82F6'
+                  : item.priority === 'high'
+                    ? '#EF4444'
+                    : '#F59E0B',
+            }}
+          />
+          <span className="text-[11px] text-text-secondary truncate">{item.title}</span>
+        </div>
+      ))}
+      {rest > 0 && (
+        <span className="text-[10px] text-text-muted">
+          {isZh ? `还有 ${rest} 项…` : `+${rest} more…`}
+        </span>
+      )}
+    </div>
+  )
 }
 
 function WeeklyCardPreview() {
@@ -830,6 +876,12 @@ export default function WorkbenchHome() {
     setActiveSidePanel('scene-tools')
   }, [setShowWelcomePage, setActiveSidePanel])
 
+  /* ---------- 待办卡点击：进入待办中心 ---------- */
+  const handleOpenTodoHub = useCallback(() => {
+    setShowWelcomePage(false)
+    setActiveSidePanel('todo-hub')
+  }, [setShowWelcomePage, setActiveSidePanel])
+
   /* ---------- 工具卡点击 ---------- */
   const handleToolClick = useCallback(
     (toolId: string) => {
@@ -1209,6 +1261,7 @@ export default function WorkbenchHome() {
     if (id === 'open-market') return handleOpenMarket()
     if (id === 'open-scene-tools') return handleOpenSceneTools()
     if (id === 'scenarios') return handleOpenScenarioManager()
+    if (id === 'todo') return handleOpenTodoHub()
     handleToolClick(id)
   }
 }
@@ -1444,6 +1497,7 @@ function WorkbenchCard({
 
   const isRecent = card.id === 'recent-workspaces'
   const isAction = card.kind === 'action'
+  const isTodo = card.id === 'todo'
   const sizeKey = `${pos.colSpan}x${pos.rowSpan}`
 
   return (
@@ -1492,6 +1546,8 @@ function WorkbenchCard({
       <div className="flex-1 flex items-center mt-2.5 min-h-0">
         {isRecent ? (
           <RecentWorkspacesList isZh={isZh} items={recentWorkspaces} onOpenRecent={onOpenRecent} />
+        ) : isTodo ? (
+          <TodoHubCardPreview isZh={isZh} />
         ) : isAction ? (
           <p className="text-[11px] text-text-muted leading-relaxed line-clamp-2">{desc}</p>
         ) : card.kind === 'plugin' && card.pluginMeta ? (
@@ -1677,7 +1733,8 @@ function CardLibrary({
 }) {
   // 添加卡片时展示全部场景模式的工具，便于跨模式取用
   const toolGroups = (Object.keys(MODE_META) as SceneMode[])
-    .map((m) => ({ mode: m, meta: MODE_META[m], tools: getToolsByMode(m) }))
+    // 待办清单已迁移为「通用 · 待办」卡片，工具分组不再重复提供
+    .map((m) => ({ mode: m, meta: MODE_META[m], tools: getToolsByMode(m).filter((t) => t.id !== 'work-todo') }))
     .filter((g) => g.tools.length > 0)
   const pluginCards = usePluginWidgetCards(mode)
   const scenarioCards = useScenarioWidgetCards()

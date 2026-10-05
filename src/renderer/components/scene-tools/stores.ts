@@ -75,8 +75,8 @@ const sqliteSceneToolsStorage: StateStorage = {
   },
 }
 
-/** 供 persist 使用的 storage 配置 */
-const sceneToolsPersistStorage = createJSONStorage(() => sqliteSceneToolsStorage)
+/** 供 persist 使用的 storage 配置（待办中心等场景工具复用同一套 SQLite 持久化） */
+export const sceneToolsPersistStorage = createJSONStorage(() => sqliteSceneToolsStorage)
 
 // ============================================
 // 持久化 store 预热（等待 SQLite hydration 完成）
@@ -152,7 +152,16 @@ export interface ListStore<T extends BaseItem> {
   reset: () => void
 }
 
-function createListStore<T extends BaseItem>(key: string) {
+/**
+ * 创建持久化的列表型场景工具 store。
+ *
+ * @param key 工具 id，同时作为持久化 key（scene-tools:<key>）
+ * @param onRehydrated 水合完成回调，用于收敛跨进程无效的状态（如重启前遗留的执行中）
+ */
+function createListStore<T extends BaseItem>(
+  key: string,
+  onRehydrated?: (store: ListStore<T>) => void,
+) {
   const store = create<ListStore<T>>()(
     persist(
       (set) => ({
@@ -167,7 +176,12 @@ function createListStore<T extends BaseItem>(key: string) {
         remove: (id) => set((s) => ({ items: s.items.filter((i) => i.id !== id) })),
         reset: () => set({ items: [] }),
       }),
-      { name: `scene-tools:${key}`, storage: sceneToolsPersistStorage },
+      {
+        name: `scene-tools:${key}`,
+        storage: sceneToolsPersistStorage,
+        // 持久化读取是异步的，回调在 store 定义完成之后才触发，可以安全地读自身
+        onRehydrateStorage: onRehydrated ? () => () => onRehydrated(store.getState()) : undefined,
+      },
     ),
   )
   registerPersistedStore(store)
@@ -188,6 +202,8 @@ export interface WorkTodoItem extends BaseItem {
   source?: string
   /** AI 完成后的摘要/备注 */
   aiNote?: string
+  /** AI 执行该任务时所处的会话 id；执行结束据此回收执行态 */
+  executingThreadId?: string
   /** 执行完成时间 */
   executedAt?: number
 }
@@ -270,7 +286,15 @@ export interface WorkPlanEntry {
 // 工作模式 · Stores
 // ============================================
 
-export const useTodoStore = createListStore<WorkTodoItem>('work-todo')
+export const useTodoStore = createListStore<WorkTodoItem>('work-todo', (store) => {
+  // 执行态不跨进程存活：重新打开客户端时上一轮执行必然已经结束，
+  // 把残留的「AI 执行中」退回待办，否则任务会一直卡在执行中且无法重新执行
+  for (const item of store.items) {
+    if (item.status === 'executing') {
+      store.update(item.id, { status: 'pending', executingThreadId: undefined })
+    }
+  }
+})
 export const useWorkPlanStore = createListStore<WorkPlanItem>('work-plan')
 
 // ============================================
