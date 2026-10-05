@@ -35,6 +35,9 @@ const MENU_ITEM_HEIGHT = 32
 const MENU_SEPARATOR_HEIGHT = 9
 /** 菜单容器上下 padding（px） */
 const MENU_VERTICAL_PADDING = 6
+/** 菜单隐藏后多久销毁窗口（毫秒）：太短会让连续呼出变慢，太长会让闲置渲染进程常驻 */
+const MENU_IDLE_DESTROY_MS = 20000
+
 
 /** 菜单项 ID（渲染层点击后回传，主进程据此分发动作） */
 export type AvatarMenuItemId =
@@ -109,6 +112,9 @@ export class AvatarMenuWindow {
   private firstRenderReady = false
   /** 待显示的坐标（ready-to-show 触发前缓存，触发后据此定位显示） */
   private pendingShow: { x: number; y: number; width: number; height: number } | null = null
+  /** 隐藏后的空闲销毁定时器（非空表示已排入销毁队列） */
+  private destroyTimer: ReturnType<typeof setTimeout> | null = null
+
 
   /**
    * 在指定屏幕坐标显示菜单
@@ -124,6 +130,12 @@ export class AvatarMenuWindow {
 
     try {
       this.registerIpc()
+      // 上次隐藏可能已排入销毁队列，本次呼出需取消，避免窗口在使用中被销毁
+      if (this.destroyTimer) {
+        clearTimeout(this.destroyTimer)
+        this.destroyTimer = null
+      }
+
       const win = this.ensureWindow()
       const { width, height } = this.measureSize()
 
@@ -149,10 +161,43 @@ export class AvatarMenuWindow {
     }
   }
 
-  /** 隐藏菜单 */
+  /** 隐藏菜单（并排入空闲销毁队列，避免菜单窗口的渲染进程长期常驻） */
   hide(): void {
     if (this.window && !this.window.isDestroyed() && this.window.isVisible()) {
       this.window.hide()
+    }
+    this.scheduleDestroy()
+  }
+
+  /**
+   * 隐藏后延迟销毁窗口。
+   *
+   * 菜单窗口懒创建且复用，但「复用」只在连续呼出时有价值；一旦闲置，
+   * 它就是一个常驻的渲染进程（一个独立进程 + 近百 MB 内存）。
+   * 因此隐藏后起一个空闲计时器，超时即销毁，下次呼出由 ensureWindow 重新创建。
+   */
+  private scheduleDestroy(): void {
+    if (this.destroyTimer) return
+    this.destroyTimer = setTimeout(() => {
+      this.destroyTimer = null
+      this.destroyWindow()
+    }, MENU_IDLE_DESTROY_MS)
+  }
+
+  /** 销毁菜单窗口并复位懒创建状态（下次呼出重新创建，仍走 ready-to-show 防白闪） */
+  private destroyWindow(): void {
+    if (this.destroyTimer) {
+      clearTimeout(this.destroyTimer)
+      this.destroyTimer = null
+    }
+
+    const win = this.window
+    this.window = null
+    this.firstRenderReady = false
+    this.pendingShow = null
+
+    if (win && !win.isDestroyed()) {
+      win.destroy()
     }
   }
 
@@ -276,6 +321,8 @@ export class AvatarMenuWindow {
 
     this.window.on('closed', () => {
       this.window = null
+      this.firstRenderReady = false
+      this.pendingShow = null
     })
 
     // 加载菜单页面（复用 avatar 入口，URL 参数 mode=menu 分流渲染菜单组件）

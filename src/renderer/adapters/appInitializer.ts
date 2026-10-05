@@ -376,7 +376,8 @@ export async function initializeApp(
     useStore.getState().setTheme(resolvedTheme.id)
     themeManager.setTheme(resolvedTheme.id)
 
-    themeManager.startSystemThemeListener((isDark) => {
+    // 注册应用级监听（AppearanceSettings 卸载时会停掉它自己的那份，此处这份必须独立存活）
+    themeManager.startAppSystemThemeListener((isDark) => {
       const store = useStore.getState()
       store.setSystemPrefersDark(isDark)
       if (store.themeMode === 'system') {

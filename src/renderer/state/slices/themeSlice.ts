@@ -56,7 +56,7 @@ function getSystemPrefersDark(): boolean {
     return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
-export const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (set) => {
+export const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (set, get) => {
     const savedTheme = StorageService.get<string>(BRAND.storageKeys.themeId)
     const validIds = builtinThemes.map(t => t.id)
     const initialTheme = savedTheme && (validIds.includes(savedTheme) || savedTheme.startsWith('custom-'))
@@ -71,8 +71,16 @@ export const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (s
         themeMode: initialMode,
         themeColor: initialColor,
         systemPrefersDark: getSystemPrefersDark(),
-        setTheme: (theme) => set({ currentTheme: theme }),
+        // 值未变化时直接短路：setThemeMode / setThemeColor 都会把值回写 electron-store，
+        // 而主进程 settings:set 会把变更广播给所有窗口（含发起方），
+        // 于是「回写 → 广播 → 回写」形成自持的 IPC 循环，把渲染进程 CPU 持续拉满。
+        // 幂等短路让第二跳变成 no-op，循环在第一轮就终止。
+        setTheme: (theme) => {
+            if (get().currentTheme === theme) return
+            set({ currentTheme: theme })
+        },
         setThemeMode: (mode) => {
+            if (get().themeMode === mode) return
             StorageService.set(STORAGE_KEY_THEME_MODE, mode)
             set({ themeMode: mode })
             // 异步同步到 electron-store（持久化到文件，防止 localStorage 丢失）
@@ -87,6 +95,7 @@ export const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (s
             }
         },
         setThemeColor: (color) => {
+            if (get().themeColor === color) return
             StorageService.set(STORAGE_KEY_THEME_COLOR, color)
             set({ themeColor: color })
             // 异步同步到 electron-store
@@ -100,6 +109,9 @@ export const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (s
                 // ignore import errors
             }
         },
-        setSystemPrefersDark: (prefersDark) => set({ systemPrefersDark: prefersDark }),
+        setSystemPrefersDark: (prefersDark) => {
+            if (get().systemPrefersDark === prefersDark) return
+            set({ systemPrefersDark: prefersDark })
+        },
     }
 }

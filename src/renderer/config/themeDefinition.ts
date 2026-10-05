@@ -439,6 +439,9 @@ class ThemeManager {
   private initialized = false
   private mediaQuery: MediaQueryList | null = null
   private mediaQueryHandler: ((e: MediaQueryListEvent) => void) | null = null
+  /** 应用级系统主题监听：与设置面板的监听相互独立，面板关闭不得影响它 */
+  private appMediaQuery: MediaQueryList | null = null
+  private appMediaQueryHandler: ((e: MediaQueryListEvent) => void) | null = null
 
   constructor() {
     // 从 StorageService 快速恢复主题（同步，避免闪烁）
@@ -616,6 +619,13 @@ class ThemeManager {
     return 'blue'
   }
 
+  /**
+   * 设置面板用的系统主题监听（同一时刻只保留一个）。
+   *
+   * ⚠️ 必须与应用级监听分开存放：设置面板卸载时会调用 stopSystemThemeListener()，
+   *    若与应用级共用同一个槽位，面板一关就会把全局的「跟随系统」监听一并摘掉，
+   *    此后系统外观变化不再触发任何主题切换。
+   */
   startSystemThemeListener(onSystemChange: (isDark: boolean) => void) {
     if (typeof window === 'undefined' || typeof window.matchMedia === 'undefined') return
     this.stopSystemThemeListener()
@@ -630,9 +640,29 @@ class ThemeManager {
   stopSystemThemeListener() {
     if (this.mediaQuery && this.mediaQueryHandler) {
       this.mediaQuery.removeEventListener('change', this.mediaQueryHandler)
-      this.mediaQueryHandler = null
     }
+    this.mediaQueryHandler = null
     this.mediaQuery = null
+  }
+
+  /** 注册应用级系统主题监听（生命周期与应用一致，不受设置面板挂载/卸载影响） */
+  startAppSystemThemeListener(onSystemChange: (isDark: boolean) => void) {
+    if (typeof window === 'undefined' || typeof window.matchMedia === 'undefined') return
+    this.stopAppSystemThemeListener()
+
+    this.appMediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    this.appMediaQueryHandler = (e: MediaQueryListEvent) => {
+      onSystemChange(e.matches)
+    }
+    this.appMediaQuery.addEventListener('change', this.appMediaQueryHandler)
+  }
+
+  stopAppSystemThemeListener() {
+    if (this.appMediaQuery && this.appMediaQueryHandler) {
+      this.appMediaQuery.removeEventListener('change', this.appMediaQueryHandler)
+    }
+    this.appMediaQueryHandler = null
+    this.appMediaQuery = null
   }
 
   addCustomTheme(theme: Theme) {
