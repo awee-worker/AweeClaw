@@ -11,6 +11,7 @@
 import type { ToolDefinition, ToolExecutor } from '@shared/protocols/modelGateway'
 import { toolRegistry } from '@intelligence/toolkit/toolRegistry'
 import {
+  useContactStore,
   useTodoStore,
   usePomodoroStore,
   useMeetingStore,
@@ -119,6 +120,11 @@ function summarizeItem(tool: string, item: Record<string, unknown>): string {
       const t = pick(['start', 'end'])
       return date ? `记录工时 ${date}${t ? ` ${t}` : ''}` : '记录工时'
     }
+    case 'contacts': {
+      const name = pick(['name'])
+      const rel = item.relation ? `（${item.relation}）` : ''
+      return name ? `新增联系人「${name}」${rel}` : '新增联系人'
+    }
     default: {
       const name = pick(['name', 'title', 'text', 'front', 'content'])
       return name ? `新增「${name}」` : `新增 ${tool}`
@@ -179,6 +185,9 @@ export function getSceneToolsGuide(mode?: SceneToolDS['mode']): string {
     `  work-plan 创建示例（scene_tools_add，tool="work-plan"）：`,
     `  item={planType:"week", title:"下周开发计划", baseDate:"<下周一日期>", entries:[{date:"<下周一>",task:"完成登录模块",priority:"high"},{date:"<下周二>",task:"代码Review",priority:"medium"}]}`,
     `  baseDate 规则：本周→本周一日期；下周→下周一日期；本月→本月1日；下月→下月1日。entries 每条必须有 date 和 task，task 不能为空。`,
+    `- 联系人管理（新增/查询/修改/删除联系人，按关系、标签、星级筛选）→ 操作 contacts（通讯录，全场景可用）`,
+    `  通讯录字段：姓名(name,必填)、手机号(phone,必填)、性别(gender)、出生日期(birthday)、邮箱(email)、地址(address)、关系(relation:家人/亲戚/朋友/同事/同学/客户/其他)、星级(star:0-5)、公司(company)、职位(title)、标签(tags)、备注(note)`,
+    `  通讯录配合邮件群发：如「给所有客户发邮件」——先 scene_tools_read(tool="contacts") 取出全部联系人并按 relation="客户" 筛选，再逐个调用邮件工具发送；批量发送前必须先与用户确认收件人范围与邮件正文。`,
     `- 用户的记录类请求（帮我把……记下来/存一下/记一笔）都应落到对应工具`,
     ``,
     `## 使用边界（重要）`,
@@ -331,6 +340,8 @@ export function initSceneToolEventTracking(): () => void {
   track(useWeeklyReportStore, 'work-weekly', '周报生成器', allTrackKeys['work-weekly'])
   track(useWorkHourStore, 'work-hours', '工时记录', allTrackKeys['work-hours'])
   track(useSnippetStore, 'work-snippets', '快捷话术库', allTrackKeys['work-snippets'])
+  // 通用
+  track(useContactStore, 'contacts', '通讯录', allTrackKeys['contacts'])
   // 生活
   track(useLedgerStore, 'life-ledger', '记账本', allTrackKeys['life-ledger'])
   track(useShoppingStore, 'life-shopping', '购物清单', allTrackKeys['life-shopping'])
@@ -357,6 +368,20 @@ function failResult(error: string): { success: boolean; result: string; error: s
 
 function getDS(toolId: string): SceneToolDS | undefined {
   return allDS.find((d) => d.id === toolId)
+}
+
+/**
+ * AI 操作场景工具后通知 UI 联动。
+ * 通讯录是独立全屏页面（非场景工具面板），因此单独派发打开事件。
+ */
+function notifySceneToolUI(ds: SceneToolDS): void {
+  if (typeof window === 'undefined') return
+  if (ds.id === 'contacts') {
+    window.dispatchEvent(new CustomEvent('aweeclaw:contacts-open'))
+    return
+  }
+  window.dispatchEvent(new CustomEvent('aweeclaw:scene-tool-open', { detail: ds.id }))
+  window.dispatchEvent(new CustomEvent('aweeclaw:scene-panel-open', { detail: ds.id }))
 }
 
 const EXECUTORS: Record<string, ToolExecutor> = {
@@ -398,10 +423,7 @@ const EXECUTORS: Record<string, ToolExecutor> = {
     const res = ds.add(item)
     if (!res.ok) return failResult(res.error || '新增失败')
     const data = ds.read()
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('aweeclaw:scene-tool-open', { detail: ds.id }))
-      window.dispatchEvent(new CustomEvent('aweeclaw:scene-panel-open', { detail: ds.id }))
-    }
+    notifySceneToolUI(ds)
     pushEvent({
       tool: ds.id,
       toolName: ds.name,
@@ -423,10 +445,7 @@ const EXECUTORS: Record<string, ToolExecutor> = {
     const patch = (args.patch as Record<string, unknown>) || {}
     const res = ds.update(id, patch)
     if (!res.ok) return failResult(res.error || '更新失败')
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('aweeclaw:scene-tool-open', { detail: ds.id }))
-      window.dispatchEvent(new CustomEvent('aweeclaw:scene-panel-open', { detail: ds.id }))
-    }
+    notifySceneToolUI(ds)
     pushEvent({
       tool: ds.id,
       toolName: ds.name,
@@ -447,10 +466,7 @@ const EXECUTORS: Record<string, ToolExecutor> = {
     if (!id) return failResult('缺少 id')
     const res = ds.remove(id)
     if (!res.ok) return failResult(res.error || '删除失败')
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('aweeclaw:scene-tool-open', { detail: ds.id }))
-      window.dispatchEvent(new CustomEvent('aweeclaw:scene-panel-open', { detail: ds.id }))
-    }
+    notifySceneToolUI(ds)
     pushEvent({
       tool: ds.id,
       toolName: ds.name,
@@ -507,6 +523,15 @@ const EXECUTORS: Record<string, ToolExecutor> = {
       const due = s.cards.filter((c) => c.nextReview <= Date.now()).length
       stats['study-flashcards'] = { total: s.cards.length, dueNow: due, decks: s.decks.length }
     }
+    if (!tool || tool === 'contacts') {
+      const items = useContactStore.getState().items
+      const byRelation: Record<string, number> = {}
+      for (const c of items) {
+        const key = c.relation || '未分类'
+        byRelation[key] = (byRelation[key] ?? 0) + 1
+      }
+      stats['contacts'] = { total: items.length, starred: items.filter((c) => (c.star ?? 0) > 0).length, byRelation }
+    }
 
     return okResult({ date, stats })
   },
@@ -525,7 +550,7 @@ const SCENE_TOOLS_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'scene_tools_read',
-    description: 'Read full data of a scene tool, including all entries and the item schema for adding. Use the returned id values for later update/delete. Tools: work-todo, work-pomodoro, work-meeting, work-weekly, work-files, work-hours, work-snippets, life-ledger, life-water, life-mood, life-shopping, life-anniversary, life-recipe, study-flashcards, study-pomodoro, study-mistakes, study-notes, study-reader, study-planner.',
+    description: 'Read full data of a scene tool, including all entries and the item schema for adding. Use the returned id values for later update/delete. Tools: contacts (通讯录/contacts book), work-todo, work-pomodoro, work-meeting, work-weekly, work-files, work-hours, work-snippets, life-ledger, life-water, life-mood, life-shopping, life-anniversary, life-recipe, study-flashcards, study-pomodoro, study-mistakes, study-notes, study-reader, study-planner.',
     parameters: {
       type: 'object',
       properties: {

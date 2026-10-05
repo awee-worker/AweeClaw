@@ -273,6 +273,42 @@ export interface WorkPlanEntry {
 export const useTodoStore = createListStore<WorkTodoItem>('work-todo')
 export const useWorkPlanStore = createListStore<WorkPlanItem>('work-plan')
 
+// ============================================
+// 通用 · 通讯录
+// ============================================
+
+/** 联系人性别 */
+export type ContactGender = 'male' | 'female' | 'other' | 'unknown'
+
+/** 联系人 */
+export interface ContactItem extends BaseItem {
+  /** 姓名（必填） */
+  name: string
+  /** 手机号（必填） */
+  phone: string
+  gender?: ContactGender
+  /** 出生日期 YYYY-MM-DD */
+  birthday?: string
+  email?: string
+  address?: string
+  /** 关系：家人 / 亲戚 / 朋友 / 同事 / 同学 / 客户 / 其他（可自定义） */
+  relation?: string
+  /** 星级 0-5，0 表示未标星 */
+  star?: number
+  /** 公司 / 单位 */
+  company?: string
+  /** 职位 / 角色 */
+  title?: string
+  /** 标签，便于分组与批量筛选 */
+  tags?: string[]
+  /** 备注 */
+  note?: string
+  /** 最后更新时间 */
+  updatedAt?: number
+}
+
+export const useContactStore = createListStore<ContactItem>('contacts')
+
 export interface PomodoroSettings {
   focusMin: number
   breakMin: number

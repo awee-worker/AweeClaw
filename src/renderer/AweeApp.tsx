@@ -37,6 +37,7 @@ const PreferencesDialog = lazy(() => import('@components/settings/PreferencesDia
 const UserProfilePage = lazy(() => import('@components/user/UserProfilePage'))
 const BillingCenterPage = lazy(() => import('@components/user/BillingCenterPage'))
 const SessionHistoryPage = lazy(() => import('@components/user/SessionHistoryPage'))
+const ContactsPage = lazy(() => import('@components/contacts/ContactsPage'))
 const PluginCenterPage = lazy(() => import('@components/plugin/PluginCenterPage'))
 const ScenarioManagerView = lazy(() => import('@components/scenario/ScenarioManagerView').then(m => ({ default: m.ScenarioManagerView })))
 const PlanPanelDrawer = lazy(() => import('./components/plan/PlanPanelDrawer').then(m => ({ default: m.PlanPanelDrawer })))
@@ -69,7 +70,7 @@ function AppContent() {
     workspace, activeSidePanel, activeFilePath,
     showWorkflow, setShowWorkflow,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage,
-    showSessionHistoryPage, showPluginCenterPage, showScenarioPage,
+    showSessionHistoryPage, showPluginCenterPage, showScenarioPage, showContactsPage,
     activeScenarioId, scenarioConfigVersion, language,
     isAuthenticated, setShowWelcomePage, setChatVisible, setActiveSidePanel,
   } = useStore(useShallow((state) => ({
@@ -85,6 +86,7 @@ function AppContent() {
     showSessionHistoryPage: state.showSessionHistoryPage,
     showPluginCenterPage: state.showPluginCenterPage,
     showScenarioPage: state.showScenarioPage,
+    showContactsPage: state.showContactsPage,
     activeScenarioId: state.activeScenarioId,
     scenarioConfigVersion: state.scenarioConfigVersion,
     language: state.language,
@@ -135,6 +137,13 @@ function AppContent() {
     window.addEventListener('aweeclaw:scene-panel-open', handler)
     return () => window.removeEventListener('aweeclaw:scene-panel-open', handler)
   }, [setActiveSidePanel])
+
+  // 监听 AI Agent 写入通讯录：自动打开通讯录页面
+  useEffect(() => {
+    const handler = () => useStore.getState().setShowContactsPage(true)
+    window.addEventListener('aweeclaw:contacts-open', handler)
+    return () => window.removeEventListener('aweeclaw:contacts-open', handler)
+  }, [])
 
   // 监听菜单"键盘快捷键"命令派发的全局事件
   useEffect(() => {
@@ -312,7 +321,7 @@ function AppContent() {
             </Suspense>
           </div>
         ) : (
-          (showSettingsPage || showUserProfilePage || showBillingCenterPage || showSessionHistoryPage || showPluginCenterPage || showScenarioPage) ? (
+          (showSettingsPage || showUserProfilePage || showBillingCenterPage || showSessionHistoryPage || showPluginCenterPage || showScenarioPage || showContactsPage) ? (
             // 全屏页面：设置/用户中心/费用中心/历史会话/插件/工作场景
             // 绕过 NavigationRail / AppTitleBar / SidebarSection / WorkspaceStatusBar
             <div className="flex h-full w-full overflow-hidden">
@@ -324,6 +333,7 @@ function AppContent() {
                   {showSessionHistoryPage && <SessionHistoryPage />}
                   {showPluginCenterPage && <PluginCenterPage />}
                   {showScenarioPage && <ScenarioManagerView />}
+                  {showContactsPage && <ContactsPage />}
                 </Suspense>
               </ErrorBoundary>
             </div>

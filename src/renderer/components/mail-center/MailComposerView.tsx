@@ -152,6 +152,14 @@ export function MailComposerView({
   // 发件箱条目只能重发，不允许改内容（改了会与失败原文不一致）
   const retryOnly = Boolean(initial.outboxId)
 
+  // 账户列表异步加载：初值未命中时在账户就绪后回落到第一个可用账户，
+  // 避免「打开写邮件时账户尚未加载」导致发件账户为空、无法发送。
+  useEffect(() => {
+    if (accountId && accounts.some((a) => a.id === accountId)) return
+    const fallback = accounts[0]?.id
+    if (fallback) setAccountId(fallback)
+  }, [accounts, accountId])
+
   // 初始化编辑器内容（仅一次）：HTML 草稿走 cid 还原，纯文本走转义
   useEffect(() => {
     const el = editorRef.current

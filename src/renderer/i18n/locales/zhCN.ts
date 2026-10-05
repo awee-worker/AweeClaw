@@ -2977,6 +2977,7 @@ export const zh = {
   'layout.account': '用户中心',
   'layout.billing': '费用中心',
   'layout.sessionhistory': '历史会话',
+  'layout.contacts': '通讯录',
   'layout.areyousureyouwant': '确定要退出登录吗？',
   'layout.cancel': '取消',
   'layout.signout': '退出',

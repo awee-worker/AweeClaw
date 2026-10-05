@@ -2979,6 +2979,7 @@ export const en = {
   'layout.account': 'Account',
   'layout.billing': 'Billing',
   'layout.sessionhistory': 'Session History',
+  'layout.contacts': 'Contacts',
   'layout.areyousureyouwant': 'Are you sure you want to sign out?',
   'layout.cancel': 'Cancel',
   'layout.signout': 'Sign Out',

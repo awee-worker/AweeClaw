@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Settings, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, MessageSquarePlus, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle, Blocks, PackageOpen, GraduationCap } from 'lucide-react'
+import { Settings, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, MessageSquarePlus, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle, Blocks, PackageOpen, GraduationCap, BookUser } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -108,6 +108,7 @@ function UserMenuDropdown({
   onUserInfoClick,
   onBillingCenterClick,
   onSessionHistoryClick,
+  onContactsClick,
   onCheckUpdate,
   onAbout,
   onLogout,
@@ -128,6 +129,7 @@ function UserMenuDropdown({
   onUserInfoClick: () => void
   onBillingCenterClick: () => void
   onSessionHistoryClick: () => void
+  onContactsClick: () => void
   onCheckUpdate: () => void
   onAbout: () => void
   onLogout: () => void
@@ -291,6 +293,13 @@ function UserMenuDropdown({
           >
             <History className="w-[16px] h-[16px]" strokeWidth={1.5} />
             <span>{t('layout.sessionhistory', language as Language)}</span>
+          </button>
+          <button
+            onClick={() => { onContactsClick(); onClose() }}
+            className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
+          >
+            <BookUser className="w-[16px] h-[16px]" strokeWidth={1.5} />
+            <span>{t('layout.contacts', language as Language)}</span>
           </button>
         </>
       )}
@@ -485,6 +494,7 @@ export default function NavigationRail() {
     setShowUserProfilePage,
     setShowBillingCenterPage,
     setShowSessionHistoryPage,
+    setShowContactsPage,
     setShowPluginCenterPage,
     setShowScenarioPage,
     closeAllFullPages,
@@ -514,6 +524,7 @@ export default function NavigationRail() {
     setShowUserProfilePage: s.setShowUserProfilePage,
     setShowBillingCenterPage: s.setShowBillingCenterPage,
     setShowSessionHistoryPage: s.setShowSessionHistoryPage,
+    setShowContactsPage: s.setShowContactsPage,
     setShowPluginCenterPage: s.setShowPluginCenterPage,
     setShowScenarioPage: s.setShowScenarioPage,
     closeAllFullPages: s.closeAllFullPages,
@@ -701,6 +712,13 @@ export default function NavigationRail() {
     setShowWorkflow(false)
     closeInternalBrowser()
   }, [setActiveSidePanel, setShowSessionHistoryPage, setShowWorkflow, closeInternalBrowser])
+
+  const handleContactsClick = useCallback(() => {
+    setActiveSidePanel(null)
+    setShowContactsPage(true)
+    setShowWorkflow(false)
+    closeInternalBrowser()
+  }, [setActiveSidePanel, setShowContactsPage, setShowWorkflow, closeInternalBrowser])
 
   const handleLogout = useCallback(() => {
     logout()
@@ -1322,6 +1340,7 @@ onExpertLibraryClick={handleExpertLibraryClick}
           onUserInfoClick={handleUserInfoClick}
           onBillingCenterClick={handleBillingCenterClick}
           onSessionHistoryClick={handleSessionHistoryClick}
+          onContactsClick={handleContactsClick}
           onCheckUpdate={handleCheckUpdate}
           onAbout={handleAbout}
           onLogout={handleLogout}

@@ -151,6 +151,7 @@ const FULLSCREEN_PAGE_KEYS = [
   'showSessionHistoryPage',
   'showPluginCenterPage',
   'showScenarioPage',
+  'showContactsPage',
 ] as const
 
 /** 全屏页面状态片段类型 */
@@ -260,6 +261,7 @@ export interface LayoutSlice {
   showSessionHistoryPage: boolean
   showPluginCenterPage: boolean
   showScenarioPage: boolean
+  showContactsPage: boolean
   /** 环境检测弹窗是否显示 */
   showEnvironmentSetup: boolean
   /** 设置环境检测弹窗显隐 */
@@ -350,6 +352,7 @@ export interface LayoutSlice {
   setShowSessionHistoryPage: (show: boolean) => void
   setShowPluginCenterPage: (show: boolean) => void
   setShowScenarioPage: (show: boolean) => void
+  setShowContactsPage: (show: boolean) => void
   /** 关闭所有全屏页面，返回聊天界面 */
   closeAllFullPages: () => void
 
@@ -521,7 +524,8 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   setShowBillingCenterPage: (show) => set(buildFullscreenToggle('showBillingCenterPage', show)),
   setShowSessionHistoryPage: (show) => set(buildFullscreenToggle('showSessionHistoryPage', show)),
   setShowPluginCenterPage: (show) => set(buildFullscreenToggle('showPluginCenterPage', show)),
-  setShowScenarioPage: (show) => set(buildFullscreenToggle('showScenarioPage', show)),
+      setShowScenarioPage: (show) => set(buildFullscreenToggle('showScenarioPage', show)),
+      setShowContactsPage: (show) => set(buildFullscreenToggle('showContactsPage', show)),
   closeAllFullPages: () => set(buildFullscreenReset()),
 
   /* ----- 语音对话模式操作 ----- */
