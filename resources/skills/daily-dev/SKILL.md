@@ -27,7 +27,7 @@ subSkills:
 metadata:
   nameZh: 日常开发
   descriptionZh: 日常编码任务的通用工作流——先读后写、小步修改、改完即验。
-  icon: Wrench
+  icon: Code2
 license: MIT
 ---
 
