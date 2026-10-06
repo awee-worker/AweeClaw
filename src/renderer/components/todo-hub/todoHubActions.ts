@@ -6,7 +6,9 @@
  */
 import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
-import { getThreadDisplayTitle } from '@intelligence/providerTypes'
+import { getThreadDisplayTitle, type TodoItem } from '@intelligence/providerTypes'
+import { api } from '../../adapters/electronBridge'
+import { logger } from '@toolkit/LogEngine'
 import { useTodoHubStore, type HubTodoItem, type TodoSourceType } from './todoHubStore'
 import type { TaskItem } from '../explorer/panels/tasks/types'
 
@@ -280,5 +282,128 @@ export async function openTodoSource(item: HubTodoItem): Promise<boolean> {
     }
     default:
       return false
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 会话待办协调：抑制重复并同步完成状态                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 每个会话最近一次的协调签名。
+ *
+ * loop:end 每轮都会触发协调，但「会话任务清单 + 待办中心条目」在多数轮次里
+ * 并没有变化。用签名短路重复判断，避免每轮都打一次模型。
+ */
+const reconcileSignatures = new Map<string, string>()
+
+const RECONCILE_SYSTEM_PROMPT = `You are reconciling one user-facing todo list with the task list kept inside a single conversation.
+
+Input:
+- CONVERSATION_TODOS: the task list the assistant maintains in the conversation. Each line is "[status] content", status is one of pending / in_progress / verifying / completed.
+- HUB_ITEMS: the todos currently shown in the hub that came from this conversation. Each line is "id=<id> | title=<title> | status=<status>".
+
+Decide only two things:
+1. complete: ids of HUB_ITEMS whose task is already finished in the conversation, even when the wording differs. A task that is still pending / in_progress / verifying in the conversation must NEVER be completed.
+2. remove: ids of HUB_ITEMS that are semantic duplicates of another HUB_ITEM - keep one copy (prefer the earliest original) and remove the rest. Never remove the only copy of a task.
+
+Rules:
+- Only output ids that appear in HUB_ITEMS. Never invent ids.
+- When unsure about an item, leave it out of both lists.
+- Output JSON only: {"complete": [...], "remove": [...]}`
+
+const TODO_RECONCILE_SCHEMA = {
+  type: 'object',
+  properties: {
+    complete: { type: 'array', items: { type: 'string' } },
+    remove: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['complete', 'remove'],
+  additionalProperties: false,
+} as const
+
+function buildReconcilePrompt(todos: TodoItem[], items: HubTodoItem[]): string {
+  const todoLines = todos.map((t) => `- [${t.status}] ${t.content}`).join('\n')
+  const itemLines = items.map((i) => `id=${i.id} | title=${i.title} | status=${i.status}`).join('\n')
+  return [
+    'CONVERSATION_TODOS:',
+    todoLines || '(empty)',
+    '',
+    'HUB_ITEMS:',
+    itemLines || '(empty)',
+  ].join('\n')
+}
+
+/**
+ * 协调某个会话的待办：把待办中心里来自该会话的条目与会话内任务清单对齐。
+ *
+ * 分两步：
+ * 1. 确定性同步：会话里已标记完成、且标题与待办条目一致的，直接标记完成，
+ *    不依赖模型，保证未配置模型时也能收敛。
+ * 2. AI 语义协调：处理「措辞不同但属同一任务」（完成同步）与「同一任务的多条
+ *    重复条目」（去重）。未配置模型、调用失败或返回异常都静默跳过，只保留
+ *    第 1 步的确定性结果，不影响主流程。
+ */
+export async function reconcileThreadTodos(threadId: string): Promise<void> {
+  const thread = useAgentStore.getState().threads[threadId]
+  if (!thread) return
+
+  const related = useTodoHubStore
+    .getState()
+    .items.filter(
+      (i) => i.sourceType === 'conversation' && i.sourceId === threadId && i.status !== 'done',
+    )
+  if (related.length === 0) return
+
+  // 1) 确定性同步：会话里已完成的任务，同名条目一并收尾
+  const completedContents = new Set(
+    (thread.todos ?? [])
+      .filter((t) => t.status === 'completed')
+      .map((t) => t.content.trim()),
+  )
+  if (completedContents.size > 0) {
+    const hub = useTodoHubStore.getState()
+    for (const item of related) {
+      if (completedContents.has((item.title ?? '').trim())) hub.complete(item.id)
+    }
+  }
+
+  // 内容未变化时跳过语义判断，避免每轮都打模型
+  const signature = JSON.stringify({
+    todos: (thread.todos ?? []).map((t) => [t.content, t.status]),
+    items: related.map((i) => [i.id, i.title, i.status]),
+  })
+  if (reconcileSignatures.get(threadId) === signature) return
+  reconcileSignatures.set(threadId, signature)
+
+  const { llmConfig } = useStore.getState()
+  if (!llmConfig?.apiKey) return
+
+  // 2) AI 语义协调
+  try {
+    const result = await api.llm.generateObject({
+      config: { ...llmConfig, temperature: 0, maxTokens: 600 },
+      schema: TODO_RECONCILE_SCHEMA,
+      system: RECONCILE_SYSTEM_PROMPT,
+      prompt: buildReconcilePrompt(thread.todos ?? [], related),
+    })
+    if (result.error || !result.object) {
+      logger.agent.warn('[TodoHub] Reconcile skipped:', result.error || 'empty object')
+      return
+    }
+
+    const validIds = new Set(related.map((i) => i.id))
+    const complete = Array.isArray(result.object.complete) ? (result.object.complete as string[]) : []
+    const remove = Array.isArray(result.object.remove) ? (result.object.remove as string[]) : []
+    const completeSet = new Set(complete.filter((id) => validIds.has(id)))
+
+    const hub = useTodoHubStore.getState()
+    for (const id of completeSet) hub.complete(id)
+    // 只删真正的重复项；已判定完成的条目优先保留，避免被去重覆盖
+    for (const id of remove) {
+      if (validIds.has(id) && !completeSet.has(id)) hub.remove(id)
+    }
+  } catch (error) {
+    logger.agent.warn('[TodoHub] Reconcile failed, keep deterministic result:', error)
   }
 }

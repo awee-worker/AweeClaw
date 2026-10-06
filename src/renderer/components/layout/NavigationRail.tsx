@@ -643,6 +643,16 @@ export default function NavigationRail() {
     return new Set(items.filter(item => item.hideChat).map(item => item.id))
   }, [activeScenarioId])
 
+  /**
+   * 宽模式面板（接管主区域，如待办中心 / 邮件中心）id。
+   * 点击历史会话时同样退出这些面板，露出会话视图，
+   * 避免用户点了会话却仍停在待办等面板上。
+   */
+  const wideModePanelIds = useMemo(() => {
+    const items = scenarioRegistry.get(activeScenarioId)?.ui?.sidebarItems ?? []
+    return new Set(items.filter(item => item.wideMode).map(item => item.id))
+  }, [activeScenarioId])
+
   // 仪表盘界面、或停留在接管主区域的 hideChat 面板时，不显示历史会话的高亮选中
   //（用户未实际处于某个会话中，避免"界面已切走、但历史列表某条仍被高亮"的误选感）
   const threadHighlightEnabled = !showWelcomePage
@@ -759,15 +769,17 @@ export default function NavigationRail() {
     setRenamingThreadId(null)
   }, [renamingThreadId, renameValue, renameThread])
 
-  // 点击历史会话：若当前停留在接管主区域的 hideChat 面板（如插件与技能市场），
-  // 先退出该面板并恢复对话窗口，再切换会话，确保用户真正回到会话界面
+  // 点击历史会话：若当前停留在接管主区域的 hideChat 面板或宽模式面板
+  //（如插件与技能市场 / 待办中心 / 邮件中心），先退出该面板并恢复对话窗口，
+  // 再切换会话，确保用户真正回到会话界面
   const handleSelectThread = useCallback((threadId: string) => {
-    if (activeSidePanel && hideChatPanelIds.has(activeSidePanel)) {
+    const panel = activeSidePanel
+    if (panel && (hideChatPanelIds.has(panel) || wideModePanelIds.has(panel))) {
       setActiveSidePanel(null)
       setChatVisible(true)
     }
     void switchThread(threadId)
-  }, [activeSidePanel, hideChatPanelIds, setActiveSidePanel, setChatVisible, switchThread])
+  }, [activeSidePanel, hideChatPanelIds, wideModePanelIds, setActiveSidePanel, setChatVisible, switchThread])
 
   const userInitial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
   const userDisplayName = formatUserDisplayName(cloudUser?.username || cloudUser?.email || cloudUser?.phone || '')

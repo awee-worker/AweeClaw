@@ -11,7 +11,7 @@
 import { useMemo, useState } from 'react'
 import {
   ListTodo, Plus, Check, Trash2, CalendarDays, Loader2, Sparkles,
-  CheckCircle2, RotateCcw, ExternalLink, Inbox,
+  CheckCircle2, RotateCcw, ExternalLink, Inbox, X,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useTodoHubStore, type HubTodoItem } from './todoHubStore'
@@ -73,6 +73,12 @@ export function TodoHubView() {
     setDueDate('')
   }
 
+  /** 关闭待办面板，回到会话视图 */
+  const handleClose = () => {
+    useStore.getState().setActiveSidePanel(null)
+    useStore.getState().setChatVisible(true)
+  }
+
   const isOverdue = (i: HubTodoItem) => i.dueDate && i.status !== 'done' && i.dueDate < todayStr()
 
   return (
@@ -100,6 +106,13 @@ export function TodoHubView() {
             {zh ? '清除已完成' : 'Clear done'}
           </button>
         )}
+        <button
+          onClick={handleClose}
+          title={zh ? '关闭' : 'Close'}
+          className={`${doneCount > 0 ? '' : 'ml-auto'} p-1.5 -mr-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors`}
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
       {/* 新增 */}

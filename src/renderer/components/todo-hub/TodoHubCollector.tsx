@@ -12,7 +12,7 @@
  */
 import { useEffect } from 'react'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
-import { collectFromThread, resolveThreadTodos } from './todoHubActions'
+import { collectFromThread, reconcileThreadTodos, resolveThreadTodos } from './todoHubActions'
 import { resolveThreadWorkTodos } from '@components/scene-tools/work/workTodoExec'
 
 /** 请求采集指定会话的待办（供挂载等场景解耦派发） */
@@ -39,6 +39,9 @@ export function TodoHubCollector() {
         const settled = SETTLED_LOOP_END_REASONS.has(event.reason)
         resolveThreadTodos(threadId, settled)
         resolveThreadWorkTodos(threadId, settled)
+        // AI 介入：对齐会话任务清单与待办中心条目（抑制重复、同步完成状态）。
+        // 异步执行且自带降级，不阻塞 loop:end 的同步收尾。
+        void reconcileThreadTodos(threadId)
       }
     })
 
