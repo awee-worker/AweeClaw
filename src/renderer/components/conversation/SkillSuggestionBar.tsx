@@ -3,8 +3,8 @@
  *
  * 渲染在输入框容器正上方，宽度与输入框保持一致：
  * - 默认展示一行技能；点击带二级选项的技能后整行切换为二级选项，并提供返回入口
- * - 每行固定单行横向滚动，溢出时隐藏滚动条，左右滚动按钮各自贴在对应一侧，
- *   只有那一侧还存在未展示内容时才出现
+ * - 每行固定单行横向滚动，溢出时隐藏滚动条；左右滚动按钮以渐变遮罩悬浮在列表两端，
+ *   只有那一侧还存在未展示内容时才淡入，因不占布局所以显隐不会引起列表抖动
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
@@ -32,18 +32,51 @@ function SkillIcon({ icon }: { icon?: string }) {
   return <Icon className="w-3.5 h-3.5" strokeWidth={1.5} />
 }
 
-/** 横向滚动按钮：只在对应方向还存在未展示内容时渲染 */
-function ScrollButton({ direction, onClick }: { direction: 1 | -1; onClick: () => void }) {
-  const Icon = direction === -1 ? ChevronLeft : ChevronRight
+/**
+ * 单侧滚动控件：渐变遮罩 + 圆形按钮，绝对定位浮在列表两端
+ *
+ * 用绝对定位而不是流内排版，显隐只切换透明度与指针事件，
+ * 不占用横向空间，因此列表宽度恒定，滚动到两端时不会因按钮消失而抖动。
+ * 遮罩自身不接收指针事件（pointer-events-none），只有按钮可点，
+ * 这样覆盖区域内的技能按钮依然可以正常点击与滚动。
+ */
+function ScrollEdge({
+  direction,
+  visible,
+  onClick,
+}: {
+  direction: 1 | -1
+  visible: boolean
+  onClick: () => void
+}) {
+  const isLeft = direction === -1
+  const Icon = isLeft ? ChevronLeft : ChevronRight
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={direction === -1 ? '向左滚动' : '向右滚动'}
-      className="shrink-0 p-1 rounded-full border border-border/50 bg-surface/60 text-text-muted hover:text-text-primary hover:border-accent/40 transition-all"
+    <div
+      aria-hidden={!visible}
+      className={[
+        'absolute inset-y-0 z-10 flex items-center pointer-events-none',
+        'transition-opacity duration-200',
+        isLeft
+          ? 'left-0 pr-10 bg-gradient-to-r from-background-chat via-background-chat/75 to-transparent'
+          : 'right-0 pl-10 bg-gradient-to-l from-background-chat via-background-chat/75 to-transparent',
+        visible ? 'opacity-100' : 'opacity-0',
+      ].join(' ')}
     >
-      <Icon className="w-3.5 h-3.5" />
-    </button>
+      <button
+        type="button"
+        onClick={onClick}
+        tabIndex={visible ? 0 : -1}
+        aria-label={isLeft ? '向左滚动' : '向右滚动'}
+        className={[
+          'shrink-0 p-1 rounded-full border border-border/50 bg-surface/80 text-text-muted shadow-sm',
+          'hover:text-text-primary hover:border-accent/40 transition-all',
+          visible ? 'pointer-events-auto' : 'pointer-events-none',
+        ].join(' ')}
+      >
+        <Icon className="w-3.5 h-3.5" />
+      </button>
+    </div>
   )
 }
 
@@ -51,7 +84,8 @@ function ScrollButton({ direction, onClick }: { direction: 1 | -1; onClick: () =
  * 单行横向滚动容器
  *
  * 内容统一贴左排列，与输入框左边缘对齐；
- * 溢出时左右按钮分别在列表两侧，只在该方向还有未展示内容时出现。
+ * 左右滚动控件悬浮在列表两端，仅在该方向还有未展示内容时淡入，
+ * 因为不参与布局，出现与消失都不会改变列表宽度。
  */
 function ScrollRow({
   leading,
@@ -93,11 +127,13 @@ function ScrollRow({
   return (
     <div ref={wrapRef} className="flex items-center gap-1.5 w-full min-w-0">
       {leading}
-      {overflowing && !atStart && <ScrollButton direction={-1} onClick={() => step(-1)} />}
-      <div ref={trackRef} onScroll={sync} className="flex-1 min-w-0 overflow-x-auto scrollbar-none">
-        <div className="flex w-max items-center gap-2 px-0.5 py-0.5">{children}</div>
+      <div className="relative flex-1 min-w-0">
+        <div ref={trackRef} onScroll={sync} className="w-full overflow-x-auto scrollbar-none">
+          <div className="flex w-max items-center gap-2 px-0.5 py-0.5">{children}</div>
+        </div>
+        <ScrollEdge direction={-1} visible={overflowing && !atStart} onClick={() => step(-1)} />
+        <ScrollEdge direction={1} visible={overflowing && !atEnd} onClick={() => step(1)} />
       </div>
-      {overflowing && !atEnd && <ScrollButton direction={1} onClick={() => step(1)} />}
     </div>
   )
 }
