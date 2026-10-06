@@ -20,6 +20,7 @@ import {
 import { useMemoryStore } from '../store'
 import {
   CategoryBadge,
+  DomainBadge,
   TierBadge,
   ImportanceIndicator,
   RetentionIndicator,
@@ -34,6 +35,7 @@ import {
 } from './shared'
 import {
   CATEGORY_META,
+  resolveMemoryDomain,
   type MemoryCategory,
   type MemoryTier,
   type MemoryFeedbackType,
@@ -313,6 +315,7 @@ export function MemoryDetailPanel({ floating = false }: { floating?: boolean } =
                     {/* 分类与层级 */}
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <CategoryBadge category={currentMemory.category} size="sm" />
+                      <DomainBadge domain={resolveMemoryDomain(currentMemory.tags)} />
                       <TierBadge tier={currentMemory.tier} size="sm" />
                       {currentMemory.classifiedBy && (
                         <span className="text-[10px] text-text-muted">

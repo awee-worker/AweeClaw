@@ -357,19 +357,20 @@ export async function composeMail(
 
     const raw = parseJsonObject(res.content || '')
     const parsed = ZComposeRaw.safeParse(raw)
-    if (!parsed.success || !parsed.data.body?.trim()) {
+    // 先取出正文并收窄类型：这样下面的 return 里不必再对可能为空的字段做断言
+    const generatedBody = parsed.success ? parsed.data.body?.trim() ?? '' : ''
+    if (!parsed.success || !generatedBody) {
       logger.system.warn('[mailAi] 写邮件生成结果结构校验失败', {
         raw: (res.content || '').slice(0, 300),
       })
       return { success: false, error: 'AI 返回格式异常，请重试' }
     }
 
-    const data = parsed.data
     return {
       success: true,
-      body: data.body.trim(),
+      body: generatedBody,
       // 用户已填主题时不覆盖，只在主题为空时回填建议
-      subject: input.subject?.trim() ? undefined : (data.subject || '').trim() || undefined,
+      subject: input.subject?.trim() ? undefined : (parsed.data.subject || '').trim() || undefined,
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

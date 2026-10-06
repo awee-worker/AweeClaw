@@ -29,13 +29,29 @@ import {
   type MemoryRetrievalContext,
   type TaskType,
 } from '@intelligence/providerTypes'
-import { ruleBasedClassify } from '../memoryClassifier'
+import { ruleBasedClassify, type MemoryCategory } from '../memoryClassifier'
 import { guardMemoryWrite, isEligibleForPromotion, originFromEntryInput } from '../memoryWriteGuard'
 import { mergeOriginTrust, parseTrustChannel, parseTrustLevel } from './originTrust'
+import { classifyMemoryDomain, domainFromTag } from '../knowledgeService/memoryDomainClassifier'
+import { computeRetention, isContentReferenced, resolveHalfLifeDays } from './memoryLifecycle'
+import { resolveRetentionDays, resolveRetentionTier } from './retentionPolicy'
+import { getMemorySettings } from './memorySettings'
+import { buildMemoryRelations } from '../knowledgeService/memoryRelationBuilder'
 
 // 旧 JSON 文件路径（仅用于一次性迁移）
 const OLD_FILE_PATH = BRAND.paths.memoryStore
 const OLD_KNOWLEDGE_CONV_FILE = BRAND.paths.knowledgeConversation
+
+/**
+ * 判定一条记忆归属的场景域标签。
+ *
+ * 判不出具体场景时回落到当前场景域，避免把通用内容错分到无关场景。
+ */
+function resolveDomainTag(content: string, activeDomainTag: string): string {
+  const fallback = domainFromTag(activeDomainTag) ?? 'work'
+  const verdict = classifyMemoryDomain(content, fallback)
+  return verdict.confidence >= 0.4 ? verdict.tag : activeDomainTag
+}
 
 // SQLite 字段到 MemoryEntry 的映射辅助类型
 interface MemoryRow {
@@ -79,6 +95,9 @@ interface MemoryRow {
 class LongTermMemoryService {
   private initialized = false
 
+  /** 最近一次被拼进提示词的召回批次，用于事后确认哪些记忆真的被用到 */
+  private lastRecallBatch: { ids: string[]; at: number } | null = null
+
   /** 确保数据库已初始化（幂等） */
   private async ensureDb(): Promise<void> {
     if (this.initialized) return
@@ -108,7 +127,7 @@ class LongTermMemoryService {
       recallCount: row.access_count,
       uniqueQueryCount: row.review_count,
       lastRecalledAt: row.last_accessed_at ?? now,
-      halfLifeDays: 14,
+      halfLifeDays: resolveHalfLifeDays(this.parseStatus(row.tier), this.parseSource(row.source)),
       tags: this.parseTags(row.tags),
       enabled: row.enabled === 1,
       createdAt: row.created_at,
@@ -153,13 +172,28 @@ class LongTermMemoryService {
 
   /** 将 MemoryEntry 转换为 SQLite 行数据 */
   private entryToRow(entry: MemoryEntry): Record<string, any> {
+    const { autoClassificationEnabled, minClassificationConfidence, reviewBoostMultiplier } =
+      getMemorySettings()
+
     // 写入时自动分类（规则引擎，零延迟），来源信息随分类结果一同带出
-    const classification = ruleBasedClassify(entry.content, {
+    const rawClassification = ruleBasedClassify(entry.content, {
       originTrust: entry.originTrust,
       originLocator: entry.originLocator,
       originChannel: entry.originChannel,
       evidence: entry.evidence,
     })
+    // 关闭自动分类、或分类置信度低于阈值时归入未分类：
+    // 低置信的猜测若按类落库，后续会以「既定类别」参与筛选与统计
+    const classification =
+      !autoClassificationEnabled || rawClassification.confidence < minClassificationConfidence
+        ? {
+            ...rawClassification,
+            category: 'UNCATEGORIZED' as MemoryCategory,
+            subcategory: null,
+            confidence: 0,
+            classifiedBy: 'system' as const,
+          }
+        : rawClassification
     return {
       id: entry.id,
       user_id: null,
@@ -180,7 +214,16 @@ class LongTermMemoryService {
       classified_by: classification.classifiedBy,
       classified_at: entry.createdAt,
       content_hash: null,
-      retention_score: 1.0,
+      retention_score: computeRetention(
+        {
+          status: entry.status,
+          halfLifeDays: entry.halfLifeDays,
+          lastRecalledAt: entry.lastRecalledAt,
+          recallCount: entry.recallCount,
+          confidence: entry.confidence,
+        },
+        reviewBoostMultiplier,
+      ),
       last_reviewed_at: null,
       review_count: entry.uniqueQueryCount,
       spatial_context: null,
@@ -285,12 +328,12 @@ class LongTermMemoryService {
     }
 
     const now = Date.now()
-    const { memoryDomainTag } = useSceneModeStore.getState().getActiveProfile()
+    const activeProfile = useSceneModeStore.getState().getActiveProfile()
     const baseMemoryTags = accepted.tags ?? []
-    // 自动注入当前场景模式记忆域 tag，避免跨域污染
+    // 已有显式域标签则尊重；否则按内容判定归属，避免「在哪个场景聊到就打成哪个域」
     const tags = baseMemoryTags.some(t => t.startsWith('domain:'))
       ? baseMemoryTags
-      : [...baseMemoryTags, memoryDomainTag]
+      : [...baseMemoryTags, resolveDomainTag(content, activeProfile.memoryDomainTag)]
     const entry: MemoryEntry = {
       id: crypto.randomUUID(),
       content,
@@ -300,7 +343,7 @@ class LongTermMemoryService {
       recallCount: 0,
       uniqueQueryCount: 0,
       lastRecalledAt: now,
-      halfLifeDays: 14,
+      halfLifeDays: resolveHalfLifeDays(status, accepted.source ?? 'auto_extracted'),
       tags,
       enabled: accepted.enabled ?? true,
       createdAt: now,
@@ -332,7 +375,85 @@ class LongTermMemoryService {
 
     await api.memoryDb.upsertEntry(this.entryToRow(entry))
     logger.agent.info('[LongTermMemory] Added entry:', entry.id, 'status:', status)
+
+    // 写入后按内容、场景域与时间邻近建立关联，失败不影响主流程
+    void this.attachRelations(entry, all).catch((err) => {
+      logger.agent.warn('[LongTermMemory] 建立记忆关联失败:', err)
+    })
+
     return entry
+  }
+
+  /**
+   * 为新写入的记忆自动建立关联。
+   *
+   * 复用 addEntry 已取到的全量列表，避免重复读库；关联 id 由源/目标/类型拼成，
+   * 重复计算时按主键冲突更新，不会产生重复边。
+   */
+  private async attachRelations(entry: MemoryEntry, all: MemoryEntry[]): Promise<void> {
+    const candidates = all
+      .filter(e => e.id !== entry.id && e.enabled)
+      .sort((a, b) => Math.abs(a.createdAt - entry.createdAt) - Math.abs(b.createdAt - entry.createdAt))
+      .slice(0, 300)
+
+    const relations = buildMemoryRelations(
+      { id: entry.id, content: entry.content, tags: entry.tags, createdAt: entry.createdAt },
+      candidates.map(e => ({ id: e.id, content: e.content, tags: e.tags, createdAt: e.createdAt })),
+    )
+    if (relations.length === 0) return
+
+    for (const rel of relations) {
+      await api.memoryDb.upsertRelation({
+        id: `${entry.id}::${rel.targetId}::${rel.relationType}`,
+        source_memory_id: entry.id,
+        target_memory_id: rel.targetId,
+        relation_type: rel.relationType,
+        weight: rel.weight,
+        created_at: Date.now(),
+        sync_status: 'local',
+      })
+    }
+
+    logger.agent.info(`[LongTermMemory] 自动建立 ${relations.length} 条记忆关联`)
+  }
+
+  /**
+   * 重建全部记忆关联。
+   *
+   * 关联是写入时建立的，早于该机制的存量记忆没有边。这里按时间顺序重算一遍，
+   * 让存量数据也能获得关联；关联 id 稳定，重复执行不会重复建边。
+   */
+  async rebuildAllRelations(): Promise<number> {
+    await this.ensureDb()
+    const entries = (await this.getEntries())
+      .filter(e => e.enabled && e.verificationStatus !== 'superseded')
+      .sort((a, b) => a.createdAt - b.createdAt)
+
+    const built: MemoryEntry[] = []
+    let created = 0
+
+    for (const entry of entries) {
+      const relations = buildMemoryRelations(
+        { id: entry.id, content: entry.content, tags: entry.tags, createdAt: entry.createdAt },
+        built.slice(-300).map(e => ({ id: e.id, content: e.content, tags: e.tags, createdAt: e.createdAt })),
+      )
+      for (const rel of relations) {
+        await api.memoryDb.upsertRelation({
+          id: `${entry.id}::${rel.targetId}::${rel.relationType}`,
+          source_memory_id: entry.id,
+          target_memory_id: rel.targetId,
+          relation_type: rel.relationType,
+          weight: rel.weight,
+          created_at: Date.now(),
+          sync_status: 'local',
+        })
+        created++
+      }
+      built.push(entry)
+    }
+
+    logger.agent.info(`[LongTermMemory] 重建记忆关联：处理 ${created} 条关联`)
+    return created
   }
 
   async updateEntry(
@@ -388,20 +509,60 @@ class LongTermMemoryService {
     })
   }
 
+  /**
+   * 记录「被提供过」的召回批次。
+   *
+   * 这里只刷新最近召回时间，不累加召回次数 —— 记忆被拼进提示词不代表被用到，
+   * 按占位次数累加会把无关记忆一路推成长期记忆。真正的次数由
+   * reinforceFromReply 依据回复内容判定后再累加。
+   */
   async recordBulkRecall(ids: string[]): Promise<void> {
     if (ids.length === 0) return
     await this.ensureDb()
     const now = Date.now()
 
+    this.lastRecallBatch = { ids: [...new Set(ids)], at: now }
+
     for (const id of ids) {
       const entry = await this.getEntry(id)
       if (!entry) continue
       await api.memoryDb.updateEntry(id, {
-        access_count: entry.recallCount + 1,
         last_accessed_at: now,
         updated_at: now,
       })
     }
+  }
+
+  /**
+   * 依据助手回复确认「有效召回」。
+   *
+   * 只有回复里确实出现了记忆内容，才累加召回次数与复习次数，
+   * 让长期记忆的提升建立在真实使用之上。
+   */
+  async reinforceFromReply(replyText: string): Promise<number> {
+    const batch = this.lastRecallBatch
+    if (!batch || !replyText || Date.now() - batch.at > 10 * 60_000) return 0
+
+    await this.ensureDb()
+    const now = Date.now()
+    let reinforced = 0
+
+    for (const id of batch.ids) {
+      const entry = await this.getEntry(id)
+      if (!entry || !entry.enabled) continue
+      if (!isContentReferenced(entry.content, replyText)) continue
+
+      await api.memoryDb.updateEntry(id, {
+        access_count: entry.recallCount + 1,
+        review_count: entry.uniqueQueryCount + 1,
+        last_accessed_at: now,
+        updated_at: now,
+      })
+      reinforced++
+    }
+
+    this.lastRecallBatch = null
+    return reinforced
   }
 
   async search(params: MemorySearchParams): Promise<MemorySearchResult[]> {
@@ -576,11 +737,12 @@ class LongTermMemoryService {
     return chain
   }
 
-  async runDeepPromotion(): Promise<{ promoted: number; forgotten: number }> {
+  async runDeepPromotion(): Promise<{ promoted: number; forgotten: number; demoted: number }> {
     await this.ensureDb()
     const now = Date.now()
     let promoted = 0
     let forgotten = 0
+    let demoted = 0
     /** 因来源不可信而未获提升的条目数，用于观察误伤面 */
     let blocked = 0
 
@@ -605,22 +767,38 @@ class LongTermMemoryService {
         continue
       }
 
+      // 过期阈值取该条记忆所属层级的保留天数（0 表示不过期）
+      const retainDays = resolveRetentionDays(entry)
+
       if (score >= promoteThreshold && entry.recallCount >= recallThreshold && entry.uniqueQueryCount >= uniqueQueryThreshold) {
         await this.updateEntry(entry.id, { status: 'long_term' })
         promoted++
-      } else if (ageDays > 60 && entry.recallCount === 0 && entry.confidence < 0.6) {
+      } else if (retainDays > 0 && ageDays > retainDays && entry.recallCount === 0 && entry.confidence < 0.6) {
         await this.updateEntry(entry.id, { status: 'forgotten', enabled: false })
         forgotten++
       }
     }
 
-    if (promoted > 0 || forgotten > 0 || blocked > 0) {
+    // 降级：长期记忆若长时间未被有效召回，说明并不常用，退回短期重新观察，
+    // 避免只升不降、长期记忆越堆越多。永久层（用户显式要求记住）不参与降级。
+    const longTermEntries = await this.getEntries('long_term')
+    for (const entry of longTermEntries) {
+      if (resolveRetentionTier(entry) === 'permanent') continue
+      const demoteIdleDays = resolveRetentionDays(entry)
+      const idleDays = (now - entry.lastRecalledAt) / 86_400_000
+      if (demoteIdleDays > 0 && idleDays > demoteIdleDays && entry.recallCount <= 2) {
+        await this.updateEntry(entry.id, { status: 'short_term' })
+        demoted++
+      }
+    }
+
+    if (promoted > 0 || forgotten > 0 || demoted > 0 || blocked > 0) {
       logger.agent.info(
-        `[LongTermMemory] Deep promotion: ${promoted} promoted, ${forgotten} forgotten, ${blocked} blocked (untrusted origin)`
+        `[LongTermMemory] Deep promotion: ${promoted} promoted, ${forgotten} forgotten, ${demoted} demoted, ${blocked} blocked (untrusted origin)`
       )
     }
 
-    return { promoted, forgotten }
+    return { promoted, forgotten, demoted }
   }
 
   async runLightDreaming(): Promise<{ merged: number; pruned: number }> {
@@ -663,7 +841,9 @@ class LongTermMemoryService {
     const now = Date.now()
     for (const entry of shortTerm) {
       const ageDays = (now - entry.createdAt) / 86_400_000
-      if (ageDays > 60 && entry.recallCount === 0 && entry.confidence < 0.5) {
+      // 过期阈值取该条记忆所属层级的保留天数（0 表示不过期）
+      const retainDays = resolveRetentionDays(entry)
+      if (retainDays > 0 && ageDays > retainDays && entry.recallCount === 0 && entry.confidence < 0.5) {
         await this.updateEntry(entry.id, { status: 'forgotten', enabled: false })
         pruned++
       }

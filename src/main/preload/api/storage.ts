@@ -121,6 +121,9 @@ export function createStorageApi() {
     memoryDbGetPendingPush: (limit?: number) => invoke('memory-db:getPendingPush')(limit),
     memoryDbMarkAsSynced: (id: string, remoteId: string) =>
       invoke('memory-db:markAsSynced')(id, remoteId),
+    memoryDbMarkAsLocalOnly: (id: string) => invoke('memory-db:markAsLocalOnly')(id),
+    memoryDbCountLocalOnly: (userId?: string | null) =>
+      invoke('memory-db:countLocalOnly')(userId),
     memoryDbMigrateFromJsonStore: (store: unknown) =>
       invoke('memory-db:migrateFromJsonStore')(store),
     memoryDbUpsertContradiction: (record: unknown) =>
@@ -131,6 +134,8 @@ export function createStorageApi() {
       invoke('memory-db:getAllContradictions')(limit),
     memoryDbGetOriginStats: invoke('memory-db:getOriginStats'),
     memoryDbGetPath: invoke('memory-db:getPath'),
+    memoryDbSetEncryptionEnabled: (enabled: boolean) =>
+      invoke('memory-db:setEncryptionEnabled')(enabled),
 
     // ── Group Memory（P1-3 群聊长期记忆） ──
     groupMemoryGetConfig: invoke('group-memory:get-config'),

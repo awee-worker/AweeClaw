@@ -29,7 +29,7 @@ export const EXTRACTION_RULES = {
   minConversationLength: 100,
   minTextLength: 80,
   maxConversationMessages: 30,
-  minExtractionIntervalMs: 15_000,
+  minExtractionIntervalMs: 60_000,
   maxTruncationLength: 8000,
   maxMessageSlice: 800,
 } as const;
@@ -98,19 +98,23 @@ Rules:
 10. Extract user preferences and habits
 11. Maximum 5 entries per extraction`;
 
-export const CONVERSATION_EXTRACTION_PROMPT = `${EXTRACTION_SYSTEM_PROMPT}
+export const CONVERSATION_EXTRACTION_PROMPT = `You extract durable memory from a conversation between a user and an assistant.
 
-Focus on extracting:
-- User preferences and habits
-- User-defined rules and conventions
-- Architectural decisions
-- Error solutions discovered
-- Project conventions
-- Important technical facts
-- User corrections and clarifications
-- Personal reasoning patterns
+Extract ONLY information that stays useful across future sessions:
+- User preferences and working habits
+- User-defined rules, conventions and constraints
+- Decisions and the reasons behind them
+- Corrections the user made to the assistant
+- Durable facts about the user's projects, environment or people
 
-Return a JSON array of extracted knowledge entries. If no valuable knowledge is found, return an empty array.
+Do NOT extract:
+- One-off questions, greetings or small talk
+- Restatements of the assistant's own output
+- Transient actions that only make sense in the current turn
+- Anything the user did not state or confirm
+
+Each entry must be self-contained and understandable without the conversation.
+If nothing durable is found, return an empty array.
 
 Format:
 [{"title": "...", "content": "...", "category": "...", "tags": ["..."], "confidence": 0.9}]`;
@@ -125,12 +129,16 @@ export function validateCategory(category: unknown): KnowledgeCategory {
   return 'document';
 }
 
+/**
+ * 归一化模型给出的置信度。
+ *
+ * 只做上下界裁剪，不再把低分抬到门槛之上 —— 抬升等于把模型的「不确定」
+ * 改写成「中等可信」，写进库里就成了噪声。低分就该以低分落库，
+ * 交给价值闸门与遗忘机制处理。
+ */
 export function normalizeConfidence(confidence: unknown): number {
-  if (typeof confidence === 'number') {
-    return Math.min(
-      Math.max(confidence, EXTRACTION_RULES.minConfidence),
-      EXTRACTION_RULES.maxConfidence,
-    );
+  if (typeof confidence === 'number' && Number.isFinite(confidence)) {
+    return Math.min(Math.max(confidence, 0), EXTRACTION_RULES.maxConfidence);
   }
   return EXTRACTION_RULES.defaultConfidence;
 }

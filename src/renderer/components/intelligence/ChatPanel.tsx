@@ -21,6 +21,7 @@ import { useChatScrollController, useAutoSpeak } from '@hooks'
 import { useAgentStore, selectCompressionPhase, selectIsCompacting } from '@intelligence/state/IntelligenceStore'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
 import { knowledgeExtractor } from '@intelligence/runtime/knowledgeService/extractor'
+import { longTermMemoryService } from '@intelligence/runtime/longTermMemoryService'
 import { type Language } from '@renderer/i18n'
 import { toFullPath } from '@shared/toolkit/pathHelper'
 import { isInternalCronCommand } from '@shared/protocols/cronCommandProtocol'
@@ -891,6 +892,12 @@ export default function ChatPanel() {
           .filter(m => m.role === 'user' || m.role === 'assistant')
           .map(m => ({ role: m.role, content: getMessageText(m.content) }))
         knowledgeExtractor.extractFromMessages(convMessages).catch(() => {})
+
+        // 本轮回复中确实用到了先前提供的记忆，才计入有效召回
+        const lastAssistant = [...convMessages].reverse().find(m => m.role === 'assistant')
+        if (lastAssistant?.content) {
+          longTermMemoryService.reinforceFromReply(lastAssistant.content).catch(() => {})
+        }
       }
     })
     return unsub

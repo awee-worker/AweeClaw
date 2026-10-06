@@ -5,6 +5,7 @@
 import { ReactNode, useCallback, useState } from 'react'
 import {
   CATEGORY_META,
+  DOMAIN_META,
   ORIGIN_CHANNEL_META,
   ORIGIN_TRUST_META,
   TIER_META,
@@ -12,6 +13,7 @@ import {
   type MemoryCategory,
   type MemoryTier,
   type MemoryRelationType,
+  type UIDomain,
 } from '../types'
 import type { TrustChannel, TrustLevel } from '@intelligence/types/trustTypes'
 
@@ -383,6 +385,36 @@ export function ErrorState({
         </button>
       )}
     </div>
+  )
+}
+
+// ============ 场景域徽章 ============
+
+export function DomainBadge({
+  domain,
+  size = 'xs',
+}: {
+  domain: UIDomain | null | undefined
+  size?: 'xs' | 'sm'
+}) {
+  if (!domain) return null
+  const meta = DOMAIN_META[domain]
+  if (!meta) return null
+
+  const sizeClass = size === 'xs' ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2 py-0.5'
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded font-medium ${sizeClass}`}
+      style={{
+        backgroundColor: `${meta.color}1A`,
+        color: meta.color,
+        border: `1px dashed ${meta.color}55`,
+      }}
+      title={meta.description}
+    >
+      {meta.label}
+    </span>
   )
 }
 

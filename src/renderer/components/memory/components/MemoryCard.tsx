@@ -7,6 +7,7 @@ import { Check, EyeOff } from 'lucide-react'
 import { useMemoryStore } from '../store'
 import {
   CategoryBadge,
+  DomainBadge,
   TierBadge,
   ImportanceIndicator,
   RetentionIndicator,
@@ -14,7 +15,7 @@ import {
   OriginMarker,
   formatRelativeTime,
 } from './shared'
-import type { AgentMemory } from '../types'
+import { resolveMemoryDomain, type AgentMemory } from '../types'
 
 interface MemoryCardProps {
   memory: AgentMemory
@@ -69,6 +70,7 @@ export function MemoryCard({ memory, selectable = true, compact = false }: Memor
       {/* 头部：分类 + 层级 + 重要性 */}
       <div className="flex items-center gap-1.5 mb-2 flex-wrap">
         <CategoryBadge category={memory.category} size="xs" />
+        <DomainBadge domain={resolveMemoryDomain(memory.tags)} />
         <OriginMarker trust={memory.originTrust} channel={memory.originChannel} />
         <TierBadge tier={memory.tier} size="xs" />
         {!memory.enabled && (
@@ -185,6 +187,7 @@ export function MemoryListItem({ memory }: { memory: AgentMemory }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-0.5">
         <CategoryBadge category={memory.category} size="xs" />
+        <DomainBadge domain={resolveMemoryDomain(memory.tags)} />
         <OriginMarker trust={memory.originTrust} channel={memory.originChannel} />
           <TierBadge tier={memory.tier} size="xs" />
           {!memory.enabled && <EyeOff className="w-3 h-3 text-gray-400" />}

@@ -19,12 +19,14 @@ import {
 import { useMemoryStore } from '../store'
 import {
   CATEGORY_META,
+  DOMAIN_META,
   ORIGIN_CHANNEL_META,
   TIER_META,
   type MemoryCategory,
   type MemoryTier,
   type MemoryViewMode,
   type MemorySortField,
+  type UIDomain,
 } from '../types'
 import type { TrustChannel, TrustLevel } from '@intelligence/types/trustTypes'
 
@@ -98,6 +100,7 @@ export function MemoryToolbar() {
   )
 
   // 切换层级筛选
+  // 切换层级筛选
   const toggleTier = useCallback(
     (tier: MemoryTier) => {
       const current = filter.tiers ?? []
@@ -108,6 +111,19 @@ export function MemoryToolbar() {
       setTimeout(() => fetchMemories(true), 0)
     },
     [filter.tiers, setFilter, fetchMemories],
+  )
+
+  // 切换记忆域筛选
+  const toggleDomain = useCallback(
+    (domain: UIDomain) => {
+      const current = filter.domains ?? []
+      const next = current.includes(domain)
+        ? current.filter((d) => d !== domain)
+        : [...current, domain]
+      setFilter({ domains: next.length > 0 ? next : undefined })
+      setTimeout(() => fetchMemories(true), 0)
+    },
+    [filter.domains, setFilter, fetchMemories],
   )
 
   // 来源信任筛选
@@ -146,6 +162,7 @@ export function MemoryToolbar() {
     !!filter.keyword ||
     (filter.categories && filter.categories.length > 0) ||
     (filter.tiers && filter.tiers.length > 0) ||
+    (filter.domains && filter.domains.length > 0) ||
     filter.minImportance !== undefined ||
     (filter.originTrust !== undefined && filter.originTrust !== 'all') ||
     (filter.originChannel !== undefined && filter.originChannel !== 'all')
@@ -332,6 +349,39 @@ export function MemoryToolbar() {
           </div>
 
           <div className="w-px h-4 bg-border/40" />
+
+          {/* 记忆域筛选：按场景归属过滤，便于核对跨域污染 */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs text-text-muted">场景域：</span>
+            {(Object.entries(DOMAIN_META) as Array<[UIDomain, (typeof DOMAIN_META)[UIDomain]]>).map(
+              ([key, meta]) => {
+                const active = filter.domains?.includes(key) ?? false
+                return (
+                  <button
+                    key={key}
+                    onClick={() => toggleDomain(key)}
+                    className={`text-xs px-2 py-0.5 rounded border transition-all ${
+                      active
+                        ? 'font-medium'
+                        : 'text-text-secondary hover:text-text-primary border-border/40'
+                    }`}
+                    style={
+                      active
+                        ? {
+                            backgroundColor: `${meta.color}20`,
+                            color: meta.color,
+                            borderColor: `${meta.color}40`,
+                          }
+                        : undefined
+                    }
+                    title={meta.description}
+                  >
+                    {meta.label}
+                  </button>
+                )
+              },
+            )}
+          </div>
 
           {/* 来源信任筛选：审计入口，用于找出全部外部来源的记忆 */}
           <div className="flex items-center gap-1.5 flex-wrap">

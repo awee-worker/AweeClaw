@@ -17,51 +17,23 @@ import {
   CloudUpload,
   Info,
   RefreshCw,
+  Share2,
 } from 'lucide-react'
 import { api } from '@renderer/adapters/electronBridge'
 import { memoryApi } from '../api'
+import { partitionEntriesForSync } from '../syncGuard'
 import { TIER_META, type MemoryTier } from '../types'
-
-interface MemorySettings {
-  // 遗忘引擎
-  autoForgettingEnabled: boolean
-  forgettingIntervalHours: number
-  reviewBoostMultiplier: number
-  // 分类
-  autoClassificationEnabled: boolean
-  minClassificationConfidence: number
-  // 隐私
-  shareMemoryForTraining: boolean
-  encryptSensitiveMemory: boolean
-  // 保留策略
-  tierRetentionDays: Record<MemoryTier, number>
-  // 云端同步
-  cloudSyncEnabled: boolean
-  autoSyncOnExit: boolean
-}
-
-const DEFAULT_SETTINGS: MemorySettings = {
-  autoForgettingEnabled: true,
-  forgettingIntervalHours: 24,
-  reviewBoostMultiplier: 1.0,
-  autoClassificationEnabled: true,
-  minClassificationConfidence: 0.6,
-  shareMemoryForTraining: false,
-  encryptSensitiveMemory: true,
-  tierRetentionDays: {
-    permanent: 3650,
-    long_term: 180,
-    short_term: 30,
-    working: 1,
-  },
-  cloudSyncEnabled: false,
-  autoSyncOnExit: false,
-}
+import { longTermMemoryService } from '@intelligence/runtime/longTermMemoryService'
+import {
+  DEFAULT_MEMORY_SETTINGS,
+  invalidateMemorySettings,
+  type MemorySettings,
+} from '@intelligence/runtime/longTermMemoryService/memorySettings'
 
 const STORAGE_KEY = 'memory-settings'
 
 export function MemorySettingsPanel() {
-  const [settings, setSettings] = useState<MemorySettings>(DEFAULT_SETTINGS)
+  const [settings, setSettings] = useState<MemorySettings>(DEFAULT_MEMORY_SETTINGS)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
@@ -69,13 +41,27 @@ export function MemorySettingsPanel() {
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null)
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null)
+  // 记忆关联重建状态
+  const [rebuilding, setRebuilding] = useState(false)
+  const [rebuildMessage, setRebuildMessage] = useState<string | null>(null)
 
   // 加载设置
   useEffect(() => {
+    let effective = DEFAULT_MEMORY_SETTINGS
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
-        setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(saved) })
+        const parsed = JSON.parse(saved) as Partial<MemorySettings>
+        effective = {
+          ...DEFAULT_MEMORY_SETTINGS,
+          ...parsed,
+          // 层次保留天数逐层合并，避免旧配置缺层时被整体覆盖成 undefined
+          tierRetentionDays: {
+            ...DEFAULT_MEMORY_SETTINGS.tierRetentionDays,
+            ...(parsed.tierRetentionDays ?? {}),
+          },
+        }
+        setSettings(effective)
       }
       // 加载上次同步时间
       const lastSync = localStorage.getItem('memory-last-synced-at')
@@ -85,6 +71,8 @@ export function MemorySettingsPanel() {
     } catch (err) {
       console.warn('加载记忆设置失败', err)
     }
+    // 把加密开关同步给主进程：写入记忆时据此决定是否对敏感内容加密
+    void api.memoryDb.setEncryptionEnabled(effective.encryptSensitiveMemory)
   }, [])
 
   const updateSetting = useCallback(<K extends keyof MemorySettings>(
@@ -99,6 +87,10 @@ export function MemorySettingsPanel() {
     setSaving(true)
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+      // 让运行期各消费方（遗忘调度、保留值、分类）重读设置，下一轮即生效
+      invalidateMemorySettings()
+      // 加密开关下发主进程，新写入的记忆立即按新策略处理
+      await api.memoryDb.setEncryptionEnabled(settings.encryptSensitiveMemory)
       setDirty(false)
     } catch (err) {
       console.error('保存设置失败', err)
@@ -108,7 +100,7 @@ export function MemorySettingsPanel() {
   }, [settings])
 
   const handleReset = useCallback(() => {
-    setSettings(DEFAULT_SETTINGS)
+    setSettings(DEFAULT_MEMORY_SETTINGS)
     setDirty(true)
   }, [])
 
@@ -199,6 +191,9 @@ export function MemorySettingsPanel() {
 
   /**
    * 手动推送本地记忆到云端（备份）
+   *
+   * 敏感记忆（正文 / 摘要 / 标签命中敏感规则）在发送前统一拦截：密文只有本机密钥
+   * 能解开、明文更不能出网，因此这类记忆只保留在本机，标记为 local_only 后不再重试。
    */
   const handlePushToCloud = useCallback(async () => {
     setSyncing(true)
@@ -212,28 +207,67 @@ export function MemorySettingsPanel() {
         return
       }
 
-      const userId = localStorage.getItem('current-user-id') || 'default'
-      const result = await memoryApi.sync.push(userId, pending as any)
+      // 同步侧过滤：命中敏感规则的条目就地拦截，保证不明文外发
+      const { syncable, blocked } = partitionEntriesForSync(pending)
 
-      if ('error' in result) {
-        setSyncMessage({ type: 'error', text: `推送失败: ${result.error}` })
-        return
+      // 敏感条目标记为仅本地保留，避免每次同步重复命中
+      for (const entry of blocked) {
+        await api.memoryDb.markAsLocalOnly(entry.id)
       }
 
-      // 标记已同步
-      for (const entry of pending) {
-        await api.memoryDb.markAsSynced(entry.id, entry.id)
+      let pushed = 0
+      if (syncable.length > 0) {
+        const userId = localStorage.getItem('current-user-id') || 'default'
+        const result = await memoryApi.sync.push(userId, syncable as any)
+
+        if ('error' in result) {
+          setSyncMessage({ type: 'error', text: `推送失败: ${result.error}` })
+          return
+        }
+
+        // 标记已同步
+        for (const entry of syncable) {
+          await api.memoryDb.markAsSynced(entry.id, entry.id)
+        }
+        pushed = syncable.length
       }
 
       const now = Date.now()
       setLastSyncedAt(now)
       localStorage.setItem('memory-last-synced-at', String(now))
-      setSyncMessage({ type: 'success', text: `成功推送 ${pending.length} 条记忆到云端` })
+
+      if (blocked.length > 0) {
+        setSyncMessage({
+          type: 'info',
+          text: `已推送 ${pushed} 条；${blocked.length} 条敏感记忆仅保留在本地，未上传`,
+        })
+      } else {
+        setSyncMessage({ type: 'success', text: `成功推送 ${pushed} 条记忆到云端` })
+      }
     } catch (err) {
       console.error('推送记忆到云端失败', err)
       setSyncMessage({ type: 'error', text: `推送失败: ${err instanceof Error ? err.message : String(err)}` })
     } finally {
       setSyncing(false)
+    }
+  }, [])
+
+  /**
+   * 重建全部记忆关联
+   *
+   * 关联在写入时自动生成，早于该机制的存量记忆没有边；
+   * 这里重算一遍，让历史记忆也获得关联。
+   */
+  const handleRebuildRelations = useCallback(async () => {
+    setRebuilding(true)
+    setRebuildMessage(null)
+    try {
+      const count = await longTermMemoryService.rebuildAllRelations()
+      setRebuildMessage(`已完成，处理 ${count} 条关联`)
+    } catch (err) {
+      setRebuildMessage(`重建失败：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setRebuilding(false)
     }
   }, [])
 
@@ -322,6 +356,11 @@ export function MemorySettingsPanel() {
       {/* 保留策略 */}
       <SettingsSection title="保留策略" icon={<Clock className="w-4 h-4" />}>
         <div className="space-y-2">
+          <p className="text-[10px] text-text-muted leading-relaxed">
+            超过对应天数且长期未被召回的条目，会在记忆巩固时被遗忘或降级，0 表示不过期。
+            层级归属：用户显式要求记住的长期记忆算「永久」，其余长期记忆算「长期」，
+            被召回过的短期记忆算「短期」，从未被召回的短期残留算「工作记忆」。
+          </p>
           {(Object.keys(settings.tierRetentionDays) as MemoryTier[]).map((tier) => {
             const meta = TIER_META[tier]
             return (
@@ -356,14 +395,47 @@ export function MemorySettingsPanel() {
         </div>
       </SettingsSection>
 
+      {/* 记忆关联 */}
+      <SettingsSection title="记忆关联" icon={<Share2 className="w-4 h-4" />}>
+        <div className="space-y-2">
+          <p className="text-[10px] text-text-muted leading-relaxed">
+            关联在记忆写入时自动建立。重建会按内容相似度、场景域与时间邻近重算一遍，
+            让历史记忆也获得关联（重复执行不会产生重复关联）。
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRebuildRelations}
+              disabled={rebuilding}
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                rebuilding
+                  ? 'text-text-muted bg-surface-hover cursor-not-allowed'
+                  : 'text-white bg-accent hover:bg-accent/90'
+              }`}
+            >
+              <Share2 className="w-3 h-3" />
+              {rebuilding ? '重建中...' : '重建记忆关联'}
+            </button>
+            {rebuildMessage && (
+              <span className="text-[10px] text-text-muted">{rebuildMessage}</span>
+            )}
+          </div>
+        </div>
+      </SettingsSection>
+
       {/* 隐私设置 */}
       <SettingsSection title="隐私与安全" icon={<Shield className="w-4 h-4" />}>
         <ToggleRow
           label="加密敏感记忆"
-          description="对标记为敏感的记忆内容进行加密存储"
+          description="对识别为敏感的记忆（身份证、银行卡、手机号、密钥等）加密后存入本地数据库"
           checked={settings.encryptSensitiveMemory}
           onChange={(v) => updateSetting('encryptSensitiveMemory', v)}
         />
+        <div className="flex items-start gap-2 p-2.5 rounded-lg bg-surface-hover/30 border border-border/30">
+          <Shield className="w-3.5 h-3.5 text-text-muted shrink-0 mt-0.5" />
+          <div className="text-[10px] text-text-secondary leading-relaxed">
+            命中敏感规则（身份证、银行卡、手机号、密钥等）的记忆在同步时会被拦截，仅保存在本机，不会以明文上传云端。
+          </div>
+        </div>
         <ToggleRow
           label="共享记忆用于训练"
           description="允许使用你的记忆数据改进 AI 模型（默认关闭）"

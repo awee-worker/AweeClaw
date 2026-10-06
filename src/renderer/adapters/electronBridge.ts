@@ -273,12 +273,15 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   memoryDbSetSyncState: (key: string, value: string) => Promise<{ success: boolean; error?: string }>
   memoryDbGetPendingPush: (limit?: number) => Promise<any[]>
   memoryDbMarkAsSynced: (id: string, remoteId: string) => Promise<{ success: boolean; error?: string }>
+  memoryDbMarkAsLocalOnly: (id: string) => Promise<{ success: boolean; error?: string }>
+  memoryDbCountLocalOnly: (userId?: string | null) => Promise<number>
   memoryDbMigrateFromJsonStore: (store: any) => Promise<{ success: boolean; migrated: number; skipped: number; error?: string }>
   memoryDbUpsertContradiction: (record: any) => Promise<{ success: boolean; error?: string }>
   memoryDbGetContradictionsByEntry: (entryId: string) => Promise<any[]>
   memoryDbGetAllContradictions: (limit?: number) => Promise<any[]>
   memoryDbGetOriginStats: () => Promise<{ byTrust: Array<{ trust: string; count: number }>; byChannel: Array<{ channel: string; count: number }> }>
   memoryDbGetPath: () => Promise<string>
+  memoryDbSetEncryptionEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>
 
   // Group Memory (P1-3 群聊长期记忆)
   groupMemoryGetConfig: () => Promise<{ success: boolean; config: any; error?: string }>

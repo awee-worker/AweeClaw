@@ -518,7 +518,7 @@ export const memoryVisualizationApi = {
         tier: r.tier as MemoryTier,
         importance: r.importance,
         createdAt: new Date(r.created_at).toISOString(),
-        tags: [],
+        tags: typeof r.tags === 'string' ? JSON.parse(r.tags || '[]') : (r.tags ?? []),
       })),
       monthTotal: data.monthTotal,
       hasPrev: data.hasPrev,
@@ -579,26 +579,73 @@ export const memoryVisualizationApi = {
 
 // ============ 关联管理 ============
 
+/** SQLite 关联行 → 前端 MemoryRelation */
+function rowToRelation(row: any): MemoryRelation {
+  return {
+    id: row.id,
+    sourceMemoryId: row.source_memory_id,
+    targetMemoryId: row.target_memory_id,
+    relationType: row.relation_type as MemoryRelationType,
+    weight: row.weight,
+    createdAt: new Date(row.created_at).toISOString(),
+  }
+}
+
 export const memoryRelationApi = {
-  /** 创建关联 */
+  /**
+   * 创建关联（本地 SQLite）
+   *
+   * 关联 id 由源/目标/类型拼成，重复创建时按主键冲突更新，天然幂等。
+   */
   async create(body: {
     sourceMemoryId: string
     targetMemoryId: string
     relationType: MemoryRelationType
     weight?: number
   }): Promise<MemoryRelation | { error: string }> {
-    return backendApi.post<MemoryRelation>(`${BASE}/relations`, body)
+    await api.memoryDb.initialize()
+    const weight = body.weight ?? 0.5
+    const id = `${body.sourceMemoryId}::${body.targetMemoryId}::${body.relationType}`
+    const result = await api.memoryDb.upsertRelation({
+      id,
+      source_memory_id: body.sourceMemoryId,
+      target_memory_id: body.targetMemoryId,
+      relation_type: body.relationType,
+      weight,
+      created_at: Date.now(),
+      sync_status: 'local',
+    })
+    if (!result.success) return { error: result.error || '创建关联失败' }
+    return {
+      id,
+      sourceMemoryId: body.sourceMemoryId,
+      targetMemoryId: body.targetMemoryId,
+      relationType: body.relationType,
+      weight,
+      createdAt: new Date().toISOString(),
+    }
   },
 
-  /** 获取记忆的所有关联 */
+  /**
+   * 获取记忆的所有关联（本地 SQLite）
+   *
+   * 关联由客户端写入时自动生成并存在本地库，走后端接口读不到，
+   * 因此这里与记忆列表保持同一数据源。
+   */
   async list(memoryId: string, relationType?: MemoryRelationType): Promise<MemoryRelation[]> {
-    const qs = relationType ? `?relationType=${relationType}` : ''
-    return backendApi.get<MemoryRelation[]>(`${BASE}/relations/${memoryId}${qs}`)
+    await api.memoryDb.initialize()
+    const rows = await api.memoryDb.getRelations(memoryId)
+    const relations = (rows ?? []).map(rowToRelation)
+    return relationType ? relations.filter(r => r.relationType === relationType) : relations
   },
 
-  /** 删除关联 */
+  /** 删除关联（本地 SQLite） */
   async delete(relationId: string): Promise<{ success: boolean; message: string } | { error: string }> {
-    return backendApi.delete(`${BASE}/relations/${relationId}`)
+    await api.memoryDb.initialize()
+    const result = await api.memoryDb.deleteRelation(relationId)
+    return result.success
+      ? { success: true, message: '已删除关联' }
+      : { error: result.error || '删除关联失败' }
   },
 }
 

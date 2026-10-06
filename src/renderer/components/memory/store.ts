@@ -135,6 +135,15 @@ interface MemoryState {
   reset: () => void
 }
 
+/** 合并标签与记忆域筛选，转成 SQL 层可用的标签列表 */
+function buildTagFilter(filter: MemoryFilter): string[] | undefined {
+  const tags = [...(filter.tags ?? [])]
+  for (const domain of filter.domains ?? []) {
+    tags.push(`domain:${domain}`)
+  }
+  return tags.length > 0 ? tags : undefined
+}
+
 const defaultFilter: MemoryFilter = {
   enabledOnly: true,
   // 来源筛选默认不生效：存量记忆没有来源信息，默认过滤会让列表看起来是空的
@@ -214,7 +223,7 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
         keyword: filter.keyword,
         categories: filter.categories && filter.categories.length > 0 ? filter.categories : undefined,
         tiers: filter.tiers && filter.tiers.length > 0 ? filter.tiers : undefined,
-        tags: filter.tags && filter.tags.length > 0 ? filter.tags : undefined,
+        tags: buildTagFilter(filter),
         dateFrom: filter.dateFrom ? new Date(filter.dateFrom).getTime() : undefined,
         dateTo: filter.dateTo ? new Date(filter.dateTo).getTime() : undefined,
         minImportance: filter.minImportance,

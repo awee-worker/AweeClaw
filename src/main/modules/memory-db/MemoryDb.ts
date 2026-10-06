@@ -23,6 +23,7 @@ import { logger } from '@shared/toolkit/LogEngine'
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
+import { protectMemoryContent, revealMemoryContent } from './memoryEncryption'
 
 // ============================================
 // 类型定义
@@ -69,7 +70,7 @@ export interface MemoryEntryRow {
   origin_channel: string | null
   evidence: string | null
   // 同步字段
-  sync_status: string // local | synced | pending_push | pending_pull
+  sync_status: string // local | synced | pending_push | pending_pull | local_only
   remote_id: string | null
   last_synced_at: number | null
 }
@@ -479,6 +480,22 @@ export class MemoryDb {
   // 记忆条目 CRUD
   // ============================================
 
+  /**
+   * 读取单行时还原敏感内容。
+   *
+   * 敏感记忆以密文落库，凡是要把行数据交给上层（渲染进程 / 同步）的地方都要
+   * 先用这里还原成明文，避免界面与检索拿到密文。
+   */
+  private revealRow<T extends { content?: string | null }>(row: T): T {
+    if (!row || typeof row.content !== 'string') return row
+    const revealed = revealMemoryContent(row.content)
+    return revealed === row.content ? row : { ...row, content: revealed }
+  }
+
+  private revealRows<T extends { content?: string | null }>(rows: T[]): T[] {
+    return rows.map((row) => this.revealRow(row))
+  }
+
   /** 插入或更新记忆条目 */
   upsertEntry(entry: Partial<MemoryEntryRow> & { id: string }): void {
     const now = Date.now()
@@ -538,7 +555,8 @@ export class MemoryDb {
       user_id: entry.user_id ?? null,
       conversation_id: entry.conversation_id ?? null,
       type: entry.type ?? 'SHORT_TERM',
-      content: entry.content ?? '',
+      // 命中敏感规则的记忆以密文落库（开关关闭或非敏感时原样写入）
+      content: protectMemoryContent(entry.content ?? '', entry.tags),
       summary: entry.summary ?? null,
       importance: entry.importance ?? 0.5,
       access_count: entry.access_count ?? 0,
@@ -589,7 +607,7 @@ export class MemoryDb {
   /** 根据 ID 获取记忆 */
   getEntryById(id: string): MemoryEntryRow | null {
     const row = this.db.prepare('SELECT * FROM memory_entry WHERE id = ?').get(id) as MemoryEntryRow | undefined
-    return row ?? null
+    return row ? this.revealRow(row) : null
   }
 
   /** 获取记忆列表（支持筛选、排序、分页） */
@@ -649,10 +667,8 @@ export class MemoryDb {
       where.push('type = ?')
       params.push(options.type)
     }
-    if (options.keyword) {
-      where.push('(content LIKE ? OR summary LIKE ?)')
-      params.push(`%${options.keyword}%`, `%${options.keyword}%`)
-    }
+    // 关键词不进 SQL：敏感记忆以密文落库，content LIKE 命中不了密文，
+    // 统一在下方按解密后的明文过滤（并据此完成分页）。
     // 多标签（JSON 数组 LIKE 匹配）
     if (options.tags && options.tags.length > 0) {
       const tagClauses = options.tags.map(() => 'tags LIKE ?').join(' OR ')
@@ -697,6 +713,27 @@ export class MemoryDb {
     const limit = Math.min(options.limit ?? 20, 100)
     const offset = options.offset ?? 0
 
+    // 关键词检索：先按其余条件取候选，解密后在明文上做包含匹配，再切片分页
+    if (options.keyword) {
+      const rows = this.db.prepare(
+        `SELECT * FROM memory_entry ${whereClause} ORDER BY ${sortField} ${sortOrder}`
+      ).all(...params) as MemoryEntryRow[]
+
+      const needle = options.keyword.toLowerCase()
+      const matched = rows.filter((row) => {
+        const content = revealMemoryContent(row.content ?? '')
+        return (
+          content.toLowerCase().includes(needle) ||
+          (row.summary ?? '').toLowerCase().includes(needle)
+        )
+      })
+
+      return {
+        items: this.revealRows(matched.slice(offset, offset + limit)),
+        total: matched.length,
+      }
+    }
+
     const items = this.db.prepare(
       `SELECT * FROM memory_entry ${whereClause} ORDER BY ${sortField} ${sortOrder} LIMIT ? OFFSET ?`
     ).all(...params, limit, offset) as MemoryEntryRow[]
@@ -705,7 +742,7 @@ export class MemoryDb {
       `SELECT COUNT(*) as count FROM memory_entry ${whereClause}`
     ).get(...params) as { count: number }
 
-    return { items, total: totalRow.count }
+    return { items: this.revealRows(items), total: totalRow.count }
   }
 
   /** 更新记忆条目（部分字段） */
@@ -723,10 +760,14 @@ export class MemoryDb {
     const setClauses: string[] = []
     const params: any[] = []
     for (const field of allowedFields) {
-      if (updates[field] !== undefined) {
-        setClauses.push(`${field} = ?`)
-        params.push(updates[field])
-      }
+      if (updates[field] === undefined) continue
+      // 内容字段按同一套敏感规则加密，避免更新路径绕过写入时的加密
+      const value =
+        field === 'content'
+          ? protectMemoryContent(String(updates[field] ?? ''), updates.tags)
+          : updates[field]
+      setClauses.push(`${field} = ?`)
+      params.push(value)
     }
 
     if (setClauses.length === 0) return false
@@ -1023,7 +1064,8 @@ export class MemoryDb {
       sample_score: number
     }>
 
-    const nodes = rows.map((r) => ({
+    // 图谱标签取自内容，先解密再截取
+    const nodes = this.revealRows(rows).map((r) => ({
       id: r.id,
       label: r.summary || r.content.slice(0, 30),
       category: r.category ?? 'UNCATEGORIZED',
@@ -1130,7 +1172,7 @@ export class MemoryDb {
     const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
     const limit = Math.min(options.limit ?? 50, 200)
 
-    return this.db.prepare(
+    const rows = this.db.prepare(
       `SELECT id, content, summary, category, tier, importance, created_at
        FROM memory_entry ${whereClause}
        ORDER BY created_at DESC
@@ -1144,6 +1186,8 @@ export class MemoryDb {
       importance: number
       created_at: number
     }>
+
+    return this.revealRows(rows)
   }
 
   /**
@@ -1168,6 +1212,7 @@ export class MemoryDb {
       category: string | null
       tier: string
       importance: number
+      tags: string
       created_at: number
     }>
     monthTotal: number
@@ -1200,7 +1245,7 @@ export class MemoryDb {
     const limit = Math.min(options.limit ?? 500, 1000)
 
     const items = this.db.prepare(
-      `SELECT id, content, summary, category, tier, importance, created_at
+      `SELECT id, content, summary, category, tier, importance, tags, created_at
        FROM memory_entry ${whereClause}
        ORDER BY created_at DESC
        LIMIT ?`
@@ -1211,6 +1256,7 @@ export class MemoryDb {
       category: string | null
       tier: string
       importance: number
+      tags: string
       created_at: number
     }>
 
@@ -1251,7 +1297,7 @@ export class MemoryDb {
     ).get(...nextParams)
 
     return {
-      items,
+      items: this.revealRows(items),
       monthTotal: totalRow.count,
       hasPrev: !!prevRow,
       hasNext: !!nextRow,
@@ -1438,9 +1484,10 @@ export class MemoryDb {
 
   /** 获取待推送的记忆（sync_status = pending_push） */
   getPendingPushEntries(limit = 100): MemoryEntryRow[] {
-    return this.db.prepare(
+    const rows = this.db.prepare(
       'SELECT * FROM memory_entry WHERE sync_status = ? LIMIT ?'
     ).all('pending_push', limit) as MemoryEntryRow[]
+    return this.revealRows(rows)
   }
 
   /** 标记记忆为已同步 */
@@ -1448,6 +1495,28 @@ export class MemoryDb {
     this.db.prepare(
       'UPDATE memory_entry SET sync_status = ?, remote_id = ?, last_synced_at = ? WHERE id = ?'
     ).run('synced', remoteId, Date.now(), id)
+  }
+
+  /**
+   * 标记记忆为仅本地保留。
+   * 用于命中敏感规则、不允许明文外发的记忆：不进待推送集合，也不会被反复重试。
+   */
+  markAsLocalOnly(id: string): void {
+    this.db.prepare(
+      'UPDATE memory_entry SET sync_status = ?, updated_at = ? WHERE id = ?'
+    ).run('local_only', Date.now(), id)
+  }
+
+  /** 统计仅本地保留的记忆条数 */
+  countLocalOnly(userId?: string | null): number {
+    const row = userId
+      ? (this.db.prepare(
+          'SELECT COUNT(*) as count FROM memory_entry WHERE sync_status = ? AND user_id = ?'
+        ).get('local_only', userId) as { count: number } | undefined)
+      : (this.db.prepare(
+          'SELECT COUNT(*) as count FROM memory_entry WHERE sync_status = ?'
+        ).get('local_only') as { count: number } | undefined)
+    return row?.count ?? 0
   }
 
   // ============================================

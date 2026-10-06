@@ -19,16 +19,20 @@
  * - memory-db:setSyncState         — 设置同步状态
  * - memory-db:getPendingPush       — 获取待推送的记忆
  * - memory-db:markAsSynced         — 标记记忆为已同步
+ * - memory-db:markAsLocalOnly      — 标记记忆为仅本地保留（命中敏感规则，不外发）
+ * - memory-db:countLocalOnly       — 统计仅本地保留的记忆条数
  * - memory-db:migrateFromJsonStore — 从旧 JSON store 迁移数据
  * - memory-db:upsertContradiction  — 写入矛盾记录
  * - memory-db:getContradictionsByEntry — 查询某条记忆参与的矛盾记录
  * - memory-db:getAllContradictions — 查询全部矛盾记录
  * - memory-db:getPath              — 获取数据库文件路径
+ * - memory-db:setEncryptionEnabled — 同步敏感记忆加密开关
  */
 
 import { logger } from '@shared/toolkit/LogEngine'
 import { safeIpcHandle } from '../core/ipcGuard'
 import { MemoryDb } from '../../modules/memory-db'
+import { setEncryptionEnabled } from '../../modules/memory-db/memoryEncryption'
 
 // ============================================
 // IPC Handlers
@@ -44,6 +48,17 @@ export function registerMemoryDbIpcHandlers(): void {
       return { success: true, dbPath: db.getDbPath() }
     } catch (err) {
       logger.agent.error('[MemoryDb] Initialize failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // 同步「敏感记忆加密」开关（决定写入时是否加密）
+  safeIpcHandle('memory-db:setEncryptionEnabled', async (_event, enabled: boolean) => {
+    try {
+      setEncryptionEnabled(!!enabled)
+      return { success: true }
+    } catch (err) {
+      logger.agent.error('[MemoryDb] SetEncryptionEnabled failed:', err)
       return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
@@ -273,6 +288,27 @@ export function registerMemoryDbIpcHandlers(): void {
     } catch (err) {
       logger.agent.error('[MemoryDb] MarkAsSynced failed:', err)
       return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // 标记记忆为仅本地保留（敏感内容不外发）
+  safeIpcHandle('memory-db:markAsLocalOnly', async (_event, id: string) => {
+    try {
+      db.markAsLocalOnly(id)
+      return { success: true }
+    } catch (err) {
+      logger.agent.error('[MemoryDb] MarkAsLocalOnly failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // 统计仅本地保留的记忆条数
+  safeIpcHandle('memory-db:countLocalOnly', async (_event, userId?: string | null) => {
+    try {
+      return db.countLocalOnly(userId)
+    } catch (err) {
+      logger.agent.error('[MemoryDb] CountLocalOnly failed:', err)
+      return 0
     }
   })
 

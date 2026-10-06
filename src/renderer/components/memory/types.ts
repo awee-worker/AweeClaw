@@ -265,6 +265,9 @@ export interface SpatialContext {
 
 export type MemoryViewMode = 'list' | 'grid' | 'timeline' | 'graph' | '3d'
 
+/** 记忆所属场景域（与场景模式的 memoryDomainTag 对应） */
+export type UIDomain = 'work' | 'life' | 'study' | 'dev' | 'shared'
+
 export type MemorySortField =
   | 'createdAt'
   | 'updatedAt'
@@ -278,6 +281,8 @@ export interface MemoryFilter {
   tiers?: MemoryTier[]
   types?: MemoryType[]
   tags?: string[]
+  /** 记忆域筛选（work/life/study/dev/shared） */
+  domains?: UIDomain[]
   dateFrom?: string
   dateTo?: string
   minImportance?: number
@@ -388,4 +393,26 @@ export const RELATION_TYPE_META: Record<
   semantic: { label: '语义', labelEn: 'Semantic', color: '#8B5CF6' },
   contrast: { label: '对比', labelEn: 'Contrast', color: '#F59E0B' },
   extension: { label: '延伸', labelEn: 'Extension', color: '#EC4899' },
+}
+
+export const DOMAIN_META: Record<
+  UIDomain,
+  { label: string; labelEn: string; color: string; description: string }
+> = {
+  work: { label: '日常办公', labelEn: 'Work', color: '#3B82F6', description: '工作场景的记忆域' },
+  life: { label: '生活陪伴', labelEn: 'Life', color: '#10B981', description: '生活场景的记忆域' },
+  study: { label: '学习探索', labelEn: 'Study', color: '#F59E0B', description: '学习场景的记忆域' },
+  dev: { label: '代码开发', labelEn: 'Dev', color: '#8B5CF6', description: '开发场景的记忆域' },
+  shared: { label: '共享', labelEn: 'Shared', color: '#6B7280', description: '所有场景共用的记忆域' },
+}
+
+/** 从标签中解析记忆所属场景域 */
+export function resolveMemoryDomain(tags?: string[] | null): UIDomain | null {
+  if (!tags || tags.length === 0) return null
+  const tag = tags.find(t => t.startsWith('domain:'))
+  if (!tag) return null
+  const value = tag.slice('domain:'.length)
+  return (['work', 'life', 'study', 'dev', 'shared'] as UIDomain[]).includes(value as UIDomain)
+    ? (value as UIDomain)
+    : null
 }

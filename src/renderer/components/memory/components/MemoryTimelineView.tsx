@@ -13,12 +13,16 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { Clock, ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
 import { memoryApi } from '../api'
 import { useMemoryStore } from '../store'
-import { CATEGORY_META, type MemoryCategory, type TimelineItem } from '../types'
-import { CategoryBadge, TierBadge, ImportanceIndicator, EmptyState, LoadingState } from './shared'
+import { CATEGORY_META, resolveMemoryDomain, type MemoryCategory, type TimelineItem } from '../types'
+import { CategoryBadge, DomainBadge, TierBadge, ImportanceIndicator, EmptyState, LoadingState } from './shared'
 
-// 虚拟滚动参数
-const ITEM_HEIGHT = 88 // 单条记忆卡片预估高度
-const OVERSCAN = 5 // 上下额外渲染的条数
+// 虚拟滚动参数（行高以实际测量值为准，可变高度不再按固定值估算）
+const GROUP_HEADER_HEIGHT = 40
+const ITEM_ESTIMATED_HEIGHT = 88
+const OVERSCAN = 6
+// 统一左基准：中轴线与卡片内容各自的对齐位（避免中轴、节点、卡片三套基准错位）
+const TIMELINE_TILE_LEFT = 16
+const TIMELINE_CARD_LEFT = 44
 
 interface MonthData {
   items: TimelineItem[]
@@ -27,6 +31,16 @@ interface MonthData {
   hasNext: boolean
   year: number
   month: number
+}
+
+interface VirtualRow {
+  type: 'group' | 'item'
+  key: string
+  dateKey?: string
+  items?: TimelineItem[]
+  item?: TimelineItem
+  offsetTop: number
+  height: number
 }
 
 export function MemoryTimelineView() {
@@ -39,7 +53,13 @@ export function MemoryTimelineView() {
   // 虚拟滚动状态
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(600)
+  // 已测量行高（key → px）：未测量的行先用预估高度，渲染后由 ResizeObserver 回写真实高度
+  const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>({})
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const rowRefs = useRef(new Map<string, HTMLDivElement>())
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
+  const rafRef = useRef<number | null>(null)
+  const pendingScrollTop = useRef(0)
 
   // 加载月份列表
   useEffect(() => {
@@ -59,7 +79,8 @@ export function MemoryTimelineView() {
         limit: 1000,
       })
       setMonthData(data)
-      // 重置滚动位置
+      // 换月后旧行高缓存失效，重置滚动位置与测量结果
+      setMeasuredHeights({})
       setScrollTop(0)
       if (scrollContainerRef.current) {
         scrollContainerRef.current.scrollTop = 0
@@ -89,6 +110,49 @@ export function MemoryTimelineView() {
     return () => observer.disconnect()
   }, [])
 
+  // 行高测量：行元素尺寸变化时回写真实高度（bounds 含内边距）
+  useEffect(() => {
+    const observer = new ResizeObserver((entries) => {
+      setMeasuredHeights((prev) => {
+        let changed = false
+        const next = { ...prev }
+        for (const entry of entries) {
+          const key = (entry.target as HTMLElement).dataset.rowKey
+          if (!key) continue
+          const height = Math.ceil((entry.target as HTMLElement).getBoundingClientRect().height)
+          if (height > 0 && next[key] !== height) {
+            next[key] = height
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+    })
+    resizeObserverRef.current = observer
+    rowRefs.current.forEach((el) => observer.observe(el))
+    return () => {
+      observer.disconnect()
+      resizeObserverRef.current = null
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+    }
+  }, [])
+
+  // 行元素引用登记：进入可视区时纳入观察，移出后解除
+  const registerRow = useCallback((key: string) => (el: HTMLDivElement | null) => {
+    const map = rowRefs.current
+    const prev = map.get(key)
+    if (prev && prev !== el) resizeObserverRef.current?.unobserve(prev)
+    if (el) {
+      map.set(key, el)
+      resizeObserverRef.current?.observe(el)
+    } else {
+      map.delete(key)
+    }
+  }, [])
+
   // 按日期分组
   const groupedTimeline = useMemo(() => {
     if (!monthData) return []
@@ -106,57 +170,55 @@ export function MemoryTimelineView() {
     return Array.from(groups.entries()).sort(([a], [b]) => b.localeCompare(a))
   }, [monthData])
 
-  // 虚拟滚动计算
-  const virtualItems = useMemo(() => {
-    const result: Array<{
-      type: 'group' | 'item'
-      key: string
-      dateKey?: string
-      items?: TimelineItem[]
-      item?: TimelineItem
-      offsetTop: number
-      height: number
-    }> = []
-
+  // 布局计算：按「已测量高度优先、预估高度兜底」累加每一行的偏移量
+  const virtualItems = useMemo<VirtualRow[]>(() => {
+    const rows: VirtualRow[] = []
     let offsetTop = 0
-    for (const [dateKey, items] of groupedTimeline) {
-      // 分组标题高度
-      const groupHeaderHeight = 40
-      result.push({
-        type: 'group',
-        key: `group-${dateKey}`,
-        dateKey,
-        items,
-        offsetTop,
-        height: groupHeaderHeight,
-      })
-      offsetTop += groupHeaderHeight
 
-      // 每条记忆
+    for (const [dateKey, items] of groupedTimeline) {
+      const groupKey = `group-${dateKey}`
+      const groupHeight = measuredHeights[groupKey] ?? GROUP_HEADER_HEIGHT
+      rows.push({ type: 'group', key: groupKey, dateKey, items, offsetTop, height: groupHeight })
+      offsetTop += groupHeight
+
       for (const item of items) {
-        result.push({
-          type: 'item',
-          key: `item-${item.id}`,
-          item,
-          offsetTop,
-          height: ITEM_HEIGHT,
-        })
-        offsetTop += ITEM_HEIGHT
+        const itemKey = `item-${item.id}`
+        const itemHeight = measuredHeights[itemKey] ?? ITEM_ESTIMATED_HEIGHT
+        rows.push({ type: 'item', key: itemKey, item, offsetTop, height: itemHeight })
+        offsetTop += itemHeight
       }
     }
 
-    return result
-  }, [groupedTimeline])
+    return rows
+  }, [groupedTimeline, measuredHeights])
 
-  // 计算可见范围
+  // 可见范围：按真实 offsetTop 二分定位，取代「scrollTop / 固定行高」的整除换算
   const visibleRange = useMemo(() => {
-    const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN)
-    const endIndex = Math.min(
-      virtualItems.length,
-      Math.ceil((scrollTop + viewportHeight) / ITEM_HEIGHT) + OVERSCAN,
-    )
-    return { startIndex, endIndex }
-  }, [scrollTop, viewportHeight, virtualItems.length])
+    const total = virtualItems.length
+    if (total === 0) return { startIndex: 0, endIndex: 0 }
+
+    const firstRowAfter = (y: number): number => {
+      let lo = 0
+      let hi = total - 1
+      let ans = total - 1
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1
+        const row = virtualItems[mid]
+        if (row.offsetTop + row.height > y) {
+          ans = mid
+          hi = mid - 1
+        } else {
+          lo = mid + 1
+        }
+      }
+      return ans
+    }
+
+    const bottom = scrollTop + viewportHeight
+    const startIndex = Math.max(0, firstRowAfter(scrollTop) - OVERSCAN)
+    const endIndex = Math.min(total, firstRowAfter(bottom) + OVERSCAN + 1)
+    return { startIndex, endIndex: Math.max(startIndex + 1, endIndex) }
+  }, [scrollTop, viewportHeight, virtualItems])
 
   const totalHeight = virtualItems.length > 0
     ? virtualItems[virtualItems.length - 1].offsetTop + virtualItems[virtualItems.length - 1].height
@@ -167,8 +229,14 @@ export function MemoryTimelineView() {
     setShowDetailPanel(true)
   }, [fetchMemoryDetail, setShowDetailPanel])
 
+  // 滚动事件用 rAF 节流，避免每帧触发一次 setState
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    setScrollTop(e.currentTarget.scrollTop)
+    pendingScrollTop.current = e.currentTarget.scrollTop
+    if (rafRef.current !== null) return
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null
+      setScrollTop(pendingScrollTop.current)
+    })
   }, [])
 
   const handlePrevMonth = () => {
@@ -255,38 +323,31 @@ export function MemoryTimelineView() {
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto no-scrollbar p-4"
+          className="flex-1 overflow-y-auto no-scrollbar px-4 py-2"
         >
           <div className="relative max-w-3xl mx-auto" style={{ height: totalHeight }}>
             {/* 中轴线 */}
-            <div className="absolute left-4 top-0 bottom-0 w-px bg-border/40" />
+            <div
+              className="absolute top-0 bottom-0 w-px bg-border/40"
+              style={{ left: TIMELINE_TILE_LEFT }}
+            />
 
-            {/* 虚拟滚动渲染 */}
-            {virtualItems.slice(visibleRange.startIndex, visibleRange.endIndex).map((vi) => {
-              if (vi.type === 'group' && vi.dateKey && vi.items) {
-                return (
-                  <div
-                    key={vi.key}
-                    className="absolute left-0 right-0"
-                    style={{ top: vi.offsetTop, height: vi.height }}
-                  >
-                    <TimelineGroupHeader dateKey={vi.dateKey} count={vi.items.length} />
-                  </div>
-                )
-              }
-              if (vi.type === 'item' && vi.item) {
-                return (
-                  <div
-                    key={vi.key}
-                    className="absolute left-0 right-0"
-                    style={{ top: vi.offsetTop, height: vi.height }}
-                  >
-                    <TimelineItemCard item={vi.item} onClick={() => handleItemClick(vi.item!)} />
-                  </div>
-                )
-              }
-              return null
-            })}
+            {/* 虚拟滚动渲染：仅挂载可视区内的行 */}
+            {virtualItems.slice(visibleRange.startIndex, visibleRange.endIndex).map((row) => (
+              <div
+                key={row.key}
+                ref={registerRow(row.key)}
+                data-row-key={row.key}
+                className="absolute left-0 right-0 pb-2"
+                style={{ top: row.offsetTop, minHeight: row.height }}
+              >
+                {row.type === 'group' && row.dateKey && row.items ? (
+                  <TimelineGroupHeader dateKey={row.dateKey} count={row.items.length} />
+                ) : row.type === 'item' && row.item ? (
+                  <TimelineItemCard item={row.item} onClick={() => handleItemClick(row.item!)} />
+                ) : null}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -352,8 +413,14 @@ function TimelineGroupHeader({
 }) {
   const dateLabel = formatDateLabel(dateKey)
   return (
-    <div className="flex items-center gap-2 ml-10 h-10">
-      <div className="absolute left-4 w-2 h-2 rounded-full bg-accent -translate-x-1/2 ring-4 ring-bg-base" />
+    <div
+      className="relative flex items-center gap-2 h-10"
+      style={{ paddingLeft: TIMELINE_CARD_LEFT }}
+    >
+      <div
+        className="absolute top-1/2 w-2.5 h-2.5 rounded-full bg-accent ring-4 ring-bg-base"
+        style={{ left: TIMELINE_TILE_LEFT, transform: 'translate(-50%, -50%)' }}
+      />
       <span className="text-sm font-medium text-text-primary">{dateLabel}</span>
       <span className="text-xs text-text-muted">({count})</span>
     </div>
@@ -377,12 +444,17 @@ function TimelineItemCard({
   return (
     <div
       onClick={onClick}
-      className="relative pl-6 pr-3 py-2.5 rounded-lg border border-border/30 bg-surface/40 hover:bg-surface-hover/30 hover:border-border/60 transition-all cursor-pointer group"
+      className="relative pr-3 py-2.5 rounded-lg border border-border/30 bg-surface/40 hover:bg-surface-hover/30 hover:border-border/60 transition-all cursor-pointer group"
+      style={{ marginLeft: TIMELINE_CARD_LEFT }}
     >
-      {/* 时间线连接点 */}
+      {/* 时间线连接点：与中轴线对齐 */}
       <div
-        className="absolute left-0 top-1/2 -translate-x-[18px] -translate-y-1/2 w-2 h-2 rounded-full ring-2 ring-bg-base"
-        style={{ backgroundColor: meta.color }}
+        className="absolute top-1/2 w-2 h-2 rounded-full ring-2 ring-bg-base"
+        style={{
+          left: TIMELINE_TILE_LEFT - TIMELINE_CARD_LEFT,
+          transform: 'translate(-50%, -50%)',
+          backgroundColor: meta.color,
+        }}
       />
 
       <div className="flex items-start gap-2">
@@ -398,6 +470,7 @@ function TimelineItemCard({
           )}
           <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
             <CategoryBadge category={item.category} size="xs" />
+            <DomainBadge domain={resolveMemoryDomain(item.tags)} />
             <TierBadge tier={item.tier} size="xs" />
             <ImportanceIndicator importance={item.importance} />
             {item.tags.slice(0, 2).map((tag) => (
