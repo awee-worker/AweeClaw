@@ -86,6 +86,32 @@ export function createStreamProcessor(
   let filteredToolMarkupBuffer = ''
   let pendingToolCallAvailableCount = 0
 
+  /**
+   * 本轮声明过流式预览的工具 id。
+   *
+   * 预览在 tool_call_start 时创建，正常路径由工具编排在开始执行时清除。但流在收尾
+   * 前报错、被中止，或模型声明了调用却没给出最终参数时，条目会一直留在
+   * toolStreamingPreviews 里 —— 消息末位常驻一张永远 pending 的卡片（用户看到的
+   * 「一直显示读取中」），其扫光动画还会让渲染进程回不到空闲帧。流收尾时按这份
+   * 清单把未落定的条目清掉。
+   */
+  const declaredPreviewIds = new Set<string>()
+
+  /**
+   * 清理本轮「已声明但未落定」的流式预览。
+   *
+   * 判定口径是「本轮最终是否产出了该调用」：产出了的会在执行阶段由编排层清除，
+   * 这里只负责剩下的残影；两者互不重叠，因此不会误清正在执行的卡片。
+   */
+  const pruneUnsettledPreviews = () => {
+    if (declaredPreviewIds.size === 0) return
+    const settled = new Set(toolCalls.map(tc => tc.id))
+    for (const id of declaredPreviewIds) {
+      if (!settled.has(id)) store.clearToolStreamingPreview(id)
+    }
+    declaredPreviewIds.clear()
+  }
+
   const streamingToolCalls = new Map<string, {
     id: string
     name: string
@@ -390,6 +416,10 @@ export function createStreamProcessor(
     if (isCleanedUp) return
     isCleanedUp = true
 
+    // 收尾即清理残影：cleanup 是流生命周期的唯一出口，正常结束、报错、中止
+    // 都会经过这里，放在这一处即可覆盖全部路径。
+    pruneUnsettledPreviews()
+
     if (toolUpdateRafId !== null) {
       clearTimeout(toolUpdateRafId)
       toolUpdateRafId = null
@@ -501,6 +531,7 @@ export function createStreamProcessor(
         pendingToolCallAvailableCount++
 
         if (assistantId) {
+          declaredPreviewIds.add(toolId)
           store.setToolStreamingPreview(toolId, {
             isStreaming: true,
             name: toolName,
@@ -576,6 +607,7 @@ export function createStreamProcessor(
               // 原先这里传 streamingState: undefined，会经 updateToolCall 触发
               // clearToolStreamingPreview，在正式卡片渲染出来之前就把预览删掉：
               // 卡片先消失、待 parts 写入后再出现，即用户看到的「隐藏 | 显示」跳动。
+              declaredPreviewIds.add(tc.id)
               store.setToolStreamingPreview(tc.id, {
                 isStreaming: true,
                 name: tc.name,
@@ -637,6 +669,7 @@ export function createStreamProcessor(
         }
 
         if (assistantId && tcId) {
+          declaredPreviewIds.add(tcId)
           store.setToolStreamingPreview(tcId, {
             isStreaming: true,
             name: toolName,

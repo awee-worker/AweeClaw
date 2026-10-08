@@ -125,6 +125,7 @@ export interface ThreadBoundStore {
     endStream: () => void
     setToolStreamingPreview: (toolCallId: string, preview: ToolStreamingPreview) => void
     clearToolStreamingPreview: (toolCallId: string) => void
+    clearToolStreamingPreviews: () => void
     getToolStreamingPreview: (toolCallId: string) => ToolStreamingPreview | undefined
     setCompressionStats: (stats: CompressionStats | null) => void
     setContextStats: (stats: ContextStats | null) => void
@@ -463,6 +464,8 @@ export const useAgentStore = create<AgentStore>()(
                     threadSlice.setToolStreamingPreview(toolCallId, preview, threadId),
                 clearToolStreamingPreview: (toolCallId) =>
                     threadSlice.clearToolStreamingPreview(toolCallId, threadId),
+                clearToolStreamingPreviews: () =>
+                    threadSlice.clearToolStreamingPreviews(threadId),
                 getToolStreamingPreview: (toolCallId) =>
                     threadSlice.getToolStreamingPreview(toolCallId, threadId),
                 setCompressionStats: (stats) => threadSlice.setCompressionStats(stats, threadId),

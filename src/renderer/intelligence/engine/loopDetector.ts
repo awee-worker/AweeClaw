@@ -633,6 +633,14 @@ export async function executeAgentCycle(
   const prunePendingToolInvocations = (toolCallsToClear?: Array<{ id: string }>) => {
     if (!assistantId) return
 
+    // 流式预览是「工具声明」的界面投影，正常情况下由编排层在工具开始执行时清除。
+    // 被循环检测拦下的调用不会进入执行阶段，编排层也就没有机会清它 —— 条目会一直
+    // 停留在 toolStreamingPreviews 里，消息末位常驻一张永远 pending 的卡片（用户
+    // 看到的「一直显示读取中」），其扫光动画还会让渲染进程回不到空闲帧。
+    for (const tc of toolCallsToClear || []) {
+      threadStore.clearToolStreamingPreview(tc.id)
+    }
+
     const assistantMessage = threadStore.getMessages().find(m => m.id === assistantId)
     if (assistantMessage?.role !== 'assistant') return
 
@@ -1483,6 +1491,14 @@ export async function executeAgentCycle(
     // 进入下一轮模型请求：首包未到之前保持「等待模型响应」
     threadStore.setStreamState({ streamDetail: undefined })
   }
+
+  // 主循环收尾统一清理残留的流式预览。
+  //
+  // 预览条目只在「模型声明调用 → 工具开始执行」这一小段窗口内有效：正常路径由编排层
+  // 在执行起点清除，循环拦截、任务中止、参数解析失败等分支不会走到那里，条目就会
+  // 留在 toolStreamingPreviews 中，以一张永远 pending 的卡片常驻消息末位。逐条清理
+  // 各有各的触发点、容易漏，这里在唯一出口统一收口，保证线程离开主循环时不留残影。
+  threadStore.clearToolStreamingPreviews()
 
   // 兜底收尾：若主循环退出时 loopState 仍停留在 'running'（静默退出/异常路径未收尾），
   // 补一次「异常中断」处理，避免用户看到「AI 无提示自行停下」，并保证断点续接能识别未完成状态。
