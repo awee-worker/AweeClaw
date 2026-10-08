@@ -1302,10 +1302,23 @@ export async function executeAgentCycle(
       threadStore.setStreamPhase('streaming')
       // 工具编排异常后降级重发同样要等首包，不能提前标成「思考中」
       threadStore.setStreamState({ streamDetail: undefined })
-      toolResults = result.toolCalls.map(tc => ({
-        toolCall: tc,
-        result: { content: `Error: tool orchestration failed — ${toolExecMessage}` },
-      }))
+      // 编排整体抛出时，之前已置为 running / awaiting 的卡片不会走任何单工具收口分支，
+      // 必须在降级路径上补一个终态，否则用户会停在「执行中」。
+      const orchestrationLanguage = useStore.getState().language as 'en' | 'zh'
+      const orchestrationFallback = t('agent.tool.interruptedOrParseFailed', orchestrationLanguage)
+      toolResults = result.toolCalls.map(tc => {
+        threadStore.updateToolCall(assistantId, tc.id, {
+          status: 'error',
+          result: orchestrationFallback,
+          streamingState: undefined,
+          endTime: Date.now(),
+          errorCode: 'ORCHESTRATION_ERROR',
+        })
+        return {
+          toolCall: tc,
+          result: { content: `Error: tool orchestration failed — ${toolExecMessage}` },
+        }
+      })
     }
 
     if (context.abortSignal?.aborted) {

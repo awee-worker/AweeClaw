@@ -119,6 +119,10 @@ export interface ThreadBoundStore {
     // 状态操作
     setStreamState: (state: Partial<StreamState>) => void
     setStreamPhase: (phase: StreamState['phase']) => void
+    beginToolAwaiting: (input: Parameters<ThreadSlice['beginToolAwaiting']>[0]) => void
+    beginToolExecuting: () => void
+    beginStream: () => void
+    endStream: () => void
     setToolStreamingPreview: (toolCallId: string, preview: ToolStreamingPreview) => void
     clearToolStreamingPreview: (toolCallId: string) => void
     getToolStreamingPreview: (toolCallId: string) => ToolStreamingPreview | undefined
@@ -451,6 +455,10 @@ export const useAgentStore = create<AgentStore>()(
                 // 状态操作
                 setStreamState: (state) => threadSlice.setStreamState(state, threadId),
                 setStreamPhase: (phase) => threadSlice.setStreamState({ phase }, threadId),
+                beginToolAwaiting: (input) => threadSlice.beginToolAwaiting(input, threadId),
+                beginToolExecuting: () => threadSlice.beginToolExecuting(threadId),
+                beginStream: () => threadSlice.beginStream(threadId),
+                endStream: () => threadSlice.endStream(threadId),
                 setToolStreamingPreview: (toolCallId, preview) =>
                     threadSlice.setToolStreamingPreview(toolCallId, preview, threadId),
                 clearToolStreamingPreview: (toolCallId) =>

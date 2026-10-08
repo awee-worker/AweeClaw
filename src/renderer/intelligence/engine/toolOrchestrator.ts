@@ -28,6 +28,7 @@ import { dispatchCompanionState } from '@/renderer/components/vrm-companion/comp
 import { useStore } from '@store'
 import { EventBus } from './EventDispatcher'
 import { truncateToolResult } from '@utils/partialJson'
+import { t } from '@renderer/i18n'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { agentHarness } from '../harness'
 import type { Span } from '../harness/observability/Trace'
@@ -690,6 +691,67 @@ function resolveToolDependencyGraph(toolCalls: ToolCall[]): Map<string, Set<stri
 }
 
 /**
+ * 执行看门狗：只覆盖「本地能力、理应秒级返回」的工具。
+ *
+ * 背景：这类工具（文件读写、检索、代码分析、任务清单等）一旦底层 IPC 丢回包，
+ * 执行器 Promise 就永远不会 settle —— 卡片会一直停在「执行中」，主循环也跟着卡住，
+ * 用户看到的就是「工具卡死」。此处给它们加一层超时兜底。
+ *
+ * 只对本集合内的工具生效：run_command（自带分层超时与后台通道）、外部智能体、
+ * 子任务 / 计划类工具、MCP 工具以及 ask_user（会一直等用户）都不在其中，
+ * 因此不会把正常的长耗时工具误杀。
+ * 超时值取「配置的 toolTimeoutMs」与下限中的较大者，避免用户把值调得过小反而打断正常执行。
+ */
+const TOOL_WATCHDOG_MIN_MS = 120_000
+
+const WATCHDOG_GUARDED_TOOLS = new Set<string>([
+  'read_file',
+  'read_multiple_files',
+  'list_directory',
+  'search_files',
+  'edit_file',
+  'write_file',
+  'create_file_or_folder',
+  'delete_file_or_folder',
+  'get_lint_errors',
+  'find_references',
+  'go_to_definition',
+  'get_hover_info',
+  'get_document_symbols',
+  'todo_write',
+  'remember',
+  'open_preview',
+  'inspect_preview',
+])
+
+function withToolWatchdog<T>(toolName: string, promise: Promise<T>): Promise<T> {
+  if (!WATCHDOG_GUARDED_TOOLS.has(toolName)) return promise
+
+  const configured = getAgentConfig().toolTimeoutMs || 0
+  const timeoutMs = Math.max(configured, TOOL_WATCHDOG_MIN_MS)
+
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      logger.agent.warn(
+        `[Tools] ${toolName} watchdog fired after ${timeoutMs}ms — settling as timeout so the card does not stay stuck`,
+      )
+      reject(new Error(`Tool "${toolName}" timed out after ${Math.round(timeoutMs / 1000)}s without returning a result. The wait was aborted.`))
+    }, timeoutMs)
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
+/**
  * 执行单个工具
  */
 async function invokeToolInvocation(
@@ -752,20 +814,23 @@ async function invokeToolInvocation(
 
   const toolHandler = async (): Promise<AgentToolExecutionResult> => {
     try {
-      const result = await toolManager.execute(
+      const result = await withToolWatchdog(
         toolCall.name,
-        toolCall.arguments,
-        {
-          workspacePath: workspacePath ?? null,
-          currentAssistantId: currentAssistantId ?? null,
-          assistantId: currentAssistantId ?? null,
-          threadId: context.threadId,
-          requestId: context.requestId,
-          toolCallId: toolCall.id,
-          chatMode: context.chatMode,
-          skipMainApproval: true,
-          abortSignal,
-        }
+        toolManager.execute(
+          toolCall.name,
+          toolCall.arguments,
+          {
+            workspacePath: workspacePath ?? null,
+            currentAssistantId: currentAssistantId ?? null,
+            assistantId: currentAssistantId ?? null,
+            threadId: context.threadId,
+            requestId: context.requestId,
+            toolCallId: toolCall.id,
+            chatMode: context.chatMode,
+            skipMainApproval: true,
+            abortSignal,
+          }
+        )
       )
 
       const duration = Date.now() - startTime
@@ -961,42 +1026,92 @@ async function invokeToolInvocation(
     }
   }
 
-  if (agentHarness.isInitialized) {
-    let pipelineResult: AgentToolExecutionResult | null = null
-    try {
-      await agentHarness.toolPipeline.execute(
-        { toolName: toolCall.name, args: toolCall.arguments, context },
-        async () => {
-          pipelineResult = await toolHandler()
-          return {
-            success: !(pipelineResult.result.callFailed ?? pipelineResult.result.content.startsWith('Error:')),
-            result: pipelineResult.result.content,
-            meta: pipelineResult.result.meta,
-          }
-        },
-        { toolName: toolCall.name, threadId: context.threadId, requestId: context.requestId }
-      )
-    } catch (error) {
-      if (error instanceof Error && error.name === 'RateLimitError') {
-        logger.agent.warn(`[Tools] Rate limited: ${toolCall.name}`)
-        if (currentAssistantId) {
-          store.updateToolCall(currentAssistantId, toolCall.id, {
-            status: 'error',
-            result: `Rate limited: ${error.message}`,
-            streamingState: undefined,
-            endTime: Date.now(),
-          })
-        }
-        return { toolCall, result: { content: `Error: Rate limited - ${error.message}`, callFailed: true } }
-      }
-      if (!pipelineResult) {
-        return { toolCall, result: { content: `Error: ${error instanceof Error ? error.message : String(error)}`, callFailed: true } }
-      }
-    }
-    if (pipelineResult) return pipelineResult
+  // 终态收口：工具调用一经进入 running，就必须在所有返回路径上落到 success / error。
+  // 管道在调用执行器之前抛出、执行器 Promise 因底层异常提前返回等分支都不会经过
+  // toolHandler 的结尾更新；若不管，卡片就永远停在「执行中」。这里在唯一出口兜底：
+  // 只有当卡片确实还没落终态时才补一个失败终态（已经落到终态的调用不受影响）。
+  const settleUnfinishedToolCall = (): void => {
+    if (!currentAssistantId) return
+    const message = store.getMessages().find(m => m.id === currentAssistantId)
+    const toolCalls = (message as { toolCalls?: ToolCall[] } | undefined)?.toolCalls
+    const current = toolCalls?.find(tc => tc.id === toolCall.id)
+    if (!current) return
+    if (current.status === 'success' || current.status === 'error' || current.status === 'rejected') return
+
+    const language = useStore.getState().language as 'en' | 'zh'
+    const fallback = t('agent.tool.interruptedOrParseFailed', language)
+    logger.agent.warn(`[Tools] ${toolCall.name} returned without a terminal state — settling as error`)
+    store.updateToolCall(currentAssistantId, toolCall.id, {
+      status: 'error',
+      result: fallback,
+      streamingState: undefined,
+      endTime: Date.now(),
+      errorCode: 'NO_RESULT',
+    })
+    store.clearToolStreamingPreview(toolCall.id)
+    publishToolLifecycleEvent({ type: 'tool:error', id: toolCall.id, error: fallback, ...identity })
+    mainStore.addToolCallLog({
+      threadId: context.threadId ?? undefined,
+      type: 'response',
+      toolName: toolCall.name,
+      data: fallback,
+      success: false,
+      error: 'Tool execution finished without a terminal state',
+    })
   }
 
-  return toolHandler()
+  try {
+    if (agentHarness.isInitialized) {
+      let pipelineResult: AgentToolExecutionResult | null = null
+      try {
+        await agentHarness.toolPipeline.execute(
+          { toolName: toolCall.name, args: toolCall.arguments, context },
+          async () => {
+            pipelineResult = await toolHandler()
+            return {
+              success: !(pipelineResult.result.callFailed ?? pipelineResult.result.content.startsWith('Error:')),
+              result: pipelineResult.result.content,
+              meta: pipelineResult.result.meta,
+            }
+          },
+          { toolName: toolCall.name, threadId: context.threadId, requestId: context.requestId }
+        )
+      } catch (error) {
+        if (error instanceof Error && error.name === 'RateLimitError') {
+          logger.agent.warn(`[Tools] Rate limited: ${toolCall.name}`)
+          if (currentAssistantId) {
+            store.updateToolCall(currentAssistantId, toolCall.id, {
+              status: 'error',
+              result: `Rate limited: ${error.message}`,
+              streamingState: undefined,
+              endTime: Date.now(),
+            })
+          }
+          return { toolCall, result: { content: `Error: Rate limited - ${error.message}`, callFailed: true } }
+        }
+        if (!pipelineResult) {
+          // 管道在调用执行器之前即抛出：这里没有经过 toolHandler，必须自行补终态
+          const pipelineError = error instanceof Error ? error.message : String(error)
+          if (currentAssistantId) {
+            store.updateToolCall(currentAssistantId, toolCall.id, {
+              status: 'error',
+              result: `Error: ${pipelineError}`,
+              streamingState: undefined,
+              endTime: Date.now(),
+              errorCode: 'PIPELINE_ERROR',
+            })
+          }
+          publishToolLifecycleEvent({ type: 'tool:error', id: toolCall.id, error: pipelineError, ...identity })
+          return { toolCall, result: { content: `Error: ${pipelineError}`, callFailed: true } }
+        }
+      }
+      if (pipelineResult) return pipelineResult
+    }
+
+    return toolHandler()
+  } finally {
+    settleUnfinishedToolCall()
+  }
 }
 
 /**
@@ -1340,6 +1455,36 @@ async function orchestrateToolBatchInternal(
         }
       }
     }
+  }
+
+  // 批次收口：任何仍未落到终态的工具调用都在这里补一个失败终态。
+  // 典型触发是中途中止 —— 已排队但尚未执行到的工具会停留在 awaiting / pending；
+  // 若不管，用户会一直看到「等待确认 / 执行中」的死卡片。
+  const settledIds = new Set<string>()
+  completed.forEach(id => settledIds.add(id))
+  failed.forEach(id => settledIds.add(id))
+  rejected.forEach(id => settledIds.add(id))
+  for (const tc of toolCalls) {
+    if (settledIds.has(tc.id)) continue
+    const language = useStore.getState().language as 'en' | 'zh'
+    const reason = abortSignal?.aborted
+      ? (language === 'zh' ? '已停止，未执行' : 'Stopped before execution')
+      : (language === 'zh' ? '未执行' : 'Not executed')
+    if (context.currentAssistantId) {
+      store.updateToolCall(context.currentAssistantId, tc.id, {
+        status: 'error',
+        result: reason,
+        streamingState: undefined,
+        endTime: Date.now(),
+      })
+    }
+    publishToolLifecycleEvent({
+      type: 'tool:error',
+      id: tc.id,
+      error: reason,
+      ...composeToolInvocationIdentity(tc, context),
+    })
+    pending.delete(tc.id)
   }
 
   // 确保所有工具状态已更新并重置流状态

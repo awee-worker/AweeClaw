@@ -1274,9 +1274,7 @@ function buildGraphExecutionContext(
                 const approvalToolId = `node_${node.id}_${name}`
                 const threadStore = useAgentStore.getState().forThread(threadId)
                 // 登记到线程状态：任务面板据此列出待批项并提供放行入口
-                threadStore.setStreamState({
-                    phase: 'tool_pending',
-                    streamDetail: 'tool_awaiting',
+                threadStore.beginToolAwaiting({
                     requestId,
                     pendingApprovalToolCalls: [
                         {
@@ -1292,11 +1290,7 @@ function buildGraphExecutionContext(
 
                 const approved = await approvalService.waitForApproval(`${requestId}_${approvalToolId}`)
 
-                threadStore.setStreamState({
-                    phase: 'streaming',
-                    streamDetail: 'tool_executing',
-                    pendingApprovalToolCalls: undefined,
-                })
+                threadStore.beginToolExecuting()
 
                 if (!approved) {
                     return { success: false, output: '', error: `Tool ${name} rejected by user` }

@@ -496,9 +496,8 @@ export async function executeMultiAgent(
   const agentStore = useAgentStore.getState()
   const globalStore = useStore.getState()
 
-  agentStore.setStreamPhase('streaming', threadId)
   // 请求刚发出、首包未到：保持「等待模型响应」，收到推理增量后才切「思考中」
-  agentStore.setStreamState({ streamDetail: undefined }, threadId)
+  agentStore.beginStream(threadId)
 
   const sessionId = `ma-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -969,7 +968,7 @@ export async function executeMultiAgent(
     }, projectDir)
 
     agentStore.finalizeAssistant(assistantId, threadId)
-    agentStore.setStreamPhase('idle', threadId)
+    agentStore.endStream(threadId)
 
     finalizeMultiAgentRun({
       threadId,
@@ -1002,7 +1001,7 @@ export async function executeMultiAgent(
       agentStore.appendToAssistant(assistantId, `\n\n❌ **多智能体协作出错**: ${errorMsg}`, threadId)
     }
     agentStore.finalizeAssistant(assistantId, threadId)
-    agentStore.setStreamPhase('idle', threadId)
+    agentStore.endStream(threadId)
 
     finalizeMultiAgentRun({
       threadId,
@@ -1032,9 +1031,8 @@ export async function continueMultiAgent(
   const agentStore = useAgentStore.getState()
   const globalStore = useStore.getState()
 
-  agentStore.setStreamPhase('streaming', threadId)
   // 续跑同样从「等待模型响应」起步，避免把等待首包误报成「思考中」
-  agentStore.setStreamState({ streamDetail: undefined }, threadId)
+  agentStore.beginStream(threadId)
 
   const projectDir = existingSession.projectPath!
   const existingAgents = existingSession.agents
@@ -1220,7 +1218,7 @@ Output ONLY JSON, nothing else. agentId must be one of the existing team members
     )
 
     agentStore.finalizeAssistant(assistantId, threadId)
-    agentStore.setStreamPhase('idle', threadId)
+    agentStore.endStream(threadId)
 
     finalizeMultiAgentRun({
       threadId,
@@ -1249,7 +1247,7 @@ Output ONLY JSON, nothing else. agentId must be one of the existing team members
       agentStore.appendToAssistant(assistantId, `\n\n❌ **团队调整出错**: ${errorMsg}`, threadId)
     }
     agentStore.finalizeAssistant(assistantId, threadId)
-    agentStore.setStreamPhase('idle', threadId)
+    agentStore.endStream(threadId)
 
     finalizeMultiAgentRun({
       threadId,

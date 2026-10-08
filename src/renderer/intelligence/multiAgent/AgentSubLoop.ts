@@ -352,9 +352,7 @@ async function executeToolCall(
         const freshStore = useAgentStore.getState()
         const existingPending = freshStore.threads[activeThreadId]?.streamState?.pendingApprovalToolCalls || []
         const updatedPending = [...existingPending, pendingToolCall]
-        freshStore.setStreamState({
-          phase: 'tool_pending',
-          streamDetail: 'tool_awaiting',
+        freshStore.beginToolAwaiting({
           requestId,
           currentToolCall: pendingToolCall,
           pendingApprovalToolCalls: updatedPending,
@@ -387,12 +385,7 @@ async function executeToolCall(
           }, latestThreadId)
         } else {
           // 所有待审批工具都已处理，恢复 streaming 状态
-          latestStore.setStreamState({
-            phase: 'streaming',
-            streamDetail: 'tool_executing',
-            currentToolCall: undefined,
-            pendingApprovalToolCalls: undefined,
-          }, latestThreadId)
+          latestStore.beginToolExecuting(latestThreadId)
         }
       }
 

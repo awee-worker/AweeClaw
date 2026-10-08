@@ -3,7 +3,7 @@
  */
 
 import type { StateCreator } from 'zustand'
-import type { ChatThread, StreamState, CompressionPhase, TodoItem, ContextStats, ThreadHandoffState, MountedTaskInfo } from '@intelligence/providerTypes'
+import type { ChatThread, StreamState, PendingToolApproval, ToolCall, CompressionPhase, TodoItem, ContextStats, ThreadHandoffState, MountedTaskInfo } from '@intelligence/providerTypes'
 import type { CompressionStats } from '../../engine/providerTypes'
 import type { StructuredSummary } from '../../capabilities/context/providerTypes'
 import type { BranchSlice } from './conversationBranch'
@@ -82,6 +82,26 @@ export interface ThreadActions {
 
     setStreamState: (state: Partial<StreamState>, threadId?: string) => void
     setStreamPhase: (phase: StreamState['phase'], threadId?: string) => void
+
+    /**
+     * 进入「等待用户确认工具调用」阶段
+     *
+     * 子 Agent、计划 tool 节点等执行入口都在这里挂起。phase/streamDetail 这对取值
+     * 只在本文件出现一次，调用方只需说明「哪些调用在等批准」。
+     */
+    beginToolAwaiting: (input: {
+        pendingApprovalToolCalls: PendingToolApproval[]
+        /** 呈现在确认卡片上的当前工具；不传则保留原值 */
+        currentToolCall?: ToolCall
+        statusText?: string
+        requestId?: string
+    }, threadId?: string) => void
+    /** 审批结束、工具开始执行：回到流式阶段并清空挂起的待批项 */
+    beginToolExecuting: (threadId?: string) => void
+    /** 开启一轮流式：进入 streaming 但不预置 streamDetail（首包未到显示「等待模型响应」） */
+    beginStream: (threadId?: string) => void
+    /** 收尾一轮流式：回落 idle 并清空瞬时字段 */
+    endStream: (threadId?: string) => void
     setToolStreamingPreview: (toolCallId: string, preview: ToolStreamingPreview, threadId?: string) => void
     clearToolStreamingPreview: (toolCallId: string, threadId?: string) => void
     clearToolStreamingPreviews: (threadId?: string) => void
@@ -526,6 +546,39 @@ export const createThreadSlice: StateCreator<
                 }),
             }
         })
+    },
+
+    beginToolAwaiting: (input, threadId) => {
+        const patch: Partial<StreamState> = {
+            phase: 'tool_pending',
+            streamDetail: 'tool_awaiting',
+            pendingApprovalToolCalls: input.pendingApprovalToolCalls,
+            statusText: input.statusText,
+            requestId: input.requestId,
+        }
+        // 当前工具按需写入：计划 tool 节点不指定前台工具，不替它清掉既有值
+        if (input.currentToolCall) patch.currentToolCall = input.currentToolCall
+        get().setStreamState(patch, threadId)
+    },
+
+    beginToolExecuting: (threadId) => {
+        get().setStreamState({
+            phase: 'streaming',
+            streamDetail: 'tool_executing',
+            currentToolCall: undefined,
+            pendingApprovalToolCalls: undefined,
+        }, threadId)
+    },
+
+    beginStream: (threadId) => {
+        // phase 与 streamDetail 都要改，合成一次写入：分开写会让订阅者多醒一轮
+        get().setStreamState({ phase: 'streaming', streamDetail: undefined }, threadId)
+    },
+
+    endStream: (threadId) => {
+        // 交给 setStreamPhase 的 idle 分支清空瞬时字段，
+        // 残留的 streamDetail 会让下一轮首包未到时被误判成「思考中」
+        get().setStreamPhase('idle', threadId)
     },
 
     setToolStreamingPreview: (toolCallId, preview, threadId) => {
