@@ -313,9 +313,22 @@ app.on('before-quit', async (e) => {
 // ==========================================
 
 app.on('activate', () => {
-  // macOS 点击 Dock 图标时若无窗口则新建
-  if (getOpenWindows().length === 0) {
+  // macOS 点击 Dock 图标：
+  // 1. 无任何窗口时新建主窗口；
+  // 2. 主窗口存在但被隐藏时重新显示并聚焦——悬浮头像激活后主窗口的 close 会被
+  //    hide-on-close 改成 hide，窗口仍留在 windows 映射中，若只判断「窗口数为 0」
+  //    就会直接跳过，表现为点图标没反应。
+  const openWindows = getOpenWindows()
+  if (openWindows.length === 0) {
     createWindow()
+    return
+  }
+
+  const target = getMainWindow()
+  if (target && !target.isDestroyed()) {
+    if (target.isMinimized()) target.restore()
+    if (!target.isVisible()) target.show()
+    target.focus()
   }
 })
 

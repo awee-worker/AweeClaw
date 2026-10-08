@@ -354,7 +354,7 @@ function ToolCallGroup({
                 onClick={() => !hasApproval && toggleGroup(group.status)}
                 disabled={hasApproval || !showHeader}
                 tabIndex={showHeader ? 0 : -1}
-                className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium transition-opacity ${
+                className={`flex items-center gap-1.5 pr-2 py-1 text-[11px] font-medium transition-opacity ${
                   hasApproval
                     ? 'text-text-primary cursor-default'
                     : 'text-text-muted hover:text-text-primary cursor-pointer'
@@ -405,12 +405,12 @@ function ToolCallGroup({
             </div>
 
              {/* 工具卡片列表：包含待批准工具时强制渲染。
-                 卡片始终使用统一缩进（pl-5），避免「单工具无缩进 → 多工具有缩进」
-                 的布局跳变：分组头出现时已有卡片的位置不偏移，消除「工具卡片消失重建」的观感。
+                 分组头贴消息左边缘；组内卡片作为二级保留缩进（pl-5），体现"分组 → 卡片"的层级，
+                 单工具无分组头时不缩进，与正文直接对齐。
                  每个卡片包裹层使用 layout containment 隔离内部 reflow，
                  并添加淡入动画掩盖新增卡片时的瞬时高度跳变。 */}
              {(!isCollapsed || group.tools.length === 1 || hasApproval) && (
-               <div className="space-y-2 pl-5">
+               <div className={`space-y-2 ${showHeader ? 'pl-5' : ''}`}>
                 {group.tools.map((tc) => (
                   <div
                     key={tc.id}
@@ -426,7 +426,7 @@ function ToolCallGroup({
         )
       })}
 
-      {/* 批量批准面板：多个工具待批准时，汇总到一个统一面板；与分组项对齐缩进 */}
+      {/* 批量批准面板：多个工具待批准时，汇总到一个统一面板；属于组内二级，与卡片保持同一缩进 */}
       {useBatchApproval && pendingApprovalTools.length > 1 && (
         <div className="pl-5">
           <BatchApprovalPanel

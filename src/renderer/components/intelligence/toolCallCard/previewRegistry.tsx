@@ -52,9 +52,6 @@ function PendingPreviewSkeleton() {
     <div className="p-2 space-y-1.5 opacity-70" aria-hidden="true">
       <div className="h-2 rounded-full bg-text-primary/[0.06] animate-pulse w-[72%]" />
       <div className="h-2 rounded-full bg-text-primary/[0.06] animate-pulse w-[48%]" />
-      <div className="mt-2 h-[2px] rounded-full bg-accent/10 overflow-hidden">
-        <div className="h-full w-1/3 bg-accent/30 rounded-full animate-[skeleton-progress_2s_ease-in-out_infinite]" />
-      </div>
     </div>
   )
 }

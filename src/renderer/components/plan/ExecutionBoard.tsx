@@ -289,18 +289,15 @@ const TaskCard = memo(function TaskCard({
                         : 'border-border bg-surface/50 hover:bg-surface/80'}
       `}
         >
-            {/* 进度条 */}
+            {/* 顶部状态条：静态标识运行中，扫光已移除，运行反馈由状态图标与卡片内呼吸光晕承载 */}
             {(isActive || isAwaitingApproval) && (
                 <>
-                    <motion.div
+                    <div
                         className={`absolute top-0 left-0 h-0.5 rounded-t-lg ${
                             isAwaitingApproval
                                 ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500'
                                 : 'bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500'
                         }`}
-                        style={{ backgroundSize: '200% 100%' }}
-                        animate={{ backgroundPosition: ['0% 0%', '200% 0%'] }}
-                        transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
                     />
                     <motion.div
                         className="absolute inset-0 rounded-lg pointer-events-none"

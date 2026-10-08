@@ -481,12 +481,6 @@ textarea,
 .wait-dot:nth-child(2) { animation-delay: 0.2s; }
 .wait-dot:nth-child(3) { animation-delay: 0.4s; }
 
-@keyframes skeleton-progress {
-  0% { transform: translateX(-100%); }
-  50% { transform: translateX(300%); }
-  100% { transform: translateX(-100%); }
-}
-
 /* --- Thinking Block Styles --- */
 
 @keyframes thinking-dot-pulse {
@@ -688,20 +682,17 @@ html[data-window-hidden='1'] *::after {
   animation-play-state: paused !important;
 }
 
-/* Agent 执行中 — 停掉装饰性循环动画。
+/* Agent 执行中 — 收敛绘制级循环动画。
  *
- * 执行期间屏幕上已有流式文字在动，这些脉冲 / 位移动画的信息增量接近于零，却让
- * 合成器每帧都有活干；多个动画叠加时，合成器的每帧开销随并发动画数量线性增长，
- * 渲染进程很难回到空闲帧。这里统一收敛，只保留两类「还在跑」的必要信号：
- *   - spinner（.animate-spin）：用户判断界面未卡死的唯一依据，任何状态都保留；
- *   - 流式光标（.stream-caret）：它只在流式期间出现，若在这里停掉等于取消该效果，
- *     且它是单元素、纯 opacity 动画，成本最低。
- * 其余重复出现或带位移的脉冲动画（呼吸点、等待点、通用 pulse、思考指示点）全部停掉。 */
-html[data-agent-busy='1'] .ant-flow-edge,
-html[data-agent-busy='1'] .thinking-indicator-icon,
-html[data-agent-busy='1'] .animate-breathe,
-html[data-agent-busy='1'] .wait-dot,
-html[data-agent-busy='1'] .animate-pulse {
+ * 执行期间屏幕上已有流式文字在动，绘制级动画的信息增量接近于零，却让渲染主线程
+ * 每帧都要重新栅格化，因此继续收敛（.ant-flow-edge 由 SVG stroke-dashoffset 驱动，
+ * 是这里唯一的收敛对象）。
+ *
+ * 小尺寸圆点的呼吸 / 脉冲不再收敛：思考点（.thinking-indicator-icon）、呼吸点
+ * （.animate-breathe）、等待点（.wait-dot）、通用脉冲（.animate-pulse）都是纯
+ * opacity / transform 动画，走合成器且尺寸极小，不产生裁剪与每帧重绘；它们同时是
+ * 用户判断「AI 还在跑」的最直接视觉反馈，执行期间停掉会让界面看起来像卡住。 */
+html[data-agent-busy='1'] .ant-flow-edge {
   animation: none !important;
 }
 
@@ -712,13 +703,12 @@ html[data-agent-busy='1'] .scroll-shadow-container::after {
   transition: none !important;
 }
 
-/* 实测掉帧 — 小尺寸脉冲也一并退到静态。
- * spinner 不动：它是用户判断「还在跑」的唯一依据，停掉会被读成卡死。 */
-html[data-perf-low='1'] .thinking-indicator-icon,
-html[data-perf-low='1'] .stream-caret,
-html[data-perf-low='1'] .animate-breathe,
-html[data-perf-low='1'] .animate-pulse,
-html[data-perf-low='1'] .wait-dot,
+/* 实测掉帧 — 收敛绘制级动画。
+ *
+ * 与执行期同一取舍：思考点 / 呼吸点 / 等待点 / 通用脉冲 / 流式光标都是小尺寸
+ * opacity-transform 动画，走合成器、不产生裁剪与每帧重绘，成本可以忽略，且是
+ * 「还在跑」的直接反馈，掉帧时保留；只停掉每帧要在主线程重新栅格化的绘制级动画
+ * （.ant-flow-edge）。spinner 同样始终保留。 */
 html[data-perf-low='1'] .ant-flow-edge {
   animation: none !important;
 }
