@@ -48,6 +48,9 @@ export function useVtsSync(): void {
   const triggeredRef = useRef(true)
   /** VTS 是否已启用（未启用时轮询到内容也不发 IPC） */
   const enabledRef = useRef(false)
+  /** 上一次读取到的助手消息对象与文本：对象未变时直接复用文本，跳过序列化 */
+  const lastReadMsgRef = useRef<MinimalMessage | null>(null)
+  const lastReadTextRef = useRef<string | null>(null)
 
   // --------------------------------------------
   // 状态订阅：维护「音频旁路可用」标志
@@ -111,8 +114,15 @@ export function useVtsSync(): void {
         for (let i = thread.messages.length - 1; i >= 0; i -= 1) {
           const msg = thread.messages[i]
           if (msg?.role !== 'assistant') continue
+          // 同一条消息对象未变化 → 文本必然未变，直接复用上次结果。
+          // 400ms 一次的轮询里绝大多数 tick 内容并没有增长，getMessageText 需要
+          // 遍历内容块拼接，能省则省。
+          if (msg === lastReadMsgRef.current) return lastReadTextRef.current
           const text = getMessageText(msg as never)
-          return typeof text === 'string' ? text : null
+          const result = typeof text === 'string' ? text : null
+          lastReadMsgRef.current = msg
+          lastReadTextRef.current = result
+          return result
         }
         return null
       } catch (err) {

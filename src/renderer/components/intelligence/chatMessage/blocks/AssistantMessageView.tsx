@@ -1,6 +1,15 @@
 /**
  * 助手消息视图
  * 左对齐布局，支持流式输出、工具调用预览、交互卡片
+ *
+ * ── 订阅策略（性能关键）──
+ *
+ * 每条消息都挂 store 订阅时，流式期间每次 store 更新都会让全部可见消息各跑一遍
+ * 选择器，成本随消息数线性放大。这里把订阅收窄到真正需要的两个位置：
+ *   - 实时流式数据：只有当前正在流式的那条消息才订阅；
+ *   - chip 数据：只有线程中最后一条助手消息才订阅。
+ * 其余消息完全由 props 驱动、不订阅，`isActiveStreamMessage` / `isLastAssistantMessage`
+ * 这两个「全线程唯一」的判断由 ChatPanel 统一计算后下发。
  */
 import React, { useMemo } from 'react'
 import { Check, FileCode, FilePlus, UserCog, X } from 'lucide-react'
@@ -50,6 +59,15 @@ interface AssistantMessageViewProps {
   fontSize: number
   /** 继续任务卡片专用：该消息之后已出现新的用户消息，卡片过期 */
   interactiveObsolete?: boolean
+  /**
+   * 该消息是否为当前正在流式的助手消息
+   *
+   * 由 ChatPanel 统一计算后传入：判断依据（线程 streamState.assistantId 与本消息 id
+   * 是否一致）是全线程共享的，交给每条消息各自订阅只会让选择器执行次数乘以消息数。
+   */
+  isActiveStreamMessage?: boolean
+  /** 该消息是否为线程中最后一条助手消息，同样由 ChatPanel 统一计算 */
+  isLastAssistantMessage?: boolean
 }
 
 /** 文件变更弹层内容（基于历史记录，支持单个接受/拒绝，接受/拒绝后显示状态） */
@@ -147,7 +165,156 @@ const FileChangesPopoverContent = React.memo(function FileChangesPopoverContent(
   )
 })
 
-function AssistantMessageViewBase({
+/* ------------------------------------------------------------------ */
+/* 订阅作用域                                                          */
+/* ------------------------------------------------------------------ */
+
+type AgentState = ReturnType<typeof useAgentStore.getState>
+
+/**
+ * 计算「活跃消息」的实时流式数据。
+ *
+ * 只在活跃消息作用域内调用 —— 非活跃消息读到的是常量，不必付出选择器成本。
+ */
+function computeLiveStreamData(state: AgentState, message: ChatMessageType) {
+  const threadId = state.currentThreadId
+  const threadStreamState = threadId ? state.threads[threadId]?.streamState : undefined
+
+  /**
+   * 消息是否仍是当前执行中的助手消息。
+   *
+   * 只认归属：流式标记 + assistantId 匹配，不掺 phase。phase 会在迭代间隙、
+   * 模型连接与重试时短暂离开活跃集合，若用它来门控实时数据来源，正处在预览阶段
+   * （尚未写入 parts）的工具会因为读不到预览表而整体消失，phase 恢复后又出现，
+   * 看起来就是工具卡片反复闪动。数据来源按归属取，状态表达才按 phase 取。
+   */
+  const isLiveAssistant =
+    isAssistantMessage(message) &&
+    Boolean(message.isStreaming) &&
+    !!threadId &&
+    threadStreamState?.assistantId === message.id
+
+  /** 是否处于活跃流式阶段：只用于进度表达（如等待指示器），不用于数据订阅 */
+  const isActiveAssistant =
+    isLiveAssistant && ACTIVE_STREAM_PHASES.has(threadStreamState?.phase ?? 'idle')
+
+  // 只有当前执行中的那条消息才需要从 store 取实时 parts，其余消息直接用自身 props。
+  const liveMessage = isLiveAssistant
+    ? state.threads[threadId!]?.messages.find(msg => msg.id === message.id && msg.role === 'assistant')
+    : undefined
+
+  return {
+    isStreaming: isActiveAssistant,
+    liveParts: liveMessage && isAssistantMessage(liveMessage) ? liveMessage.parts : undefined,
+    liveInteractive: liveMessage && isAssistantMessage(liveMessage) ? liveMessage.interactive : undefined,
+    previewMap: isLiveAssistant
+      ? state.threads[threadId!]?.toolStreamingPreviews || EMPTY_PREVIEWS
+      : EMPTY_PREVIEWS,
+    waitPhase: isActiveAssistant ? threadStreamState?.waitPhase : undefined,
+    streamStartTime: isActiveAssistant ? threadStreamState?.streamStartTime : undefined,
+    retryAttempt: isActiveAssistant ? threadStreamState?.retryAttempt : undefined,
+    retryDelay: isActiveAssistant ? threadStreamState?.retryDelay : undefined,
+    streamDetail: isActiveAssistant ? threadStreamState?.streamDetail : undefined,
+  }
+}
+
+type LiveStreamData = ReturnType<typeof computeLiveStreamData>
+
+const IDLE_STREAM_DATA: LiveStreamData = {
+  isStreaming: false,
+  liveParts: undefined,
+  liveInteractive: undefined,
+  previewMap: EMPTY_PREVIEWS,
+  waitPhase: undefined,
+  streamStartTime: undefined,
+  retryAttempt: undefined,
+  retryDelay: undefined,
+  streamDetail: undefined,
+}
+
+/** 计算「末条助手消息」chip 所依赖的数据 */
+function computeChipData(state: AgentState) {
+  const threadId = state.currentThreadId
+  const thread = threadId ? state.threads[threadId] : undefined
+  return {
+    fileChangeHistory: state.fileChangeHistory || EMPTY_HISTORY,
+    threadTodos: thread?.todos || EMPTY_TODOS,
+    threadIsStreaming: threadStreamStateActive(state, threadId),
+  }
+}
+
+type ChipData = ReturnType<typeof computeChipData>
+
+const IDLE_CHIP_DATA: ChipData = {
+  fileChangeHistory: EMPTY_HISTORY,
+  threadTodos: EMPTY_TODOS,
+  threadIsStreaming: false,
+}
+
+/** 实时流式数据作用域：只在活跃消息上挂载，避免每条消息各订阅一次 */
+function LiveStreamScope({
+  message,
+  children,
+}: {
+  message: ChatMessageType
+  children: (data: LiveStreamData) => React.ReactNode
+}) {
+  const data = useAgentStore(useShallow(state => computeLiveStreamData(state, message)))
+  return <>{children(data)}</>
+}
+
+/** chip 数据作用域：只在末条助手消息上挂载 */
+function ChipScope({
+  children,
+}: {
+  children: (data: ChipData) => React.ReactNode
+}) {
+  const data = useAgentStore(useShallow(computeChipData))
+  return <>{children(data)}</>
+}
+
+/** 仅在 active 时挂载实时流式作用域，否则直接给出空闲常量 */
+function LiveGate({
+  active,
+  message,
+  children,
+}: {
+  active: boolean
+  message: ChatMessageType
+  children: (data: LiveStreamData) => React.ReactNode
+}) {
+  if (!active) return <>{children(IDLE_STREAM_DATA)}</>
+  return <LiveStreamScope message={message}>{children}</LiveStreamScope>
+}
+
+/** 仅在 last 时挂载 chip 作用域，否则直接给出空闲常量 */
+function ChipGate({
+  last,
+  children,
+}: {
+  last: boolean
+  children: (data: ChipData) => React.ReactNode
+}) {
+  if (!last) return <>{children(IDLE_CHIP_DATA)}</>
+  return <ChipScope>{children}</ChipScope>
+}
+
+/* ------------------------------------------------------------------ */
+/* 渲染主体                                                            */
+/* ------------------------------------------------------------------ */
+
+interface AssistantMessageBodyProps
+  extends Omit<AssistantMessageViewProps, 'isActiveStreamMessage' | 'isLastAssistantMessage'> {
+  isLastAssistantMessage: boolean
+  live: LiveStreamData
+  chips: ChipData
+}
+
+/**
+ * 助手消息的纯渲染主体：不订阅任何「当前线程」状态，数据全部由作用域组件注入。
+ * 因此非活跃、非末条消息的 props 一旦稳定，memo 即可完全短路。
+ */
+const AssistantMessageBody = React.memo(function AssistantMessageBody({
   message,
   pendingToolId,
   pendingToolIds,
@@ -160,16 +327,15 @@ function AssistantMessageViewBase({
   textContent,
   fontSize,
   interactiveObsolete,
-}: AssistantMessageViewProps) {
+  isLastAssistantMessage,
+  live,
+  chips,
+}: AssistantMessageBodyProps) {
   const [copied, setCopied] = React.useState(false)
-  const { language } = useStore(useShallow(s => ({ language: s.language })))
+  const language = useStore(s => s.language)
   const updateMessage = useAgentStore(s => s.updateMessage)
   const messageIsStreaming = !!(message as any).isStreaming
 
-  /** 从消息对象读取持久化的反馈状态（重载后保留） */
-  const feedback: MessageFeedback | undefined = isAssistantMessage(message) ? message.feedback : undefined
-
-  /** 从全局状态订阅流式状态 */
   const {
     isStreaming,
     liveParts,
@@ -180,97 +346,11 @@ function AssistantMessageViewBase({
     retryAttempt,
     retryDelay,
     streamDetail,
-  } = useAgentStore(useShallow(state => {
-    if (!isAssistantMessage(message)) {
-      return {
-        isStreaming: false,
-        liveParts: undefined,
-        liveInteractive: undefined,
-        previewMap: EMPTY_PREVIEWS,
-        waitPhase: undefined,
-        streamStartTime: undefined,
-        retryAttempt: undefined,
-        retryDelay: undefined,
-        streamDetail: undefined,
-      }
-    }
+  } = live
+  const { fileChangeHistory, threadTodos, threadIsStreaming } = chips
 
-    const threadId = state.currentThreadId
-    const threadStreamState = threadId ? state.threads[threadId]?.streamState : undefined
-
-    /**
-     * 消息是否仍是当前执行中的助手消息。
-     *
-     * 只认归属：流式标记 + assistantId 匹配，不掺 phase。phase 会在迭代间隙、
-     * 模型连接与重试时短暂离开活跃集合，若用它来门控实时数据来源，正处在预览阶段
-     * （尚未写入 parts）的工具会因为读不到预览表而整体消失，phase 恢复后又出现，
-     * 看起来就是工具卡片反复闪动。数据来源按归属取，状态表达才按 phase 取。
-     */
-    const isLiveAssistant =
-      Boolean(message.isStreaming) &&
-      !!threadId &&
-      threadStreamState?.assistantId === message.id
-
-    /** 是否处于活跃流式阶段：只用于进度表达（如等待指示器），不用于数据订阅 */
-    const isActiveAssistant =
-      isLiveAssistant && ACTIVE_STREAM_PHASES.has(threadStreamState?.phase ?? 'idle')
-
-    // 只有当前执行中的那条消息才需要从 store 取实时 parts，其余消息直接用自身 props。
-    // 不做这层收窄的话，每条消息组件都会在每次 store 更新时遍历整个消息数组做一次 find，
-    // 流式期间每秒数十次更新就会退化成「消息数²」级别的扫描。
-    const liveMessage = isLiveAssistant
-      ? state.threads[threadId!]?.messages.find(msg => msg.id === message.id && msg.role === 'assistant')
-      : undefined
-
-    return {
-      isStreaming: isActiveAssistant,
-      liveParts: liveMessage && isAssistantMessage(liveMessage) ? liveMessage.parts : undefined,
-      liveInteractive: liveMessage && isAssistantMessage(liveMessage) ? liveMessage.interactive : undefined,
-      previewMap: isLiveAssistant
-        ? state.threads[threadId!]?.toolStreamingPreviews || EMPTY_PREVIEWS
-        : EMPTY_PREVIEWS,
-      waitPhase: isActiveAssistant ? threadStreamState?.waitPhase : undefined,
-      streamStartTime: isActiveAssistant ? threadStreamState?.streamStartTime : undefined,
-      retryAttempt: isActiveAssistant ? threadStreamState?.retryAttempt : undefined,
-      retryDelay: isActiveAssistant ? threadStreamState?.retryDelay : undefined,
-      streamDetail: isActiveAssistant ? threadStreamState?.streamDetail : undefined,
-    }
-  }))
-
-  /** 订阅当前线程的 fileChangeHistory、todos、最后一条助手消息标记、流式状态，用于决定是否显示 chip */
-  const { fileChangeHistory, threadTodos, isLastAssistantMessage, threadIsStreaming } = useAgentStore(useShallow(state => {
-    const threadId = state.currentThreadId
-    const thread = threadId ? state.threads[threadId] : undefined
-    const history = state.fileChangeHistory || EMPTY_HISTORY
-    const todos = thread?.todos || EMPTY_TODOS
-
-    // 判断当前消息是否为线程中最后一条助手消息。
-    // 末条通常就是助手消息，先走 O(1) 快路径；否则才从尾部回扫（跳过已知的末条）。
-    // 该选择器会随每次 store 更新对全部消息组件各执行一次，回扫代价会被消息数放大。
-    let lastAssistant = false
-    if (thread && thread.messages.length > 0) {
-      const tail = thread.messages[thread.messages.length - 1]
-      if (tail.role === 'assistant') {
-        lastAssistant = tail.id === message.id
-      } else {
-        for (let i = thread.messages.length - 2; i >= 0; i--) {
-          if (thread.messages[i].role === 'assistant') {
-            lastAssistant = thread.messages[i].id === message.id
-            break
-          }
-        }
-      }
-    }
-
-    const streaming = threadStreamStateActive(state, threadId)
-
-    return {
-      fileChangeHistory: history,
-      threadTodos: todos,
-      isLastAssistantMessage: lastAssistant,
-      threadIsStreaming: streaming,
-    }
-  }))
+  /** 从消息对象读取持久化的反馈状态（重载后保留） */
+  const feedback: MessageFeedback | undefined = isAssistantMessage(message) ? message.feedback : undefined
 
   /** 当前消息关联的文件变更历史 */
   const messageFileChanges = useMemo(
@@ -499,6 +579,36 @@ function AssistantMessageViewBase({
         />
       )}
     </div>
+  )
+})
+AssistantMessageBody.displayName = 'AssistantMessageBody'
+
+function AssistantMessageViewBase({
+  message,
+  isActiveStreamMessage,
+  isLastAssistantMessage,
+  ...rest
+}: AssistantMessageViewProps) {
+  // 精确复刻原判定：既要是当前流式消息，消息本身也要仍标记为流式中
+  const active = !!isActiveStreamMessage && !!(message as { isStreaming?: boolean }).isStreaming
+  const last = !!isLastAssistantMessage
+
+  return (
+    <ChipGate last={last}>
+      {chips => (
+        <LiveGate active={active} message={message}>
+          {live => (
+            <AssistantMessageBody
+              message={message}
+              isLastAssistantMessage={last}
+              live={live}
+              chips={chips}
+              {...rest}
+            />
+          )}
+        </LiveGate>
+      )}
+    </ChipGate>
   )
 }
 

@@ -21,7 +21,8 @@
  * 感知开关状态，也不必逐个改 class，动效的取舍只在一个地方维护。
  *
  * 帧率采样只在 Agent 执行且页面可见时进行：空闲时一个 rAF 都不跑，避免为了省性能
- * 反而增加占用。
+ * 反而增加占用。采样本身也按窗口进行 —— 跑满一个窗口即结算并停下，隔一段静默期再
+ * 来一次；探针是来量帧率的，不该在任务全程替界面把出帧节拍维持住。
  *
  * @module services/renderBudget
  */
@@ -48,6 +49,18 @@ const GOOD_CONFIRM = 5
 /** 降级后的观察冷却期，防止在阈值附近来回抖动 */
 const RECOVER_COOLDOWN_MS = 10_000
 
+/**
+ * 两次采样窗口之间的静默间隔（毫秒）
+ *
+ * 连续跑若干帧才能量出真实帧间隔，但「连续」只对单个采样窗口成立。若窗口之间也挂着
+ * requestAnimationFrame，整个 Agent 任务期间渲染进程就一直在出帧 —— 界面停在
+ * 「思考中」、屏幕没有任何变化时也一样，这正是执行期间那段空转占用。
+ *
+ * 掉帧是持续现象，采样密度降到原来的五分之一仍能判定；恢复判断多等几轮也无碍，
+ * 代价只是从降级状态还原得慢一点。
+ */
+const PROBE_IDLE_MS = 4000
+
 let initialized = false
 let visibilityBound = false
 
@@ -60,6 +73,7 @@ let visibilityBound = false
 let busyDepth = 0
 
 let probeId = 0
+let probeIdleTimer: ReturnType<typeof setTimeout> | null = null
 let probeWindowStart = 0
 let probeFrames = 0
 let lowStreak = 0
@@ -68,6 +82,11 @@ let loweredAt = 0
 
 function root(): HTMLElement | null {
   return typeof document === 'undefined' ? null : document.documentElement
+}
+
+/** 页面是否不可见（拿不到 document 的环境按可见处理） */
+function isPageHidden(): boolean {
+  return typeof document !== 'undefined' && document.hidden
 }
 
 /* ------------------------------------------------------------------ */
@@ -103,37 +122,60 @@ function evaluate(avgFrameMs: number, now: number): void {
 }
 
 function probe(now: number): void {
-  probeId = requestAnimationFrame(probe)
-
   if (probeWindowStart === 0) {
     probeWindowStart = now
     probeFrames = 0
+    probeId = requestAnimationFrame(probe)
     return
   }
 
   probeFrames += 1
   const elapsed = now - probeWindowStart
-  if (elapsed < SAMPLE_WINDOW_MS) return
+  if (elapsed < SAMPLE_WINDOW_MS) {
+    probeId = requestAnimationFrame(probe)
+    return
+  }
 
+  // 窗口已满：结算后不再排下一帧，转入静默期
   const avgFrameMs = elapsed / probeFrames
-  probeWindowStart = now
+  probeId = 0
+  probeWindowStart = 0
   probeFrames = 0
   evaluate(avgFrameMs, now)
+
+  if (busyDepth > 0 && !isPageHidden()) scheduleProbeIdle()
+}
+
+/** 排入下一个采样窗口；已在静默期或正在采样时不重复排 */
+function scheduleProbeIdle(): void {
+  if (probeIdleTimer !== null || probeId !== 0) return
+  probeIdleTimer = setTimeout(() => {
+    probeIdleTimer = null
+    if (busyDepth > 0 && !isPageHidden()) startProbe()
+  }, PROBE_IDLE_MS)
 }
 
 function startProbe(): void {
   if (probeId !== 0 || typeof requestAnimationFrame !== 'function') return
+  if (probeIdleTimer !== null) {
+    clearTimeout(probeIdleTimer)
+    probeIdleTimer = null
+  }
   probeWindowStart = 0
   probeFrames = 0
   probeId = requestAnimationFrame(probe)
 }
 
 function stopProbe(): void {
+  if (probeIdleTimer !== null) {
+    clearTimeout(probeIdleTimer)
+    probeIdleTimer = null
+  }
+  probeWindowStart = 0
+  probeFrames = 0
   if (probeId === 0) return
   cancelAnimationFrame(probeId)
   probeId = 0
-  probeWindowStart = 0
-  probeFrames = 0
 }
 
 /* ------------------------------------------------------------------ */

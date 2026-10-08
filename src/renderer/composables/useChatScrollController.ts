@@ -329,11 +329,23 @@ export function useChatScrollController({
   // 与流式缓冲刷写、插值推进共用同一个帧循环：内容增长与滚动写入落在同一帧里，
   // 布局只需算一次；吸底内部的 setState 也会和内容更新并进同一次提交，
   // 而不是各自触发一轮。
+  //
+  // 轮询本身只是兜底 —— 内容真实增长会经 totalListHeightChanged 单独驱动吸底。
+  // 因此先比一次列表总高度：没变就说明本轮没有任何新内容，直接跳过读写。
+  // 否则在工具执行、等待首包这类「列表静止」的时段里，每 300ms 仍要读一次
+  // scrollHeight 并回写 scrollTop，白白引发一次强制同步布局。
   useEffect(() => {
     if (!isStreaming) return
 
+    let lastSeenHeight = -1
+
     const stickTask = () => {
-      if (atBottomRef.current) stickToBottom()
+      const scroller = scrollerRef.current
+      const height = scroller ? scroller.scrollHeight : -1
+      if (height !== lastSeenHeight) {
+        lastSeenHeight = height
+        if (atBottomRef.current) stickToBottom()
+      }
       // 末尾续期：流式期间保持周期执行，停止后由清理函数取消
       scheduleFrameTask(stickTask, STICK_INTERVAL_MS)
     }

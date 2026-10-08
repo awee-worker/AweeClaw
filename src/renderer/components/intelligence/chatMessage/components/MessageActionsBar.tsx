@@ -106,13 +106,38 @@ export function formatMessageTimestampFull(ts: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-/** 每分钟刷新一次相对时间，保证 hover 时显示的最新值 */
+/**
+ * 相对时间共享心跳
+ *
+ * 每条消息的时间戳原本各自起一个 60s setInterval，一屏几十条消息就有几十个定时器
+ * 常驻。改为所有时间戳共享一个定时器：有订阅者时才起，全部退订即停，
+ * 定时器数量与消息数解耦。
+ */
+const relativeTimeSubscribers = new Set<() => void>()
+let relativeTimeTimer: ReturnType<typeof setInterval> | null = null
+
+function subscribeRelativeTimeTick(onTick: () => void): () => void {
+  relativeTimeSubscribers.add(onTick)
+  if (relativeTimeTimer === null) {
+    relativeTimeTimer = setInterval(() => {
+      for (const notify of relativeTimeSubscribers) notify()
+    }, 60_000)
+  }
+  return () => {
+    relativeTimeSubscribers.delete(onTick)
+    if (relativeTimeSubscribers.size === 0 && relativeTimeTimer !== null) {
+      clearInterval(relativeTimeTimer)
+      relativeTimeTimer = null
+    }
+  }
+}
+
+/** 每分钟刷新一次相对时间，保证 hover 时显示的最新值（多实例共享同一心跳） */
 function useRelativeTimeTick(enabled: boolean) {
   const [, setTick] = useState(0)
   useEffect(() => {
     if (!enabled) return
-    const id = window.setInterval(() => setTick(x => x + 1), 60_000)
-    return () => window.clearInterval(id)
+    return subscribeRelativeTimeTick(() => setTick(x => x + 1))
   }, [enabled])
 }
 

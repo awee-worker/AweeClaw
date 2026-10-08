@@ -61,6 +61,15 @@ export function useVrmCompanionSync(): void {
    */
   const companionVisibleRef = useRef(false)
 
+  /**
+   * 上一次读取到的助手消息对象与文本。
+   *
+   * 与 useVtsSync 同源：末条回复对象未变时，文本必然未变，直接复用上次拼接结果，
+   * 不必每 400ms 再遍历一遍内容块。伴侣开启而 AI 空闲时，绝大多数 tick 都命中这条短路。
+   */
+  const lastReadMsgRef = useRef<MinimalMessage | null>(null)
+  const lastReadTextRef = useRef<string | null>(null)
+
   // --------------------------------------------
   // 语音上下文推送（伴侣窗口内独立语音对话所需的运行时配置）
   // --------------------------------------------
@@ -226,8 +235,14 @@ export function useVrmCompanionSync(): void {
         for (let i = thread.messages.length - 1; i >= 0; i -= 1) {
           const msg = thread.messages[i]
           if (msg?.role !== 'assistant') continue
+          // 同一条消息对象未变化 → 文本必然未变，直接复用上次结果。
+          // getMessageText 需要遍历内容块拼接全文，400ms 一次的轮询里能省则省。
+          if (msg === lastReadMsgRef.current) return lastReadTextRef.current
           const text = getMessageText(msg as never)
-          return typeof text === 'string' ? text : null
+          const result = typeof text === 'string' ? text : null
+          lastReadMsgRef.current = msg
+          lastReadTextRef.current = result
+          return result
         }
         return null
       } catch (err) {

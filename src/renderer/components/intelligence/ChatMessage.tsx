@@ -36,6 +36,10 @@ interface ChatMessageProps {
   onToggleSelect?: (messageId: string) => void
   /** 继续任务卡片专用：该消息之后已出现新的用户消息，卡片过期 */
   interactiveObsolete?: boolean
+  /** 该消息是否为当前正在流式的助手消息（由 ChatPanel 统一计算后下发） */
+  isActiveStreamMessage?: boolean
+  /** 该消息是否为线程中最后一条助手消息（由 ChatPanel 统一计算后下发） */
+  isLastAssistantMessage?: boolean
 }
 
 function ChatMessageBase({
@@ -55,6 +59,8 @@ function ChatMessageBase({
   isSelected,
   onToggleSelect,
   interactiveObsolete,
+  isActiveStreamMessage,
+  isLastAssistantMessage,
 }: ChatMessageProps) {
   const { editorConfig } = useStore(useShallow(s => ({
     editorConfig: s.editorConfig,
@@ -118,6 +124,8 @@ function ChatMessageBase({
                   textContent={textContent}
                   fontSize={fontSize}
                   interactiveObsolete={interactiveObsolete}
+                  isActiveStreamMessage={isActiveStreamMessage}
+                  isLastAssistantMessage={isLastAssistantMessage}
                 />
               </div>
             )}
@@ -160,6 +168,8 @@ function ChatMessageBase({
             textContent={textContent}
             fontSize={fontSize}
             interactiveObsolete={interactiveObsolete}
+            isActiveStreamMessage={isActiveStreamMessage}
+            isLastAssistantMessage={isLastAssistantMessage}
           />
         )}
       </div>

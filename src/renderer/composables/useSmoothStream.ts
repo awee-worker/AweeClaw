@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { ScenarioDomain } from '@configuration/defaultProfile'
 import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter'
-import { scheduleFrameTask, cancelFrameTask } from '@intelligence/state/streamFrameScheduler'
+import { scheduleFrameTask, cancelFrameTask, type FrameTask } from '@intelligence/state/streamFrameScheduler'
 import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
 
 /** 流式期间每帧推进间隔（毫秒） */
@@ -170,12 +170,50 @@ export function useSmoothStream(
   const contentRef = useRef(content)
   const displayedLenRef = useRef(isStreaming && !immediate ? 0 : content.length)
   const catchUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const speedMultiplierRef = useRef(speedMultiplier)
+  speedMultiplierRef.current = speedMultiplier
 
   /** 清理收尾动画定时器 */
   const clearCatchUp = () => {
     if (catchUpTimerRef.current !== null) {
       clearTimeout(catchUpTimerRef.current)
       catchUpTimerRef.current = null
+    }
+  }
+
+  /**
+   * 流式推进任务
+   *
+   * 引用必须稳定：它同时充当帧调度器的去重键，且会被「内容到达」与「自身续期」
+   * 两处登记，重建函数会让合并与取消一并失效，所以只在这里创建一次。
+   *
+   * 续期条件收紧为「仍有积压」。模型在推理、工具在执行这些时段里文本并不增长，
+   * 原实现照样每 66ms 空跑一次推进（还每帧读一次长度），一个任务里可能白叫几千次。
+   * 现在追上内容就结束，等下一块内容由下面的 effect 重新拉起。
+   */
+  const streamTickRef = useRef<FrameTask | null>(null)
+  if (streamTickRef.current === null) {
+    streamTickRef.current = () => {
+      const tickMs = resolveTickMs(STREAM_TICK_MS, contentRef.current.length)
+      const advanced = advance(
+        contentRef.current,
+        displayedLenRef.current,
+        BASE_CHARS_PER_SECOND * speedMultiplierRef.current,
+        MAX_CHARS_PER_SECOND * speedMultiplierRef.current,
+        tickMs,
+      )
+      if (!advanced) return
+
+      // 计一帧：把「数据到达频率」与「渲染帧率」分开看，才能判断卡顿来自
+      // 数据过密，还是插值器自己推得太快
+      perfTrace.bump(PERF_TRACE_COUNTERS.smoothTicks)
+      displayedLenRef.current = advanced.nextLen
+      setDisplayedContent(advanced.slice)
+
+      // 仍有积压才续期；追平即停，不留常驻帧任务
+      if (displayedLenRef.current < contentRef.current.length) {
+        scheduleFrameTask(streamTickRef.current!, tickMs)
+      }
     }
   }
 
@@ -199,7 +237,14 @@ export function useSmoothStream(
       return
     }
 
-    if (isStreaming) return
+    if (isStreaming) {
+      // 有新积压就唤醒推进循环：循环追上内容后会自行停止，这里负责把它重新拉起
+      const tick = streamTickRef.current
+      if (tick && displayedLenRef.current < content.length) {
+        scheduleFrameTask(tick, resolveTickMs(STREAM_TICK_MS, content.length))
+      }
+      return
+    }
 
     if (displayedLenRef.current < content.length && catchUpTimerRef.current === null) {
       const runCatchUp = () => {
@@ -230,35 +275,25 @@ export function useSmoothStream(
   }, [content, isStreaming, speedMultiplier, immediate])
 
   // 流式期间推进循环
+  //
+  // 循环不再长期自我续期：仅当还有未显示的积压时才继续登记下一帧，追平即停。
+  // 内容到达由上面的 effect 负责唤醒，所以「模型在思考 / 工具在执行」这类文本静止的
+  // 时段里，调度器里没有本任务，也不会每 66ms 醒一次。
   useEffect(() => {
     if (!isStreaming || immediate) return
 
     clearCatchUp()
 
-    const runStream = () => {
-      const tickMs = resolveTickMs(STREAM_TICK_MS, contentRef.current.length)
-      const advanced = advance(
-        contentRef.current,
-        displayedLenRef.current,
-        BASE_CHARS_PER_SECOND * speedMultiplier,
-        MAX_CHARS_PER_SECOND * speedMultiplier,
-        tickMs,
-      )
-      if (advanced) {
-        // 计一帧：把「数据到达频率」与「渲染帧率」分开看，才能判断卡顿来自
-        // 数据过密，还是插值器自己推得太快
-        perfTrace.bump(PERF_TRACE_COUNTERS.smoothTicks)
-        displayedLenRef.current = advanced.nextLen
-        setDisplayedContent(advanced.slice)
-      }
-      // 末尾续期：任务在自身结束后重新登记，空闲时调度器里不留任何回调
-      scheduleFrameTask(runStream, tickMs)
+    const tick = streamTickRef.current
+    if (tick && displayedLenRef.current < contentRef.current.length) {
+      // 与流式缓冲刷写共用同一个帧循环：同一帧内的 store 写入与 state 推进
+      // 会被 React 合并成一次提交，而不是相邻任务各提交一次
+      scheduleFrameTask(tick, resolveTickMs(STREAM_TICK_MS, contentRef.current.length))
     }
-    // 与流式缓冲刷写共用同一个帧循环：同一帧内的 store 写入与 state 推进
-    // 会被 React 合并成一次提交，而不是相邻任务各提交一次
-    scheduleFrameTask(runStream, resolveTickMs(STREAM_TICK_MS, contentRef.current.length))
 
-    return () => cancelFrameTask(runStream)
+    return () => {
+      if (tick) cancelFrameTask(tick)
+    }
   }, [isStreaming, speedMultiplier, immediate])
 
   // 卸载时清理收尾动画定时器（流式推进任务由上面的 effect 自行取消）

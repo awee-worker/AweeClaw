@@ -688,12 +688,28 @@ html[data-window-hidden='1'] *::after {
   animation-play-state: paused !important;
 }
 
-/* Agent 执行中 — 停掉绘制级动画。
- * 执行期间屏幕上已有流式文字在动，这些效果的信息增量接近于零，却让合成器
- * 每帧都有活干，渲染进程回不到空闲帧。扫光类效果已从样式层整体移除，
- * 这里只剩 SVG 描边流动这一类每帧都要重新栅格化的动画。 */
-html[data-agent-busy='1'] .ant-flow-edge {
+/* Agent 执行中 — 停掉装饰性循环动画。
+ *
+ * 执行期间屏幕上已有流式文字在动，这些脉冲 / 位移动画的信息增量接近于零，却让
+ * 合成器每帧都有活干；多个动画叠加时，合成器的每帧开销随并发动画数量线性增长，
+ * 渲染进程很难回到空闲帧。这里统一收敛，只保留两类「还在跑」的必要信号：
+ *   - spinner（.animate-spin）：用户判断界面未卡死的唯一依据，任何状态都保留；
+ *   - 流式光标（.stream-caret）：它只在流式期间出现，若在这里停掉等于取消该效果，
+ *     且它是单元素、纯 opacity 动画，成本最低。
+ * 其余重复出现或带位移的脉冲动画（呼吸点、等待点、通用 pulse、思考指示点）全部停掉。 */
+html[data-agent-busy='1'] .ant-flow-edge,
+html[data-agent-busy='1'] .thinking-indicator-icon,
+html[data-agent-busy='1'] .animate-breathe,
+html[data-agent-busy='1'] .wait-dot,
+html[data-agent-busy='1'] .animate-pulse {
   animation: none !important;
+}
+
+/* 思考块滚动阴影的渐变过渡。执行期间思考文本持续增长、块内滚动频繁，过渡会把
+ * 每次遮罩显隐摊成 0.2s 的逐帧渐变重绘。遮罩本身保留，只去掉过渡。 */
+html[data-agent-busy='1'] .scroll-shadow-container::before,
+html[data-agent-busy='1'] .scroll-shadow-container::after {
+  transition: none !important;
 }
 
 /* 实测掉帧 — 小尺寸脉冲也一并退到静态。

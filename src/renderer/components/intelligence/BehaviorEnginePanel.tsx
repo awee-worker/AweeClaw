@@ -23,12 +23,18 @@ export default function BehaviorEnginePanel({ className = '' }: BehaviorPanelPro
   useEffect(() => {
     setRules(engine.getAllRules())
     setIsRunning(true)
-    
-    // 监听变化
+
+    // 周期性同步引擎内部的规则快照。
+    // getAllRules 每次都会构造新数组，若无条件 setRules，面板会每秒重渲染一次，
+    // 而多数时刻规则并没有变化。这里比较元素引用即可：引擎在更新规则时会换成新对象
+    // （见 BehaviorEngine.updateRule 的展开赋值），引用一致就原样返回，跳过渲染。
     const interval = setInterval(() => {
-      setRules(engine.getAllRules())
+      const next = engine.getAllRules()
+      setRules(prev =>
+        prev.length === next.length && prev.every((rule, i) => rule === next[i]) ? prev : next,
+      )
     }, 1000)
-    
+
     return () => clearInterval(interval)
   }, [])
 

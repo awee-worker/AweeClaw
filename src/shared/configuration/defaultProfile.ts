@@ -177,7 +177,7 @@ export const AGENT_DEFAULTS = {
   // 工具执行
   toolTimeoutMs: 60000,
   enableAutoFix: true,
-  expandThinkingByDefault: true,
+  expandThinkingByDefault: false,
   expandToolCallsByDefault: false,
   expandContextByDefault: true,
 

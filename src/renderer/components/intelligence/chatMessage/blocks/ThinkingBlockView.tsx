@@ -35,9 +35,18 @@ const ThinkingTextChunk = React.memo(function ThinkingTextChunk({ text }: { text
 })
 ThinkingTextChunk.displayName = 'ThinkingTextChunk'
 
+/**
+ * 跟随滚动的最小间隔（毫秒）
+ *
+ * 读取 scrollHeight 会让浏览器完成一次同步布局。思考文本按 66ms 的插值节拍推进，
+ * 逐帧跟随等于逐帧强制布局；而跟随滚动的精度需求远低于帧率，按时间节流
+ * 即可把布局次数降到与内容增长相称的量级。
+ */
+const AUTO_SCROLL_MIN_INTERVAL_MS = 150
+
 function ThinkingBlockViewBase({ content, startTime, isStreaming, isActiveTail, fontSize }: ThinkingBlockViewProps) {
   const language = useStore(s => s.language)
-  const expandThinkingByDefault = useStore(s => s.agentConfig.expandThinkingByDefault ?? true)
+  const expandThinkingByDefault = useStore(s => s.agentConfig.expandThinkingByDefault ?? false)
   const [isExpanded, setIsExpanded] = useState(expandThinkingByDefault)
   const [elapsed, setElapsed] = useState<number>(0)
   const lastElapsed = useRef<number>(0)
@@ -47,6 +56,9 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, isActiveTail, 
   const userToggledRef = useRef(false)
   // 用户手动向上滚动标记：为 true 时暂停自动跟随，直到用户滚回底部或流式结束
   const userScrolledUpRef = useRef(false)
+
+  /** 上一次跟随滚动的时间戳，用于节流（见 AUTO_SCROLL_MIN_INTERVAL_MS） */
+  const lastAutoScrollAtRef = useRef(0)
 
   /** 流式开始时自动展开，结束时按用户偏好折叠 */
   useEffect(() => {
@@ -140,11 +152,15 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, isActiveTail, 
   useEffect(() => {
     if (!isStreaming || !isExpanded || !scrollRef.current) return
     if (userScrolledUpRef.current) return
-    // 跟随滚动挂在本帧推进后的内容上：读取 scrollHeight 会触发同步布局，
-    // 按插值器的推进节奏跟随即可，不必每帧都跟随文本更新。
+    // 读 scrollHeight 会强制一次同步布局。插值器按 66ms 推进，逐帧跟随就是逐帧
+    // 强制布局；而跟随滚动的精度需求远低于帧率，按时间节流即可，观感无差别。
+    if (performance.now() - lastAutoScrollAtRef.current < AUTO_SCROLL_MIN_INTERVAL_MS) return
+
     const raf = requestAnimationFrame(() => {
-      if (scrollRef.current && !userScrolledUpRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      const el = scrollRef.current
+      if (el && !userScrolledUpRef.current) {
+        el.scrollTop = el.scrollHeight
+        lastAutoScrollAtRef.current = performance.now()
       }
     })
     return () => cancelAnimationFrame(raf)

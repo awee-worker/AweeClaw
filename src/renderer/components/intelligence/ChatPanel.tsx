@@ -191,6 +191,22 @@ export default function ChatPanel() {
   )
 
   /**
+   * 当前正在流式的助手消息 id
+   *
+   * 「哪条消息在流式」是全线程唯一的判断，交给 ChatPanel 统一算一次、经 props 下发；
+   * 若让每条消息各自订阅 store 判断，流式期间每次更新都会让全部可见消息各跑一遍选择器。
+   */
+  const activeAssistantId = streamState.assistantId ?? null
+
+  /** 线程中最后一条助手消息 id：只有末条消息需要渲染文件变更 / 任务完成 chip */
+  const lastAssistantMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (isAssistantMessage(messages[i])) return messages[i].id
+    }
+    return null
+  }, [messages])
+
+  /**
    * 已过期的「继续任务」卡片消息 id 集合
    *
    * 卡片是 AI 收尾时给的一次性续做入口。用户既没点「继续执行」也没点「暂不执行」，
@@ -1018,6 +1034,8 @@ export default function ChatPanel() {
               isSelected={selectedMessageIds.has(msg.id)}
               onToggleSelect={handleToggleSelectMessage}
               interactiveObsolete={obsoleteContinuationIds.has(msg.id)}
+              isActiveStreamMessage={msg.id === activeAssistantId}
+              isLastAssistantMessage={msg.id === lastAssistantMessageId}
             />
           </div>
         </CommitProbe>
@@ -1036,6 +1054,8 @@ export default function ChatPanel() {
       pendingToolIds,
       selectedMessageIds,
       obsoleteContinuationIds,
+      activeAssistantId,
+      lastAssistantMessageId,
     ],
   )
 
