@@ -60,6 +60,9 @@ import { toast } from '@components/foundation/NotificationProvider'
 /** 长按麦克风的判定时长（ms）：超过即进入语音对话，未超过按短按听写处理 */
 const VOICE_LONG_PRESS_MS = 420
 
+/** 长按截图按钮的判定时长（ms）：超过即隐藏窗口截图，未超过按普通截图处理 */
+const SCREENSHOT_LONG_PRESS_MS = 420
+
 export interface PendingAttachment {
   id: string
   file: File
@@ -435,25 +438,71 @@ const ChatInput = memo(function ChatInput({
 
   // --------------------------------------------
   // 截图提问：触发主进程全屏区域选择 → 截图 → 作为附件注入输入框
-  // 与迷你助手截图按钮功能一致，复用 ScreenshotAskManager（独立实例）
+  // 点击 = 普通截图；长按 = 隐藏窗口截图（截到真实桌面而非本应用窗口）
   // --------------------------------------------
-  const handleScreenshot = useCallback(async () => {
-    if (isStreaming) return
-    try {
-      const res = await api.screenshot.start()
-      // 主进程权限前置检查：未授予 macOS 屏幕录制权限 → 弹出引导弹窗
-      if (res && !res.success) {
-        if (res.error === 'SCREEN_PERMISSION_DENIED') {
-          setPermissionGuideOpen(true)
+  const handleScreenshot = useCallback(
+    async (hideWindow = false) => {
+      if (isStreaming) return
+      try {
+        const res = await api.screenshot.start({ hideWindow })
+        // 主进程权限前置检查：未授予 macOS 屏幕录制权限 → 弹出引导弹窗
+        if (res && !res.success) {
+          if (res.error === 'SCREEN_PERMISSION_DENIED') {
+            setPermissionGuideOpen(true)
+            return
+          }
+          console.error('[ConversationInput] Start screenshot failed:', res.error)
           return
         }
-        console.error('[ConversationInput] Start screenshot failed:', res.error)
-        return
+      } catch (err) {
+        console.error('[ConversationInput] Start screenshot failed:', err)
       }
-    } catch (err) {
-      console.error('[ConversationInput] Start screenshot failed:', err)
+    },
+    [isStreaming],
+  )
+
+  /** 长按截图按钮：隐藏应用窗口后再截图，避免本应用窗口进入画面 */
+  const shotLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 本次按下是否已由长按消费：消费后抬起不再触发普通截图 */
+  const shotLongPressFiredRef = useRef(false)
+
+  const clearShotLongPressTimer = useCallback(() => {
+    if (shotLongPressTimerRef.current) {
+      clearTimeout(shotLongPressTimerRef.current)
+      shotLongPressTimerRef.current = null
     }
-  }, [isStreaming])
+  }, [])
+
+  // 组件卸载时兜底清掉未触发的计时器
+  useEffect(() => clearShotLongPressTimer, [clearShotLongPressTimer])
+
+  const handleScreenshotPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.button !== 0 || isStreaming) return
+      clearShotLongPressTimer()
+      shotLongPressFiredRef.current = false
+      shotLongPressTimerRef.current = setTimeout(() => {
+        shotLongPressTimerRef.current = null
+        shotLongPressFiredRef.current = true
+        void handleScreenshot(true)
+      }, SCREENSHOT_LONG_PRESS_MS)
+    },
+    [isStreaming, clearShotLongPressTimer, handleScreenshot],
+  )
+
+  const handleScreenshotPointerUp = useCallback(() => {
+    const fired = shotLongPressFiredRef.current
+    shotLongPressFiredRef.current = false
+    clearShotLongPressTimer()
+    // 长按已启动隐藏窗口截图：抬起不再触发普通截图
+    if (fired) return
+    void handleScreenshot(false)
+  }, [clearShotLongPressTimer, handleScreenshot])
+
+  // 指针移出按钮即取消计时（不影响已消费的长按标记，标记只由 pointerdown 重置）
+  const handleScreenshotPointerLeave = useCallback(() => {
+    clearShotLongPressTimer()
+  }, [clearShotLongPressTimer])
 
   // 监听截图完成事件：将截图 base64 转为 File 对象并添加为附件
   useEffect(() => {
@@ -817,12 +866,14 @@ const ChatInput = memo(function ChatInput({
                       <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
                     </ActionButton>
                   </HintOverlay>
-                  {/* 截图提问按钮：触发全屏区域选择，截图完成后作为附件添加到输入框 */}
-                  <HintOverlay content={lt('截图提问', 'Screenshot & Ask')}>
+                  {/* 截图提问按钮：点击普通截图，长按隐藏窗口截图，截图完成后作为附件添加到输入框 */}
+                  <HintOverlay content={lt('点击截图，长按隐藏窗口截图', 'Tap to screenshot, hold to hide window')}>
                     <ActionButton
                       variant="ghost"
                       size="icon"
-                      onClick={handleScreenshot}
+                      onPointerDown={handleScreenshotPointerDown}
+                      onPointerUp={handleScreenshotPointerUp}
+                      onPointerLeave={handleScreenshotPointerLeave}
                       disabled={isStreaming}
                       className={`rounded-xl w-8 h-8 transition-all active:scale-95 ${
                         isStreaming

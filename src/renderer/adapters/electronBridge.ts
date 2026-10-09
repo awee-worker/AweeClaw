@@ -1108,8 +1108,8 @@ function createGroupedAPI() {
 
     // 主窗口截图（聊天输入框截图按钮，结果作为附件添加到输入框）
     screenshot: {
-      /** 启动截图：触发全屏区域选择覆盖窗口 */
-      start: () => raw.screenshot.start(),
+      /** 启动截图：触发全屏区域选择覆盖窗口（hideWindow=true 时长按隐藏窗口截图） */
+      start: (options?: { hideWindow?: boolean }) => raw.screenshot.start(options),
       /** 截图完成事件订阅（main→主窗口：截图 base64 + 落盘路径） */
       onResult: (callback: Parameters<typeof raw.screenshot.onResult>[0]) =>
         raw.screenshot.onResult(callback),

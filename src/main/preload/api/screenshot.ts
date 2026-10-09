@@ -50,9 +50,14 @@ function on<T>(channel: string) {
 
 export function createScreenshotApi() {
   return {
-    /** 启动截图（主窗口→main：触发全屏区域选择覆盖窗口） */
-    start: () =>
-      ipcRenderer.invoke('screenshot:start-for-main-window') as Promise<IpcResponse>,
+    /**
+     * 启动截图（主窗口→main：触发全屏区域选择覆盖窗口）
+     *
+     * @param options.hideWindow 是否在截图流程期间隐藏主窗口（输入框截图按钮长按触发），
+     *   避免本应用窗口被截进画面；流程结束后自动恢复显示
+     */
+    start: (options?: { hideWindow?: boolean }) =>
+      ipcRenderer.invoke('screenshot:start-for-main-window', options) as Promise<IpcResponse>,
     /** 截图完成事件（main→主窗口：截图 base64 + 落盘路径，主窗口作为附件添加到输入框） */
     onResult: on<ScreenshotResultPayload>('main-window:screenshot-result'),
     /** 打开 macOS「隐私与安全性 → 屏幕录制」系统设置（权限引导弹窗按钮调用） */

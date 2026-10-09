@@ -2714,8 +2714,11 @@ export interface ElectronAPI {
 
   // 主窗口截图（聊天输入框截图按钮，与悬浮球截图完全独立）
   screenshot: {
-    /** 启动截图：触发全屏区域选择覆盖窗口，用户框选确认后截图并推送给主窗口 */
-    start: () => Promise<{ success: boolean; error?: string; screenPermission?: string }>
+    /**
+     * 启动截图：触发全屏区域选择覆盖窗口，用户框选确认后截图并推送给主窗口
+     * @param options.hideWindow 截图流程期间隐藏主窗口（长按截图），结束后自动恢复
+     */
+    start: (options?: { hideWindow?: boolean }) => Promise<{ success: boolean; error?: string; screenPermission?: string }>
     /** 截图完成事件订阅（main→主窗口：截图 base64 + 落盘路径，主窗口作为附件添加到输入框） */
     onResult: (callback: (payload: { base64: string; mediaType: string; width: number; height: number; filePath: string; fileName: string }) => void) => () => void
     /** 打开 macOS「隐私与安全性 → 屏幕录制」系统设置（权限引导弹窗按钮调用） */
