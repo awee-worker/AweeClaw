@@ -61,6 +61,9 @@ const DIRECTION_LABELS: Record<ChangeDirection, { zh: string; en: string; icon: 
 const QUERY_TYPE_LABELS: Record<CounterfactualQueryType, { zh: string; en: string }> = {
   intervention: { zh: '干预', en: 'Intervention' },
   counterfactual: { zh: '反事实', en: 'Counterfactual' },
+  backdoor: { zh: '后门调整', en: 'Backdoor' },
+  frontdoor: { zh: '前门调整', en: 'Frontdoor' },
+  sensitivity: { zh: '敏感性分析', en: 'Sensitivity' },
 }
 
 type QueryMode = 'intervention' | 'counterfactual'
@@ -94,8 +97,9 @@ export function CounterfactualQueryView({ language }: CounterfactualQueryViewPro
         const list = result.data as CausalNode[]
         setNodes(list)
         if (list.length > 0) {
-          setInterventionVar(list[0].id)
-          setObservedVar(list.length > 1 ? list[1].id : list[0].id)
+          // DoCalculusEngine 按节点名称查找，此处存 name 而非 id
+          setInterventionVar(list[0].name)
+          setObservedVar(list.length > 1 ? list[1].name : list[0].name)
         }
       }
     } catch (e) {
@@ -239,17 +243,17 @@ export function CounterfactualQueryView({ language }: CounterfactualQueryViewPro
               <label className="block text-[12px] font-medium text-text-secondary mb-1.5">
                 {isZh ? '干预变量 X' : 'Intervention X'}
               </label>
-              <select
-                value={interventionVar}
-                onChange={(e) => setInterventionVar(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-lg bg-surface/40 border border-border/40 text-[12px] text-text-primary focus:outline-none focus:border-accent/50"
-              >
-                {nodes.map((n) => (
-                  <option key={n.id} value={n.id}>
-                    {n.name}
-                  </option>
-                ))}
-              </select>
+               <select
+                 value={interventionVar}
+                 onChange={(e) => setInterventionVar(e.target.value)}
+                 className="w-full px-2.5 py-1.5 rounded-lg bg-surface/40 border border-border/40 text-[12px] text-text-primary focus:outline-none focus:border-accent/50"
+               >
+                 {nodes.map((n) => (
+                   <option key={n.id} value={n.name}>
+                     {n.name}
+                   </option>
+                 ))}
+               </select>
             </div>
             {/* 干预值 */}
             <div>
@@ -271,18 +275,18 @@ export function CounterfactualQueryView({ language }: CounterfactualQueryViewPro
             <div>
               <label className="block text-[12px] font-medium text-text-secondary mb-1.5">
                 {isZh ? '观察变量 Y' : 'Observed Y'}
-              </label>
-              <select
-                value={observedVar}
-                onChange={(e) => setObservedVar(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-lg bg-surface/40 border border-border/40 text-[12px] text-text-primary focus:outline-none focus:border-accent/50"
-              >
-                {nodes.map((n) => (
-                  <option key={n.id} value={n.id}>
-                    {n.name}
-                  </option>
-                ))}
-              </select>
+               </label>
+               <select
+                 value={observedVar}
+                 onChange={(e) => setObservedVar(e.target.value)}
+                 className="w-full px-2.5 py-1.5 rounded-lg bg-surface/40 border border-border/40 text-[12px] text-text-primary focus:outline-none focus:border-accent/50"
+               >
+                 {nodes.map((n) => (
+                   <option key={n.id} value={n.name}>
+                     {n.name}
+                   </option>
+                 ))}
+               </select>
             </div>
             {/* 观察值（仅反事实模式） */}
             {mode === 'counterfactual' && (

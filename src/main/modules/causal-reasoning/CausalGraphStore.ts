@@ -522,8 +522,10 @@ export class CausalGraphStore {
     assertion.reviewedAt = Date.now();
     assertion.reviewNote = review.reviewNote;
 
-    // merged 状态：合并入因果图（创建边）
-    if (review.status === 'merged') {
+    // approved / merged 状态：将断言转化为因果边入图
+    // 设计意图：approved 表示用户确认因果关系真实，merged 表示自动抽取后合并入图，
+    // 两者均需调用 createEdgeByNames 创建因果边，否则断言永远停留在列表，链条断裂
+    if (review.status === 'approved' || review.status === 'merged') {
       try {
         const edge = this.createEdgeByNames({
           fromName: assertion.causeName,
@@ -535,12 +537,12 @@ export class CausalGraphStore {
         });
         assertion.mergedEdgeId = edge.id;
       } catch (e) {
-        // 合并失败（如产生环或重复边）则降级为 approved
+        // 创建边失败（环 / 重复 / 节点数超上限）时保留 approved 状态，
+        // 记录 mergedEdgeId 为 undefined，用户可在图面板手动处理
         logger.causal?.warn(
-          `[CausalGraphStore] 断言 ${assertionId} 合并失败，降级为 approved:`,
+          `[CausalGraphStore] 断言 ${assertionId} 入图失败，保留为 ${review.status}（需手动处理）:`,
           e,
         );
-        assertion.reviewStatus = 'approved';
       }
     }
 

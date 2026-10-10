@@ -466,7 +466,12 @@ export class AssertionCollector {
    * 由 perception/monitoring 等模块调用，将事件加入缓冲区
    */
   collectEvent(event: CausalEvent): void {
-    if (!this.enabled) return;
+    if (!this.enabled) {
+      logger.causal?.warn(
+        `[AssertionCollector] 收集器未启动，丢弃事件 type=${event.type} source=${event.source} text=${event.text?.slice(0, 60)}`,
+      );
+      return;
+    }
 
     this.eventBuffer.push(event);
 
@@ -479,7 +484,6 @@ export class AssertionCollector {
   }
 
   /**
-   * 立即抽取并清空缓冲区
    *
    * 从缓冲区中的事件抽取断言，写入 store
    */

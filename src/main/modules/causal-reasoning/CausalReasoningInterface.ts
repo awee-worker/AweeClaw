@@ -44,7 +44,12 @@ export type AssertionReviewStatus =
   | 'merged';
 
 /** 反事实查询类型 */
-export type CounterfactualQueryType = 'intervention' | 'counterfactual';
+export type CounterfactualQueryType =
+  | 'intervention'
+  | 'counterfactual'
+  | 'backdoor'
+  | 'frontdoor'
+  | 'sensitivity';
 
 /** 反事实推理引擎 */
 export type CounterfactualEngine = 'backend' | 'local';

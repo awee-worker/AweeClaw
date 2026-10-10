@@ -37,11 +37,15 @@ export type CausalEdgeRelation = 'causes' | 'enables' | 'prevents' | 'inhibits';
 export type CausalEdgeSource = 'llm' | 'rule' | 'manual' | 'statistical';
 export type AssertionExtractor = 'llm' | 'rule';
 export type AssertionReviewStatus = 'pending' | 'approved' | 'rejected' | 'merged';
-export type CounterfactualQueryType = 'intervention' | 'counterfactual';
+export type CounterfactualQueryType =
+  | 'intervention'
+  | 'counterfactual'
+  | 'backdoor'
+  | 'frontdoor'
+  | 'sensitivity';
 export type CounterfactualEngine = 'backend' | 'local';
 export type ImpactLevel = 'strong' | 'moderate' | 'weak' | 'negligible';
 export type ChangeDirection = 'increase' | 'decrease' | 'flip' | 'none';
-
 /** 因果图节点 */
 export interface CausalNode {
   id: string;

@@ -367,7 +367,7 @@ export class CausalReasoningService {
 
     // 保存查询记录
     this.store.addQuery({
-      queryType: 'intervention',
+      queryType: 'backdoor',
       interventionVar,
       interventionValue: null,
       observedVar,
@@ -399,7 +399,7 @@ export class CausalReasoningService {
 
     // 保存查询记录
     this.store.addQuery({
-      queryType: 'intervention',
+      queryType: 'frontdoor',
       interventionVar,
       interventionValue: null,
       observedVar,
@@ -431,7 +431,7 @@ export class CausalReasoningService {
 
     // 保存查询记录
     this.store.addQuery({
-      queryType: 'intervention',
+      queryType: 'sensitivity',
       interventionVar,
       interventionValue: null,
       observedVar,

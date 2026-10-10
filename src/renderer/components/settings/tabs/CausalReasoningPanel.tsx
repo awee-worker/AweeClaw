@@ -282,7 +282,7 @@ export function CausalReasoningPanel({ language }: CausalReasoningPanelProps) {
                   {isZh ? '云端上报' : 'Cloud Reporting'}
                 </h4>
                 <p className="text-[12px] text-text-muted mt-0.5">
-                  {isZh ? '将因果图数据上报到云端（用于跨设备同步）' : 'Sync causal graph data to cloud (for cross-device sync)'}
+                  {isZh ? '预留：开启后将不再写入隐私模式，为跨设备同步做准备' : 'Reserved: disables privacy mode, preparing for cross-device sync'}
                 </p>
               </div>
             </div>
