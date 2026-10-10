@@ -821,9 +821,9 @@ An annotated tag is the minimum sufficient guarantee: its message participates i
     external_agent_delegate: {
         name: 'external_agent_delegate',
         displayName: 'External Agent Delegate',
-        description: 'Delegate a coding task to an external autonomous AI coding agent (Claude Code / Codex CLI). The agent runs in a sandboxed workspace directory with its own tool loop, file editing and test execution. Returns the final result and a session id for resuming. Use only when the user explicitly asks to use an external agent, or for large multi-file coding tasks where a dedicated coding agent is preferred.',
+        description: 'Delegate a coding task to an external autonomous AI coding agent (Claude Code / Codex CLI / Cursor). The agent runs in a sandboxed workspace directory with its own tool loop, file editing and test execution. Returns the final result and a session id for resuming. Use only when the user explicitly asks to use an external agent, or for large multi-file coding tasks where a dedicated coding agent is preferred. For resume_session: Claude Code resumes via --resume; Codex resumes via `codex exec resume <session-id>` (a new session is created by the Codex CLI itself; the value returned here is the source session id that was resumed from); Cursor does not support true session resume and falls back to a prompt-level continuation. See external_agent_status to poll progress without blocking.',
         detailedDescription: `Delegate a task to an external coding agent.
-- The external agent (Claude Code / Codex CLI) is a full autonomous coding agent: it plans, edits files, runs tests, and reports back
+- The external agent (Claude Code / Codex CLI / Cursor) is a full autonomous coding agent: it plans, edits files, runs tests, and reports back
 - It runs in the given workdir (must be inside the current workspace) with a permission mode
 - The call blocks until the agent finishes (may take minutes); progress is streamed to the UI
 - Returns: success, final output, and a session id (pass to resume_session to continue the same task later)
@@ -886,7 +886,7 @@ An annotated tag is the minimum sufficient guarantee: its message participates i
     external_agent_status: {
         name: 'external_agent_status',
         displayName: 'External Agent Status',
-        description: 'Check the status/result of a delegated external agent run by its request id. Use after external_agent_delegate to poll progress or retrieve the final result without waiting.',
+        description: 'Check the status/result of a delegated external agent run by its request id. Use after external_agent_delegate to poll progress or retrieve the final result without waiting. Note: finished runs are kept in memory for 5 minutes only; querying after that returns unknown. For long-term lookups, use external_agent_delegate (which blocks) or the Settings → External Agents recent runs list instead.', 
         category: 'terminal',
         approvalType: 'none',
         parallel: true,

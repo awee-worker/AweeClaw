@@ -265,7 +265,9 @@ class ExternalAgentService {
     }, timeoutMs)
 
     try {
-      this.spawnSession(session, adapter, command.command, command.args, command.env, request.workdir)
+      // 把请求侧 resumeSession 透传给 finalize：codex exec 非交互模式不产出新 session id，
+      // finalize 需要请求侧值回传给「最近记录 / 面板继续按钮」，避免续接链路断裂
+      this.spawnSession(session, adapter, command.command, command.args, command.env, request.workdir, request.resumeSession)
     } catch (err) {
       this.finishSession(requestId, 'error', {
         success: false,
@@ -289,6 +291,7 @@ class ExternalAgentService {
     args: string[],
     env: Record<string, string>,
     cwd: string,
+    resumeSession?: string,
   ): void {
     const proc = spawn(command, args, {
       cwd,
@@ -321,6 +324,9 @@ class ExternalAgentService {
     proc.on('close', (code) => {
       if (session.status !== 'running') return
       const result = adapter.finalize(session.state, code ?? 0, session.stderrTail)
+      // 请求侧 resumeSession 兜底：适配器未捕获到自身 session id 时（如 codex exec）沿用续接源，
+      // 使「最近记录」的 session 字段非空、面板继续按钮可用，续接链路不断裂
+      if (!result.session && resumeSession) result.session = resumeSession
       this.finishSession(session.requestId, result.status === 'done' ? 'done' : 'error', result)
     })
 

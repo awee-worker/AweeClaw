@@ -9,7 +9,7 @@
  * 1) arguments._meta.requestId（工具执行完成后由 toolOrchestrator 合并）
  * 2) 运行中经 agentRunBus 按 toolCallId / agent+task 实时匹配
  */
-import { memo, useCallback, useEffect, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Bot, Check, Copy, Loader2, Square, Wrench } from 'lucide-react'
 import type { Language } from '@renderer/i18n'
 import type { ToolCall } from '@intelligence/providerTypes'
@@ -65,11 +65,12 @@ function AgentRunProgressInner({ toolCall, args, isRunning, language }: AgentPro
   const [sessionCopied, setSessionCopied] = useState(false)
 
   // 订阅主进程推流频道（仅运行中）
+  // offRef 保存当前 off 函数：effect 退出时调用解绑，
+  // 同时防止 requestId 变化时旧 listener 残留（React 保证 cleanup 先于新 effect 执行）
+  const offRef = useRef<(() => void) | null>(null)
   useEffect(() => {
     if (!requestId || !isRunning) return
-    let disposed = false
     const off = window.electronAPI.externalAgent.onStream(requestId, (payload) => {
-      if (disposed) return
       const evt = payload.event as AgentStreamEvent
       switch (evt.type) {
         case 'status':
@@ -91,8 +92,9 @@ function AgentRunProgressInner({ toolCall, args, isRunning, language }: AgentPro
           break
       }
     })
+    offRef.current = off
     return () => {
-      disposed = true
+      offRef.current = null
       off()
     }
   }, [requestId, isRunning])

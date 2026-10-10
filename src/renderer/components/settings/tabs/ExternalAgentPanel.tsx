@@ -50,12 +50,17 @@ export function ExternalAgentPanel({ language }: ExternalAgentPanelProps) {
   const [recentRuns, setRecentRuns] = useState<RecentAgentRun[]>([])
   const [resuming, setResuming] = useState('')
   const [resumeMsg, setResumeMsg] = useState('')
+  // 默认超时（秒）：本地暂存输入，提交时随 save 持久化；0/空 = 使用 30 分钟缺省
+  const [timeoutInput, setTimeoutInput] = useState<string>(() =>
+    String(Math.round((DEFAULT_EXTERNAL_AGENT_CONFIG.defaultTimeoutMs || 0) / 1000)),
+  )
 
   // ── 加载配置 + 检测可用性 ──
   const loadAll = useCallback(async () => {
     try {
       const cfg = await window.electronAPI.externalAgent.getConfig()
       setConfig({ ...DEFAULT_EXTERNAL_AGENT_CONFIG, ...cfg, enabled: { ...DEFAULT_EXTERNAL_AGENT_CONFIG.enabled, ...(cfg?.enabled || {}) } })
+      setTimeoutInput(String(Math.round((cfg?.defaultTimeoutMs || 0) / 1000)))
     } catch (e) {
       logger.settings.error('[ExternalAgent] Failed to load config:', e)
     }
@@ -137,7 +142,21 @@ export function ExternalAgentPanel({ language }: ExternalAgentPanelProps) {
       if (!started.ok) {
         setResumeMsg(isZh ? `继续失败：${started.error || '未知错误'}` : `Resume failed: ${started.error || 'unknown error'}`)
       } else {
-        setResumeMsg(isZh ? `已继续任务（会话 ${started.requestId.slice(0, 8)}…），完成后可在聊天中用 external_agent_status 查询。` : `Resumed run (${started.requestId.slice(0, 8)}…); check external_agent_status later.`)
+        const isCursor = run.agent === 'cursor'
+        let modeLabel: string
+        if (isCursor) {
+          // Cursor CLI 无 --resume 参数，走提示词级续接
+          modeLabel = isZh
+            ? '已按原任务重新执行（Cursor 无会话续接参数，走提示词级续接）'
+            : 'Task rerun (Cursor has no session-resume flag; prompt-level continuation used)'
+        } else if (run.session) {
+          modeLabel = isZh ? '已续接会话' : 'Session resumed'
+        } else {
+          modeLabel = isZh
+            ? '已重新执行任务（该记录未保存会话 ID，将按原任务重新跑）'
+            : 'Task rerun (no session id saved; original task was re-executed)'
+        }
+        setResumeMsg(`${modeLabel}（${started.requestId.slice(0, 8)}…），完成后可在聊天中用 external_agent_status 查询。`)
         await loadRecent()
       }
     } catch (e) {
@@ -288,7 +307,14 @@ export function ExternalAgentPanel({ language }: ExternalAgentPanelProps) {
           <div className="space-y-2">
             {recentRuns.map((run) => {
               const def = EXTERNAL_AGENT_DEFS[run.agent]
-              const resumable = Boolean(run.session || def.headless)
+              // 会话可续接的判定：
+              // - 记录里保存了 session id（Claude Code 的 resume_session、Codex 的 session）→ 真续接
+              // - 无 session 记录（如 Cursor 提示词续接、codex exec 未回传 session）→ 走「重新执行 + 提示词」
+              //   仍允许继续，但按钮置为「重新执行」形态，避免把重新执行误导为真续接
+              const isTrueResume = Boolean(run.session)
+              const buttonLabel = isTrueResume
+                ? (isZh ? '继续' : 'Resume')
+                : (isZh ? '重新执行' : 'Rerun')
               return (
                 <div key={run.requestId} className="flex items-center gap-3 p-2.5 bg-surface/40 border border-border/30 rounded-xl">
                   <div className="flex-1 min-w-0">
@@ -298,12 +324,15 @@ export function ExternalAgentPanel({ language }: ExternalAgentPanelProps) {
                     <div className="text-[10px] text-text-muted mt-0.5">
                       {run.status}
                       {run.durationMs ? ` · ${Math.round(run.durationMs / 1000)}s` : ''}
-                      {run.session ? ` · ${isZh ? '会话' : 'session'} ${run.session.slice(0, 8)}…` : ''}
+                      {run.session ? ` · ${isZh ? '会话' : 'session'} ${run.session.slice(0, 8)}…` : (isZh ? ' · 无会话记录' : ' · no session id')}
                     </div>
                   </div>
                   <button
                     onClick={() => void resumeRun(run)}
-                    disabled={resuming === run.requestId || !resumable}
+                    disabled={resuming === run.requestId}
+                    title={isTrueResume
+                      ? (isZh ? '沿用会话 ID 续接' : 'Resume via session id')
+                      : (isZh ? '该记录未保存会话 ID，将以原任务重新执行' : 'No session id saved — will rerun the original task')}
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-40 transition-all shrink-0"
                   >
                     {resuming === run.requestId ? (
@@ -311,7 +340,7 @@ export function ExternalAgentPanel({ language }: ExternalAgentPanelProps) {
                     ) : (
                       <Play className="w-3 h-3" />
                     )}
-                    {isZh ? '继续' : 'Resume'}
+                    {buttonLabel}
                   </button>
                 </div>
               )
@@ -365,6 +394,35 @@ export function ExternalAgentPanel({ language }: ExternalAgentPanelProps) {
               </option>
             ))}
           </select>
+        </div>
+
+        {/* 默认超时 */}
+        <div className="flex items-center justify-between gap-4 pt-3 border-t border-border/30">
+          <div>
+            <div className="text-sm font-medium text-text-primary">
+              {isZh ? '默认超时（秒）' : 'Default timeout (seconds)'}
+            </div>
+            <p className="text-[11px] text-text-muted mt-0.5">
+              {isZh
+                ? '外部智能体单次运行的看门狗上限，超时自动中止；0 = 使用 30 分钟缺省'
+                : 'Watchdog cap for a single external agent run; 0 = use the 30-minute default'}
+            </p>
+          </div>
+          <input
+            type="number"
+            min={0}
+            step={60}
+            value={timeoutInput}
+            onChange={(e) => setTimeoutInput(e.target.value)}
+            onBlur={() => {
+              const sec = Number(timeoutInput)
+              // 输入 0 / 空 / 非法值 = 走 30 分钟缺省（不在 electron-store 里覆盖已有配置）
+              if (Number.isFinite(sec) && sec > 0) {
+                void save({ defaultTimeoutMs: sec * 1000 })
+              }
+            }}
+            className="w-24 bg-surface-active border border-border/50 rounded-lg px-2 py-1.5 text-xs text-text-primary outline-none focus:border-emerald-500/40"
+          />
         </div>
       </div>
     </div>

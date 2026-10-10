@@ -3503,7 +3503,16 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
         const s = await api.externalAgent.status(requestId)
         if (s.status === 'unknown') {
-            return { success: false, result: '', error: `No session found for request ${requestId}` }
+            // 主进程 finishSession 后 5 分钟即回收内存中的 session（持久化仅在 recent store），
+            // LLM 调用侧需明确告知「窗口外查询」，避免误判为不存在的会话
+            return {
+                success: false,
+                result: '',
+                error:
+                    `No session found for request ${requestId}. ` +
+                    'External agent runs keep their in-memory status for 5 minutes after finishing; '
+                    + 'older lookups fall back to the Settings → External Agents recent-runs list or a new delegate call.',
+            }
         }
         if (s.status === 'running') {
             return { success: true, result: `External agent run ${requestId} is still running.` }

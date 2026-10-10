@@ -322,11 +322,24 @@ class CodexAdapter implements ExternalAgentAdapter {
     if (!binary && !npx) return null
 
     const args: string[] = []
-    if (!binary) args.push('@openai/codex')
-    args.push('exec', task)
-    // bypass 权限模式：放开审批与沙箱（危险，仅在用户显式选择时使用）
+    if (!binary) {
+      // npx 回退：-y 免交互确认（否则首次使用会卡在 "Ok to proceed?" 提示），包名对齐 preflight 探测
+      args.push('-y', '@openai/codex')
+    }
+    if (options.resumeSession) {
+      // codex exec 会话续接：codex exec resume <session-id> [prompt]
+      args.push('exec', 'resume', options.resumeSession, task)
+    } else {
+      args.push('exec', task)
+    }
+    // 审批模式映射：
+    // - bypass → 跳过所有审批与沙箱（危险，仅在用户显式选择时使用）
+    // - default / acceptEdits / planOnly → codex exec 默认审批询问，
+    //   planOnly 额外通过 --sandbox read-only 限制写权限，使 Agent 只读（不写文件）
     if (options.permissionMode === 'bypass') {
       args.push('--dangerously-bypass-approvals-and-sandbox')
+    } else if (options.permissionMode === 'planOnly') {
+      args.push('--sandbox', 'read-only')
     }
 
     const extra: Record<string, string> = {}
@@ -359,6 +372,8 @@ class CodexAdapter implements ExternalAgentAdapter {
         agent: this.id,
         status: 'done',
         output: tail || '(no output)',
+        // 续接会话标识：codex exec 非交互模式未回传 session id 时透传请求侧 resumeSession
+        session: state.sessionId || undefined,
       }
     }
     return {
@@ -366,6 +381,7 @@ class CodexAdapter implements ExternalAgentAdapter {
       agent: this.id,
       status: 'error',
       output: tail,
+      session: state.sessionId || undefined,
       error: `Codex exited with code ${exitCode}${stderrTail ? `: ${stderrTail.slice(-500)}` : ''}`,
     }
   }

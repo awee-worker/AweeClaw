@@ -60,7 +60,8 @@ export const EXTERNAL_AGENT_DEFS: Record<ExternalAgentId, ExternalAgentDef> = {
     description: 'OpenAI Codex 编码智能体 CLI，codex exec 非交互模式运行',
     binaryNames: ['codex'],
     keyEnvVar: 'OPENAI_API_KEY',
-    installHint: 'npm install -g @openai/codex',
+    installHint:
+      'npm install -g @openai/codex；也可不安装，检测不到 codex 时自动经 npx -y @openai/codex 回退（首次运行会下载包，耗时较长）',
     headless: true,
   },
   cursor: {
