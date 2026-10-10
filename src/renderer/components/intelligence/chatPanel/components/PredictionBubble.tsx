@@ -53,10 +53,7 @@ interface Props {
 /** 自动忽略超时（ms） */
 const AUTO_DISMISS_MS = 30_000
 
-/** 预测请求最小间隔（ms），避免频繁打扰 */
-const MIN_INTERVAL_MS = 60_000
-
-/** 最低置信度阈值 */
+/** 最低置信度阈值（默认值，启动后以感知配置里的 confidenceThreshold 覆盖） */
 const MIN_CONFIDENCE = 0.4
 
 /** 已忽略的预测 ID 缓存（防止重复展示） */
@@ -71,6 +68,40 @@ export function PredictionBubble({ language, sceneContext, enabled = true }: Pro
   const [submitting, setSubmitting] = useState(false)
   const lastFetchAtRef = useRef(0)
   const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 从隐私配置读取置信度阈值与拉取间隔，替代之前的硬编码 0.4 / 120_000
+  const [confidenceThreshold, setConfidenceThreshold] = useState(MIN_CONFIDENCE)
+  const [intervalMs, setIntervalMs] = useState(120_000)
+
+  // 启动时加载一次感知配置（失败静默，保持默认值）
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const perceptionApi = (window as unknown as {
+          electronAPI?: {
+            perception?: {
+              getPrivacyConfig?: () => Promise<{
+                success?: boolean
+                data?: {
+                  confidenceThreshold?: number
+                  predictionIntervalSec?: number
+                }
+              }>
+            }
+          }
+        }).electronAPI?.perception
+        if (!perceptionApi?.getPrivacyConfig) return
+
+        const res = await perceptionApi.getPrivacyConfig()
+        if (cancelled || !res?.success || !res.data) return
+        if (res.data.confidenceThreshold != null) setConfidenceThreshold(res.data.confidenceThreshold)
+        if (res.data.predictionIntervalSec != null) setIntervalMs(res.data.predictionIntervalSec * 1000)
+      } catch {
+        // 静默处理，保持默认值
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
   // ============================================================
   // 预测请求
@@ -80,9 +111,9 @@ export function PredictionBubble({ language, sceneContext, enabled = true }: Pro
     if (!enabled) return
     if (!sceneContext?.app || !sceneContext?.text) return
 
-    // 限频：60 秒内只请求一次
+    // 限频：intervalMs 内只请求一次
     const now = Date.now()
-    if (now - lastFetchAtRef.current < MIN_INTERVAL_MS) return
+    if (now - lastFetchAtRef.current < intervalMs) return
     lastFetchAtRef.current = now
 
     try {
@@ -95,7 +126,7 @@ export function PredictionBubble({ language, sceneContext, enabled = true }: Pro
         activity: sceneContext.activity ?? 'unknown',
         openFiles: sceneContext.openFiles,
         topK: 1,
-        confidenceThreshold: MIN_CONFIDENCE,
+        confidenceThreshold,
       }) as { success?: boolean; predictions?: PredictionResult[]; error?: string }
 
       if (!res?.success) return
@@ -110,7 +141,7 @@ export function PredictionBubble({ language, sceneContext, enabled = true }: Pro
     } catch (e) {
       logger.perception?.warn('[PredictionBubble] 预测请求失败:', e)
     }
-  }, [enabled, sceneContext?.app, sceneContext?.activity, sceneContext?.text, sceneContext?.openFiles])
+  }, [enabled, sceneContext?.app, sceneContext?.activity, sceneContext?.text, sceneContext?.openFiles, confidenceThreshold, intervalMs])
 
   // ============================================================
   // 反馈提交
@@ -174,14 +205,14 @@ export function PredictionBubble({ language, sceneContext, enabled = true }: Pro
     // 首次延迟 5 秒，避免应用启动时的拥挤
     const initialTimer = setTimeout(fetchPrediction, 5_000)
 
-    // 之后每 2 分钟拉取一次
-    const intervalTimer = setInterval(fetchPrediction, 120_000)
+    // 之后按配置的拉取间隔定时请求
+    const intervalTimer = setInterval(fetchPrediction, intervalMs)
 
     return () => {
       clearTimeout(initialTimer)
       clearInterval(intervalTimer)
     }
-  }, [enabled, fetchPrediction])
+  }, [enabled, fetchPrediction, intervalMs])
 
   // ============================================================
   // 渲染

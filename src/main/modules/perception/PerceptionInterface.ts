@@ -126,6 +126,8 @@ export interface UserBehavior {
     dayOfWeek: number  // 0-6（周日为 0）
     filesOpen?: string[]
     terminalCmds?: string[]
+    /** 当时的场景文本摘要（OCR / 窗口标题 / 用户请求等），便于排障回看，不参与检索 */
+    sceneText?: string
   }
   /** 用户实际动作 */
   action: UserAction
@@ -235,6 +237,10 @@ export interface PerceptionPrivacyConfig {
    * 因此不在默认值中声明。设置页与能力收敛都会读写它。
    */
   enablePrediction?: boolean
+  /** 预测置信度阈值（0-1），低于此值的预测结果会被过滤。未配置时使用 BehaviorPredictor 默认值 */
+  confidenceThreshold?: number
+  /** 预测拉取间隔（秒），PredictionBubble 按此间隔定时请求预测。未配置时使用组件内置默认值 */
+  predictionIntervalSec?: number
   /** 各通道开关 */
   channels: Record<PerceptionChannel, boolean>
   /** 数据保留期（天） */
@@ -263,6 +269,8 @@ export const DEFAULT_PRIVACY_CONFIG: PerceptionPrivacyConfig = {
   privacyMode: false,
   cloudFallback: false,
   saveScreenshots: false,
+  confidenceThreshold: 0.4,
+  predictionIntervalSec: 120,
 }
 
 // ============================================================

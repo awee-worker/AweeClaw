@@ -109,6 +109,8 @@ export class PerceptionStore {
           privacyMode: false,
           cloudFallback: false,
           saveScreenshots: false,
+          confidenceThreshold: 0.4,
+          predictionIntervalSec: 120,
         },
       )
     }

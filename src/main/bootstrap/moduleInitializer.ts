@@ -499,6 +499,16 @@ function initPerceptionIpc(): void {
   } catch (err) {
     logger.system.warn('[Main] Perception IPC registration failed:', errMsg(err))
   }
+
+  // 启动感知采集调度器：补齐屏幕场景采集与行为记录的数据闭环，
+  // 调度器内部按当前隐私配置决定是否真正运行采集定时器。
+  try {
+    const { PerceptionScheduler } = require('../modules/perception/PerceptionScheduler')
+    PerceptionScheduler.getInstance().start()
+    logger.system.info('[Main] PerceptionScheduler started')
+  } catch (err) {
+    logger.system.warn('[Main] PerceptionScheduler start failed:', errMsg(err))
+  }
 }
 
 /**

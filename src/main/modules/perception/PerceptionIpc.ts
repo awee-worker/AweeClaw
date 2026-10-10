@@ -44,6 +44,9 @@ export function registerPerceptionIpc(): void {
   ipcMain.handle(`${IPC_PREFIX}updatePrivacyConfig`, async (_, config: Partial<PerceptionPrivacyConfig>) => {
     try {
       store.updatePrivacyConfig(config)
+      // 通知采集调度器根据最新配置重新评估定时器启停
+      const { PerceptionScheduler } = await import('./PerceptionScheduler')
+      PerceptionScheduler.getInstance().onConfigUpdated()
       return { success: true }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)

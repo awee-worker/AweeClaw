@@ -157,6 +157,22 @@ export class BehaviorPredictor {
    */
   async predict(req: PredictRequest): Promise<PredictResponse> {
     try {
+      // 0. 配置门控：enablePerception 总开关 且 enablePrediction 行为预测开关，任一未开启直接返回空
+      // （此前只检查了 enablePerception，enablePrediction 形同虚设）
+      const config = this.store.getPrivacyConfig()
+      if (!config.enablePerception || config.enablePrediction === false) {
+        return {
+          success: true,
+          predictions: [],
+          embedding: [],
+          sampleCount: 0,
+        }
+      }
+
+      // 置信度阈值：优先使用配置中的 confidenceThreshold，未配置则用默认值
+      const effectiveThreshold =
+        config.confidenceThreshold != null ? config.confidenceThreshold : DEFAULT_CONFIDENCE_THRESHOLD
+
       // 1. 编码当前场景
       const embedding = await this.embedder.embed(req.sceneText)
       if (embedding.length === 0) {
@@ -188,8 +204,9 @@ export class BehaviorPredictor {
       }
 
       // 3. 统计模式预测
+      // 阈值优先级：请求显式传入 > 配置 confidenceThreshold > 默认值
       const topK = req.topK ?? DEFAULT_TOP_K
-      const threshold = req.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD
+      const threshold = req.confidenceThreshold ?? effectiveThreshold
       const statisticalCandidates = this.scoreActionCandidates(
         similarBehaviors,
         req,
@@ -433,6 +450,7 @@ export class BehaviorPredictor {
           dayOfWeek: now.getDay(),
           filesOpen: params.openFiles,
           terminalCmds: params.terminalCmds,
+          sceneText: params.sceneText,
         },
         action: params.action,
         outcome: params.outcome ?? 'success',

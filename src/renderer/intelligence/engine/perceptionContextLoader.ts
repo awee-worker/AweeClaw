@@ -127,8 +127,12 @@ export async function loadPerceptionContext(params: {
     const config = configResult.data as {
       enablePerception?: boolean
       enablePrediction?: boolean
+      confidenceThreshold?: number
     }
-    if (!config.enablePerception) return null
+    // 总开关 + 行为预测开关任一未开启则不加载（此前只检查了 enablePerception，enablePrediction 形同虚设）
+    if (!config.enablePerception || config.enablePrediction === false) return null
+    // 置信度阈值从配置读取，不再硬编码 0.15
+    const confidenceThreshold = config.confidenceThreshold ?? 0.15
 
     // 3. 构造场景文本
     const sceneText = buildSceneText({
@@ -152,7 +156,7 @@ export async function loadPerceptionContext(params: {
           activity,
           openFiles: openFiles.slice(0, 5),
           topK: 3,
-          confidenceThreshold: 0.15,
+          confidenceThreshold,
         }),
         LOAD_TIMEOUT_MS,
         'predictAction',
