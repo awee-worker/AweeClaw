@@ -475,6 +475,11 @@ function FileChangeCard({
     />
   )
 
+  // edit_file 卡片显示编辑语义；write_file / create 等显示创建语义
+  const isEditTool = toolCall.name === 'edit_file'
+  const fileActionLabel = isEditTool
+    ? (isSuccess ? t('tool.status.fileEdited', language as any) : t('tool.status.fileEditing', language as any))
+    : (isSuccess ? t('tool.status.fileCreated', language as any) : t('tool.status.fileCreating', language as any))
   const fileInfo = filePath ? (
     <div className="flex items-center gap-2 truncate">
       <span
@@ -482,7 +487,7 @@ function FileChangeCard({
           isActive ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'
         }`}
       >
-        {isNewFile ? 'Create ' : 'Update '}
+        {fileActionLabel}
       </span>
       <span
         className={`${isNewFile ? 'text-status-success' : 'text-text-primary'} font-medium text-[12px] hover:underline hover:text-accent cursor-pointer transition-colors break-all`}
@@ -493,7 +498,7 @@ function FileChangeCard({
       </span>
     </div>
   ) : isActive ? (
-    <span className="font-medium text-[12px] italic">editing...</span>
+    <span className="font-medium text-[12px] italic">{t('tool.status.editingEllipsis', language as any)}</span>
   ) : (
     // 参数里没有路径时（例如非标准路径键名的工具），退化成工具动作名，
     // 让等待确认的卡片仍能说明「这次要做什么」，而不是抛一个开发者占位符

@@ -278,7 +278,7 @@ const renderEditFile: PreviewRenderer = (ctx) => {
             <TextWithFileLinks text={filePath.split('/').pop() || filePath} />
           </span>
         ) : (isStreaming || isRunning) ? (
-            <span className="font-medium italic">editing...</span>
+            <span className="font-medium italic">{t('tool.status.editingEllipsis', language as any)}</span>
         ) : (
           // 参数里没有可识别的路径时退化成工具动作名，避免出现无法判断目标的占位符
           <span className="font-medium text-text-secondary">
@@ -288,7 +288,7 @@ const renderEditFile: PreviewRenderer = (ctx) => {
         {isStreaming && (
           <span className="text-accent flex items-center gap-1">
             <span className="w-1 h-1 rounded-full bg-accent animate-pulse" />
-            Writing...
+            {t('tool.status.fileWriting', language as any)}
           </span>
         )}
         {isTruncated && !isStreaming && (
@@ -341,7 +341,10 @@ const renderCreateDelete: PreviewRenderer = (ctx) => {
       <div className="flex items-center gap-1.5 text-[12px]">
         <FileCode className={`w-3 h-3 ${isDelete ? 'text-status-error' : 'text-status-success'}`} />
         <span className={`font-medium ${isDelete ? 'text-status-error' : 'text-status-success'}`}>
-          {isDelete ? 'Delete' : 'Create'} {isFolder ? 'folder' : 'file'}:
+          {isDelete
+            ? t('tool.label.delete_file_or_folder', language as any)
+            : t('tool.label.create_file_or_folder', language as any)}{' '}
+          {isFolder ? t('tool.noun.folder', language as any) : t('tool.noun.file', language as any)}:
         </span>
         <span className="text-text-primary break-all" title={path || undefined}>
           {displayName}
