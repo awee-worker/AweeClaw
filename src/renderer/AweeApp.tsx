@@ -42,6 +42,7 @@ const ContactsPage = lazy(() => import('@components/contacts/ContactsPage'))
 const PluginCenterPage = lazy(() => import('@components/plugin/PluginCenterPage'))
 const ScenarioManagerView = lazy(() => import('@components/scenario/ScenarioManagerView').then(m => ({ default: m.ScenarioManagerView })))
 const PlanPanelDrawer = lazy(() => import('./components/plan/PlanPanelDrawer').then(m => ({ default: m.PlanPanelDrawer })))
+const LiveDanmuPanel = lazy(() => import('./components/live/LiveDanmuPanel').then(m => ({ default: m.LiveDanmuPanel })))
 
 initializeScenarios()
 registerBuiltinScenarios()
@@ -388,6 +389,11 @@ function AppContent() {
 
       {/* 全局悬浮执行状态面板：有项目任务执行时在右下角显示 */}
       <ExecutionStatusDock />
+
+      {/* 直播弹幕流面板：直播互动开启时在右下角实时展示弹幕（懒加载，关闭时不渲染） */}
+      <Suspense fallback={null}>
+        <LiveDanmuPanel />
+      </Suspense>
 
       {/* 插件宿主桥接器：代理插件 UI 的宿主能力请求（如发送聊天消息），无 UI */}
       <PluginHostBridge />

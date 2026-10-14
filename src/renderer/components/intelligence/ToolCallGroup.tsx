@@ -59,9 +59,9 @@ const GROUP_VISUALS: Record<ToolGroupStatus, { label: string; icon: LucideIcon; 
 /**
  * 分组头固定高度（px）
  *
- * 这一行从第一个工具起就占住高度：第二个工具到来时只把组头内容淡入，
- * 高度全程不变。若改成「单工具不渲染组头、多工具才渲染」，第二个工具
- * 出现的一瞬间会凭空多出 28px，把下方卡片整体顶下去 —— 正是要消除的跳动。
+ * 占位高度只在组头可见（组内多于一个工具）时保留；单工具组不占位，避免
+ * 卡片上方永久留出一行空白。多工具组从第二个工具起组头淡入，高度随之
+ * 展开，卡片位置由过渡动画平滑吸收。
  */
 const GROUP_HEADER_HEIGHT = 28
 
@@ -327,6 +327,9 @@ function ToolCallGroup({
         const Icon = group.icon
         const isPendingGroup = group.status === 'pending'
         const showHeader = group.tools.length > 1
+        // 占位高度跟随组头可见性：单工具组高度归零，正文与工具卡之间不留空行；
+        // 组头淡入时高度同步展开，配合过渡动画避免卡片位置突变。
+        const headerHeight = showHeader ? GROUP_HEADER_HEIGHT : 0
         // 组状态取最高优先级，但组头必须反映组内真实构成：批量执行时
         // 一个失败 + 三个完成若只写「失败 (4)」，会被误读成整批都失败。
         const statusCounts = countToolStatuses(group.tools)
@@ -346,10 +349,16 @@ function ToolCallGroup({
             key={group.tools[0]?.id ?? group.status}
             style={{ contain: 'layout style' }}
           >
-            {/* 分组标题：始终挂载（用 opacity 控制显隐），避免「单工具无分组头 → 多工具有分组头」
-                切换时按钮条件挂载带来的瞬间弹出/消失观感。固定高度占位 + opacity 过渡，
-                高度跳变由占位吸收，出现/消失仅透明度变化，卡片位置不偏移。 */}
-            <div style={{ height: GROUP_HEADER_HEIGHT }}>
+            {/* 分组标题：始终挂载（用 opacity 控制显隐），切换时按钮条件挂载带来的
+                瞬间弹出/消失观感由透明度过渡吸收；占位高度只在组头可见时保留，
+                单工具组高度归零，不与正文之间留出空行。 */}
+            <div
+              style={{
+                height: headerHeight,
+                overflow: 'hidden',
+                transition: 'height 160ms ease',
+              }}
+            >
               <button
                 onClick={() => !hasApproval && toggleGroup(group.status)}
                 disabled={hasApproval || !showHeader}

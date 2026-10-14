@@ -325,7 +325,7 @@ export function LiveSettings({ language }: LiveSettingsProps) {
         setBusy(false)
       }
     },
-    [refreshStatus],
+    [refreshStatus, requireFeature],
   )
 
   const handleReload = useCallback(async () => {

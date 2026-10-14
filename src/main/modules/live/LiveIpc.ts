@@ -53,8 +53,13 @@ export function registerLiveIpc(): void {
   // 配置
   // --------------------------------------------
   safeIpcHandle('live:get-config', async () => {
-    const config = getConfig()
-    return { success: true, data: { config, issues: validateConfig(config) } }
+    try {
+      const config = getConfig()
+      return { success: true, data: { config, issues: validateConfig(config) } }
+    } catch (err) {
+      logger.system.error('[Live] get-config failed:', err)
+      return fail(err)
+    }
   })
 
   safeIpcHandle('live:update-config', async (_event, patch: unknown) => {

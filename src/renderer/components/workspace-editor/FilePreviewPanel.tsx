@@ -5,7 +5,7 @@
 import { api } from '../../adapters/electronBridge'
 import { openUrlInBrowser } from '@utils/browserLauncher'
 import { logger } from '@toolkit/LogEngine'
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -33,6 +33,11 @@ const CSV_EXTENSIONS = ['csv', 'tsv']
 const BINARY_EXTENSIONS = ['exe', 'dll', 'so', 'dylib', 'bin', 'zip', 'tar', 'gz', 'rar', '7z', 'mp3', 'wav', 'flac', 'psd', 'ai', 'sketch']
 // 3D 模型文件扩展名（GLB 自包含纹理，glTF 需要外部 .bin/.png）
 const MODEL_3D_EXTENSIONS = ['glb', 'gltf']
+
+// remark/rehype 插件数组提升为模块级常量：内联数组每次渲染都会产生新引用，
+// react-markdown 会因 props 变化整棵重新解析，AI 执行期间高频重渲染时预览就会闪动。
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath]
+const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex]
 
 export type FileType = 'text' | 'markdown' | 'image' | 'video' | 'html' | 'pdf' | 'docx' | 'doc' | 'pptx' | 'ppt' | 'xlsx' | 'csv' | 'binary' | 'model3d' | 'unknown'
 
@@ -86,7 +91,7 @@ interface MarkdownPreviewProps {
     isStreaming?: boolean
 }
 
-export function MarkdownPreview({ content, fontSize = 14, isStreaming }: MarkdownPreviewProps) {
+export const MarkdownPreview = memo(function MarkdownPreview({ content, fontSize = 14, isStreaming }: MarkdownPreviewProps) {
     const currentTheme = useStore(s => s.currentTheme)
     const theme = themeManager.getThemeById(currentTheme)
     const isLight = theme?.type === 'light'
@@ -96,6 +101,66 @@ export function MarkdownPreview({ content, fontSize = 14, isStreaming }: Markdow
     const autoScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const recentGrowthCountRef = useRef(0)
     const growthWindowRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    // components 映射用 useMemo 固定引用：内联字面量每次渲染都是新对象，
+    // 会让 react-markdown 整棵重新解析重建 DOM，表现为预览内容闪动。
+    // 只有字号或明暗主题真正变化时才重建。
+    const markdownComponents = useMemo(() => ({
+        code({ className, children, node, ...props }: { className?: string; children?: React.ReactNode; node?: unknown }) {
+            const match = /language-(\w+)/.exec(className || '')
+            const codeContent = String(children)
+            const isInline = !match && !codeContent.includes('\n')
+
+            return isInline ? (
+                <code className="bg-white/10 px-1.5 py-0.5 rounded text-accent-light font-mono text-[0.9em]" {...props}>
+                    {children}
+                </code>
+            ) : (
+                <CodeHighlight
+                    code={String(children).replace(/\n$/, '')}
+                    language={match?.[1] || 'text'}
+                    isDark={!isLight}
+                    fontSize={fontSize}
+                />
+            )
+        },
+        h1: ({ children }) => <h1 className="text-2xl font-bold mt-8 mb-4 text-text-primary border-b border-border pb-2">{children}</h1>,
+        h2: ({ children }) => <h2 className="text-xl font-bold mt-6 mb-3 text-text-primary">{children}</h2>,
+        h3: ({ children }) => <h3 className="text-lg font-semibold mt-4 mb-2 text-text-primary">{children}</h3>,
+        p: ({ children }) => <p className="mb-4 text-text-secondary leading-relaxed">{children}</p>,
+        ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1 text-text-secondary">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1 text-text-secondary">{children}</ol>,
+        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+        a: ({ href, children }) => {
+            const cleanHref = href ? href.replace(/[*_~`#|]+$/g, '').replace(/^[*_~`#|]+/g, '').trim() : href
+            return (
+                <a href={cleanHref} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline"
+                    onClick={(e) => { e.preventDefault(); if (cleanHref) openUrlInBrowser(cleanHref) }}
+                >
+                    {children}
+                </a>
+            )
+        },
+        blockquote: ({ children }) => (
+            <blockquote className="border-l-4 border-accent/50 pl-4 my-4 text-text-muted italic bg-white/5 py-2 rounded-r">
+                {children}
+            </blockquote>
+        ),
+        table: ({ children }) => (
+            <div className="overflow-x-auto my-4">
+                <table className="min-w-full border-collapse border border-border">{children}</table>
+            </div>
+        ),
+        thead: ({ children }) => <thead className="bg-surface/50">{children}</thead>,
+        tbody: ({ children }) => <tbody>{children}</tbody>,
+        tr: ({ children }) => <tr className="border-b border-border hover:bg-white/5 transition-colors">{children}</tr>,
+        th: ({ children }) => <th className="border border-border px-4 py-2 bg-surface/50 text-left font-semibold">{children}</th>,
+        td: ({ children }) => <td className="border border-border px-4 py-2">{children}</td>,
+        img: ({ src, alt }) => (
+            <img src={src} alt={alt} className="max-w-full rounded-lg border border-border my-4" />
+        ),
+        hr: () => <hr className="border-border my-6" />,
+    }), [fontSize, isLight])
 
     const handleScroll = useCallback(() => {
         const el = containerRef.current
@@ -156,71 +221,16 @@ export function MarkdownPreview({ content, fontSize = 14, isStreaming }: Markdow
         >
             <div className={`w-full prose ${isLight ? '' : 'prose-invert'}`}>
                 <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
-                    components={{
-                        code({ className, children, node, ...props }) {
-                            const match = /language-(\w+)/.exec(className || '')
-                            const codeContent = String(children)
-                            const isInline = !match && !codeContent.includes('\n')
-
-                            return isInline ? (
-                                <code className="bg-white/10 px-1.5 py-0.5 rounded text-accent-light font-mono text-[0.9em]" {...props}>
-                                    {children}
-                                </code>
-                            ) : (
-                                <CodeHighlight
-                                    code={String(children).replace(/\n$/, '')}
-                                    language={match?.[1] || 'text'}
-                                    isDark={!isLight}
-                                    fontSize={fontSize}
-                                />
-                            )
-                        },
-                        h1: ({ children }) => <h1 className="text-2xl font-bold mt-8 mb-4 text-text-primary border-b border-border pb-2">{children}</h1>,
-                        h2: ({ children }) => <h2 className="text-xl font-bold mt-6 mb-3 text-text-primary">{children}</h2>,
-                        h3: ({ children }) => <h3 className="text-lg font-semibold mt-4 mb-2 text-text-primary">{children}</h3>,
-                        p: ({ children }) => <p className="mb-4 text-text-secondary leading-relaxed">{children}</p>,
-                        ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1 text-text-secondary">{children}</ul>,
-                        ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1 text-text-secondary">{children}</ol>,
-                        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-                        a: ({ href, children }) => {
-                            const cleanHref = href ? href.replace(/[*_~`#|]+$/g, '').replace(/^[*_~`#|]+/g, '').trim() : href
-                            return (
-                                <a href={cleanHref} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline"
-                                    onClick={(e) => { e.preventDefault(); if (cleanHref) openUrlInBrowser(cleanHref) }}
-                                >
-                                    {children}
-                                </a>
-                            )
-                        },
-                        blockquote: ({ children }) => (
-                            <blockquote className="border-l-4 border-accent/50 pl-4 my-4 text-text-muted italic bg-white/5 py-2 rounded-r">
-                                {children}
-                            </blockquote>
-                        ),
-                        table: ({ children }) => (
-                            <div className="overflow-x-auto my-4">
-                                <table className="min-w-full border-collapse border border-border">{children}</table>
-                            </div>
-                        ),
-                        thead: ({ children }) => <thead className="bg-surface/50">{children}</thead>,
-                        tbody: ({ children }) => <tbody>{children}</tbody>,
-                        tr: ({ children }) => <tr className="border-b border-border hover:bg-white/5 transition-colors">{children}</tr>,
-                        th: ({ children }) => <th className="border border-border px-4 py-2 bg-surface/50 text-left font-semibold">{children}</th>,
-                        td: ({ children }) => <td className="border border-border px-4 py-2">{children}</td>,
-                        img: ({ src, alt }) => (
-                            <img src={src} alt={alt} className="max-w-full rounded-lg border border-border my-4" />
-                        ),
-                        hr: () => <hr className="border-border my-6" />,
-                    }}
+                    remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+                    rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+                    components={markdownComponents}
                 >
                     {content}
                 </ReactMarkdown>
             </div>
         </div>
     )
-}
+})
 
 // ===== 图片预览组件 =====
 
