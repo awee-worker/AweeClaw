@@ -21,7 +21,8 @@ import {
   isToolAllowedByPlanSync,
   buildToolNotAllowedMessage,
 } from '@services/featureGuardService'
-import { GIT_TOOL_NAMES } from '@configuration/toolCategoryDefs'
+import { GIT_TOOL_NAMES, DEV_ONLY_TOOL_NAMES } from '@configuration/toolCategoryDefs'
+import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { isGitToolsEnabled } from '../gitToolsGate'
 import { buildMissingPathHint, normalizeToolPathArgs } from '../toolArgNormalizer'
 
@@ -292,11 +293,30 @@ class ToolManager {
       }, 'validation')
     }
 
+    // dev 独有开发类工具兜底校验（执行层强制）
+    // 主闸门是「可见性」—— 非 dev 场景 getToolsForContext 不下发这些工具；
+    // 此处拦截模型幻觉调用，返回场景切换引导而不是裸错误，帮用户回到正确模式。
+    const currentSceneMode = useSceneModeStore.getState().currentSceneMode
+    if (currentSceneMode !== 'dev' && DEV_ONLY_TOOL_NAMES.includes(toolName)) {
+      logger.agent.warn(`[ToolManager] Tool "${toolName}" rejected: dev-only tool in scene "${currentSceneMode}"`)
+      const isZhDev = useStore.getState().language === 'zh'
+      const devOnlyErrorMsg = isZhDev
+        ? `工具 "${toolName}" 仅在代码开发模式下可用。\n当前为非开发场景，如需代码智能等开发类能力，请切换到代码开发模式后重试。`
+        : `Tool "${toolName}" is available only in Code Development mode.\nSwitch to Code Development mode to use code intelligence capabilities.`
+      return this.finalizeResult(toolName, executionId, startedAt, undefined, {
+        success: false,
+        result: '',
+        error: devOnlyErrorMsg,
+        outcome: { kind: 'error', code: 'TOOL_NOT_ALLOWED', retryable: false },
+      }, 'validation')
+    }
+
     // Git 工具兜底校验（执行层强制）
     // 主闸门是「可见性」—— getToolsForContext 在用户没有提出 Git 操作时不下发 git_*；
     // 此处拦截绕过上下文过滤的直接调用：工作区并非都是 Git 仓库，AI 自己「探路」
     // 会稳定失败，因此要求先由用户在指令中授权。
-    if (GIT_TOOL_NAMES.includes(toolName) && !isGitToolsEnabled()) {
+    // git_* 属 dev 独有开发类工具：非 dev 场景即便意图授权也不放行，与可见性门控对齐。
+    if (GIT_TOOL_NAMES.includes(toolName) && (!isGitToolsEnabled() || currentSceneMode !== 'dev')) {
       logger.agent.warn(`[ToolManager] Tool "${toolName}" rejected: git tools are not enabled for this turn`)
       const isZhGit = useStore.getState().language === 'zh'
       const gitErrorMsg = isZhGit

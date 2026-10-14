@@ -18,6 +18,7 @@
  */
 
 import type { WorkMode } from '@protocols/workModeProtocol'
+import type { SceneMode } from '@protocols/sceneModeProtocol'
 import { toolPackRegistry } from './toolPacks'
 
 // ============================================
@@ -98,8 +99,16 @@ export interface ToolLoadingContext {
    * - 数组：仅保留白名单组内工具 + 系统必需工具
    */
   allowedToolGroups?: string[]
-}
 
+  /**
+   * 当前场景模式（SceneMode）。
+   *
+   * 缺省（undefined）视为 dev —— 保持既有「全量下发」行为，避免未更新的
+   * 调用点静默丢失 LSP / Git 工具（fail-open）；显式传入非 dev 场景时，
+   * dev 独有开发类工具（DEV_ONLY_TOOL_NAMES、git_*）不会下发。
+   */
+  sceneMode?: SceneMode
+}
 /** 角色工具配置 */
 export interface TemplateToolConfig {
   /** 角色需要的额外工具组 */
@@ -209,6 +218,25 @@ const GIT_WRITE_TOOLS: string[] = [
 export const GIT_READ_TOOL_NAMES: readonly string[] = [...GIT_READ_TOOLS]
 export const GIT_WRITE_TOOL_NAMES: readonly string[] = [...GIT_WRITE_TOOLS]
 export const GIT_TOOL_NAMES: readonly string[] = [...GIT_READ_TOOLS, ...GIT_WRITE_TOOLS]
+
+/**
+ * dev 独有开发类工具（仅代码开发场景下发）
+ *
+ * - LSP 代码智能：类型诊断、引用查找、定义跳转等，依赖语言服务器，仅在开发场景有价值；
+ * - codebase_search：代码语义检索，服务开发任务。
+ *
+ * 门控策略（见 getToolsForContext 步骤 1.5）：非 dev 场景从内置基础集中剔除；
+ * 场景 / 角色等追加来源若显式声明了这些工具，仍可加回（追加语义只增不减）。
+ * 执行层兜底见 ToolCoordinator —— 模型幻觉调用时返回「切换到代码开发模式」引导。
+ */
+export const DEV_ONLY_TOOL_NAMES: readonly string[] = [
+  'get_lint_errors',
+  'find_references',
+  'go_to_definition',
+  'get_hover_info',
+  'get_document_symbols',
+  'codebase_search',
+]
 
 /** UI/UX 工具 - uiux-designer 角色专用 */
 const UIUX_TOOLS: string[] = [
@@ -520,6 +548,19 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
   // 1. 内置工具全量放行（不按工作模式或场景裁剪）
   let tools = new Set<string>(ALL_BUILTIN_TOOLS)
 
+  // 1.5 dev 独有开发类工具门控（场景维度）：
+  //     仅代码开发（dev）场景下发 LSP 代码智能与 codebase_search；
+  //     其余场景从基础集中剔除。剔除发生在追加之前 —— 场景声明的 toolPacks /
+  //     角色工具组若显式声明了这些工具，仍可加回（追加语义只增不减）。
+  //     sceneMode 未传（undefined）时视为 dev（fail-open），保持旧行为，
+  //     避免未更新的调用点静默丢失工具。
+  const isDevScene = context.sceneMode === undefined || context.sceneMode === 'dev'
+  if (!isDevScene) {
+    for (const tool of DEV_ONLY_TOOL_NAMES) {
+      tools.delete(tool)
+    }
+  }
+
   // 2. 渠道工具：环境能力，仅消息渠道会话（飞书/微信等）可调用
   if (context.isChannel) {
     for (const tool of CHANNEL_TOOLS) {
@@ -576,7 +617,9 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
   //       （commit / branch / sync / worktree / audit），避免未经审阅 diff 就改到仓库。
   //       这是「按模式裁剪」的唯一例外，且位于 Git 门控层，不改变内置工具集本身；
   //       写入操作另由 approvalType='terminal' 强制审批，两道门禁互为补充。
-  if (context.gitToolsEnabled !== true) {
+  //     - 场景维度：git_* 属 dev 独有开发类工具，仅代码开发场景参与此门控；
+  //       其余场景一律不下发（与 LSP 工具一致，切换到代码开发模式后可用）
+  if (!isDevScene || context.gitToolsEnabled !== true) {
     tools = new Set(Array.from(tools).filter((tool) => !GIT_TOOL_NAMES.includes(tool)))
   } else if (context.mode === 'chat') {
     tools = new Set(Array.from(tools).filter((tool) => !GIT_WRITE_TOOLS.includes(tool)))

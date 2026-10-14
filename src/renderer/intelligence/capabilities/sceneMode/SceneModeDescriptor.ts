@@ -7,6 +7,58 @@
 import type { SceneMode } from '@protocols/sceneModeProtocol'
 import type { WorkMode } from '@protocols/workModeProtocol'
 
+/**
+ * 编程能力增强开关（由代码开发场景独享的能力集）
+ *
+ * 四个场景的基础工具完全一致（文件 / 搜索 / 终端 / office 等），
+ * 差异只体现在：
+ * - dev 独有开发类工具（git_*、LSP 代码智能、codebase_search）按场景下发；
+ * - 工具层的编程能力增强（编辑验证闭环、失败反思、命令代价预检、质量埋点）仅在 dev 生效。
+ */
+export interface CodingEnhancements {
+  /** 工具门控：dev 独有开发类工具仅在代码开发场景下发 */
+  toolGating: boolean
+  /** 编辑后自动验证：编辑类工具成功后自动跑 lint 并附加诊断结果 */
+  postEditVerify: boolean
+  /** 工具失败时附加反思引导 */
+  failureReflection: boolean
+  /** 高代价命令预检与降级建议 */
+  commandCostGuard: boolean
+  /** 会话质量埋点（工具失败率 / 验证通过率） */
+  qualityMetrics: boolean
+}
+
+/** 非 dev 场景的默认增强配置：仅启用工具门控，编程能力增强全部关闭 */
+export const DEFAULT_NON_DEV_CODING_ENHANCEMENTS: CodingEnhancements = {
+  toolGating: true,
+  postEditVerify: false,
+  failureReflection: false,
+  commandCostGuard: false,
+  qualityMetrics: false,
+}
+
+/** dev 场景的默认增强配置：全部开启 */
+export const DEV_CODING_ENHANCEMENTS: CodingEnhancements = {
+  toolGating: true,
+  postEditVerify: true,
+  failureReflection: true,
+  commandCostGuard: true,
+  qualityMetrics: true,
+}
+
+/**
+ * 读取场景的编程能力增强配置。
+ *
+ * profile 未声明 codingEnhancements 时按场景 ID 回退到内置默认值，
+ * 保证旧数据 / 自定义 profile 不丢行为。
+ */
+export function getCodingEnhancements(profile?: { id?: SceneMode; codingEnhancements?: CodingEnhancements }): CodingEnhancements {
+  if (profile?.codingEnhancements) return profile.codingEnhancements
+  return profile?.id === 'dev'
+    ? { ...DEV_CODING_ENHANCEMENTS }
+    : { ...DEFAULT_NON_DEV_CODING_ENHANCEMENTS }
+}
+
 /** 悬浮头像风格 */
 export interface AvatarStyle {
   theme: 'professional' | 'warm' | 'focused'
@@ -102,6 +154,14 @@ export interface SceneModeProfile {
 
   /** 智能体人设提示词 */
   personaPrompt: string
+
+  /**
+   * 编程能力增强开关（可选，缺省按场景 ID 回退内置默认值）
+   *
+   * dev 场景全开；其余场景仅 toolGating 生效（裁剪 dev 独有开发类工具）。
+   * 见 getCodingEnhancements()。
+   */
+  codingEnhancements?: CodingEnhancements
 
   /** 挂载的技能白名单（SkillItem.name 列表） */
   modeSkills: string[]

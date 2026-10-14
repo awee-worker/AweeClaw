@@ -28,6 +28,7 @@ import { a2aToolProvider } from './A2aToolRegistry'
 import type { ToolLoadingContext } from '@configuration/toolCategoryDefs'
 import { getAllowedToolGroupsSync } from '@services/featureGuardService'
 import { setGitToolsEnabled } from '../gitToolsGate'
+import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 
 let initialized = false
 
@@ -61,6 +62,9 @@ export function setToolLoadingContext(context: ToolLoadingContext): void {
   const merged: ToolLoadingContext = {
     ...context,
     allowedToolGroups: context.allowedToolGroups ?? getAllowedToolGroupsSync(),
+    // 场景模式统一注入：dev 独有开发类工具（git_* / LSP / codebase_search）的
+    // 场景门控在 getToolsForContext 内消费，调用点无需各自传值
+    sceneMode: context.sceneMode ?? useSceneModeStore.getState().currentSceneMode,
   }
   // Git 工具门控缓存同步刷新：执行层（ToolCoordinator）需要同步读取本轮是否放行 git_*
   setGitToolsEnabled(merged.gitToolsEnabled === true)

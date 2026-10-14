@@ -40,6 +40,10 @@ import { streamingEditService } from '../runtime/streamingEditor'
 import { resolveStreamingEditFilePath } from '../runtime/editPreviewStreamer'
 import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter'
 import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
+import { verifyEditedFile } from '../coding-enhancements/postEditVerify'
+import { buildFailureReflection } from '../coding-enhancements/failureReflection'
+import { buildCommandCostHint } from '../coding-enhancements/commandCostGuard'
+import { recordToolQuality } from '../coding-enhancements/qualityMetrics'
 
 // ===== 审批服务 =====
 
@@ -845,7 +849,34 @@ async function invokeToolInvocation(
         : (result.result !== undefined && result.result !== null ? result.result : 'Success')
 
       const config = getAgentConfig()
-      const content = truncateToolResult(rawContent, toolCall.name, config.maxToolResultChars)
+      // 编程能力增强（dev 场景）：编辑验证 / 失败反思 / 命令代价预检 / 质量埋点
+      // 先截断原始结果，再按需附加增强信息，控制单条工具结果的总体积
+      let content = truncateToolResult(rawContent, toolCall.name, config.maxToolResultChars)
+
+      let verificationText: string | null = null
+      if (callFailed) {
+        // 失败反思：裸错误附带换策略引导，减少同策略无效重试
+        const reflection = buildFailureReflection(toolCall.name, result.error)
+        if (reflection) {
+          content += `\n\n${reflection}`
+        }
+      } else {
+        // 编辑后强制验证：lint 诊断直接拼进工具结果，
+        // 模型同一轮即可看到并修复，不依赖它自觉调用 get_lint_errors
+        verificationText = await verifyEditedFile(toolCall.name, toolCall.arguments as Record<string, unknown> | undefined, workspacePath)
+        if (verificationText) {
+          content += verificationText
+        }
+
+        // 命令代价预检：提示附在结果头部，引导下一轮选择更低代价路径（只提示，不拦截）
+        const costHint = buildCommandCostHint(toolCall.name, toolCall.arguments as Record<string, unknown> | undefined)
+        if (costHint) {
+          content = `${costHint}\n\n${content}`
+        }
+      }
+
+      // 会话质量埋点：调用 / 失败 / 验证结果计数（仅 dev 场景生效）
+      recordToolQuality(toolCall.name, callFailed, verificationText)
 
       if (content.length < rawContent.length) {
         logger.agent.info(`[Tools] Truncated ${toolCall.name} result: ${rawContent.length} -> ${content.length} chars`)

@@ -5,7 +5,7 @@
  */
 
 import type { SceneModeProfile } from './SceneModeDescriptor'
-
+import { DEV_CODING_ENHANCEMENTS, DEFAULT_NON_DEV_CODING_ENHANCEMENTS } from './SceneModeDescriptor'
 /**
  * 工作模式 Profile
  *
@@ -35,6 +35,8 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
 - 不主动聊生活话题，除非用户明确要求
 - 不在工作记忆域写入生活/学习内容
 - 任务提醒只在工作时间触发`,
+  // 日常办公：工具门控生效（裁剪 dev 独有开发类工具），编程能力增强不启用
+  codingEnhancements: { ...DEFAULT_NON_DEV_CODING_ENHANCEMENTS },
   modeSkills: [
     'office-doc',
     'office-email',
@@ -156,6 +158,8 @@ export const LIFE_MODE_PROFILE: SceneModeProfile = {
 - 不主动谈工作，除非用户提起
 - 不在生活记忆域写入工作内容
 - 关怀提醒温柔不强制，尊重用户选择`,
+  // 生活陪伴：工具门控生效，编程能力增强不启用
+  codingEnhancements: { ...DEFAULT_NON_DEV_CODING_ENHANCEMENTS },
   modeSkills: [
     'life-companion',
     'life-health',
@@ -276,6 +280,8 @@ export const STUDY_MODE_PROFILE: SceneModeProfile = {
 - 不主动谈工作/生活，除非与学习相关
 - 不在学习记忆域写入工作/生活内容
 - 复习提醒尊重用户当前状态，不强制`,
+  // 学习探索：工具门控生效，编程能力增强不启用
+  codingEnhancements: { ...DEFAULT_NON_DEV_CODING_ENHANCEMENTS },
   modeSkills: [
     'study-explain',
     'study-notes',
@@ -392,6 +398,8 @@ export const DEV_MODE_PROFILE: SceneModeProfile = {
 - 不主动扩大改动范围，不提交未完成或未验证的代码
 - 不读取或输出密钥、凭证等敏感信息
 - 不在开发记忆域写入生活/学习内容`,
+  // 代码开发：dev 独有开发类工具全量下发，编程能力增强全部启用
+  codingEnhancements: { ...DEV_CODING_ENHANCEMENTS },
   modeSkills: [
     'web-dev',
     'app-dev',

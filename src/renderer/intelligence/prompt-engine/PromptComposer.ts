@@ -381,7 +381,7 @@ function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' 
   // 场景工具按需暴露：prompt 中的工具描述与执行层工具列表保持一致（致命问题 #4）
   // 套餐工具能力组：系统提示里的工具清单必须与执行层可见工具一致，
   // 否则 AI 会去调用被套餐禁用的工具（可见性才是主闸门）
-  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, scenarioTools, isChannel, sceneToolsEnabled, gitToolsEnabled, allowedToolGroups: getAllowedToolGroupsSync(), ...agentFields })
+  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, scenarioTools, isChannel, sceneToolsEnabled, gitToolsEnabled, sceneMode: useSceneModeStore.getState().currentSceneMode, allowedToolGroups: getAllowedToolGroupsSync(), ...agentFields })
   // 按用户意图裁剪工具描述以压缩提示词体积；
   // 命中开发类意图或无法判定意图时保持全量，避免因漏选工具导致任务失败
   const preselected = preselectTools({ userMessage: userMessage ?? '', allowedTools })
