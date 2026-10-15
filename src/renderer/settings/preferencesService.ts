@@ -707,7 +707,7 @@ class SettingsService {
       logger.system.info('[SettingsService] Migrated expandAgentBlocksByDefault → 3 split fields')
     }
 
-    // .history 是编辑前的自动快照目录，不应混入工作区目录扫描结果。
+    // .history 是编辑前的自动快照目录，不应混入工作空间目录扫描结果。
     // deepMerge 遇到数组是整体替换，已保存配置会盖掉新增的默认项，这里补齐。
     const ignoredDirs = config.ignoredDirectories
     if (Array.isArray(ignoredDirs) && !ignoredDirs.includes(HISTORY_IGNORE_ENTRY)) {

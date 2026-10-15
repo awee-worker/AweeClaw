@@ -44,7 +44,7 @@ export interface SkillItem {
     metadata?: Record<string, string>
     /** 触发模式：auto LLM 自动选择（默认）, manual 手动 @mention */
     type: SkillTriggerType
-    /** 来源层级：bundled 内置（最低优先级）, global 全局, project 工作区级 */
+    /** 来源层级：bundled 内置（最低优先级）, global 全局, project 工作空间级 */
     source: SkillSource
     /** 触发关键词：用于智能匹配用户消息，自动注入完整 Skill 内容 */
     keywords?: string[]
@@ -205,9 +205,9 @@ class SkillService {
     private lastScanTime = 0
     private readonly SCAN_INTERVAL = 5000 // 5 秒缓存
     private readonly SKILLS_DIR = BRAND.paths.skills
-    /** 技能配置文件名：机器级，落在全局技能目录下，与工作区解耦 */
+    /** 技能配置文件名：机器级，落在全局技能目录下，与工作空间解耦 */
     private readonly CONFIG_FILE = BRAND.paths.skillsConfig
-    /** 旧版工作区级配置位置，仅用于首次迁移读取 */
+    /** 旧版工作空间级配置位置，仅用于首次迁移读取 */
     private readonly LEGACY_CONFIG_FILE = BRAND.paths.skillsConfigLegacy
     /** 已解析的全局配置绝对路径（进程内缓存，避免重复 IPC） */
     private configPathCache: string | null = null
@@ -236,7 +236,7 @@ class SkillService {
     /**
      * 获取所有 Skills（包括禁用的）
      * 三层扫描，优先级由低到高：
-     *   内置 (resources/skills) → 全局 ({userData}/skills/) → 工作区 (BRAND.paths.skills)
+     *   内置 (resources/skills) → 全局 ({userData}/skills/) → 工作空间 (BRAND.paths.skills)
      * 同名技能后扫描的覆盖先扫描的
      */
     async getAllSkills(forceRefresh = false): Promise<SkillItem[]> {
@@ -320,7 +320,7 @@ class SkillService {
             logger.agent.warn('[SkillService] Failed to load plugin skills:', err)
         }
 
-        // 4. 扫描工作区 Skills（覆盖全局、插件与内置同名）
+        // 4. 扫描工作空间 Skills（覆盖全局、插件与内置同名）
         const { workspacePath } = useStore.getState()
         if (workspacePath) {
             const projectDir = joinPath(workspacePath, this.SKILLS_DIR)
@@ -643,7 +643,7 @@ class SkillService {
 
     /**
      * 创建新 Skill
-     * @param level 保存层级：'project' 保存到工作区目录，'global' 保存到全局目录
+     * @param level 保存层级：'project' 保存到工作空间目录，'global' 保存到全局目录
      * @param sceneMode 场景归属（逗号分隔的多模式），为空表示所有模式可见
      */
     async createSkill(name: string, description = '', level: SkillSource = 'project', sceneMode = ''): Promise<{ success: boolean; filePath?: string; error?: string }> {
@@ -1151,7 +1151,7 @@ ${sections}`
     /**
      * 解析技能配置文件的绝对路径（机器级）
      *
-     * 配置存放在全局技能目录下，与工作区解耦：未打开工作区时技能开关同样落盘。
+     * 配置存放在全局技能目录下，与工作空间解耦：未打开工作空间时技能开关同样落盘。
      * 该目录由主进程负责创建并纳入读写白名单，渲染进程可直接读写。
      */
     private async resolveConfigPath(): Promise<string | null> {
@@ -1166,7 +1166,7 @@ ${sections}`
         }
     }
 
-    /** 读取旧版工作区级配置（仅用于迁移），文件不存在或损坏时返回 null */
+    /** 读取旧版工作空间级配置（仅用于迁移），文件不存在或损坏时返回 null */
     private async loadLegacyWorkspaceConfig(): Promise<SkillConfig | null> {
         const { workspacePath } = useStore.getState()
         if (!workspacePath) return null
@@ -1199,7 +1199,7 @@ ${sections}`
             }
         }
 
-        // 兼容迁移：早期版本把配置写在工作区 .aweeclaw/skills/ 下，
+        // 兼容迁移：早期版本把配置写在工作空间 .aweeclaw/skills/ 下，
         // 首次以机器级读取时把旧配置搬到全局目录，之后不再回读。
         const legacy = await this.loadLegacyWorkspaceConfig()
         if (legacy) {

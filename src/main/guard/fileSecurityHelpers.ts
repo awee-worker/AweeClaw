@@ -28,7 +28,7 @@ const FORBIDDEN_BINARY_PATTERNS: ReadonlyArray<RegExp> = [
   /\.sys$/i,
 ]
 
-/** 工作区会话 */
+/** 工作空间会话 */
 interface WorkspaceSession {
   roots: string[]
 }
@@ -42,10 +42,10 @@ interface SecurityCheckResult {
 }
 
 /**
- * 校验路径是否在工作区边界内
+ * 校验路径是否在工作空间边界内
  *
  * @param filePath 文件路径
- * @param workspace 工作区会话
+ * @param workspace 工作空间会话
  * @returns 校验结果
  */
 export function validateWorkspaceBoundary(
@@ -53,7 +53,7 @@ export function validateWorkspaceBoundary(
   workspace: WorkspaceSession | null,
 ): SecurityCheckResult {
   if (workspace && !securityManager.validateWorkspacePath(filePath, workspace.roots)) {
-    return { passed: false, reason: '安全底线：超出工作区边界' }
+    return { passed: false, reason: '安全底线：超出工作空间边界' }
   }
   return { passed: true }
 }
@@ -94,10 +94,10 @@ export function validateFileType(
 }
 
 /**
- * 执行完整的安全校验（工作区边界 + 敏感路径 + 文件类型）
+ * 执行完整的安全校验（工作空间边界 + 敏感路径 + 文件类型）
  *
  * @param filePath 文件路径
- * @param workspace 工作区会话
+ * @param workspace 工作空间会话
  * @param operation 操作类型
  * @param binary 是否为二进制文件
  * @returns 校验结果
@@ -108,7 +108,7 @@ export function validateFileOperation(
   operation: OperationType,
   binary: boolean = false,
 ): SecurityCheckResult {
-  // 工作区边界校验
+  // 工作空间边界校验
   const boundaryCheck = validateWorkspaceBoundary(filePath, workspace)
   if (!boundaryCheck.passed) {
     securityManager.logOperation(operation, filePath, false, { reason: boundaryCheck.reason })

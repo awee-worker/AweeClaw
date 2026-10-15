@@ -117,7 +117,7 @@ const ACTION_CARDS: ActionCardDef[] = [
   { id: 'open-market', icon: Store, color: '#F97316', titleZh: '场景市场', titleEn: 'Scenario Market', descZh: '发现并安装新场景', descEn: 'Discover new scenarios' },
   { id: 'open-scene-tools', icon: Blocks, color: '#10B981', titleZh: '场景工具', titleEn: 'Scene Tools', descZh: '全部工具面板', descEn: 'All scene tools' },
   { id: 'scenarios', icon: LayoutGrid, color: '#06B6D4', titleZh: '场景管理', titleEn: 'Scenarios', descZh: '管理已安装的 AI 场景', descEn: 'Manage installed scenarios' },
-  { id: 'recent-workspaces', icon: Clock, color: '#EC4899', titleZh: '最近工作', titleEn: 'Recent Work', descZh: '最近打开的工作区', descEn: 'Recently opened workspaces' },
+  { id: 'recent-workspaces', icon: Clock, color: '#EC4899', titleZh: '最近工作', titleEn: 'Recent Work', descZh: '最近打开的工作空间', descEn: 'Recently opened workspaces' },
 ]
 
 /** 工具卡图标色板（按工具 id 循环取色） */
@@ -813,7 +813,7 @@ export default function WorkbenchHome() {
 
   /* ---------- 操作入口 ---------- */
   const handleNewChat = useCallback(() => {
-    // 有已选工作区时，进入新建任务页面默认打开工作区面板
+    // 有已选工作空间时，进入新建任务页面默认打开工作空间面板
     if (useStore.getState().workspace?.roots?.length) {
       setActiveSidePanel('explorer')
     }
@@ -830,7 +830,7 @@ export default function WorkbenchHome() {
     if (outcome.status === 'opened') {
       setShowWelcomePage(false)
     } else if (outcome.status === 'redirected') {
-      // 该工作区已在其他窗口打开：主进程已聚焦那个窗口，这里只做提示
+      // 该工作空间已在其他窗口打开：主进程已聚焦那个窗口，这里只做提示
       toast.info(t('workspace.alreadyOpenElsewhere', language))
     } else if (outcome.status === 'invalid') {
       toast.error(t('workspace.invalidTarget', language))
@@ -1668,7 +1668,7 @@ function WorkbenchCard({
   )
 }
 
-/* ---------- 最近工作区列表（卡片内嵌） ---------- */
+/* ---------- 最近工作空间列表（卡片内嵌） ---------- */
 function RecentWorkspacesList({
   isZh,
   items,
@@ -1679,7 +1679,7 @@ function RecentWorkspacesList({
   onOpenRecent: (path: string) => void
 }) {
   if (items.length === 0) {
-    return <PreviewTodo text={isZh ? '暂无最近工作区' : 'No recent workspaces'} />
+    return <PreviewTodo text={isZh ? '暂无最近工作空间' : 'No recent workspaces'} />
   }
   return (
     <div className="w-full space-y-1.5">

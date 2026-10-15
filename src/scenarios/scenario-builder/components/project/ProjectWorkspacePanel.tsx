@@ -1,5 +1,5 @@
 /**
- * 项目工作区面板（ProjectWorkspacePanel）
+ * 项目工作空间面板（ProjectWorkspacePanel）
  *
  * 聚合所有"单项目操作"，以 Tab 形式承载：
  *   开发：配置 / 提示词 / 工具 / 脚本 / 数据库
@@ -9,7 +9,7 @@
  * 设计动机：
  * - 场景开发助手支持多项目开发，这些操作只对"当前选中项目"生效，
  *   不应作为全局侧边栏入口（避免无项目时点击为空、多项目时语义割裂）。
- * - 由项目列表卡片的"打开工作区"按钮激活（setActiveSidePanel('project-workspace')）。
+ * - 由项目列表卡片的"打开工作空间"按钮激活（setActiveSidePanel('project-workspace')）。
  *
  * 各子面板均通过 useSelectedProject 自取当前项目，无需本组件透传。
  */
@@ -29,7 +29,7 @@ import PreviewPanel from '../preview/PreviewPanel'
 import InstallPanel from '../install/InstallPanel'
 import PublishPanel from '../publish/PublishPanel'
 
-/** 工作区 Tab 定义 */
+/** 工作空间 Tab 定义 */
 interface WorkspaceTab {
   id: string
   labelKey: string

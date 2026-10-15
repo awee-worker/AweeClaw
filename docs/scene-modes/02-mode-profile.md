@@ -77,7 +77,7 @@ export interface PerceptionFilter {
   activeAppTracking: boolean
   /** 日历事件 */
   calendarEvents: boolean
-  /** 工作区文件改动 */
+  /** 工作空间文件改动 */
   workspaceFileChanges: boolean
   /** 屏幕久坐时长 */
   screenIdleTime: boolean

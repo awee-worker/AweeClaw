@@ -125,7 +125,7 @@ export interface IPCContext {
   preferencesStore: Store
   workspaceMetaStore: Store
   bootstrapStore: Store
-  // 窗口-工作区管理（用于单项目单窗口模式）
+  // 窗口-工作空间管理（用于单项目单窗口模式）
   findWindowByWorkspace?: (roots: string[]) => BrowserWindow | null
   setWindowWorkspace?: (windowId: number, roots: string[]) => void
   getWindowWorkspace?: (windowId: number) => string[] | null
@@ -171,7 +171,7 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 文件操作（安全版）
   registerOnce('secure-file', () => registerSecureFileHandlers(getMainWindow, workspaceMetaStore, (event) => {
-    // 优先使用请求来源窗口的工作区（支持多窗口隔离）
+    // 优先使用请求来源窗口的工作空间（支持多窗口隔离）
     if (event && context.getWindowWorkspace) {
       const windowId = event.sender.id
       const windowRoots = context.getWindowWorkspace(windowId)
@@ -195,9 +195,9 @@ export function registerAllHandlers(context: IPCContext) {
     getBlacklist,
   }))
 
-  // 终端（安全版）- 传入窗口工作区获取函数实现多窗口隔离
+  // 终端（安全版）- 传入窗口工作空间获取函数实现多窗口隔离
   registerOnce('secure-terminal', () => registerSecureTerminalHandlers(getMainWindow, (event) => {
-    // 优先使用请求来源窗口的工作区（支持多窗口隔离）
+    // 优先使用请求来源窗口的工作空间（支持多窗口隔离）
     if (event && context.getWindowWorkspace) {
       const windowId = event.sender.id
       const windowRoots = context.getWindowWorkspace(windowId)
@@ -281,7 +281,7 @@ export function registerAllHandlers(context: IPCContext) {
   // 外部智能体（Claude Code / Codex / Cursor 子进程桥接）
   registerOnce('external-agent', () =>
     registerExternalAgentHandlers((event) => {
-      // 与 secure-terminal 一致：优先请求来源窗口的工作区，回退到全局最近工作区
+      // 与 secure-terminal 一致：优先请求来源窗口的工作空间，回退到全局最近工作空间
       if (context.getWindowWorkspace) {
         const windowId = event.sender.id
         const windowRoots = context.getWindowWorkspace(windowId)
@@ -316,17 +316,17 @@ export function registerAllHandlers(context: IPCContext) {
   // 会话数据库
   registerOnce('session-db', () => registerSessionDbIpcHandlers())
 
-  // 项目附件本地存储（本地优先：工作区 .aweeclaw 缓存目录，后端兜底）
-  // 附件跟随工作区走：优先当前窗口绑定的工作区，兜底持久化的最近工作区
+  // 项目附件本地存储（本地优先：工作空间 .aweeclaw 缓存目录，后端兜底）
+  // 附件跟随工作空间走：优先当前窗口绑定的工作空间，兜底持久化的最近工作空间
   registerOnce('project-attachments', () =>
     registerProjectAttachmentIpcHandlers(() => {
-      // 优先：当前主窗口已绑定的工作区（运行时切换工作区后即时反映）
+      // 优先：当前主窗口已绑定的工作空间（运行时切换工作空间后即时反映）
       const win = getMainWindow()
       if (win && !win.isDestroyed() && context.getWindowWorkspace) {
         const roots = context.getWindowWorkspace(win.id)
         if (roots && roots.length > 0) return roots[0]
       }
-      // 兜底：持久化的最近工作区
+      // 兜底：持久化的最近工作空间
       const session = workspaceMetaStore.get('lastWorkspaceSession') as
         | { roots?: string[] }
         | undefined
@@ -359,13 +359,13 @@ export function registerAllHandlers(context: IPCContext) {
     registerMainWindowScreenshotHandlers(
       getMainWindow,
       () => {
-        // 优先：当前主窗口已绑定的工作区（运行时切换工作区后即时反映）
+        // 优先：当前主窗口已绑定的工作空间（运行时切换工作空间后即时反映）
         const win = getMainWindow()
         if (win && !win.isDestroyed() && context.getWindowWorkspace) {
           const roots = context.getWindowWorkspace(win.id)
           if (roots && roots.length > 0) return roots[0]
         }
-        // 兜底：持久化的最近工作区
+        // 兜底：持久化的最近工作空间
         const session = workspaceMetaStore.get('lastWorkspaceSession') as
           | { roots?: string[] }
           | undefined

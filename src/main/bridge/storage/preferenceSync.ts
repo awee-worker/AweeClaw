@@ -141,7 +141,7 @@ export function registerSettingsHandlers(
             : SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS
         securityRef.updateBlacklist(deniedShellCommands)
 
-        // 工作区外允许访问目录同步（用户主动配置的额外可访问目录）
+        // 工作空间外允许访问目录同步（用户主动配置的额外可访问目录）
         const allowedExternalDirs =
           Array.isArray(securitySettings?.allowedExternalDirectories)
             ? securitySettings.allowedExternalDirectories
@@ -242,8 +242,8 @@ export function registerSettingsHandlers(
   /**
    * 应用级回退临时目录
    *
-   * 位于 userData 下（已注册为可信应用路径）。AI 产生的临时文件优先写入工作区的
-   * `.aweeclaw/temp`，仅在没有打开工作区时回退到本目录。
+   * 位于 userData 下（已注册为可信应用路径）。AI 产生的临时文件优先写入工作空间的
+   * `.aweeclaw/temp`，仅在没有打开工作空间时回退到本目录。
    */
   safeIpcHandle('settings:getTempDir', () => {
     const path = require('path')
@@ -256,7 +256,7 @@ export function registerSettingsHandlers(
    * 插件 / 场景 / 运行时安装在应用默认数据目录下（app.getPath('userData')），
    * 而技能 / 附件 / 数据库落在配置存储目录下（用户可在设置里改成自定义路径）。
    * 两者在用户自定义配置路径后不再相同，因此一并返回，
-   * 供渲染层把「工作区之外但属于应用自身」的路径纳入放行范围。
+   * 供渲染层把「工作空间之外但属于应用自身」的路径纳入放行范围。
    */
   safeIpcHandle('settings:getAppDataRoots', () => {
     const roots = [app.getPath('userData'), getUserConfigDir()]

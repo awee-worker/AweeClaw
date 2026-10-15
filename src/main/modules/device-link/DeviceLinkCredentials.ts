@@ -23,9 +23,9 @@ export interface DeviceLinkCredentials {
   accessToken: string
   /** 设备展示名（如 "MacBook Pro (Alice)"）。若不提供，主进程自动用 hostname + OS 填充 */
   deviceName?: string
-  /** 工作区根路径（可选，用于后端展示） */
+  /** 工作空间根路径（可选，用于后端展示） */
   workspacePath?: string
-  /** 工作区名称（可选） */
+  /** 工作空间名称（可选） */
   workspaceName?: string
 }
 

@@ -72,7 +72,7 @@ export function usePreviewSessionSync(file: OpenFile): PreviewSessionSync {
     })
   }, [preview?.sessionId])
 
-  // 工作区根变化时刷新本地服务发现（供 openPreferredPreview 等使用）
+  // 工作空间根变化时刷新本地服务发现（供 openPreferredPreview 等使用）
   useEffect(() => {
     if (workspace?.roots?.length) {
       void devServerDiscoveryService.refresh(workspace.roots)

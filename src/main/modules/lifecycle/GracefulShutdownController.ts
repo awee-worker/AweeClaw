@@ -52,12 +52,12 @@ const DEFAULT_PRESENTATION: ShutdownWindowPresentation = {
 
 const COPY = {
   zh: {
-    savingTitle: '正在保存工作区',
+    savingTitle: '正在保存工作空间',
     savingAppQuit: '正在退出应用前保存所有运行时数据。',
-    savingWindowClose: '正在关闭窗口前保存当前工作区与会话状态。',
+    savingWindowClose: '正在关闭窗口前保存当前工作空间与会话状态。',
     savingDescription: '请稍候，AweeClaw 会在保存完成后继续退出流程。',
     doneTitle: '保存完成',
-    doneMessage: '当前工作区与对话数据已安全保存。',
+    doneMessage: '当前工作空间与对话数据已安全保存。',
     doneDescription: 'AweeClaw 正在完成最后的退出收尾。',
     errorTitle: '保存未完全成功',
     errorMessage: '部分运行时数据可能未完整持久化。',

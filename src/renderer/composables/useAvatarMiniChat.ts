@@ -200,13 +200,13 @@ function buildMessageContent(
 }
 
 /**
- * 保存附件到本地（工作区优先，用户数据目录兜底）
+ * 保存附件到本地（工作空间优先，用户数据目录兜底）
  *
  * 主目录：{workspacePath}/.aweeclaw/uploads/{timestamp}_{filename}
  * 兜底：{userData}/.aweeclaw/uploads/{timestamp}_{filename}
  * （目录名取自 BRAND.paths.uploads，与聊天窗口落盘路径保持一致）
  *
- * 无工作区时必须走兜底目录：否则附件不落盘，AI 拿不到任何本地路径（"找不到图片路径"）。
+ * 无工作空间时必须走兜底目录：否则附件不落盘，AI 拿不到任何本地路径（"找不到图片路径"）。
  * 保存失败不阻塞发送流程，仅记录日志。
  *
  * @returns 与 attachments 一一对应的路径数组（未保存的为 undefined）
@@ -364,7 +364,7 @@ export function useAvatarMiniChat(
         attachments = compressedAttachments
       }
 
-      // 附件落盘（工作区优先，userData 兜底）——与普通聊天窗口 useAttachmentManager 保持一致
+      // 附件落盘（工作空间优先，userData 兜底）——与普通聊天窗口 useAttachmentManager 保持一致
       // 保存失败不阻塞发送流程，但会导致 AI 拿不到本地路径，日志中会体现
       let savedAttachmentPaths: (string | undefined)[] | undefined
       if (hasAttachments) {

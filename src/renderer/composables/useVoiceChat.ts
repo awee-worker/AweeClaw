@@ -96,7 +96,7 @@ export interface VoiceChatOptions {
   llmConfig?: LLMConfig
   /** 系统提示词 */
   systemPrompt?: string
-  /** 工作区路径（让 AI 知道用户当前的工作目录） */
+  /** 工作空间路径（让 AI 知道用户当前的工作目录） */
   workspacePath?: string
   /** 当前打开的文件列表 */
   openFiles?: string[]
@@ -808,7 +808,7 @@ export function useVoiceChat(options?: VoiceChatOptions) {
         return
       }
 
-      // 阶段 2：构建系统提示词（注入工作区上下文）
+      // 阶段 2：构建系统提示词（注入工作空间上下文）
       const systemPrompt = buildVoiceSystemPrompt({
         basePrompt: options?.systemPrompt,
         workspacePath: options?.workspacePath,

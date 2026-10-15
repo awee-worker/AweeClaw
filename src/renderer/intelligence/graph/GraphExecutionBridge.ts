@@ -32,7 +32,7 @@ export interface GraphSessionHandle {
   planId: string
   /** 图调度器（组合了 ExecutionScheduler） */
   scheduler: GraphScheduler
-  /** 工作区路径 */
+  /** 工作空间路径 */
   workspacePath: string
   /**
    * 实时获取当前执行图（从 store 读取，保证最新）

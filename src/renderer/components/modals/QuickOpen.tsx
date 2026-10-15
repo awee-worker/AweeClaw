@@ -173,7 +173,7 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // 深度优先遍历工作区目录树
+  // 深度优先遍历工作空间目录树
   const getAllFiles = useCallback(async (dirPath: string, prefix: string = ''): Promise<string[]> => {
     const items = await api.file.readDir(dirPath)
     if (!items) return []
@@ -197,7 +197,7 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
     return files
   }, [])
 
-  // 初始化时拉取工作区全部文件
+  // 初始化时拉取工作空间全部文件
   useEffect(() => {
     if (!workspacePath) {
       setIsLoading(false)

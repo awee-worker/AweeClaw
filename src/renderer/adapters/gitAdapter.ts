@@ -90,7 +90,7 @@ export interface GitWorktree {
     locked: boolean
     /** 目录已失效（可被 prune 清理） */
     prunable: boolean
-    /** 是否为仓库主工作树（即工作区自身） */
+    /** 是否为仓库主工作树（即工作空间自身） */
     isMain: boolean
 }
 
@@ -724,7 +724,7 @@ class ScenarioVersionControl {
     /**
      * 静默 fetch：只复用已存凭证，认证失败也不再弹窗
      *
-     * 用于「打开工作区时自动 fetch」这类被动场景 —— 主动操作才应该弹凭证框。
+     * 用于「打开工作空间时自动 fetch」这类被动场景 —— 主动操作才应该弹凭证框。
      */
     async fetchQuiet(rootPath?: string): Promise<boolean> {
         try {
@@ -1442,7 +1442,7 @@ class ScenarioVersionControl {
             if (pending > 0 && options.requireClean) {
                 return {
                     success: false,
-                    error: `工作区有 ${pending} 个未提交变更；require_clean=true 时拒绝封存，请先提交或改为 require_clean=false`,
+                    error: `工作空间有 ${pending} 个未提交变更；require_clean=true 时拒绝封存，请先提交或改为 require_clean=false`,
                 }
             }
 

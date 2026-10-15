@@ -1,7 +1,7 @@
 /**
  * 文件菜单定义
  *
- * 包含：打开文件夹、添加文件夹、保存工作区、保存文件、刷新、最近工作区
+ * 包含：打开文件夹、添加文件夹、保存工作空间、保存文件、刷新、最近工作空间
  */
 
 import type { BrowserWindow, MenuItemConstructorOptions } from 'electron'
@@ -9,7 +9,7 @@ import type { Language } from '../../appBootstrap'
 import { t } from '../menuI18n'
 import { createCommandSender, sendOpenRecentWorkspace } from '../menuActions'
 
-/** 最近工作区项 */
+/** 最近工作空间项 */
 export interface RecentWorkspace {
   path: string
   name: string
@@ -32,7 +32,7 @@ export function buildFileMenu(ctx: FileMenuContext): MenuItemConstructorOptions 
   const { getWin, lang, recentWorkspaces, onClearRecentWorkspaces } = ctx
   const isMac = process.platform === 'darwin'
 
-  // 最近工作区子菜单
+  // 最近工作空间子菜单
   const recentSubmenu: MenuItemConstructorOptions[] =
     recentWorkspaces.length > 0
       ? [

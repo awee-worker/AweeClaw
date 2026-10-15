@@ -138,7 +138,7 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
     securityConfig.allowedGitSubcommands || [...SECURITY_DEFAULTS.GIT_SUBCOMMANDS],
   )
 
-  // 工作区外允许访问目录：必须在此同步给主进程安全模块。
+  // 工作空间外允许访问目录：必须在此同步给主进程安全模块。
   // 若只在 settings:set('securitySettings') 时同步，冷启动（重启应用）后主进程侧
   // 的放行列表为空，file:read / file:write / 终端 cwd 等校验会拒绝这些目录，
   // 表现为「设置里配了外部目录，重启后依然访问不了」。
@@ -698,7 +698,7 @@ function initProactiveIpc(): void {
         // 延迟导入避免在模块加载阶段触发决策引擎的复杂依赖初始化
         import('../modules/proactive/ProactiveDecisionEngine')
           .then(async ({ proactiveDecisionEngine }) => {
-            // ── 预热：在决策引擎首次节拍前完成 LanceDB 加载与工作区 git 预分析 ──
+            // ── 预热：在决策引擎首次节拍前完成 LanceDB 加载与工作空间 git 预分析 ──
             // 根因：LanceDB native 模块首次 import 阻塞事件循环 2-3s，
             //       git log 全量分析阻塞 >3s，两者都会导致决策引擎 10 路信号
             //       在首个节拍全部超时。预热将阻塞提前到启动阶段，避免污染节拍。
@@ -865,7 +865,7 @@ const EMBEDDER_WARMUP_TIMEOUT_MS = 120_000
  *    LocalEmbedder 按秒输出日志。若不预热，下载会落在首次节拍内并被 3s 信号超时打断，
  *    表现为连续多拍没有行为预测且界面上看不到任何提示。
  *
- * 注意：GitCoModificationAnalyzer 的 git log 预分析不在此处触发，因为工作区路径
+ * 注意：GitCoModificationAnalyzer 的 git log 预分析不在此处触发，因为工作空间路径
  * 在启动时尚未确定。改为在 ImpactAnalysisDetector 首次 detect 时通过非阻塞的
  * getCoModifiedFiles → prefetchAnalysis 按需触发（下次节拍命中缓存）。
  */
@@ -1002,13 +1002,13 @@ function initFloatingAvatarModule(_firstWin: BrowserWindow): void {
         return lang?.toLowerCase().includes('en') ? 'en' : 'zh'
       },
       getWorkspacePath: () => {
-        // 优先：当前主窗口已绑定的工作区（运行时切换工作区后即时反映）
+        // 优先：当前主窗口已绑定的工作空间（运行时切换工作空间后即时反映）
         const win = getMainWindow()
         if (win && !win.isDestroyed()) {
           const roots = getWindowWorkspace(win.id)
           if (roots && roots.length > 0) return roots[0]
         }
-        // 兜底：持久化的最近工作区（启动时/无窗口时可用）
+        // 兜底：持久化的最近工作空间（启动时/无窗口时可用）
         const session = getConfigStore().get('lastWorkspaceSession') as
           | { roots?: string[] }
           | undefined
@@ -1139,8 +1139,8 @@ function initProjectExecutionModule(): void {
  * 2. 启动 EventBridge（监听 powerMonitor、文件变更、空闲轮询）
  * 3. 注册 IPC handler（renderer 通过 device-link:set-credentials 推送 token）
  *
- * 工作区根解析器复用 floating-avatar 的逻辑：
- * - 优先取当前主窗口已绑定的工作区
+ * 工作空间根解析器复用 floating-avatar 的逻辑：
+ * - 优先取当前主窗口已绑定的工作空间
  * - 回退到 lastWorkspaceSession 的 roots[0]
  * - 再回退到 lastWorkspacePath
  *

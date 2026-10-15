@@ -88,7 +88,7 @@ export function GitLineHistoryPanel({ request, onRestore, onClose }: GitLineHist
 
       const workspacePath = useStore.getState().workspacePath
       if (!workspacePath) {
-        setError(zh ? '未打开工作区，无法读取 Git 历史。' : 'No workspace is open.')
+        setError(zh ? '未打开工作空间，无法读取 Git 历史。' : 'No workspace is open.')
         setLoading(false)
         return
       }
@@ -121,7 +121,7 @@ export function GitLineHistoryPanel({ request, onRestore, onClose }: GitLineHist
       if (!entry && commits.length === 0) {
         setError(
           zh
-            ? '该文件暂无 Git 历史（可能尚未提交，或文件在工作区之外）。'
+            ? '该文件暂无 Git 历史（可能尚未提交，或文件在工作空间之外）。'
             : 'No Git history for this file (not committed yet, or outside the repository).',
         )
       }

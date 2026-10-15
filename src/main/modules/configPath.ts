@@ -1,8 +1,8 @@
 /**
- * 配置路径管理器 — 用户级与工作区级配置文件路径统一管理
+ * 配置路径管理器 — 用户级与工作空间级配置文件路径统一管理
  *
  * 设计理念：
- * - 双层配置：用户级（全局）+ 工作区级（项目内 .aweeclaw/）
+ * - 双层配置：用户级（全局）+ 工作空间级（项目内 .aweeclaw/）
  * - 路径校验：自动检测目录存在性，避免无效路径
  * - 缓存机制：bootstrap store 单例缓存，避免重复创建
  * - 沙箱隔离：每个 scope 独立的 electron-store 实例
@@ -178,14 +178,14 @@ export function getConfigFilePath(
 }
 
 /**
- * 获取工作区级配置文件的完整路径
+ * 获取工作空间级配置文件的完整路径
  *
- * 工作区配置存储在项目根目录下的 `.aweeclaw/` 子目录中
+ * 工作空间配置存储在项目根目录下的 `.aweeclaw/` 子目录中
  *
- * @param workspaceRoot 工作区根目录
+ * @param workspaceRoot 工作空间根目录
  * @param filename 文件名
  * @param subdir 子目录（可选）
- * @returns 工作区配置文件绝对路径
+ * @returns 工作空间配置文件绝对路径
  */
 export function getWorkspaceConfigFilePath(
   workspaceRoot: string,
@@ -197,9 +197,9 @@ export function getWorkspaceConfigFilePath(
 }
 
 /**
- * 确保工作区配置目录存在
+ * 确保工作空间配置目录存在
  *
- * @param workspaceRoot 工作区根目录
+ * @param workspaceRoot 工作空间根目录
  * @param subdir 子目录（可选）
  * @returns 配置目录路径
  */

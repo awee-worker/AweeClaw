@@ -5,9 +5,9 @@
  * 说不过去。这里只为「正在被预览的目录」挂监听，命中前端资源改动就把对应标签页
  * 重载一次。
  *
- * 为什么不复用工作区的通用文件监听：
- * - 通用监听只覆盖工作区首个根目录，且默认忽略 dist / build；而预览目录完全可能
- *   在工作区之外，或者本身就是构建产物目录（预览 dist 时恰好收不到通知）。
+ * 为什么不复用工作空间的通用文件监听：
+ * - 通用监听只覆盖工作空间首个根目录，且默认忽略 dist / build；而预览目录完全可能
+ *   在工作空间之外，或者本身就是构建产物目录（预览 dist 时恰好收不到通知）。
  * - 预览目录数量少、生命周期与标签页一致，单独监听的开销和影响面都更小。
  *
  * 事件抖动（编辑器保存 + 构建工具批量写入）由固定节拍合并，一个节拍只推一次。
@@ -42,7 +42,7 @@ const RELOAD_EXTENSIONS = new Set([
  *
  * - node_modules：依赖树，启动监听与运行期的事件量都最大
  * - .git / .aweeclaw / .history：版本库与应用自身的记录目录，后者会被应用
- *   自己反复写入（工作区状态、文件快照），当成页面内容就会把标签页一直拉起来
+ *   自己反复写入（工作空间状态、文件快照），当成页面内容就会把标签页一直拉起来
  *
  * 点开头的目录在 shouldReload 里还会被统一拦一次，这里点名列出是为了在最外层
  * 就快速跳过，并让下面交给 watcher 的忽略 glob 有据可依。
@@ -54,7 +54,7 @@ const IGNORED_DIRS = new Set(['node_modules', '.git', '.aweeclaw', '.history'])
  *
  * @parcel/watcher 的 ignore 只接受 glob 字符串，且只在订阅那一刻生效；
  * 少了它，watcher 会为 node_modules 这类目录逐个建立监听，
- * 预览目录落在工作区之上时启动监听就要遍历整棵依赖树。
+ * 预览目录落在工作空间之上时启动监听就要遍历整棵依赖树。
  * 刻意不忽略 dist / build：预览构建产物时正需要跟踪它们的变化。
  */
 const IGNORED_GLOBS = ['**/node_modules/**', '**/.git/**', '**/.aweeclaw/**', '**/.history/**']
@@ -89,7 +89,7 @@ function targetKey(ownerId: number, url: string): string {
  *
  * 点开头的路径段一律不算页面内容：那里放的是应用自身的记录（.aweeclaw / .history /
  * .git / .DS_Store 等），而预览静态服务本身也拒绝服务这些路径，页面根本引用不到。
- * 只按「相对预览根目录」判断，免得工作区祖先目录名里的点被误伤。
+ * 只按「相对预览根目录」判断，免得工作空间祖先目录名里的点被误伤。
  */
 export function shouldReload(rootDir: string, filePath: string): boolean {
     const segments = filePath.split(/[\\/]/)

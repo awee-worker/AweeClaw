@@ -527,7 +527,7 @@ function createGroupedAPI() {
       getFileAttachments: () => raw.getClipboardFileAttachments(),
     },
 
-    // 工作区
+    // 工作空间
     workspace: {
       open: () => raw.openWorkspace(),
       addFolder: () => raw.addFolderToWorkspace(),
@@ -1122,7 +1122,7 @@ function createGroupedAPI() {
     meetingNotes: {
       /** 显示/聚焦会议纪要窗口 */
       show: () => raw.meetingNotes.show(),
-      /** 获取当前工作区路径 */
+      /** 获取当前工作空间路径 */
       getWorkspace: () => raw.meetingNotes.getWorkspace(),
       /** 保存录音原文 txt */
       saveTranscript: (payload: Parameters<typeof raw.meetingNotes.saveTranscript>[0]) =>

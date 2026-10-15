@@ -82,14 +82,14 @@ export function hasPathTraversal(path: string): boolean {
   return DANGEROUS_PATH_PATTERNS.some(pattern => pattern.test(path))
 }
 
-/** 受保护的应用数据目录名（工作区内的 .aweeclaw） */
+/** 受保护的应用数据目录名（工作空间内的 .aweeclaw） */
 export const PROTECTED_APP_DIR_NAME = BRAND.dirName
 
 /**
  * AI 临时文件目录名（相对 .aweeclaw）
  *
  * AI 执行过程中产生的临时文件（中间产物、解压中间件、内联脚本等）统一存放在
- * `.aweeclaw/temp`：位于工作区内，AI 与用户都能看到、都能主动清理；同时列入下方
+ * `.aweeclaw/temp`：位于工作空间内，AI 与用户都能看到、都能主动清理；同时列入下方
  * DELETABLE_APP_SUBDIRS，删除该目录不会触发 .aweeclaw 保护拦截。
  */
 export const WORKSPACE_TEMP_DIR_NAME = 'temp'
@@ -97,7 +97,7 @@ export const WORKSPACE_TEMP_DIR_NAME = 'temp'
 /**
  * 应用级回退临时目录名（相对 app.getPath('userData')）
  *
- * 仅在没有打开工作区、无法使用工作区的 .aweeclaw/temp 时兜底使用。
+ * 仅在没有打开工作空间、无法使用工作空间的 .aweeclaw/temp 时兜底使用。
  */
 export const APP_TEMP_ROOT_NAME = 'tmp'
 

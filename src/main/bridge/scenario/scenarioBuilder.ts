@@ -208,7 +208,7 @@ function buildDeclarativeScenarioConfig(p: CreateProjectFilesParams): Declarativ
       layout: 'chat-centric',
       panels: ['chat'],
       sidebarItems: [
-        { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
+        { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作空间', component: 'ExplorerView', position: 0 },
         { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1 },
       ],
     },
@@ -447,7 +447,7 @@ function createDeclarativeScaffold(params: CreateProjectFilesParams): void {
       '- 用户数据仅用于当前会话，不得持久化到日志',
       '',
       '## 操作边界',
-      '- 仅操作当前工作区范围内的文件',
+      '- 仅操作当前工作空间范围内的文件',
       '- 网络请求仅限于场景配置允许的域名',
       '',
     ].join('\n'),

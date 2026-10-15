@@ -207,7 +207,7 @@ async function restoreWorkspace(onWorkspaceReady?: () => void): Promise<boolean>
     if (workspaceConfig?.restoreError === 'missing-workspace') {
       const missing = workspaceConfig.missingRoots?.[0] || ''
       const { toast } = await import('@components/foundation/NotificationProvider')
-      toast.warning('上次打开的工作区已不存在，请重新选择文件夹', missing || undefined)
+      toast.warning('上次打开的工作空间已不存在，请重新选择文件夹', missing || undefined)
     }
 
     startupMetrics.end('restore-workspace')
@@ -234,7 +234,7 @@ async function restoreWorkspace(onWorkspaceReady?: () => void): Promise<boolean>
     await restoreWorkspaceAgentStore()
   })
 
-  // 非关键路径：延迟恢复工作区状态（打开的文件、布局等）
+  // 非关键路径：延迟恢复工作空间状态（打开的文件、布局等）
   schedulePostPaintTask(async () => {
     try {
       await runWithAgentStorageWritesSuspended(async () => {
@@ -319,7 +319,7 @@ function startAppScopedBackgroundTasks(): void {
 function scheduleBackgroundInit(isPrimaryWindow: boolean): void {
   // Worker 池改为按需创建（workerService.execute 首次调用时自建）：
   // 此前在启动时无条件预创建，每个窗口都会拉起一组后台线程，
-  // 而空窗口（新建窗口）在用户打开工作区前根本用不到。
+  // 而空窗口（新建窗口）在用户打开工作空间前根本用不到。
   if (isPrimaryWindow) {
     startAppScopedBackgroundTasks()
   }
@@ -390,11 +390,11 @@ export async function initializeApp(
     const { onboardingCompleted, hasExistingConfig } = useStore.getState()
 
     if (!isEmptyWindow) {
-      updateStatus(isZh() ? '恢复工作区...' : 'Restoring workspace...')
+      updateStatus(isZh() ? '恢复工作空间...' : 'Restoring workspace...')
       await restoreWorkspace(onWorkspaceReady)
     }
 
-    // 没有工作区时把欢迎页显式激活为入口页：空窗口（新建窗口 / ?empty=1）不做工作区恢复，
+    // 没有工作空间时把欢迎页显式激活为入口页：空窗口（新建窗口 / ?empty=1）不做工作空间恢复，
     // 首次启动未选择目录也走这里。欢迎页上的「打开文件夹 / 最近工作 / 新建任务」承担起始导航。
     if (!useStore.getState().workspace?.roots?.length) {
       useStore.getState().setShowWelcomePage(true)
@@ -518,7 +518,7 @@ export function registerSettingsSync(): () => void {
           store.set('enableFileLogging', value)
         }
         break
-      // 安全设置（含「工作区外允许访问的目录」）通过独立 key 广播。
+      // 安全设置（含「工作空间外允许访问的目录」）通过独立 key 广播。
       // 工具执行前的路径校验读取 store.securitySettings，必须实时同步，
       // 否则多窗口（主窗口/执行窗口/项目执行窗口）里新增的外部目录不会生效。
       case 'securitySettings':

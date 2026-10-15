@@ -27,14 +27,14 @@ import {
   SCREEN_PERMISSION_DENIED,
 } from './screenPermission'
 
-/** 工作区路径获取函数类型 */
+/** 工作空间路径获取函数类型 */
 type WorkspacePathGetter = () => string | null
 
 /**
  * 注册主窗口截图 IPC handler
  *
  * @param getMainWindow 获取主窗口的函数
- * @param getWorkspacePath 获取当前工作区路径的函数（截图落盘用）
+ * @param getWorkspacePath 获取当前工作空间路径的函数（截图落盘用）
  */
 export function registerMainWindowScreenshotHandlers(
   getMainWindow: (windowId?: number) => BrowserWindow | null,

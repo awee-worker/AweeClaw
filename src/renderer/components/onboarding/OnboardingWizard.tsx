@@ -1,6 +1,6 @@
 /**
  * 首次使用引导向导
- * 核心步骤：欢迎 → 登录/注册 → 语言 → 主题 → 工作区 → AI模型 → 完成
+ * 核心步骤：欢迎 → 登录/注册 → 语言 → 主题 → 工作空间 → AI模型 → 完成
  * AI 模型配置为独立步骤，支持云端/自定义两种模式
  *
  * 注意：此组件为应用级通用组件，由 GlobalOverlays 直接懒加载导入，
@@ -47,7 +47,7 @@ interface OnboardingWizardProps {
  * 2. auth       — 登录/注册（可跳过，支持本地模式）
  * 3. language   — 选择界面语言
  * 4. theme      — 选择主题
- * 5. workspace  — 选择工作区目录（必选）
+ * 5. workspace  — 选择工作空间目录（必选）
  * 6. model      — AI 模型配置（云端 / 自定义，支持跳过）
  * 7. search     — 搜索引擎选择（可跳过，默认 Bing，国内可直接访问）
  * 8. complete   — 完成确认
@@ -149,10 +149,10 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
       ? (modelMode === 'cloud' ? isCloudModeReady : isCustomModeReady)
       : true
 
-  // 预计算默认工作区路径
+  // 预计算默认工作空间路径
   useEffect(() => {
     api.settings.getUserDataPath().then((userDataPath: string) => {
-      // 默认工作区在用户数据目录下的 projects 文件夹
+      // 默认工作空间在用户数据目录下的 projects 文件夹
       const path = require('path') as typeof import('path')
       setDefaultWorkspacePath(path.join(userDataPath, 'projects'))
     }).catch(() => {})
@@ -592,7 +592,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
           </div>
         </div>
 
-        {/* 跳过按钮：工作区步骤不允许跳过（必选） */}
+        {/* 跳过按钮：工作空间步骤不允许跳过（必选） */}
         {currentStep !== 'complete' && currentStep !== 'workspace' && (
           <motion.button
             initial={{ opacity: 0 }}
@@ -1246,7 +1246,7 @@ function WorkspaceStep({
         </div>
         <div>
           <h2 className="text-2xl font-bold text-text-primary">
-            {isZh ? '工作区目录' : 'Workspace Directory'}
+            {isZh ? '工作空间目录' : 'Workspace Directory'}
           </h2>
           <p className="text-text-muted mt-1">
             {isZh ? '选择项目文件的存放位置（必选）' : 'Choose where to store your project files (required)'}
@@ -1265,7 +1265,7 @@ function WorkspaceStep({
               <div className="absolute inset-0 rounded-[2rem] blur-xl bg-status-success/20 -z-10" />
               <Check className="w-12 h-12 text-status-success" />
             </div>
-            <h3 className="text-text-primary font-bold text-xl mb-3">{isZh ? '工作区已就绪' : 'Workspace Ready'}</h3>
+            <h3 className="text-text-primary font-bold text-xl mb-3">{isZh ? '工作空间已就绪' : 'Workspace Ready'}</h3>
             <div className="text-sm text-text-muted font-mono bg-white/5 px-6 py-4 rounded-2xl border border-border break-all shadow-inner">
               {workspacePath}
             </div>
@@ -1326,7 +1326,7 @@ function WorkspaceStep({
             </motion.button>
 
             <p className="text-xs text-text-muted opacity-60">
-              {isZh ? '请选择一个工作区目录以继续' : 'Please choose a workspace directory to continue'}
+              {isZh ? '请选择一个工作空间目录以继续' : 'Please choose a workspace directory to continue'}
             </p>
           </>
         )}
@@ -2411,7 +2411,7 @@ function CompleteStep({
           />
           <SummaryRow
             icon={<FolderOpen className="w-4 h-4" />}
-            label={isZh ? '工作区' : 'Workspace'}
+            label={isZh ? '工作空间' : 'Workspace'}
             value={workspacePath || (isZh ? '稍后选择' : 'Select later')}
             accent={!workspacePath}
           />

@@ -135,7 +135,7 @@ export function useAppInit(options: UseAppInitOptions = {}): void {
     }
   }, [handleLoaderStatus, handleRemoveLoader])
 
-  // 工作区状态同步（独立生命周期）
+  // 工作空间状态同步（独立生命周期）
   useEffect(() => {
     return initWorkspaceStateSync()
   }, [])

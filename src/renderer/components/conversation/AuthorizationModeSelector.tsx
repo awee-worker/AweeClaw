@@ -6,14 +6,14 @@
  *
  * 三种方式（判定集中在 approvalEscalation.decideApprovalGateByMode）：
  * - every-step（手动审批，默认）：创建与修改文件直接执行，改动落到输入框上方的变更条，
- *   由用户接受或撤销；删除文件、危险命令、外部内容（工作区与授权目录之外的路径）需审批
+ *   由用户接受或撤销；删除文件、危险命令、外部内容（工作空间与授权目录之外的路径）需审批
  * - dangerous-only（自动审批）：仅删除文件等不可逆操作与危险命令（rm 类、git reset --hard 等）需审批
  * - never（完全访问）：所有操作自动执行（主进程安全底线仍独立生效）
  *
  * 删除文件一类不可逆操作是前两种方式下的硬约束：既不随「少问」的取舍被稀释，
  * 也不受工具是否注册审批类型影响（MCP / 场景工具同样拦）。
  *
- * 注意：只控制 UI 层审批门禁，不影响主进程安全底线（命令黑名单、危险模式、敏感路径、工作区边界）
+ * 注意：只控制 UI 层审批门禁，不影响主进程安全底线（命令黑名单、危险模式、敏感路径、工作空间边界）
  */
 import { useState, useRef, useEffect } from 'react'
 import { ChevronDown, Check, ShieldCheck, ShieldAlert, ShieldOff } from 'lucide-react'
@@ -41,7 +41,7 @@ const MODES: Array<{
     icon: ShieldCheck,
     labelZh: '手动审批',
     labelEn: 'Manual Approval',
-    descZh: '创建与编辑文件，删除文件、危险命令与工作区外的内容需要审批',
+    descZh: '创建与编辑文件，删除文件、危险命令与工作空间外的内容需要审批',
     descEn: 'Creating and modifying files, deleting files, dangerous commands and content outside the workspace need approval',
     color: 'text-emerald-400',
   },

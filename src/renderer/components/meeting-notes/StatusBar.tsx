@@ -3,7 +3,7 @@
  *
  * 展示：
  * - 录音状态指示器（动态颜色 + 文字）
- * - 当前工作区路径（截断显示）
+ * - 当前工作空间路径（截断显示）
  * - 段数统计
  * - 会议时长
  * - 已保存文件路径（txt + docx）
@@ -176,14 +176,14 @@ function StatusBarImpl(props: StatusBarProps) {
         </span>
       )}
 
-      {/* 工作区路径 */}
+      {/* 工作空间路径 */}
       <span
         className="flex max-w-[240px] items-center gap-1 text-xs text-text-muted"
-        title={workspacePath || '未打开工作区'}
+        title={workspacePath || '未打开工作空间'}
       >
         <Folder size={12} />
         <span className="truncate">
-          {workspacePath ? truncatePath(workspacePath) : '未打开工作区'}
+          {workspacePath ? truncatePath(workspacePath) : '未打开工作空间'}
         </span>
       </span>
     </div>

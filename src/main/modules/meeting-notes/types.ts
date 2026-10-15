@@ -6,12 +6,12 @@
 
 import type { MeetingMinutes, SegmentSnapshot, Speaker } from '@shared/protocols/meetingNotes'
 
-/** 工作区路径获取函数（由外部注入，避免循环依赖） */
+/** 工作空间路径获取函数（由外部注入，避免循环依赖） */
 export type WorkspacePathGetter = () => string | null
 
 /** 会议纪要文件夹信息 */
 export interface MeetingNotesDirInfo {
-  /** 工作区根目录 */
+  /** 工作空间根目录 */
   workspaceRoot: string
   /** 当天文件夹绝对路径 */
   dayDir: string

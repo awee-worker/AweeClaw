@@ -20,7 +20,7 @@ export type { WorkspacePathGetter, MeetingNotesDirInfo } from './types'
 
 /** 模块依赖（由外部注入） */
 export interface MeetingNotesModuleDeps {
-  /** 获取当前工作区路径 */
+  /** 获取当前工作空间路径 */
   getWorkspacePath: WorkspacePathGetter
 }
 

@@ -20,7 +20,7 @@ import {
 
 /** 性能追踪 API 接口 */
 export interface PerfTraceApi {
-  /** 开始追踪，省略 options 时写入工作区下的 tmp-diag */
+  /** 开始追踪，省略 options 时写入工作空间下的 tmp-diag */
   start: (options?: PerfTraceStartOptions) => Promise<PerfTraceIpcResponse<PerfTraceStatus>>
   /** 停止追踪 */
   stop: () => Promise<PerfTraceIpcResponse<PerfTraceStatus>>

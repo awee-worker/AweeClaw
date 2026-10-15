@@ -62,7 +62,7 @@ export interface FloatingAvatarDeps {
   toggleWakeWord: () => Promise<boolean>
   /** 界面语言 */
   getLanguage: () => 'zh' | 'en'
-  /** 获取当前工作区路径（用于截图等本地文件落盘到 .aweeclaw/screenshot） */
+  /** 获取当前工作空间路径（用于截图等本地文件落盘到 .aweeclaw/screenshot） */
   getWorkspacePath: () => string | null
   /** 转发模型列表请求到主窗口（主窗口从 store 构建，通过 models-response 返回） */
   forwardRequestModels: (requestId: string) => void

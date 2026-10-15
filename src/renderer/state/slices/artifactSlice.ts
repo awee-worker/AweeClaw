@@ -16,14 +16,14 @@ const MAX_ARTIFACTS = 120
 export const ARTIFACT_RATIO_MIN = 0.15
 export const ARTIFACT_RATIO_MAX = 0.7
 
-/** 产物栏默认占比：产物 : 工作区文件 = 1 : 3 */
+/** 产物栏默认占比：产物 : 工作空间文件 = 1 : 3 */
 export const ARTIFACT_RATIO_DEFAULT = 0.25
 
 /** 单条产物记录 */
 export interface ArtifactEntry {
   /** 产物绝对路径 */
   path: string
-  /** 所属工作区根路径（切换工作区后自动过滤，不需要清空列表） */
+  /** 所属工作空间根路径（切换工作空间后自动过滤，不需要清空列表） */
   workspacePath: string
   /** 首次落盘时间 */
   createdAt: number
@@ -48,7 +48,7 @@ export interface RecordArtifactInput {
 export interface ArtifactSlice {
   /** 产物列表，按最近更新倒序 */
   artifacts: ArtifactEntry[]
-  /** 产物栏占工作区面板的高度比例，默认 0.25（产物 : 文件 = 1 : 3） */
+  /** 产物栏占工作空间面板的高度比例，默认 0.25（产物 : 文件 = 1 : 3） */
   artifactRatio: number
   /** 产物栏是否折叠 */
   artifactCollapsed: boolean

@@ -57,7 +57,7 @@ const PdfPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PdfPreview'
 const DocxPreview = safeNamedLazy(() => import('./DocumentPreview'), 'DocxPreview', { label: 'DocxPreview', silent: true })
 const DocPreview = safeNamedLazy(() => import('./DocumentPreview'), 'DocPreview', { label: 'DocPreview', silent: true })
 const PptPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PptPreview', { label: 'PptPreview', silent: true })
-// v2.3.2：工作区 .pptx 文件预览改用 SlideCanvas 渲染（与 PPT 生成预览视觉一致）
+// v2.3.2：工作空间 .pptx 文件预览改用 SlideCanvas 渲染（与 PPT 生成预览视觉一致）
 const WorkspacePptxPreview = safeLazy(() => import('../ppt-preview/WorkspacePptxPreview'), { label: 'WorkspacePptxPreview', silent: true })
 // v2.4：xlsx 默认进入高保真只读预览（exceljs/SheetJS），点「编辑表格」再切换 x-data-spreadsheet 编辑
 const XlsxFileView = safeNamedLazy(() => import('./DocumentPreview'), 'XlsxFileView', { label: 'XlsxFileView', silent: true })
@@ -1222,7 +1222,7 @@ export interface ScenarioEditorPolicy {
   enableDocumentPreview: boolean
   /** 是否启用 HTML 模式 */
   enableHtmlMode: boolean
-  /** 是否启用写作工作区 */
+  /** 是否启用写作工作空间 */
   enableWritingWorkspace: boolean
   /** 是否启用自动保存 */
   enableAutoSave: boolean

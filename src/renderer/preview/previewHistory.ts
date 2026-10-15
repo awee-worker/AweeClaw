@@ -5,7 +5,7 @@
  * 空状态里点一下就能回来。
  *
  * 存在 localStorage：历史是「这台机器上的使用痕迹」，不需要跨设备同步，也不该混进
- * 工作区元数据（那些会跟着项目一起走）。
+ * 工作空间元数据（那些会跟着项目一起走）。
  */
 
 import type { PreviewServerSource } from '@shared/protocols/previewProtocol'

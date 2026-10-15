@@ -34,7 +34,7 @@ export interface AutoApproveSettings {
  * - undefined（旧版本未设置）时回退到 autoApprove/freeModeEnabled 逻辑
  * - 有值时覆盖 autoApprove/freeModeEnabled，成为工具审批的唯一开关
  *
- * 仅控制 UI 层审批门禁，不影响主进程安全底线（命令黑名单、危险模式、敏感路径、工作区边界）
+ * 仅控制 UI 层审批门禁，不影响主进程安全底线（命令黑名单、危险模式、敏感路径、工作空间边界）
  */
 export type AuthorizationMode = 'every-step' | 'dangerous-only' | 'never'
 
@@ -156,7 +156,7 @@ export interface TerminalConfig {
 export interface GitConfig {
   /** 版本控制状态自动刷新（文件变更 / 窗口聚焦时重读 git status） */
   autoRefresh: boolean
-  /** 打开工作区时静默执行 git fetch（有远程仓库时；失败不打扰用户） */
+  /** 打开工作空间时静默执行 git fetch（有远程仓库时；失败不打扰用户） */
   autoFetchOnOpen: boolean
   /** 允许 AI 使用 Git 写操作（git_commit / git_branch） */
   aiWriteEnabled: boolean
@@ -240,10 +240,10 @@ export interface SecurityPolicyPanel {
   allowedGitSubcommands: string[]
   showSecurityWarnings: boolean
   /**
-   * 工作区外允许访问的目录列表。
-   * 用户主动配置的额外可读写目录，这些目录及其子目录和文件不受工作区边界限制，
+   * 工作空间外允许访问的目录列表。
+   * 用户主动配置的额外可读写目录，这些目录及其子目录和文件不受工作空间边界限制，
    * 但仍受敏感路径检查约束（如 .ssh、.aws 等系统敏感目录仍被拒绝）。
-   * 适用于需要读取工作区外文件（如引用公共库、配置文件等）的场景。
+   * 适用于需要读取工作空间外文件（如引用公共库、配置文件等）的场景。
    */
   allowedExternalDirectories?: string[]
 }

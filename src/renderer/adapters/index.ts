@@ -9,7 +9,7 @@ export { api, getAPI, type GroupedElectronAPI } from './electronBridge'
 // ===== 初始化 =====
 export { initializeApp, registerSettingsSync, type InitResult } from './appInitializer'
 
-// ===== 工作区管理 =====
+// ===== 工作空间管理 =====
 export { workspaceManager } from './WorkspaceAdapter'
 export { loadWorkspace } from './workspaceLoader'
 export { resetWorkspaceRuntimeState } from './workspaceResetAdapter'

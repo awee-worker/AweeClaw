@@ -2,10 +2,10 @@
  * 菜单构建器
  *
  * 职责：
- * 1. 组装完整菜单模板（平台分支 + 动态最近工作区）
+ * 1. 组装完整菜单模板（平台分支 + 动态最近工作空间）
  * 2. 调用 Menu.setApplicationMenu 应用菜单
  * 3. 提供 rebuild(lang) 接口供语言切换时重建
- * 4. 提供动态数据更新接口（最近工作区）
+ * 4. 提供动态数据更新接口（最近工作空间）
  *
  * 架构：
  * - macOS: App / File / Edit / View / AI / Window / Help
@@ -27,9 +27,9 @@ import { buildHelpMenu } from './menuItems/helpMenu'
 export interface MenuBuilderContext {
   /** 获取主窗口 */
   getWin: () => BrowserWindow | null
-  /** 获取最近工作区列表 */
+  /** 获取最近工作空间列表 */
   getRecentWorkspaces: () => Promise<RecentWorkspace[]>
-  /** 清除最近工作区 */
+  /** 清除最近工作空间 */
   onClearRecentWorkspaces: () => Promise<void>
 }
 
@@ -53,7 +53,7 @@ export class MenuBuilder {
    */
   async init(lang: Language): Promise<void> {
     this.currentLang = lang
-    // 加载最近工作区
+    // 加载最近工作空间
     try {
       this.currentRecentWorkspaces = await this.ctx.getRecentWorkspaces()
     } catch {
@@ -73,7 +73,7 @@ export class MenuBuilder {
   }
 
   /**
-   * 更新最近工作区并重建菜单
+   * 更新最近工作空间并重建菜单
    */
   async updateRecentWorkspaces(): Promise<void> {
     try {

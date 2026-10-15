@@ -33,7 +33,7 @@ export interface VoiceContext {
   voiceModelConfig: unknown | null
   /** 界面语言 */
   language: 'zh' | 'en'
-  /** 当前工作区路径（注入系统提示词） */
+  /** 当前工作空间路径（注入系统提示词） */
   workspacePath: string | null
   /** 工作模式（chat/agent/expert，同步主窗口 currentMode） */
   workMode: 'chat' | 'agent' | 'expert' | null

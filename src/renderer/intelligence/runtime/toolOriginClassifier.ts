@@ -5,8 +5,8 @@
  *
  * 判定原则：
  * - 只依据「数据从哪来」这一结构化事实，不分析内容语义
- * - 文件类工具按路径落点区分：工作区内与客户端数据目录可信，其余不可信；
- *   相对路径按工作区根解析，缺路径参数时按工具默认落点（工作区根）判定
+ * - 文件类工具按路径落点区分：工作空间内与客户端数据目录可信，其余不可信；
+ *   相对路径按工作空间根解析，缺路径参数时按工具默认落点（工作空间根）判定
  * - 无法识别的工具一律归为不可信 —— 漏防的代价远高于多一次确认
  */
 
@@ -108,7 +108,7 @@ function isAbsolutePath(p: string): boolean {
  * 折叠路径中的 . 与 .. 段
  *
  * 落点判定必须先把 .. 展开，否则 `/ws/../etc/passwd` 会因为前缀仍是 `/ws/`
- * 而被判成工作区内 —— 这既是误判可信，也是一条绕过来源分级的通路。
+ * 而被判成工作空间内 —— 这既是误判可信，也是一条绕过来源分级的通路。
  */
 function collapseSegments(path: string): string {
   const normalized = normalizePath(path)
@@ -119,7 +119,7 @@ function collapseSegments(path: string): string {
   for (const segment of normalized.split('/')) {
     if (!segment || segment === '.' || (drive && segment === drive[1])) continue
     if (segment === '..') {
-      // 越过起点时保留 ..，让后续前缀比对自然失败（相对路径无法证明落在工作区内）
+      // 越过起点时保留 ..，让后续前缀比对自然失败（相对路径无法证明落在工作空间内）
       if (parts.length > 0 && parts[parts.length - 1] !== '..') parts.pop()
       else if (!isPosixAbs && !drive) parts.push('..')
       continue
@@ -135,7 +135,7 @@ function collapseSegments(path: string): string {
 /**
  * 把路径按语义解析为可比较的绝对路径
  *
- * 本地文件工具的路径参数通常是工作区相对路径，直接拿相对路径与工作区根比对
+ * 本地文件工具的路径参数通常是工作空间相对路径，直接拿相对路径与工作空间根比对
  * 必然判为区外，整条结果就被标成不可信来源，当轮所有写入类操作随即平白多一次确认。
  */
 function resolveForContainment(target: string, workspacePath?: string | null): string {
@@ -211,12 +211,12 @@ export interface TrustScope {
    * 工具实际执行时的基准目录
    *
    * 项目执行窗口、挂载任务里，工具把相对路径解析到项目目录（工具上下文的 workspacePath），
-   * 而 store 里的 workspacePath 往往是全局工作区；挂载任务下甚至可能为空。
+   * 而 store 里的 workspacePath 往往是全局工作空间；挂载任务下甚至可能为空。
    * 两者不一致时只用 store 的值，会把落在项目目录里的文件一律判为区外。
    */
   executionRoot?: string | null
   /**
-   * 用户授权在工作区外访问的目录
+   * 用户授权在工作空间外访问的目录
    *
    * 来自项目执行窗口的项目目录与「设置 → 安全设置」的允许目录，
    * 与 toolPathPolicy.buildToolPathPolicy 的 extraAllowedRoots 同一口径。
@@ -227,9 +227,9 @@ export interface TrustScope {
 /**
  * 判定文件类工具的信任级别
  *
- * 有路径信息时按落点判定，相对路径按执行基准目录解析（缺省时回退到工作区根）；
- * 无路径信息时按工具默认落点处理（本地文件工具的默认落点是工作区根，
- * 例如 search_files 只给 pattern 时就在工作区内检索），只有连基准目录都没有时才取不可信。
+ * 有路径信息时按落点判定，相对路径按执行基准目录解析（缺省时回退到工作空间根）；
+ * 无路径信息时按工具默认落点处理（本地文件工具的默认落点是工作空间根，
+ * 例如 search_files 只给 pattern 时就在工作空间内检索），只有连基准目录都没有时才取不可信。
  */
 function classifyFileTool(
   toolName: string,
@@ -266,19 +266,19 @@ function classifyFileTool(
 }
 
 /**
- * 工具的目标路径是否落在工作区与授权目录之外
+ * 工具的目标路径是否落在工作空间与授权目录之外
  *
- * 供审批门禁判定「外部内容」：手动审批模式下，触碰工作区与授权目录之外的
+ * 供审批门禁判定「外部内容」：手动审批模式下，触碰工作空间与授权目录之外的
  * 文件需要先过一次确认。与来源分类的差别在于「部分越界」也算 —— 来源分级要求
  * 全部路径可信才判可信，而审批只要有一个目标在区外就该让用户看见。
  *
- * 无路径参数时不判越界（例如 search_files 只给 pattern 时默认在工作区内检索），
+ * 无路径参数时不判越界（例如 search_files 只给 pattern 时默认在工作空间内检索），
  * 不给一个没有任何路径信息的调用平白加一次确认。
  *
  * @param toolName        工具名
  * @param rawParams       工具调用参数
- * @param workspacePath   当前工作区路径
- * @param authorizedRoots 用户授权在工作区外访问的目录（设置 → 安全设置、
+ * @param workspacePath   当前工作空间路径
+ * @param authorizedRoots 用户授权在工作空间外访问的目录（设置 → 安全设置、
  *                        项目执行窗口的项目目录），这些位置不算「外部内容」
  */
 export function accessesOutsideScope(
@@ -311,7 +311,7 @@ export function accessesOutsideScope(
  *
  * @param toolName      工具名
  * @param rawParams     工具调用参数（文件类工具据此判定路径落点）
- * @param workspacePath 当前工作区路径
+ * @param workspacePath 当前工作空间路径
  * @param scope         执行基准目录与用户授权目录（见 TrustScope）
  */
 export function classifyToolOrigin(

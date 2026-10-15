@@ -573,7 +573,7 @@ function hasStreamingThread(): boolean {
 function scheduleAgentSessionPersistence(): void {
     // 会话快照需要整体序列化，开销随会话规模增长。流式期间 setState 极为频繁，
     // 固定短间隔会造成持续的整篇序列化；流式期间改用更长间隔，
-    // 流式结束、切换工作区、应用退出等关键节点仍会立即落盘。
+    // 流式结束、切换工作空间、应用退出等关键节点仍会立即落盘。
     const delayMs = hasStreamingThread() ? STREAMING_PERSIST_DEBOUNCE_MS : undefined
     schedulePersistedAgentSessionState(() => useAgentStore.getState(), delayMs)
 }

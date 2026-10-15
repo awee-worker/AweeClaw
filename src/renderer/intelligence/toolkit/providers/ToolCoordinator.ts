@@ -313,7 +313,7 @@ class ToolManager {
 
     // Git 工具兜底校验（执行层强制）
     // 主闸门是「可见性」—— getToolsForContext 在用户没有提出 Git 操作时不下发 git_*；
-    // 此处拦截绕过上下文过滤的直接调用：工作区并非都是 Git 仓库，AI 自己「探路」
+    // 此处拦截绕过上下文过滤的直接调用：工作空间并非都是 Git 仓库，AI 自己「探路」
     // 会稳定失败，因此要求先由用户在指令中授权。
     // git_* 属 dev 独有开发类工具：非 dev 场景即便意图授权也不放行，与可见性门控对齐。
     if (GIT_TOOL_NAMES.includes(toolName) && (!isGitToolsEnabled() || currentSceneMode !== 'dev')) {

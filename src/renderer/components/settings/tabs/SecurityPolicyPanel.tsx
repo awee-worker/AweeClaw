@@ -98,7 +98,7 @@ export function SecurityPolicyPanel({
         }
     }
 
-    /** 添加工作区外允许访问的目录 */
+    /** 添加工作空间外允许访问的目录 */
     const handleAddExternalDir = async () => {
         try {
             const selectedDir = await api.file.selectFolder()
@@ -120,7 +120,7 @@ export function SecurityPolicyPanel({
         }
     }
 
-    /** 移除工作区外允许访问的目录 */
+    /** 移除工作空间外允许访问的目录 */
     const handleRemoveExternalDir = (dir: string) => {
         const currentDirs = securitySettings.allowedExternalDirectories || []
         updateSecuritySettings({
@@ -237,7 +237,7 @@ export function SecurityPolicyPanel({
                 </section>
             )}
 
-            {/* 工作区外允许访问的目录 */}
+            {/* 工作空间外允许访问的目录 */}
             <section
                 data-settings-anchor="allowedExternalDirectories"
                 className="space-y-4 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm"

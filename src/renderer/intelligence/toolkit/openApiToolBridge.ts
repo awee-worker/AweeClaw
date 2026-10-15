@@ -3,7 +3,7 @@
  *
  * 存在理由：`/mcp` 端点要回答「AweeClaw 有哪些工具 / 帮我执行某个工具」，
  * 而**工具清单与执行能力全在渲染进程**（内置工具、MCP 工具、场景工具、
- * 工作区沙箱、命令黑名单）。主进程只有 `mcpManager` 那一小撮 MCP 工具，
+ * 工作空间沙箱、命令黑名单）。主进程只有 `mcpManager` 那一小撮 MCP 工具，
  * 拿它对外声明等于谎报能力。
  *
  * 数据流：
@@ -18,7 +18,7 @@
  *   1. 未授权时拒绝 terminal / dangerous / interaction 类工具
  *   2. 以 `skipMainApproval: true` 执行 —— 外部请求没有本机用户在旁边点确认，
  *      若走审批流程会永久挂起。注意这只跳过 UI 审批，**不影响**主进程的
- *      安全底线（命令黑名单、敏感路径、工作区边界）。
+ *      安全底线（命令黑名单、敏感路径、工作空间边界）。
  *
  * @module intelligence/toolkit/openApiToolBridge
  */
@@ -166,7 +166,7 @@ async function executeTool(
       ? (payload.args as Record<string, unknown>)
       : {}
 
-  // ⚠️ skipMainApproval 只跳过 UI 审批：命令黑名单 / 敏感路径 / 工作区边界
+  // ⚠️ skipMainApproval 只跳过 UI 审批：命令黑名单 / 敏感路径 / 工作空间边界
   // 由主进程安全层继续生效（见 configTypes.AuthorizationMode 注释）
   const context: ToolExecutionContext = {
     workspacePath: payload.workspacePath ?? null,

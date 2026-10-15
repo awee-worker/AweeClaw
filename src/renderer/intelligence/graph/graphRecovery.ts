@@ -84,7 +84,7 @@ function validateCheckpointNodes(state: { checkpoint: { nodeId: string; complete
  *
  * 调用时机：WorkspaceStatusBar.tsx 中 loadPlansFromDisk 完成后调用。
  *
- * @param workspacePath 工作区路径
+ * @param workspacePath 工作空间路径
  * @returns 恢复统计（成功/失败/跳过数量）
  */
 export async function recoverGraphRuntimeFromDisk(

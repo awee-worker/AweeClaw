@@ -126,7 +126,7 @@ export interface VoiceToolLoopOptions {
   messages: LLMMessage[]
   /** 系统提示词 */
   systemPrompt: string
-  /** 工作区路径（工具执行上下文） */
+  /** 工作空间路径（工具执行上下文） */
   workspacePath: string | null
   /** 最大迭代次数 */
   maxIterations?: number
@@ -522,7 +522,7 @@ export async function executeVoiceToolCall(
  * - 从不确认（never）：所有操作自动执行
  *
  * @param toolCall 工具调用信息
- * @param workspacePath 工作区路径
+ * @param workspacePath 工作空间路径
  * @param requestId 请求 ID
  * @param authorizationMode 授权方式（来自 voiceContext，传给审批门禁检查）
  */

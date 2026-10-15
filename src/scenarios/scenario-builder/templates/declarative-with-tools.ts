@@ -51,7 +51,7 @@ export const declarativeWithToolsTemplate: ScenarioTemplate = {
       layout: 'chat-centric',
       panels: [],
       sidebarItems: [
-        { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
+        { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作空间', component: 'ExplorerView', position: 0 },
         { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1 },
       ],
       statusBarItems: [],

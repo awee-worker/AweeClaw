@@ -126,9 +126,9 @@ const NOTABLE_FILE_PATTERNS: ReadonlyArray<RegExp> = Object.freeze([
 /** 读取 package.json 并推断项目技术栈 */
 class TechStackProbe {
   /**
-   * 探测指定工作区的技术栈信息
+   * 探测指定工作空间的技术栈信息
    *
-   * @param workspacePath 工作区根路径
+   * @param workspacePath 工作空间根路径
    * @returns 技术栈信息，读取失败时返回空值字段
    */
   detect(workspacePath: string): TechStackInfo {

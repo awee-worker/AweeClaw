@@ -26,7 +26,7 @@ class McpService {
   /** 初始化 MCP 服务 */
   async initialize(workspaceRoots: string[]): Promise<void> {
     if (this.initialized) {
-      // 重新初始化（工作区变更）
+      // 重新初始化（工作空间变更）
       await this.reinitialize(workspaceRoots)
       return
     }
@@ -64,7 +64,7 @@ class McpService {
     }
   }
 
-  /** 重新初始化（工作区变更） */
+  /** 重新初始化（工作空间变更） */
   private async reinitialize(workspaceRoots: string[]): Promise<void> {
     const store = useStore.getState()
     store.setMcpLoading(true)

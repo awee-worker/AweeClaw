@@ -250,7 +250,7 @@ export interface GraphExecutionContext {
   node: GraphNode
   /** 状态访问器 */
   state: GraphStateAccessor
-  /** 工作区路径 */
+  /** 工作空间路径 */
   workspacePath: string
   /** 追踪 id（用于 Span 关联） */
   traceId: string

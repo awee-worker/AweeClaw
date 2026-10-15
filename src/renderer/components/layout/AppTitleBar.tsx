@@ -534,7 +534,7 @@ export default function AppTitleBar() {
               {!showWelcomePage && (
                 <button
                   onClick={() => {
-                    // 新对话：若当前已选择工作区，默认打开工作区面板
+                    // 新对话：若当前已选择工作空间，默认打开工作空间面板
                     if (useStore.getState().workspace?.roots?.length) {
                       useStore.getState().setActiveSidePanel('explorer')
                     }

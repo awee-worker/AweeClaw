@@ -290,7 +290,7 @@ export default {
 | getLogger() | 获取日志器 |
 | executeSql(sql) | 执行 SQL（场景独立 SQLite） |
 | getDatabasePath() | 获取数据库路径 |
-| workspacePath | 工作区路径 |
+| workspacePath | 工作空间路径 |
 
 ## 七、自定义工具开发
 

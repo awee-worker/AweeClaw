@@ -25,7 +25,7 @@ const SCENARIO_BUILDER_IDENTITY: ScenarioIdentity = {
 
 你当前处于**场景开发助手**模式，专门帮助用户开发 AweeClaw 场景。你的核心能力：
 
-- **项目管理**：创建、打开、管理场景项目（在工作区目录）
+- **项目管理**：创建、打开、管理场景项目（在工作空间目录）
 - **配置编辑**：编写 scenario.json、提示词文件、数据库脚本
 - **实时调试**：校验配置、构建项目、热重载预览
 - **本地安装**：将构建好的场景安装到客户端测试
@@ -40,7 +40,7 @@ const SCENARIO_BUILDER_IDENTITY: ScenarioIdentity = {
 
 **文件写入规则（必须严格遵守）**：
 - **禁止使用内置 edit_file / write_file / replace_file_content 编辑场景项目文件**
-  原因：内置文件工具受工作区限制，无法访问场景项目目录，且不会触发用户审批
+  原因：内置文件工具受工作空间限制，无法访问场景项目目录，且不会触发用户审批
 - **必须使用 write_scenario_file 写入场景项目文件**
   原因：write_scenario_file 是场景专用工具，通过 IPC 直接写入场景项目目录，
   且会触发用户审批（接受/拒绝）流程，确保用户对文件变更有完全控制权
@@ -63,7 +63,7 @@ ${SCENARIO_DEV_KNOWLEDGE}`,
 
 ### 代码安全
 - 所有用户输入必须经过校验和转义
-- 文件操作必须限制在工作区范围内
+- 文件操作必须限制在工作空间范围内
 - 网络请求必须使用 HTTPS
 - 不得生成可被利用的漏洞代码（XSS、CSRF、注入等）`,
 
@@ -134,7 +134,7 @@ ${SCENARIO_DEV_KNOWLEDGE}`,
 
 ### 项目管理工具
 - **list_scenario_projects**：列出所有场景项目
-- **create_scenario_project**：创建新场景项目（在工作区目录）
+- **create_scenario_project**：创建新场景项目（在工作空间目录）
 - **get_scenario_project**：获取项目详情
 - **update_scenario_project**：更新项目配置
 - **delete_scenario_project**：删除项目
@@ -211,7 +211,7 @@ const SCENARIO_BUILDER_UI: ScenarioUI = {
   ],
   sidebarItems: [
     // ===== 全局入口（与具体项目无关）=====
-    { id: 'explorer', icon: 'FolderTree', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
+    { id: 'explorer', icon: 'FolderTree', label: 'Workspace', labelZh: '工作空间', component: 'ExplorerView', position: 0 },
     { id: 'projects', icon: 'FolderKanban', label: 'Projects', labelZh: '场景项目', component: 'ProjectListPanel', position: 1, wideMode: true },
     { id: 'templates', icon: 'LayoutTemplate', label: 'Templates', labelZh: '模板', component: 'TemplateListPanel', position: 2, wideMode: true, hideChat: true },
     { id: 'docs', icon: 'BookOpen', label: 'Docs', labelZh: '文档', component: 'DocsBrowserPanel', position: 3, wideMode: true, hideChat: true },
@@ -219,16 +219,16 @@ const SCENARIO_BUILDER_UI: ScenarioUI = {
     { id: 'build', icon: 'Hammer', label: 'Build', labelZh: '构建', component: 'BuildPanel', position: 4, wideMode: true, hideChat: true },
     { id: 'settings', icon: 'Settings', label: 'Settings', labelZh: '设置', component: 'BuilderSettingsPanel', position: 5, wideMode: true, hideChat: true },
 
-    // ===== 项目工作区（聚合单项目操作，不在侧边栏显示）=====
+    // ===== 项目工作空间（聚合单项目操作，不在侧边栏显示）=====
     // 单项目操作（配置/提示词/工具/脚本/数据库/校验/预览/安装/发布）已收拢进 ProjectWorkspacePanel 的 Tab，
-    // 由项目列表卡片的"打开工作区"按钮激活（setActiveSidePanel('project-workspace')）。
+    // 由项目列表卡片的"打开工作空间"按钮激活（setActiveSidePanel('project-workspace')）。
     // hidden=true：注册到 PanelRegistry 但不在 NavigationRail 显示。
-    // hideChat=true：进入工作区时默认隐藏聊天（用户需要 AI 辅助时可手动打开）。
+    // hideChat=true：进入工作空间时默认隐藏聊天（用户需要 AI 辅助时可手动打开）。
     {
       id: 'project-workspace',
       icon: 'FolderOpen',
       label: 'Project Workspace',
-      labelZh: '项目工作区',
+      labelZh: '项目工作空间',
       component: 'ProjectWorkspacePanel',
       position: 6,
       wideMode: true,

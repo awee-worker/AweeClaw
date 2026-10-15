@@ -6,7 +6,7 @@
  * - 任务统计（完成率、各状态数量）
  * - 执行概览（执行覆盖率、状态分布、跳转入口）
  * - 自动化规则数
- * - 关联的工作区、知识库、对话
+ * - 关联的工作空间、知识库、对话
  */
 import { CheckCircle2, Circle, Clock, AlertCircle, Zap, Target, Package, FileCode, FolderOpen } from 'lucide-react'
 import type { ProjectItem, TaskItem, AutomationRule } from '../tasks/types'
@@ -195,7 +195,7 @@ export function ProjectOverview({ project, tasks, rules, isZh, onNavigateToExecu
           </h3>
           <div className="space-y-1 text-[13px] text-text-secondary">
             {project.workspacePaths.length > 0 && (
-              <div>{isZh ? '工作区' : 'Workspaces'}: {project.workspacePaths.length}</div>
+              <div>{isZh ? '工作空间' : 'Workspaces'}: {project.workspacePaths.length}</div>
             )}
             {project.knowledgeBaseIds.length > 0 && (
               <div>{isZh ? '知识库' : 'Knowledge bases'}: {project.knowledgeBaseIds.length}</div>

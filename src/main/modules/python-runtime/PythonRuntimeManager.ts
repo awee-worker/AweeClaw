@@ -2119,8 +2119,8 @@ class PythonManager {
   }): Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number | null; error?: string; tempFile?: string }> {
     const { script, dependencies = [], args = [], cwd, timeout = 120000 } = params
 
-    // 临时脚本统一落在工作区的 .aweeclaw/temp（AI 可见、可清理，删除不受 .aweeclaw 保护拦截）；
-    // cwd 由调用方传入工作区根目录，无工作区时回退到应用级临时目录。
+    // 临时脚本统一落在工作空间的 .aweeclaw/temp（AI 可见、可清理，删除不受 .aweeclaw 保护拦截）；
+    // cwd 由调用方传入工作空间根目录，无工作空间时回退到应用级临时目录。
     const tempDir = cwd && fs.existsSync(cwd)
       ? path.join(cwd, BRAND.dirName, WORKSPACE_TEMP_DIR_NAME)
       : path.join(app.getPath('userData'), APP_TEMP_ROOT_NAME)

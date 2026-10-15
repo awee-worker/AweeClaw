@@ -585,7 +585,7 @@ export const createMessageSlice: StateCreator<
         // 若延迟到读取时判定，参数已可能被压缩/清理而丢失路径信息
         //
         // 可信范围必须与工具执行的放行依据同源：项目执行窗口里相对路径解析到项目目录
-        // （工具上下文的 workspacePath），而 store 的 workspacePath 是全局工作区。
+        // （工具上下文的 workspacePath），而 store 的 workspacePath 是全局工作空间。
         // 只用 store 的值判定，AI 在项目目录里创建的文件会被判成「外部内容」，
         // 当轮后续的写入操作随即多一次确认 —— 与界面展示的授权方式不符。
         const mainStore = useStore.getState()

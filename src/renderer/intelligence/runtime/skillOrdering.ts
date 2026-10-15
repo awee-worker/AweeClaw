@@ -6,7 +6,7 @@
  * - clicks ：按用户累计点击次数降序排列，次数相同回退到默认顺序
  *
  * 排序方式与点击次数保存在 localStorage：它们属于本机界面偏好，
- * 与工作区技能配置（启用状态、场景归属）互相独立，因此不写入技能配置文件。
+ * 与工作空间技能配置（启用状态、场景归属）互相独立，因此不写入技能配置文件。
  */
 
 import type { SceneMode } from '@protocols/sceneModeProtocol'

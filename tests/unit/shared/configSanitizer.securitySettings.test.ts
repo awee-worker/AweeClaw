@@ -4,7 +4,7 @@
  * 背景：cleanAppSettings 逐字段复制时会丢弃未在 AppSettingsSchema 中声明的字段。
  * securitySettings 采用开放结构（allowedExternalDirectories 等扩展字段），
  * 一旦被清洗掉，随 app-settings 持久化的那份配置就会丢失外部允许目录，
- * 表现为「安全设置里配置了工作区外目录，AI 仍报 Path is outside workspace」。
+ * 表现为「安全设置里配置了工作空间外目录，AI 仍报 Path is outside workspace」。
  */
 
 import { describe, it, expect } from 'vitest'

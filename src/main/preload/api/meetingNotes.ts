@@ -6,7 +6,7 @@
  *
  * 频道：
  * - meeting-notes:show              显示/聚焦窗口
- * - meeting-notes:get-workspace     获取工作区路径
+ * - meeting-notes:get-workspace     获取工作空间路径
  * - meeting-notes:save-transcript  保存录音原文 txt
  * - meeting-notes:generate-docx    生成并保存 docx
  *
@@ -40,9 +40,9 @@ export function createMeetingNotesApi() {
     show: invoke<IpcResponse>('meeting-notes:show'),
 
     // --------------------------------------------
-    // 工作区
+    // 工作空间
     // --------------------------------------------
-    /** 获取当前工作区路径（用于显示保存位置预览） */
+    /** 获取当前工作空间路径（用于显示保存位置预览） */
     getWorkspace: invoke<IpcResponse<{ workspacePath: string }>>('meeting-notes:get-workspace'),
 
     // --------------------------------------------

@@ -42,7 +42,7 @@ export default function AppMenuBar() {
     githubUrl: BRAND.links.github,
   })
 
-  // 打开「文件」菜单时刷新最近工作区
+  // 打开「文件」菜单时刷新最近工作空间
   useEffect(() => {
     if (openId !== 'file') return
     let cancelled = false

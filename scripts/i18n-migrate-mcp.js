@@ -54,7 +54,7 @@ const replacements = [
   ["t('暂无 MCP 服务器，点击上方添加按钮配置', 'No MCP servers. Click \"Add\" above to configure one.')", "t('mcp.noServers', language as Language)"],
   ["t('未找到匹配的服务器', 'No servers match your search')", "t('mcp.noMatchingServers', language as Language)"],
   ["t('当前筛选条件下无服务器', 'No servers match the current filter')", "t('mcp.noFilterMatch', language as Language)"],
-  ["t('工作区', 'Workspace')", "t('mcp.workspace', language as Language)"],
+  ["t('工作空间', 'Workspace')", "t('mcp.workspace', language as Language)"],
   ["t('全局', 'Global')", "t('mcp.global', language as Language)"],
   ["t('已禁用', 'Disabled')", "t('mcp.disabled', language as Language)"],
   ["t('授权中...', 'Auth...')", "t('mcp.authInProgress', language as Language)"],

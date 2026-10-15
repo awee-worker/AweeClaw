@@ -2,9 +2,9 @@
  * ProjectFilePreview — 项目文件独立预览面板
  *
  * 设计目标：
- *  - 在项目详情界面内独立预览文件，不抢占工作区编辑器
+ *  - 在项目详情界面内独立预览文件，不抢占工作空间编辑器
  *  - 按文件类型分发到合适的预览组件（Markdown / 图片 / HTML / 代码 / PDF / Word / PPT / Excel / CSV）
- *  - 头部提供「在工作区编辑器中打开」「最大化/还原」「关闭」操作
+ *  - 头部提供「在工作空间编辑器中打开」「最大化/还原」「关闭」操作
  *  - 底部展示文件元信息（大小、类型、修改时间）
  *  - 加载 / 错误状态友好，支持重试
  *
@@ -34,7 +34,7 @@ import { safeLazy, safeNamedLazy } from '@renderer/utils/safeImport'
 
 // ─── 文档预览组件懒加载 ───────────────────────────────────
 // PDF / Word / PPT / Excel 依赖 pdfjs-dist / mammoth / exceljs / xlsx / jszip 等重型库，
-// 按需加载，避免首屏体积膨胀。与工作区 WorkspaceEditor 保持一致。
+// 按需加载，避免首屏体积膨胀。与工作空间 WorkspaceEditor 保持一致。
 const PdfPreview = safeNamedLazy(
   () => import('@renderer/components/workspace-editor/DocumentPreview'),
   'PdfPreview', { label: 'PdfPreview', silent: true },
@@ -59,7 +59,7 @@ const CsvPreview = safeNamedLazy(
   () => import('@renderer/components/workspace-editor/DocumentPreview'),
   'CsvPreview', { label: 'CsvPreview', silent: true },
 )
-// pptx 使用工作区同款富预览组件（默认导出）
+// pptx 使用工作空间同款富预览组件（默认导出）
 const WorkspacePptxPreview = safeLazy(
   () => import('@renderer/components/ppt-preview/WorkspacePptxPreview'),
   { label: 'WorkspacePptxPreview', silent: true },
@@ -152,7 +152,7 @@ export interface ProjectFilePreviewProps {
   onClose: () => void
   /** 切换最大化 / 还原 */
   onToggleMaximize: () => void
-  /** 在工作区编辑器中打开（保留原能力，作为可选入口） */
+  /** 在工作空间编辑器中打开（保留原能力，作为可选入口） */
   onOpenInEditor: (file: FileItem) => void
 }
 
@@ -295,7 +295,7 @@ export function ProjectFilePreview({
         {fileType === 'csv' && content !== null && (
           <CsvPreview path={file.path} content={content} />
         )}
-        {/* 文档类预览：PDF / Word / PPT / Excel（懒加载重型解析库，与工作区一致） */}
+        {/* 文档类预览：PDF / Word / PPT / Excel（懒加载重型解析库，与工作空间一致） */}
         {(fileType === 'pdf' || fileType === 'docx' || fileType === 'doc'
           || fileType === 'pptx' || fileType === 'ppt' || fileType === 'xlsx') && (
           <Suspense fallback={<PreviewLoading />}>
@@ -358,7 +358,7 @@ function PreviewHeader({
         <button
           onClick={() => onOpenInEditor(file)}
           className="p-1.5 rounded-md hover:bg-surface-hover/60 text-text-muted hover:text-text-primary transition-colors"
-          title={isZh ? '在工作区编辑器中打开' : 'Open in workspace editor'}
+          title={isZh ? '在工作空间编辑器中打开' : 'Open in workspace editor'}
         >
           <ExternalLink className="w-3.5 h-3.5" />
         </button>

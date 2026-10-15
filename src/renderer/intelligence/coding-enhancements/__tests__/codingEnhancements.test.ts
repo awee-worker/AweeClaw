@@ -90,7 +90,7 @@ describe('postEditVerify — 编辑后强制验证', () => {
     expect(await verifyEditedFile('edit_file', { path: 'src/a.ts' }, '/ws')).toBeNull()
   })
 
-  it('相对路径按工作区解析', async () => {
+  it('相对路径按工作空间解析', async () => {
     vi.mocked(lintService.getLintErrors).mockResolvedValue({ errors: [] })
     await verifyEditedFile('edit_file', { path: 'src/a.ts' }, '/ws')
     expect(lintService.getLintErrors).toHaveBeenCalledWith('/ws/src/a.ts')

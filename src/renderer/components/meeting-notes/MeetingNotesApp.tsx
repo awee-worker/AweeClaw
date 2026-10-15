@@ -4,11 +4,11 @@
  * 整合所有子模块，提供完整的会议纪要功能闭环：
  * - 顶部工具栏：开始/暂停/完成/整理
  * - 中间转写列表：实时显示各发言段（说话人/原文/译文）
- * - 底部状态栏：录音状态/工作区/段数
+ * - 底部状态栏：录音状态/工作空间/段数
  * - 整理面板：弹出式，整理完成后展示结果与保存路径
  *
  * 数据流：
- *   useMeetingNotesConfig → 加载 LLM 配置/工作区
+ *   useMeetingNotesConfig → 加载 LLM 配置/工作空间
  *   useMeetingRecorder → VAD + STT + 翻译 → store.addSegment
  *   useMeetingNotesStore → 驱动 UI 渲染
  *   完成按钮 → saveTranscript（txt）
@@ -57,7 +57,7 @@ export function MeetingNotesApp() {
   const savedDocxPath = useMeetingNotesStore((s) => s.savedDocxPath)
   const getSegmentSnapshots = useMeetingNotesStore((s) => s.getSegmentSnapshots)
 
-  // ── 同步工作区路径到 store ──
+  // ── 同步工作空间路径到 store ──
   useEffect(() => {
     setWorkspacePath(workspacePath)
   }, [workspacePath, setWorkspacePath])
@@ -83,7 +83,7 @@ export function MeetingNotesApp() {
   const handleStartOrPause = useCallback(() => {
     if (meetingState === 'idle') {
       if (!workspacePath) {
-        setError('未检测到工作区，请先在主窗口打开一个文件夹')
+        setError('未检测到工作空间，请先在主窗口打开一个文件夹')
         return
       }
       setError(null)

@@ -31,9 +31,9 @@ export interface DeviceLinkCredentialsPayload {
   accessToken: string
   /** 设备显示名称（可选，未提供时主进程自动用 hostname + OS 填充） */
   deviceName?: string
-  /** 工作区绝对路径（用于 RPC 路径校验） */
+  /** 工作空间绝对路径（用于 RPC 路径校验） */
   workspacePath?: string
-  /** 工作区名称（如 my-project） */
+  /** 工作空间名称（如 my-project） */
   workspaceName?: string
 }
 

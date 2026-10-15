@@ -4,7 +4,7 @@
  * 接收后端转发的 RPC 请求（来自移动端），调用本地能力执行后返回结果。
  *
  * 复用桌面端已有能力：
- * - 文件浏览：fs + 工作区根（workspaceGuard 持久化的 lastWorkspaceSession）
+ * - 文件浏览：fs + 工作空间根（workspaceGuard 持久化的 lastWorkspaceSession）
  * - 命令执行：secureTerminal / shell:executeSecure（通过 IPC 反向调用 renderer 不可行，
  *             直接复用 SecureCommandExecutor 主进程模块）
  * - 剪贴板：Electron 全局 clipboard 对象
@@ -12,7 +12,7 @@
  * - 电源：powerShell/caffeinate 等（跨平台）
  *
  * 安全要点：
- * - 所有 path 参数必须先调用 assertSafePath，防止穿越工作区根
+ * - 所有 path 参数必须先调用 assertSafePath，防止穿越工作空间根
  * - run-command 默认拒绝，需用户在 settings 中开启 deviceLink.allowRemoteCommand
  * - 所有操作记录到 audit 日志
  */
@@ -29,7 +29,7 @@ import { SessionDb } from '../../modules/session-db'
 
 const execAsync = promisify(exec)
 
-/** 工作区根路径解析器：返回当前活动工作区的根目录 */
+/** 工作空间根路径解析器：返回当前活动工作空间的根目录 */
 type WorkspaceRootResolver = () => string | null
 
 /** 设备联动用户偏好（开关类配置） */
@@ -130,7 +130,7 @@ function invokeRenderer(
 
 /**
  * 路径安全校验
- * - 拒绝绝对路径（必须相对工作区根）
+ * - 拒绝绝对路径（必须相对工作空间根）
  * - 拒绝 `..` 穿越
  * - 返回拼接后的绝对路径
  */
@@ -152,7 +152,7 @@ function assertSafePath(workspaceRoot: string | null, relativePath: string): str
   if (path.isAbsolute(decoded)) throw new Error('absolute_path_forbidden')
   if (decoded.includes('..')) throw new Error('path_traversal_forbidden')
   const abs = path.resolve(workspaceRoot, decoded)
-  // 防御性：再次确认结果仍位于工作区内
+  // 防御性：再次确认结果仍位于工作空间内
   const rel = path.relative(workspaceRoot, abs)
   if (rel.startsWith('..') || path.isAbsolute(rel)) {
     throw new Error('path_escape_forbidden')
@@ -161,7 +161,7 @@ function assertSafePath(workspaceRoot: string | null, relativePath: string): str
 }
 
 // ============================================================================
-// 工作区 RPC
+// 工作空间 RPC
 // ============================================================================
 
 const MAX_TEXT_FILE_SIZE = 2 * 1024 * 1024 // 2MB，超过则不读文本
@@ -259,7 +259,7 @@ export async function handleWorkspaceFile(
   }
 }
 
-/** workspace.search.req → 在工作区内按文件名搜索 */
+/** workspace.search.req → 在工作空间内按文件名搜索 */
 export async function handleWorkspaceSearch(
   ctx: DeviceHandlerContext,
   payload: { keyword: string },
@@ -335,7 +335,7 @@ export async function handleWorkspaceDownload(
       mimeType,
     }
   }
-  // 大文件：返回工作区相对路径，由移动端通过分块传输（暂不实现）
+  // 大文件：返回工作空间相对路径，由移动端通过分块传输（暂不实现）
   return {
     url: `local://${payload.path}`,
     fileName: name,
@@ -344,7 +344,7 @@ export async function handleWorkspaceDownload(
   }
 }
 
-/** workspace.upload.req → 从临时 URL 下载并写入工作区 */
+/** workspace.upload.req → 从临时 URL 下载并写入工作空间 */
 export async function handleWorkspaceUpload(
   ctx: DeviceHandlerContext,
   payload: { uploadUrl: string; targetDir: string; fileName: string; overwrite?: boolean },
@@ -353,7 +353,7 @@ export async function handleWorkspaceUpload(
   if (!root) throw new Error('no_workspace')
   const dir = assertSafePath(root, payload.targetDir || '')
   const target = path.join(dir, payload.fileName)
-  // 二次校验目标路径仍在工作区内（防止 fileName 含 ../）
+  // 二次校验目标路径仍在工作空间内（防止 fileName 含 ../）
   assertSafePath(root, path.relative(root, target))
 
   // 检查覆盖

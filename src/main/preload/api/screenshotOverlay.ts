@@ -25,13 +25,13 @@ export interface SetupPayload {
   screenWidth: number
   screenHeight: number
   scaleFactor: number
-  /** 可用工作区（不含 Dock/任务栏）相对屏幕原点的 x 偏移 */
+  /** 可用工作空间（不含 Dock/任务栏）相对屏幕原点的 x 偏移 */
   workAreaX: number
-  /** 可用工作区相对屏幕原点的 y 偏移 */
+  /** 可用工作空间相对屏幕原点的 y 偏移 */
   workAreaY: number
-  /** 可用工作区宽度 */
+  /** 可用工作空间宽度 */
   workAreaWidth: number
-  /** 可用工作区高度 */
+  /** 可用工作空间高度 */
   workAreaHeight: number
 }
 

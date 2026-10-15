@@ -115,7 +115,7 @@ export function resolveSceneToolsIntentFromMessages(
 /**
  * Git 工具意图判定（同步，仅规则）
  *
- * git_* 工具默认不暴露：工作区并非都是 Git 仓库，AI 自行「探路」会稳定失败。
+ * git_* 工具默认不暴露：工作空间并非都是 Git 仓库，AI 自行「探路」会稳定失败。
  * 只有用户在消息里明确要求版本控制操作时，才把 git_* 下发给 LLM。
  */
 export function resolveGitToolsIntent(state: DecisionState): IntentResolution {

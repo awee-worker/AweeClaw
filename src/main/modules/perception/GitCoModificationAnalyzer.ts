@@ -385,7 +385,7 @@ export class GitCoModificationAnalyzer {
    * 后台预分析：异步触发 git log 分析，不阻塞调用方。
    *
    * 使用场景：
-   * 1. ProactiveDecisionEngine 启动时预热工作区（moduleInitializer 调用）
+   * 1. ProactiveDecisionEngine 启动时预热工作空间（moduleInitializer 调用）
    * 2. getCoModifiedFiles 缓存未就绪时自动触发
    *
    * 幂等保护：同一项目已有 inflight 任务时复用，不重复触发。

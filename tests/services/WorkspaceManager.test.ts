@@ -1,6 +1,6 @@
 /**
  * WorkspaceManager 测试
- * 测试工作区管理功能
+ * 测试工作空间管理功能
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'

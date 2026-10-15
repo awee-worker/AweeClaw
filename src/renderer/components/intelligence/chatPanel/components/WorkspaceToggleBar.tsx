@@ -1,6 +1,6 @@
 /**
- * 工作区/聊天切换栏组件
- * 在团队模式下提供工作区与聊天视图的切换
+ * 工作空间/聊天切换栏组件
+ * 在团队模式下提供工作空间与聊天视图的切换
  */
 import { MessageSquare, BrainCircuit } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'

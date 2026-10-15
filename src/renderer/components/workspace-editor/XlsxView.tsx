@@ -804,7 +804,7 @@ export function XlsxView({ path }: XlsxViewProps) {
   )
 }
 
-// 兼容旧引用名：工作区预览与文件面板均直接使用此视图
+// 兼容旧引用名：工作空间预览与文件面板均直接使用此视图
 // （历史上有 XlsxPreview / XlsxEditor / XlsxFileView 三个入口，现已统一为一个）
 export const XlsxFileView = XlsxView
 export const XlsxEditor = XlsxView

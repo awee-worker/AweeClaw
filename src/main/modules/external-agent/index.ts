@@ -26,12 +26,12 @@ import type {
 } from '@shared/externalAgents'
 
 /**
- * 工作区根目录解析器（与 secure-terminal 一致的模式：
- * 优先取请求来源窗口绑定的工作区，回退到全局最近工作区）
+ * 工作空间根目录解析器（与 secure-terminal 一致的模式：
+ * 优先取请求来源窗口绑定的工作空间，回退到全局最近工作空间）
  */
 export type WorkspaceRootsResolver = (event: IpcMainInvokeEvent) => string[] | null
 
-/** 校验 workdir 是否在工作区根内（根本身或其子路径） */
+/** 校验 workdir 是否在工作空间根内（根本身或其子路径） */
 function workdirWithinWorkspace(workdir: string, roots: string[] | null): boolean {
   if (!roots || roots.length === 0) return false
   const normalized = path.resolve(workdir)

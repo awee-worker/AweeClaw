@@ -452,7 +452,7 @@ function wrapCommandAction(
   return async () => {
     switch (id) {
       case 'open-folder':
-        // 选择器同时接受文件夹与多根工作区文件
+        // 选择器同时接受文件夹与多根工作空间文件
         await workspaceManager.openFolderFromDialog()
         return
       case 'add-folder': {

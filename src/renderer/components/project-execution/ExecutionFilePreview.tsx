@@ -248,7 +248,7 @@ function getFileIcon(filePath: string, operation: 'create' | 'edit') {
 interface ExecutionFilePreviewProps {
   /** 当前激活的线程 ID */
   threadId: string
-  /** 当前工作区路径（用于解析相对路径） */
+  /** 当前工作空间路径（用于解析相对路径） */
   workspacePath?: string
   /** 产物文件列表变化回调（用于父组件决定是否显示面板） */
   onFilesChange?: (count: number) => void

@@ -1,6 +1,6 @@
 /**
  * LSP 服务 - 渲染进程端
- * 支持多根目录工作区
+ * 支持多根目录工作空间
  */
 
 import { api } from './electronBridge'
@@ -67,7 +67,7 @@ function normalizeLspLocation(location: any): NormalizedLspLocation | null {
 
 /**
  * 执行 LSP 请求的通用包装器
- * 处理 URI 转换、工作区路径获取、错误处理
+ * 处理 URI 转换、工作空间路径获取、错误处理
  */
 async function executeLspRequest<T>(
   filePath: string,
@@ -103,7 +103,7 @@ async function executeLspPositionRequest<T>(
 }
 
 /**
- * 获取文件所属的工作区根目录
+ * 获取文件所属的工作空间根目录
  */
 export function getFileWorkspaceRoot(filePath: string): string | null {
   const { workspace } = useStore.getState()
@@ -169,7 +169,7 @@ export async function stopLspServer(): Promise<void> {
 }
 
 /**
- * 重置 LSP 服务状态（工作区切换时调用）
+ * 重置 LSP 服务状态（工作空间切换时调用）
  * 只清理客户端状态，不停止服务器
  */
 export function resetLspState(): void {
@@ -498,7 +498,7 @@ export async function getDocumentSymbols(filePath: string): Promise<any[]> {
 }
 
 /**
- * 搜索工作区符号
+ * 搜索工作空间符号
  */
 export async function searchWorkspaceSymbols(query: string): Promise<any[]> {
   try {
@@ -670,7 +670,7 @@ export async function waitForDiagnostics(filePath: string): Promise<boolean> {
 // ============ 智能根目录检测 ============
 
 /**
- * 获取文件的最佳工作区根目录
+ * 获取文件的最佳工作空间根目录
  * 根据语言类型智能检测项目根目录
  */
 export async function findBestRoot(filePath: string): Promise<string | null> {

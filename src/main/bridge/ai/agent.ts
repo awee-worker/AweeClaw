@@ -58,7 +58,7 @@ export function registerAgentHandlers(): void {
     return { success: true, instance: instance || null }
   })
 
-  // 工作区
+  // 工作空间
   safeIpcHandle('agent:getWorkspace', async (_, agentId: string) => {
     const workspace = agentRouter.getWorkspace(agentId)
     return { success: true, workspace: workspace || null }

@@ -129,9 +129,9 @@ export interface HostServices {
    */
   parsePptxFile: typeof import('./pptxParserMain').parsePptxFile
   /**
-   * 获取当前工作区路径（供插件落盘文件到工作区 .aweeclaw 目录）
+   * 获取当前工作空间路径（供插件落盘文件到工作空间 .aweeclaw 目录）
    *
-   * 优先级：当前主窗口已绑定的工作区 > 持久化的最近工作区 > null
+   * 优先级：当前主窗口已绑定的工作空间 > 持久化的最近工作空间 > null
    * 返回 null 时插件应降级到 OS 临时目录。
    */
   getWorkspacePath: () => string | null
@@ -160,7 +160,7 @@ export interface HostServices {
    * 媒体处理桥（视频/音频的探测、转码、裁剪、拼接、字幕、抽帧）
    *
    * 复用随包分发的 ffmpeg-static 二进制，插件因此不必依赖用户机器上是否装了
-   * ffmpeg。输入输出路径限定在工作区、插件数据目录或 aweeclaw- 前缀的临时目录
+   * ffmpeg。输入输出路径限定在工作空间、插件数据目录或 aweeclaw- 前缀的临时目录
    * 内，且不接受任意 filter 透传（见 MediaBridge 模块头注释）。
    *
    * 权限：需在 manifest.permissions 声明 `media.process`。
@@ -182,7 +182,7 @@ export interface HostServices {
    * 复用「设置 → 本地语音」里的 MOSS-TTS-Nano 引擎，插件因此不必自己拉 Python
    * 进程、重复加载数百 MB 的模型，也不会绕过用户对音色/语速/优先级的设置。
    * 只做合成不做识别，且只返回 WAV 字节不落盘——写哪个文件由调用方按自己的
-   * 工作区规则决定。
+   * 工作空间规则决定。
    *
    * 权限：需在 manifest.permissions 声明 `voice.process`。
    */
@@ -196,9 +196,9 @@ const HOST_GLOBAL_KEY = '__AWEECLAW_HOST__'
 let initialized = false
 
 /**
- * 解析当前工作区路径。
+ * 解析当前工作空间路径。
  *
- * 优先级：当前主窗口已绑定的工作区 > 持久化的最近工作区 > null。
+ * 优先级：当前主窗口已绑定的工作空间 > 持久化的最近工作空间 > null。
  * 返回 null 时调用方应降级到插件数据目录或系统临时目录。
  */
 function resolveWorkspacePath(): string | null {
@@ -226,8 +226,8 @@ export function initHostServices(): void {
     logger.system?.warn('[HostServices] Not in main process, skipping initialization')
     return
   }
-  // 媒体桥的路径白名单要知道工作区在哪；注册解析函数而非路径快照，
-  // 这样插件中途切换工作区后不会继续往旧目录写
+  // 媒体桥的路径白名单要知道工作空间在哪；注册解析函数而非路径快照，
+  // 这样插件中途切换工作空间后不会继续往旧目录写
   setMediaWorkspaceResolver(resolveWorkspacePath)
 
   const services: HostServices = {
@@ -279,8 +279,8 @@ export function initHostServices(): void {
     asr: asrBridge,
     // 语音合成桥（复用本地离线语音引擎，供插件把文本转成配音音频）
     tts: ttsBridge,
-    // 获取当前工作区路径（供插件落盘文件到工作区 .aweeclaw 目录）
-    // 优先级：当前主窗口已绑定的工作区 > 持久化的最近工作区 > null
+    // 获取当前工作空间路径（供插件落盘文件到工作空间 .aweeclaw 目录）
+    // 优先级：当前主窗口已绑定的工作空间 > 持久化的最近工作空间 > null
     getWorkspacePath: resolveWorkspacePath,
   }
 

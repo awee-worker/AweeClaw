@@ -2,7 +2,7 @@
  * 场景项目管理服务
  *
  * 负责场景项目的 CRUD 操作，通过场景上下文操作独立 SQLite 数据库。
- * 项目目录默认放在工作区根目录的 scenarios/ 文件夹下。
+ * 项目目录默认放在工作空间根目录的 scenarios/ 文件夹下。
  */
 import type { ScenarioModuleContext } from '@shared/protocols/scenario-arch'
 import type {
@@ -65,7 +65,7 @@ export class ProjectService {
   /**
    * 创建场景项目
    * - 在数据库记录项目信息
-   * - 在工作区创建项目目录和基础文件
+   * - 在工作空间创建项目目录和基础文件
    */
   async createProject(options: CreateProjectOptions): Promise<CreateProjectResult> {
     const steps: CreateProjectResult['steps'] = []
@@ -101,7 +101,7 @@ export class ProjectService {
     if (!workspacePath) {
       return {
         success: false,
-        error: '未打开工作区，无法创建项目',
+        error: '未打开工作空间，无法创建项目',
         steps: [{ id: 'workspace', status: 'failed', message: 'No workspace' }],
       }
     }
@@ -304,7 +304,7 @@ export class ProjectService {
     const ctx = this.getContext()
     const workspacePath = ctx.workspacePath
     if (!workspacePath) {
-      return { success: false, error: '未打开工作区，无法克隆示例' }
+      return { success: false, error: '未打开工作空间，无法克隆示例' }
     }
 
     // 确定参数
@@ -575,7 +575,7 @@ export class ProjectService {
     if (!workspacePath) {
       return {
         success: false,
-        error: '未打开工作区，无法创建项目',
+        error: '未打开工作空间，无法创建项目',
         steps: [{ id: 'workspace', status: 'failed', message: 'No workspace' }],
       }
     }

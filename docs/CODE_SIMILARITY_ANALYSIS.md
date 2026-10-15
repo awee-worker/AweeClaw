@@ -195,7 +195,7 @@
 
 | 组件 | 相似度 | 差异说明 |
 |------|--------|---------|
-| Editor.tsx | ~87% | AweeClaw 增加文档预览（PDF/DOCX/XLSX/PPTX）、HTML模式、写作工作区 |
+| Editor.tsx | ~87% | AweeClaw 增加文档预览（PDF/DOCX/XLSX/PPTX）、HTML模式、写作工作空间 |
 | SettingsModal.tsx | ~82% | AweeClaw 增加场景过滤、外观设置、渠道设置、云设置 |
 | ChatPanel.tsx | ~71% | AweeClaw 增加场景感知、云配额、变更审查面板 |
 | ChatMessage.tsx | ~69% | AweeClaw 增加表单卡片、通知音效、i18n 工具标签 |
@@ -234,7 +234,7 @@
 - `sidebar/panels/` — NotesView、KnowledgeView、PromptsView、TasksView、BookmarksView
 - `sidebar/DynamicPanelView.tsx` — 动态面板
 - `layout/UserAccountPopover.tsx` — 用户账户
-- `layout/WorkspaceDropdown.tsx` — 工作区下拉
+- `layout/WorkspaceDropdown.tsx` — 工作空间下拉
 - `settings/tabs/` — AppearanceSettings、ChannelSettings、CloudSettings、MemorySettings、RulesSettings
 - `common/IconMap.ts` — 图标映射
 
@@ -1131,7 +1131,7 @@ aweeclaw-backend/src/modules/marketplace/
 2. **功能层面**：新增 3 个垂直场景（法律/教育/医疗）、3 个渠道适配器（钉钉/Slack/Telegram）、场景市场后端
 3. **UI 层面**：欢迎页/活动栏/状态栏全面重设计，基础组件增强（涟漪动效/浮动标签/搜索选择）
 4. **安全层面**：场景权限策略、操作频率限制、MCP 工具沙箱
-5. **测试层面**：从 0 到 384 用例，覆盖核心模块（循环检测/记忆/安全终端/场景配置/缓存/工作区管理）
+5. **测试层面**：从 0 到 384 用例，覆盖核心模块（循环检测/记忆/安全终端/场景配置/缓存/工作空间管理）
 6. **知识库**：向量索引、增量更新、语义搜索
 
 ### 后续建议
@@ -1422,7 +1422,7 @@ aweeclaw-backend/src/modules/marketplace/
 | `ConfirmationModal.tsx` | `DecisionOverlay.tsx` | 4 级严重度（critical/danger/warning/info）、倒计时确认、风险评估标签、操作审计日志、全局 Promise API |
 | `QuickInputDialog.tsx` | `ContextualItemPicker.tsx` | 泛型选项类型、分类分组、自定义渲染器、位置感知弹出、键盘导航 |
 | `FaultBoundary.tsx` | `CrashGuard.tsx` | 错误 ID 生成、错误信息复制、场景隔离标识、HOC 包装器（withCrashGuard）、FaultNotice 子组件 |
-| `TextWithLinks.tsx` | `FilePathAnchor.tsx` | 文件路径+URL 混合解析、行号跳转、文件图标指示、工作区路径解析 |
+| `TextWithLinks.tsx` | `FilePathAnchor.tsx` | 文件路径+URL 混合解析、行号跳转、文件图标指示、工作空间路径解析 |
 
 ### 15.3 核心差异化设计
 
@@ -1601,7 +1601,7 @@ export { InputPopup } from './QuickInputDialog'
 | 92.1% | llmConfigResolver.ts | modelConfigResolver.ts | 配置解析 |
 | 91.3% | directoryCacheService.ts | dirCacheAdapter.ts | 目录缓存 |
 | 91.2% | healthCheckService.ts | providerHealthAdapter.ts | 健康检查 |
-| 91.0% | workspaceLoadService.ts | workspaceLoader.ts | 工作区加载 |
+| 91.0% | workspaceLoadService.ts | workspaceLoader.ts | 工作空间加载 |
 | 89.7% | adnifyDirService.ts | appDirService.ts | 目录服务 |
 
 ### 16.5 函数名100%相同的文件
@@ -1661,7 +1661,7 @@ export { InputPopup } from './QuickInputDialog'
 | shutdownCoordinator.ts | 场景优雅关闭 | 按场景执行不同关闭流程（法律场景保存审计/医疗场景保存状态） |
 | appDirService.ts | 场景目录管理 | 场景专属数据目录隔离 |
 | indexWorkerAdapter.ts | 场景索引策略 | 按场景选择不同索引策略（代码语义/法律全文/医疗结构化） |
-| workspaceLoader.ts | 场景工作区加载 | 按场景预加载不同工作区配置 |
+| workspaceLoader.ts | 场景工作空间加载 | 按场景预加载不同工作空间配置 |
 | workspaceStateAdapter.ts | 场景状态持久化 | 按场景选择不同状态持久化策略 |
 | workspaceStorageAdapter.ts | 场景存储适配 | 场景感知的存储配额和清理策略 |
 | workspaceResetAdapter.ts | 场景重置策略 | 按场景执行不同重置逻辑 |
@@ -1674,7 +1674,7 @@ export { InputPopup } from './QuickInputDialog'
 | toolProtocolAdapter.ts | 场景工具协议 | 按场景启用不同工具集 |
 | backendApi.ts | 场景后端API | 按场景调用不同后端端点 |
 | TerminalAdapter.ts | 场景终端适配 | 按场景配置不同终端环境 |
-| WorkspaceAdapter.ts | 场景工作区适配 | 按场景配置不同工作区环境 |
+| WorkspaceAdapter.ts | 场景工作空间适配 | 按场景配置不同工作空间环境 |
 | electronBridge.ts | 场景IPC桥接 | 已有差异化（611行 vs 373行），继续深化场景API |
 | sessionStorageAdapter.ts | 场景会话存储 | 按场景选择不同会话存储策略 |
 | completionService.ts | 场景补全服务 | 已有差异化（27行精简版 vs 729行），保持 |

@@ -46,7 +46,7 @@ const MODES: Array<{
     icon: ShieldCheck,
     labelZh: '手动审批',
     labelEn: 'Manual Approval',
-    descZh: '创建与修改文件、危险命令、工作区外的内容需要审批',
+    descZh: '创建与修改文件、危险命令、工作空间外的内容需要审批',
     descEn: 'Creating or editing files, dangerous commands and content outside the workspace require approval',
     color: 'rgb(52, 211, 153)',
   },

@@ -1,7 +1,7 @@
 /**
  * 产物面板
  *
- * 汇总 AI 执行任务时产出的文件，点击即可打开预览（行为与工作区文件树一致），
+ * 汇总 AI 执行任务时产出的文件，点击即可打开预览（行为与工作空间文件树一致），
  * 支持移除单条与清空全部。产物只保留路径元信息，文件内容由编辑器按需读取。
  */
 
@@ -30,7 +30,7 @@ import { toast } from '@components/foundation/NotificationProvider'
 import { HintOverlay, useContextMenu } from '../../ui'
 import { ArtifactContextMenu } from './ArtifactContextMenu'
 
-/** 无需读取文本内容、直接交给预览组件处理的文件类型（与工作区文件树的打开规则一致） */
+/** 无需读取文本内容、直接交给预览组件处理的文件类型（与工作空间文件树的打开规则一致） */
 const DIRECT_PREVIEW_TYPES: FileType[] = [
   'image', 'video', 'binary', 'xlsx', 'pdf', 'docx', 'doc', 'pptx', 'ppt', 'model3d',
 ]
@@ -65,7 +65,7 @@ function ArtifactIcon({ path }: ArtifactIconProps) {
 }
 
 interface ArtifactPanelProps {
-  /** 产物栏是否折叠（由工作区面板控制高度布局） */
+  /** 产物栏是否折叠（由工作空间面板控制高度布局） */
   collapsed: boolean
   onToggleCollapse: () => void
 }
@@ -91,13 +91,13 @@ export function ArtifactPanel({ collapsed, onToggleCollapse }: ArtifactPanelProp
     clearArtifacts: s.clearArtifacts,
   })))
 
-  // 只展示当前工作区的产物：切换工作区后列表自动切换，无需清空历史
+  // 只展示当前工作空间的产物：切换工作空间后列表自动切换，无需清空历史
   const visibleArtifacts = useMemo(() => {
     if (!workspacePath) return artifacts
     return artifacts.filter(item => pathStartsWith(item.path, workspacePath))
   }, [artifacts, workspacePath])
 
-  // 产物条目的右键菜单：菜单项与工作区文件树保持一致（见 ArtifactContextMenu）
+  // 产物条目的右键菜单：菜单项与工作空间文件树保持一致（见 ArtifactContextMenu）
   const { menu: contextMenu, show: showContextMenu, hide: hideContextMenu } = useContextMenu<string>()
 
   const handleOpen = useCallback(async (filePath: string) => {

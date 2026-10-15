@@ -27,7 +27,7 @@ export const TOKENS = {
   AgentStore: new InjectToken<IAgentStore>('agent.store', 'Agent状态'),
   GlobalStore: new InjectToken<IGlobalStore>('global.store', '全局状态'),
   ElectronAPI: new InjectToken<IElectronAPI>('electron.api', 'Electron IPC桥接'),
-  WorkspacePath: new InjectToken<string>('workspace.path', '工作区路径'),
+  WorkspacePath: new InjectToken<string>('workspace.path', '工作空间路径'),
 }
 
 export interface IFileService {

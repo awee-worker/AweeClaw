@@ -72,7 +72,7 @@ export interface ToolLoadingContext {
    * 是否暴露 Git 工具（git_*）。
    *
    * 缺省为 false —— git_* 工具默认不对 LLM 可见：
-   * 工作区并不都是 Git 仓库，AI 在接手任务时先跑一遍 git_status / git_log「探路」
+   * 工作空间并不都是 Git 仓库，AI 在接手任务时先跑一遍 git_status / git_log「探路」
    * 会稳定失败，既污染上下文，也让用户误以为环境出了问题。
    *
    * 仅当用户最新消息带有明确的版本控制指令（提交 / 分支 / 合并 / 差异 / 历史 /
@@ -203,7 +203,7 @@ const GIT_WRITE_TOOLS: string[] = [
   'git_commit',
   'git_branch',
   'git_sync',
-  // 链接工作树：会在工作区同级目录新建工作目录（有副作用的"重"操作）
+  // 链接工作树：会在工作空间同级目录新建工作目录（有副作用的"重"操作）
   'git_worktree',
   // 审计封存：会提交未提交变更并打审计 tag
   'git_audit',
@@ -285,7 +285,7 @@ const PLAN_EXPLORATION_TOOLS: string[] = [
  * 角色专属工具组、MCP 插件、场景工具桥接、外部智能体桥接。
  *
  * 仅保留两类与「模式 / 场景」无关的门控（见 getToolsForContext）：
- * - `git_*`：需用户当轮指令授权后才下发（工作区并非都是 Git 仓库）
+ * - `git_*`：需用户当轮指令授权后才下发（工作空间并非都是 Git 仓库）
  * - `scene_tools_*` / `external_agent_*`：按需暴露
  * 另有套餐能力组白名单作为最后一道统一过滤。
  *
@@ -388,7 +388,7 @@ export const CAPABILITY_GROUPS: CapabilityGroupConfig[] = [
     id: 'terminal',
     name: '终端命令',
     nameEn: 'Terminal',
-    // Git 工具与终端同属「在工作区执行操作」能力：
+    // Git 工具与终端同属「在工作空间执行操作」能力：
     // 归入既有组可保证已授权终端能力的用户无需回后台重新勾选即可使用
     tools: [
       'run_command',
@@ -539,7 +539,7 @@ export function getToolGroup(id: string): string[] | undefined {
  * - 角色追加专属工具组
  *
  * 仍保留的过滤 / 门控：
- * - git_*：需用户当轮指令授权后才下发（工作区并非都是 Git 仓库）；授权后
+ * - git_*：需用户当轮指令授权后才下发（工作空间并非都是 Git 仓库）；授权后
  *   快速模式（chat）仍不暴露写入类工具 —— 唯一一处按模式裁剪，且只作用于 Git 门控层
  * - scene_tools_* / external_agent_*：按需暴露
  * - 套餐能力组白名单：最后一道统一过滤
@@ -609,7 +609,7 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
   }
 
   // 6. Git 工具（git_*）为「按需暴露」：
-  //     - 默认不下发给 LLM：工作区并非都是 Git 仓库，AI 自行「探路」
+  //     - 默认不下发给 LLM：工作空间并非都是 Git 仓库，AI 自行「探路」
   //       （先跑一遍 git_status / git_log）会稳定失败，只会污染上下文；
   //     - 仅当用户本轮明确要求版本控制操作（提交 / 分支 / 差异 / 历史 / 拉取推送 …）时，
   //       由上层计算 gitToolsEnabled=true 后下发；

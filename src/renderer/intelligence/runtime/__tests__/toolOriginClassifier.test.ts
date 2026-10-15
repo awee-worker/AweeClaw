@@ -3,8 +3,8 @@
  *
  * 覆盖的核心约定：
  * 1. 六类通道的判定（本地文件 / 本地执行 / 网络 / 外部服务 / 渠道 / 外部智能体）
- * 2. 文件类工具按路径落点区分：相对路径按工作区根解析，缺路径参数时按工作区根处理，
- *    只有工作区外或连工作区都没有时才取不可信
+ * 2. 文件类工具按路径落点区分：相对路径按工作空间根解析，缺路径参数时按工作空间根处理，
+ *    只有工作空间外或连工作空间都没有时才取不可信
  * 3. 未登记的工具一律取不可信 —— 漏防的代价高于多一次确认
  * 4. 信号汇总的去重、截断，以及「只统计本轮」的口径
  */
@@ -82,38 +82,38 @@ describe('classifyToolOrigin —— 通道判定', () => {
 })
 
 describe('classifyToolOrigin —— 文件类按落点区分', () => {
-  it('工作区内文件可信', () => {
+  it('工作空间内文件可信', () => {
     const origin = classifyToolOrigin('read_file', { path: `${WORKSPACE}/src/a.ts` }, WORKSPACE)
     expect(origin.channel).toBe('local_fs')
     expect(origin.trust).toBe('trusted')
   })
 
-  it('工作区根目录本身可信', () => {
+  it('工作空间根目录本身可信', () => {
     expect(classifyToolOrigin('list_directory', { path: WORKSPACE }, WORKSPACE).trust).toBe('trusted')
   })
 
-  it('客户端数据目录可信（插件与技能安装位置在工作区之外）', () => {
+  it('客户端数据目录可信（插件与技能安装位置在工作空间之外）', () => {
     const origin = classifyToolOrigin('read_file', { path: `${APP_DATA}/skills/x/SKILL.md` }, WORKSPACE)
     expect(origin.trust).toBe('trusted')
   })
 
-  it('工作区外文件不可信', () => {
+  it('工作空间外文件不可信', () => {
     const origin = classifyToolOrigin('read_file', { path: '/tmp/downloaded.md' }, WORKSPACE)
     expect(origin.trust).toBe('untrusted')
     expect(origin.locator).toBe('/tmp/downloaded.md')
   })
 
-  it('前缀相似但不属于工作区的路径不可信', () => {
+  it('前缀相似但不属于工作空间的路径不可信', () => {
     const origin = classifyToolOrigin('read_file', { path: `${WORKSPACE}-backup/a.ts` }, WORKSPACE)
     expect(origin.trust).toBe('untrusted')
   })
 
-  it('相对路径按工作区根解析，落在区内则可信', () => {
+  it('相对路径按工作空间根解析，落在区内则可信', () => {
     expect(classifyToolOrigin('read_file', { path: 'src/a.ts' }, WORKSPACE).trust).toBe('trusted')
     expect(classifyToolOrigin('search_files', { path: './src' }, WORKSPACE).trust).toBe('trusted')
   })
 
-  it('相对路径逃逸出工作区时不可信', () => {
+  it('相对路径逃逸出工作空间时不可信', () => {
     expect(classifyToolOrigin('read_file', { path: '../outside/a.ts' }, WORKSPACE).trust).toBe('untrusted')
   })
 
@@ -125,21 +125,21 @@ describe('classifyToolOrigin —— 文件类按落点区分', () => {
     expect(classifyToolOrigin('read_file', { filePath: `${WORKSPACE}/b.ts` }, WORKSPACE).trust).toBe('trusted')
   })
 
-  it('工作区外落点仍不可信（file_path 亦然）', () => {
+  it('工作空间外落点仍不可信（file_path 亦然）', () => {
     const origin = classifyToolOrigin('read_file', { file_path: '/tmp/downloaded.md' }, WORKSPACE)
     expect(origin.channel).toBe('local_fs')
     expect(origin.trust).toBe('untrusted')
     expect(origin.locator).toBe('/tmp/downloaded.md')
   })
 
-  it('缺路径参数时按工具默认落点判定：有工作区即在工作区内，无需工作区才不可信', () => {
-    // search_files 只给 pattern 时默认检索工作区
+  it('缺路径参数时按工具默认落点判定：有工作空间即在工作空间内，无需工作空间才不可信', () => {
+    // search_files 只给 pattern 时默认检索工作空间
     expect(classifyToolOrigin('search_files', { pattern: 'foo' }, WORKSPACE).trust).toBe('trusted')
     expect(classifyToolOrigin('read_file', {}, WORKSPACE).trust).toBe('trusted')
     expect(classifyToolOrigin('search_files', { pattern: 'foo' }, null).trust).toBe('untrusted')
   })
 
-  it('多路径中任一落在工作区外即不可信', () => {
+  it('多路径中任一落在工作空间外即不可信', () => {
     const origin = classifyToolOrigin(
       'read_multiple_files',
       { paths: [`${WORKSPACE}/a.ts`, '/tmp/b.ts'] },
@@ -153,7 +153,7 @@ describe('classifyToolOrigin —— 文件类按落点区分', () => {
     expect(origin.trust).toBe('trusted')
   })
 
-  it('未传工作区时无法判定为可信', () => {
+  it('未传工作空间时无法判定为可信', () => {
     const origin = classifyToolOrigin('read_file', { path: `${WORKSPACE}/a.ts` }, null)
     expect(origin.trust).toBe('untrusted')
   })

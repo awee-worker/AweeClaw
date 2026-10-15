@@ -101,7 +101,7 @@ export function mergeQualityMeta(
 
 /** 产出文件项 */
 export interface DeliverableItem {
-  /** 文件路径（相对工作区或绝对） */
+  /** 文件路径（相对工作空间或绝对） */
   path: string
   /** 该文件的作用 / 描述 */
   description: string

@@ -47,7 +47,7 @@ export interface Command extends CommandDefinition {
 
 /** 命令上下文：提供执行命令所需的依赖 */
 export interface CommandContext {
-  /** 当前工作区路径 */
+  /** 当前工作空间路径 */
   workspacePath: string | null
   /** 当前活动文件路径 */
   activeFilePath: string | null

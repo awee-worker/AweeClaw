@@ -65,7 +65,7 @@ function isTemporaryPath(target: string): boolean {
 /**
  * 取出命令中出现的绝对路径与家目录路径
  *
- * 只按 token 切分，不做 shell 解析：这里只需要知道命令是否触及工作区之外的
+ * 只按 token 切分，不做 shell 解析：这里只需要知道命令是否触及工作空间之外的
  * 位置，不需要精确还原参数结构，过度解析反而会引入新的错误来源。
  */
 function extractSensitivePaths(command: string): string[] {
@@ -122,7 +122,7 @@ const REVIEW_RULES: readonly ReviewRule[] = [
   },
   {
     id: 'git-discard-changes',
-    reason: 'checkout / restore / switch 的丢弃写法会覆盖工作区改动',
+    reason: 'checkout / restore / switch 的丢弃写法会覆盖工作空间改动',
     match: (command) =>
       /\bgit\s+checkout\s+--\s+\S/.test(command) ||
       /\bgit\s+checkout\s+(?:--\s+)?\.(?:\s|$)/.test(command) ||

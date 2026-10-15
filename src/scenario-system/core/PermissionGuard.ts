@@ -48,7 +48,7 @@ const TOOL_PERMISSION_MAP: Record<string, ScenarioPermission> = {
   git_commit: 'terminal:execute',
   git_branch: 'terminal:execute',
   git_sync: 'terminal:execute',
-  // 隔离工作区会在工作区同级目录新建工作目录，审计封存会提交并打 tag —— 均与终端同级
+  // 隔离工作空间会在工作空间同级目录新建工作目录，审计封存会提交并打 tag —— 均与终端同级
   git_worktree: 'terminal:execute',
   git_audit: 'terminal:execute',
   // 网络

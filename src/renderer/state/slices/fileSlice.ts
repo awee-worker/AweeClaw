@@ -1,7 +1,7 @@
 /**
  * 文件系统状态切片
  *
- * 管理工作区配置、文件树、已打开文件标签页与 LRU 淘汰策略。
+ * 管理工作空间配置、文件树、已打开文件标签页与 LRU 淘汰策略。
  */
 
 import { StateCreator } from 'zustand'
@@ -30,7 +30,7 @@ const DIFF_PREFIX = 'diff://'
 /* 类型                                                              */
 /* ------------------------------------------------------------------ */
 
-/** 工作区配置 */
+/** 工作空间配置 */
 export interface WorkspaceConfig {
   configPath: string | null
   roots: string[]
@@ -139,7 +139,7 @@ export interface FileSlice {
   showWorkspaceSystemDir: boolean
   /**
    * 工具执行时额外允许访问的目录路径列表（除 workspacePath 外）
-   * 用于项目执行窗口：当项目目录不在工作区内时，允许 AI 读写项目目录
+   * 用于项目执行窗口：当项目目录不在工作空间内时，允许 AI 读写项目目录
    */
   allowedToolPaths: string[]
 

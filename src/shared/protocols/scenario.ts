@@ -8,7 +8,7 @@
  * - 场景即插件：开发助手只是默认场景之一
  * - 能力声明式：场景声明需要什么工具和上下文
  * - UI 自适应：场景决定主界面布局
- * - 向后兼容：不打开工作区时自动切换到通用助手场景
+ * - 向后兼容：不打开工作空间时自动切换到通用助手场景
  */
 
 import type { WorkMode } from '@protocols/workModeProtocol'
@@ -125,7 +125,7 @@ export interface SidebarItemDescriptor {
    * hidden=true 的面板仍会被 PanelRegistry 注册（可通过代码 setActiveSidePanel 激活），
    * 但不出现在 NavigationRail 的菜单列表中。
    *
-   * 用途：聚合型工作区面板（如场景开发助手的"项目工作区"），
+   * 用途：聚合型工作空间面板（如场景开发助手的"项目工作空间"），
    * 由其他面板（如项目列表卡片的"打开"按钮）触发激活，而非直接作为菜单项。
    */
   hidden?: boolean

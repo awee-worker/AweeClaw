@@ -307,7 +307,7 @@ export function registerClipboardHandlers(): void {
   })
 
   // 读取剪贴板中的文件并返回完整附件数据（base64 + 元信息）
-  // 绕过工作区安全检查，因为用户主动粘贴是明确意图
+  // 绕过工作空间安全检查，因为用户主动粘贴是明确意图
   // 仍保留文件大小限制（50MB）和存在性检查
   ipcMain.handle('clipboard:getFileAttachments', async (): Promise<ClipboardFileAttachment[]> => {
     const filePaths = readFilePathsFromClipboard()

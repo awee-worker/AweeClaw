@@ -1,5 +1,5 @@
 /**
- * 安全文件操作模块 — 整合文件操作、工作区管理和文件监听功能
+ * 安全文件操作模块 — 整合文件操作、工作空间管理和文件监听功能
  *
  * 设计理念：
  * - 模块化：知识库文件提取已拆分到 knowledgeFileExtractor.ts
@@ -88,7 +88,7 @@ function notifyFileChanged(getMainWindowFn: () => any, event: FileWatcherEvent):
  * 为什么需要：插件、外部场景、技能、运行时（Python / Node / LSP）都由客户端安装到
  * 应用自身的数据目录（默认数据目录 + 配置存储目录，后者用户可在设置里改成自定义路径）。
  * 这些绝对路径会出现在 AI 的上下文与调用参数中（插件清单、插件自带的说明文档与脚本、
- * 运行时日志），但目录本身在工作区之外 —— 按工作区边界一律拒绝时，
+ * 运行时日志），但目录本身在工作空间之外 —— 按工作空间边界一律拒绝时，
  * AI 连插件自带的文档与脚本都读不到，插件调用会直接失败。
  *
  * 为什么是「读写」而不是只放行读取：
@@ -115,10 +115,10 @@ function registerTrustedAppDataDir(): void {
 }
 
 /**
- * 读取类 IPC 的工作区边界判断（叠加只读可信目录放行）
+ * 读取类 IPC 的工作空间边界判断（叠加只读可信目录放行）
  *
- * - 无工作区：不设边界（与既有行为一致；敏感路径由各 handler 另行拦截）
- * - 有工作区：常规边界校验。应用配置存储目录由 validateWorkspacePath 内部的
+ * - 无工作空间：不设边界（与既有行为一致；敏感路径由各 handler 另行拦截）
+ * - 有工作空间：常规边界校验。应用配置存储目录由 validateWorkspacePath 内部的
  *   可信应用路径判定放行；越界但命中只读可信目录时在此另行放行
  *   （只读可信目录当前无注册来源，保留该分支供仅需读取的放行场景使用）
  *
@@ -139,7 +139,7 @@ function isReadableOutsideWorkspace(
 
 /**
  * 注册所有安全文件 IPC Handlers
- * 整合文件操作和工作区管理
+ * 整合文件操作和工作空间管理
  */
 export function registerSecureFileHandlers(
   getMainWindowFn: () => any,
@@ -152,7 +152,7 @@ export function registerSecureFileHandlers(
   // 应用配置存储目录（插件 / 场景 / 技能 / 运行时）设为可信访问路径
   registerTrustedAppDataDir()
 
-  // 注册工作区相关处理器（从 workspaceHandlers.ts 导入）
+  // 注册工作空间相关处理器（从 workspaceHandlers.ts 导入）
   registerWorkspaceHandlers(getMainWindowFn, store, getWorkspaceSessionFn, windowManager)
 
   // ========== 文件操作处理器 ==========
@@ -301,10 +301,10 @@ export function registerSecureFileHandlers(
 
     const workspace = getWorkspaceSessionFn(event)
 
-    // 强制工作区边界
+    // 强制工作空间边界
     if (!isReadableOutsideWorkspace(filePath, workspace)) {
       securityManager.logOperation(OperationType.FILE_READ, filePath, false, {
-        reason: '安全底线：超出工作区边界',
+        reason: '安全底线：超出工作空间边界',
       })
       return null
     }
@@ -359,7 +359,7 @@ export function registerSecureFileHandlers(
 
       if (!isReadableOutsideWorkspace(filePath, workspace)) {
         securityManager.logOperation(OperationType.FILE_READ, filePath, false, {
-          reason: '安全底线：超出工作区边界',
+          reason: '安全底线：超出工作空间边界',
         })
         return { content: null, truncated: false, totalBytes: 0, startLine: 1 }
       }
@@ -400,7 +400,7 @@ export function registerSecureFileHandlers(
 
     if (!isReadableOutsideWorkspace(filePath, workspace)) {
       securityManager.logOperation(OperationType.FILE_READ, filePath, false, {
-        reason: '安全底线：超出工作区边界',
+        reason: '安全底线：超出工作空间边界',
       })
       return null
     }
@@ -439,7 +439,7 @@ export function registerSecureFileHandlers(
 
     if (!isReadableOutsideWorkspace(filePath, workspace)) {
       securityManager.logOperation(OperationType.FILE_READ, filePath, false, {
-        reason: '安全底线：超出工作区边界',
+        reason: '安全底线：超出工作空间边界',
       })
       return null
     }
@@ -473,7 +473,7 @@ export function registerSecureFileHandlers(
 
     if (!isReadableOutsideWorkspace(filePath, workspace)) {
       securityManager.logOperation(OperationType.FILE_READ, filePath, false, {
-        reason: '安全底线：超出工作区边界',
+        reason: '安全底线：超出工作空间边界',
       })
       return null
     }
@@ -505,7 +505,7 @@ export function registerSecureFileHandlers(
 
     if (!isReadableOutsideWorkspace(filePath, workspace)) {
       securityManager.logOperation(OperationType.FILE_READ, filePath, false, {
-        reason: '安全底线：超出工作区边界',
+        reason: '安全底线：超出工作空间边界',
       })
       return null
     }
@@ -536,7 +536,7 @@ export function registerSecureFileHandlers(
 
     if (!isReadableOutsideWorkspace(filePath, workspace)) {
       securityManager.logOperation(OperationType.FILE_READ, filePath, false, {
-        reason: '安全底线：超出工作区边界',
+        reason: '安全底线：超出工作空间边界',
       })
       return null
     }
@@ -573,7 +573,7 @@ export function registerSecureFileHandlers(
 
     if (!isReadableOutsideWorkspace(filePath, workspace)) {
       securityManager.logOperation(OperationType.FILE_READ, filePath, false, {
-        reason: '安全底线：超出工作区边界',
+        reason: '安全底线：超出工作空间边界',
       })
       return null
     }
@@ -810,7 +810,7 @@ export function registerSecureFileHandlers(
       const workspace = getWorkspaceSessionFn(event)
       if (workspace && !securityManager.validateWorkspacePath(currentPath, workspace.roots)) {
         securityManager.logOperation(OperationType.FILE_WRITE, currentPath, false, {
-          reason: '安全底线：超出工作区边界',
+          reason: '安全底线：超出工作空间边界',
         })
         return null
       }
@@ -940,7 +940,7 @@ export function registerSecureFileHandlers(
     const workspace = getWorkspaceSessionFn(event)
     if (workspace && !securityManager.validateWorkspacePath(filePath, workspace.roots)) {
       securityManager.logOperation(OperationType.FILE_DELETE, filePath, false, {
-        reason: '安全底线：超出工作区边界',
+        reason: '安全底线：超出工作空间边界',
       })
       return false
     }
@@ -962,11 +962,11 @@ export function registerSecureFileHandlers(
       }
     }
 
-    // 工作区系统目录保护（.aweeclaw 及其子文件/子目录）
+    // 工作空间系统目录保护（.aweeclaw 及其子文件/子目录）
     // 静默拒绝：AI 自主执行任务时可能误触，此处不弹「安全警告」避免干扰用户，仅记录安全日志
     if (isProtectedAppDirPath(filePath)) {
       securityManager.logOperation(OperationType.FILE_DELETE, filePath, false, {
-        reason: `安全底线：工作区系统目录 (${PROTECTED_APP_DIR_NAME})，已静默拒绝`,
+        reason: `安全底线：工作空间系统目录 (${PROTECTED_APP_DIR_NAME})，已静默拒绝`,
       })
       return false
     }
@@ -1014,14 +1014,14 @@ export function registerSecureFileHandlers(
   ipcMain.handle('file:copy', async (event, sourcePath: string, destinationPath: string) => {
     if (!sourcePath || !destinationPath) return false
     const workspace = getWorkspaceSessionFn(event)
-    // 源路径按「读取」语义校验：允许把工作区外的历史附件复制进工作区；
-    // 目标路径仍严格受工作区边界约束（复制结果必须落在工作区内）
+    // 源路径按「读取」语义校验：允许把工作空间外的历史附件复制进工作空间；
+    // 目标路径仍严格受工作空间边界约束（复制结果必须落在工作空间内）
     if (
       !isReadableOutsideWorkspace(sourcePath, workspace) ||
       (workspace && !securityManager.validateWorkspacePath(destinationPath, workspace.roots))
     ) {
       securityManager.logOperation(OperationType.FILE_WRITE, sourcePath, false, {
-        reason: '安全底线：超出工作区边界',
+        reason: '安全底线：超出工作空间边界',
         destinationPath,
       })
       return false
@@ -1069,7 +1069,7 @@ export function registerSecureFileHandlers(
     const workspace = getWorkspaceSessionFn(event)
     if (workspace && (!securityManager.validateWorkspacePath(oldPath, workspace.roots) || !securityManager.validateWorkspacePath(newPath, workspace.roots))) {
       securityManager.logOperation(OperationType.FILE_RENAME, oldPath, false, {
-        reason: '安全底线：超出工作区边界',
+        reason: '安全底线：超出工作空间边界',
         newPath,
       })
       return false

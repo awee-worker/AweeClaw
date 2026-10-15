@@ -240,7 +240,7 @@ export interface InjectionDefenseSample {
   memoryContent?: string
   /** 记忆写入方，缺省为自动提取 */
   memorySource?: 'user' | 'auto_extracted'
-  /** 文件类工具的工作区落点，缺省取评测工作区 */
+  /** 文件类工具的工作空间落点，缺省取评测工作空间 */
   workspacePath?: string
   expected: InjectionExpectation
 }

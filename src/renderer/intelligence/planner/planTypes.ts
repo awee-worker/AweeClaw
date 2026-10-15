@@ -146,7 +146,7 @@ export interface TaskPlan {
 
 /** 任务执行上下文 */
 export interface TaskExecutionContext {
-    /** 工作区路径 */
+    /** 工作空间路径 */
     workspacePath: string
     /** 当前计划 */
     plan: TaskPlan

@@ -34,7 +34,7 @@ interface ExternalAgentPanelProps {
 
 const PERMISSION_MODE_OPTIONS: Array<{ value: AgentPermissionMode; labelZh: string; labelEn: string; hintZh?: string; hintEn?: string }> = [
   { value: 'default', labelZh: '默认（只读）', labelEn: 'Default (read-only)' },
-  { value: 'acceptEdits', labelZh: '允许编辑文件', labelEn: 'Accept edits', hintZh: 'Agent 可直接修改工作区内文件', hintEn: 'Agent may modify files in the workspace' },
+  { value: 'acceptEdits', labelZh: '允许编辑文件', labelEn: 'Accept edits', hintZh: 'Agent 可直接修改工作空间内文件', hintEn: 'Agent may modify files in the workspace' },
   { value: 'planOnly', labelZh: '仅规划（不执行）', labelEn: 'Plan only', hintZh: 'Agent 只输出方案，不写文件', hintEn: 'Agent plans but does not write files' },
   { value: 'bypass', labelZh: '跳过审批（危险）', labelEn: 'Bypass approvals (dangerous)', hintZh: 'Agent 无需确认即可执行任何命令，慎用', hintEn: 'Agent executes without approval — use with caution' },
 ]
@@ -188,7 +188,7 @@ export function ExternalAgentPanel({ language }: ExternalAgentPanelProps) {
           </h3>
           <p className="text-xs text-text-secondary leading-relaxed opacity-90">
             {isZh
-              ? '将编码任务委托给本机安装的自主编码智能体（Claude Code / Codex CLI / Cursor Agent）。它们在受控工作区内自主规划、改文件、跑测试，结果回传至 AI 助手。'
+              ? '将编码任务委托给本机安装的自主编码智能体（Claude Code / Codex CLI / Cursor Agent）。它们在受控工作空间内自主规划、改文件、跑测试，结果回传至 AI 助手。'
               : 'Delegate coding tasks to locally installed autonomous coding agents (Claude Code / Codex CLI / Cursor Agent). They plan, edit files and run tests in a sandboxed workspace, then report back to the assistant.'}
           </p>
         </div>

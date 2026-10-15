@@ -18,7 +18,7 @@
  * - 不注入命令：spawn(ffmpegPath, argv)，绝不使用 shell，路径作为独立 argv 元素
  * - 不透传 filter：只接受结构化选项，filter 串在内部按固定模板拼装。ffmpeg 的
  *   movie= / drawtext= 等 filter 能读写文件，一旦允许透传，路径白名单就形同虚设
- * - 限定路径：输入输出必须落在工作区、插件数据目录或 aweeclaw- 前缀的临时目录内，
+ * - 限定路径：输入输出必须落在工作空间、插件数据目录或 aweeclaw- 前缀的临时目录内，
  *   realpath 后比对前缀（防软链接逃逸）
  * - 并发闸门 + 超时强杀：编码任务吃满 CPU，默认同时只跑 2 个
  *
@@ -59,7 +59,7 @@ const SIGKILL_GRACE_MS = 3000
 const STDERR_TAIL_CHARS = 2000
 /** 临时目录名前缀（允许清单据此放行临时文件） */
 const TEMP_DIR_PREFIX = 'aweeclaw-'
-/** 默认产物目录（工作区下） */
+/** 默认产物目录（工作空间下） */
 const DEFAULT_OUTPUT_SUBDIR = '.aweeclaw/media-out'
 /** 多帧抽取上限 */
 const MAX_THUMBNAIL_FRAMES = 20
@@ -497,7 +497,7 @@ interface RunFfmpegOptions {
  * 媒体处理桥实现。
  *
  * 每个插件一个实例（由 createMediaBridge 按 pluginId + dataDir 缓存），实例上
- * 只持有作用域与工作区解析器，没有跨插件共享的业务状态；并发槽位刻意做成全局
+ * 只持有作用域与工作空间解析器，没有跨插件共享的业务状态；并发槽位刻意做成全局
  * 的，目的是限制整机同时运行的 ffmpeg 数量，而不是限制单个插件。
  */
 export class MediaBridgeService implements MediaBridge {
@@ -1370,7 +1370,7 @@ export class MediaBridgeService implements MediaBridge {
   /**
    * 校验输入路径：必须存在、是文件，且落在允许的读写根内。
    *
-   * 用 realpath 而不是字面路径做前缀比对，否则工作区里一个指向 /etc 的软链接
+   * 用 realpath 而不是字面路径做前缀比对，否则工作空间里一个指向 /etc 的软链接
    * 就能把校验绕过去。
    */
   private assertInputPath(inputPath: string): string {
@@ -1406,7 +1406,7 @@ export class MediaBridgeService implements MediaBridge {
    * 校验目录并按需创建。
    *
    * 目录可能还不存在，此时无法 realpath 自身，改为对「最近的已存在祖先」做校验，
-   * 通过后再逐级创建 —— 否则 `工作区/新建目录/out.mp4` 这类正常用法会被拒。
+   * 通过后再逐级创建 —— 否则 `工作空间/新建目录/out.mp4` 这类正常用法会被拒。
    */
   private prepareDir(dir: string): void {
     if (!path.isAbsolute(dir)) {
@@ -1440,7 +1440,7 @@ export class MediaBridgeService implements MediaBridge {
   private assertWithinAllowedRoots(absPath: string, kind: string): void {
     if (this.isUnderAllowedRoot(absPath)) return
     throw new Error(
-      `[MediaBridge] ${kind}路径越界，仅允许工作区、插件数据目录或 ${TEMP_DIR_PREFIX}* 临时目录：${absPath}`,
+      `[MediaBridge] ${kind}路径越界，仅允许工作空间、插件数据目录或 ${TEMP_DIR_PREFIX}* 临时目录：${absPath}`,
     )
   }
 
@@ -1775,14 +1775,14 @@ export class MediaBridgeService implements MediaBridge {
 // ─── 单例与工厂 ────────────────────────────────────────────
 
 /**
- * 工作区解析器。
+ * 工作空间解析器。
  *
- * 存的是「解析函数」而不是路径快照：工作区随窗口会话变化，而 MediaBridge 实例
- * 是长生命周期的，快照会让插件切了工作区之后仍往旧目录写。
+ * 存的是「解析函数」而不是路径快照：工作空间随窗口会话变化，而 MediaBridge 实例
+ * 是长生命周期的，快照会让插件切了工作空间之后仍往旧目录写。
  */
 let workspaceResolver: () => string | null = () => null
 
-/** 注册工作区解析器（hostServices 初始化时调用一次） */
+/** 注册工作空间解析器（hostServices 初始化时调用一次） */
 export function setMediaWorkspaceResolver(resolver: () => string | null): void {
   workspaceResolver = resolver
 }

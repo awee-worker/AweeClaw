@@ -52,7 +52,7 @@ function collectLastAssistantReply(): string {
   }
 }
 
-/** 从任务输出中提取工作区文件路径，作为产物上报（最多 10 条） */
+/** 从任务输出中提取工作空间文件路径，作为产物上报（最多 10 条） */
 function extractArtifactPaths(text: string): Array<{ type: string; title: string; path: string }> {
   const matches = text.match(/[\w./\\-]+\.\w{1,5}\b/g) || []
   const seen = new Set<string>()

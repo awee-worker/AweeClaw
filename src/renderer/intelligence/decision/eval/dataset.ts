@@ -73,7 +73,7 @@ const DEV_ENGINEERING: TaskEvalSample[] = [
   { id: 'eng-006', message: '把远端的改动拉下来', group: 'dev-git', expectedPruned: false, expectedIntents: ['development'], requiredTools: ['git_sync'] },
   { id: 'eng-007', message: '这个改动想先撤回来，恢复到上一次提交', group: 'dev-git', expectedPruned: false, expectedIntents: ['development'], requiredTools: ['git_status', 'run_command'] },
   { id: 'eng-008', message: '提交历史太乱了，帮我看看怎么整理', group: 'dev-git', expectedPruned: false, expectedIntents: ['development'], requiredTools: ['git_log'] },
-  { id: 'eng-009', message: '帮我建个临时工作区试一下这个方案', group: 'dev-git', expectedPruned: false, expectedIntents: ['development'], requiredTools: ['git_worktree'] },
+  { id: 'eng-009', message: '帮我建个临时工作空间试一下这个方案', group: 'dev-git', expectedPruned: false, expectedIntents: ['development'], requiredTools: ['git_worktree'] },
   { id: 'eng-010', message: '跑一下测试看看有没有挂的', group: 'dev-git', expectedPruned: false, expectedIntents: ['development'], requiredTools: ['run_command'] },
   { id: 'eng-011', message: '打包体积太大了，看看能不能拆包', group: 'dev-git', expectedPruned: false, expectedIntents: ['development'], requiredTools: ['run_command', 'read_file'] },
   { id: 'eng-012', message: '编译报错了，看下什么原因', group: 'dev-git', expectedPruned: false, expectedIntents: ['development'], requiredTools: ['run_command'] },

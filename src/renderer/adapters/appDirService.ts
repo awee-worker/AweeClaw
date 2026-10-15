@@ -4,7 +4,7 @@
  * 会话数据使用 SQLite 数据库存储（替代原有的 JSONL 文件方案）：
  * - 会话元数据、线程元数据、线程消息均存储在 sessions.db 中
  * - 首次启动时自动从 JSONL 文件迁移历史数据
- * - 工作区状态、项目设置等仍使用 JSON 文件存储
+ * - 工作空间状态、项目设置等仍使用 JSON 文件存储
  *
  * 目录结构：
  *   ├── index/               # 代码库向量索引
@@ -13,7 +13,7 @@
  *   ├── compliance/          # [医疗] 合规记录目录
  *   ├── assets/              # [教育] 素材资源目录
  *   ├── settings.json        # 项目级设置
- *   ├── workspace-state.json # 工作区状态（打开的文件等）
+ *   ├── workspace-state.json # 工作空间状态（打开的文件等）
  *   └── rules.md             # 项目 AI 规则
  *
  * SQLite 数据库位置：

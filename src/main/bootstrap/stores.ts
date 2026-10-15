@@ -2,7 +2,7 @@
  * 应用 Store 初始化与统一访问
  *
  * - bootstrapStore：启动期配置（窗口位置、引导状态等）
- * - configStore：用户级配置（语言、主题、安全策略、最近工作区等）
+ * - configStore：用户级配置（语言、主题、安全策略、最近工作空间等）
  *
  * 两者均通过 electron-store 持久化到 userData 目录，由 configPath 模块统一管理路径。
  */

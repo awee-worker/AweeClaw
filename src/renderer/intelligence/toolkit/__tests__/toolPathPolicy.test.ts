@@ -3,7 +3,7 @@
  *
  * 锁定两类会被回归踩坏的行为：
  * 1. 可信应用数据目录（插件 / 场景 / 技能 / 运行时所在目录）必须并入「读写放行」，
- *    否则 AI 读不到工作区之外的插件文档与脚本，插件调用直接失败；
+ *    否则 AI 读不到工作空间之外的插件文档与脚本，插件调用直接失败；
  * 2. 只读可信目录只在读取操作放行，不得混入读写放行列表。
  *
  * @module Toolkit/toolPathPolicy/test
@@ -60,7 +60,7 @@ describe('buildToolPathPolicy', () => {
         expect(policy.allowOutsideWorkspace).toBe(false)
     })
 
-    it('关闭严格工作区模式时跳过边界检查', () => {
+    it('关闭严格工作空间模式时跳过边界检查', () => {
         const policy = buildToolPathPolicy({
             securitySettings: { strictWorkspaceMode: false },
         })

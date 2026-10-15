@@ -8,7 +8,7 @@
  *
  * 关键设计：
  * - 执行窗口独立初始化 Agent（每进程单例），不依赖主窗口代理
- * - 通过 api.settings + api.file 从主进程加载配置和工作区
+ * - 通过 api.settings + api.file 从主进程加载配置和工作空间
  * - 从 URL 参数读取 projectId/sessionId/threadId，加载指定线程消息历史
  * - 通过 IPC 推送执行状态到主进程 → 悬浮球
  *

@@ -258,7 +258,7 @@ export class ScenarioLifecycleManager {
     const ctx: ScenarioModuleContext = {
       scenarioId,
       // workspacePath 作为初始快照保留，但实际访问时通过 getter 动态读取最新值，
-      // 避免场景激活后用户切换工作区时 context 仍持有旧路径。
+      // 避免场景激活后用户切换工作空间时 context 仍持有旧路径。
       workspacePath,
       version,
       registerTools: (tools: ScenarioToolDefinition[]) => {
@@ -295,8 +295,8 @@ export class ScenarioLifecycleManager {
       getDatabasePath: () => scenarioDatabaseManager.getPath(scenarioId),
     }
 
-    // 将 workspacePath 改为动态 getter：每次访问都从 store 读取最新工作区路径。
-    // 修复场景激活后用户切换/打开工作区时，context 仍持有旧路径（或 null）的问题。
+    // 将 workspacePath 改为动态 getter：每次访问都从 store 读取最新工作空间路径。
+    // 修复场景激活后用户切换/打开工作空间时，context 仍持有旧路径（或 null）的问题。
     Object.defineProperty(ctx, 'workspacePath', {
       get: () => useStore.getState().workspacePath,
       enumerable: true,

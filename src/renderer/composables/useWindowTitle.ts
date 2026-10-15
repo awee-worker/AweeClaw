@@ -1,8 +1,8 @@
 /**
  * 窗口标题管理 Hook
  *
- * 根据当前激活文件与工作区动态更新窗口标题。
- * 格式: [文件名][修改标记] - [工作区名] - [应用名]
+ * 根据当前激活文件与工作空间动态更新窗口标题。
+ * 格式: [文件名][修改标记] - [工作空间名] - [应用名]
  */
 
 import { useEffect } from 'react'
@@ -94,7 +94,7 @@ export function useWindowTitle(): void {
       parts.push(`${getFileName(activeFilePath)}${dirtySuffix}`)
     }
 
-    // 工作区
+    // 工作空间
     if (workspace?.roots?.length) {
       parts.push(getFileName(workspace.roots[0]))
     }

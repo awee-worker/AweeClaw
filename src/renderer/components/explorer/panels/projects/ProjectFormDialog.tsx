@@ -54,7 +54,7 @@ export function ProjectFormDialog({ project, onSubmit, onClose }: ProjectFormDia
   const [tagsInput, setTagsInput] = useState(project?.tags?.join(', ') ?? '')
   const [dueAt, setDueAt] = useState(project?.dueAt ? toLocalDate(project.dueAt) : '')
   const [attachments, setAttachments] = useState<File[]>([])
-  // 项目目录路径（workspacePaths[0]），不选默认工作区根目录
+  // 项目目录路径（workspacePaths[0]），不选默认工作空间根目录
   const [directoryPath, setDirectoryPath] = useState<string>(
     project?.workspacePaths?.[0] ?? '',
   )
@@ -179,14 +179,14 @@ export function ProjectFormDialog({ project, onSubmit, onClose }: ProjectFormDia
           </label>
           <p className="text-[12px] text-text-muted mb-2">
             {isZh
-              ? '选择工作区中的文件夹作为项目目录，不选则默认工作区根目录。可在「文件」Tab 中查看目录内容。'
+              ? '选择工作空间中的文件夹作为项目目录，不选则默认工作空间根目录。可在「文件」Tab 中查看目录内容。'
               : 'Select a folder in the workspace as the project directory. Defaults to workspace root if not selected. View contents in the Files tab.'}
           </p>
           <div className="flex items-center gap-2">
             <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-surface/50 rounded-lg border border-border/40 text-[13px] text-text-primary min-w-0">
               <Folder className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
               <span className={`truncate ${directoryPath ? 'text-text-primary' : 'text-text-muted'}`}>
-                {directoryPath || (isZh ? '默认工作区根目录' : 'Workspace root (default)')}
+                {directoryPath || (isZh ? '默认工作空间根目录' : 'Workspace root (default)')}
               </span>
             </div>
             <button

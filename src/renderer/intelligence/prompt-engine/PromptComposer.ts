@@ -1263,7 +1263,7 @@ export async function buildAgentSystemPrompt(
     // - AI 执行开发/多步任务时任务跟踪应使用系统内置 todo_write / create_task_plan，不触碰场景工具
     sceneToolsEnabled: sceneToolsIntent,
     // Git 工具按需暴露：仅当用户消息带明确的版本控制指令（提交 / 分支 / 差异 / 历史 …）时，
-    // git_* 才进入工具列表与提示词；工作区不都是 Git 仓库，AI 自行探测只会报错
+    // git_* 才进入工具列表与提示词；工作空间不都是 Git 仓库，AI 自行探测只会报错
     gitToolsEnabled: gitToolsIntent,
     sceneToolsGuide: sceneToolsIntent ? buildSceneToolsGuideSection(sceneProfile) : null,
     sceneToolsContext: sceneToolsIntent ? buildSceneToolsContextSection(sceneProfile) : null,

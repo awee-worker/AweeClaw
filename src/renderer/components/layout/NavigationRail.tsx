@@ -40,11 +40,11 @@ const isMac = typeof navigator !== 'undefined' && (
 /**
  * 场景未声明 sidebarItems 时的兜底菜单。
  *
- * explorer 标记 hidden：它由「新建任务」按钮按需激活（打开工作区文件面板），
+ * explorer 标记 hidden：它由「新建任务」按钮按需激活（打开工作空间文件面板），
  * 不作为常驻导航项，避免与「新建任务」的语义重复。
  */
 const DEFAULT_ITEMS: SidebarItemDescriptor[] = [
-  { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0, hidden: true },
+  { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作空间', component: 'ExplorerView', position: 0, hidden: true },
   { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1 },
 ]
 
@@ -618,7 +618,7 @@ export default function NavigationRail() {
   }, [setActiveSidePanel, setShowWelcomePage, setShowWorkflow, closeInternalBrowser])
 
   // 新建任务：新建对话（聊天界面）并进入「新建任务页面」。
-  // 若当前已选择工作区，则默认打开工作区文件面板；未选择工作区时不打开，避免出现空面板。
+  // 若当前已选择工作空间，则默认打开工作空间文件面板；未选择工作空间时不打开，避免出现空面板。
   const handleNewTask = useCallback(() => {
     if (useStore.getState().workspace?.roots?.length) {
       setActiveSidePanel('explorer')
@@ -658,9 +658,9 @@ export default function NavigationRail() {
   const threadHighlightEnabled = !showWelcomePage
     && !(activeSidePanel && hideChatPanelIds.has(activeSidePanel))
 
-  // 新建任务不参与高亮：它是动作入口（打开工作区文件面板 + 新建会话），
+  // 新建任务不参与高亮：它是动作入口（打开工作空间文件面板 + 新建会话），
   // 当前会话的选中态统一由下方历史会话列表体现（currentThreadId === thread.id）。
-  // 若绑定 activeSidePanel === 'explorer'，会导致仅打开工作区面板时误高亮。
+  // 若绑定 activeSidePanel === 'explorer'，会导致仅打开工作空间面板时误高亮。
   const newTaskActive = false
 
   const handleSettingsClick = useCallback(() => {
@@ -1064,7 +1064,7 @@ export default function NavigationRail() {
         </div>
       )}
 
-      {/* 新建任务：所有场景共有的固定入口，点击进入新对话并打开工作区面板 */}
+      {/* 新建任务：所有场景共有的固定入口，点击进入新对话并打开工作空间面板 */}
       {navRailExpanded ? (
         <button
           onClick={handleNewTask}

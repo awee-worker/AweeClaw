@@ -3,7 +3,7 @@
  *
  * 为什么必须绕到渲染层：
  *   AweeClaw 的工具清单与执行能力（内置工具、MCP 工具、场景工具、审批门禁、
- *   工作区沙箱）**全部在渲染进程**持有。主进程只有 `mcpManager` 里那一小撮
+ *   工作空间沙箱）**全部在渲染进程**持有。主进程只有 `mcpManager` 里那一小撮
  *   MCP 工具，拿它当 `/mcp` 的工具集等于对外声明「AweeClaw 只有这几个工具」，
  *   与用户在客户端里看到的完全不是一回事。
  *
@@ -62,18 +62,18 @@ interface ToolRequestBody {
   action: 'list' | 'call'
   toolName?: string
   args?: Record<string, unknown>
-  /** 当前工作区路径（渲染层构造 ToolExecutionContext 用） */
+  /** 当前工作空间路径（渲染层构造 ToolExecutionContext 用） */
   workspacePath: string | null
   /** 是否已授权写操作类工具（渲染层的第二道门禁） */
   allowDangerous?: boolean
 }
 
 /**
- * 解析当前工作区路径。
+ * 解析当前工作空间路径。
  *
  * 优先级与 floating-avatar 的 `getWorkspacePath` 一致：窗口绑定 > 最近会话 >
  * 最近路径。渲染层各处 store 的同步时机不一致，从主进程取能保证
- * 「外部请求用的工作区」与「窗口里看到的工作区」是同一个。
+ * 「外部请求用的工作空间」与「窗口里看到的工作空间」是同一个。
  */
 function resolveWorkspacePath(): string | null {
   try {

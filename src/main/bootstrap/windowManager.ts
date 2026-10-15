@@ -123,7 +123,7 @@ export function getMainWindow(windowId?: number): BrowserWindow | null {
   return lastActiveWindow || Array.from(windows.values())[0] || null
 }
 
-/** 根据工作区根路径查找已存在的窗口 */
+/** 根据工作空间根路径查找已存在的窗口 */
 export function findWindowByWorkspace(roots: string[]): BrowserWindow | null {
   const normalized = roots.map((r) => r.toLowerCase().replace(/\\/g, '/'))
   for (const [id, workspaceRoots] of windowWorkspaces) {
@@ -136,12 +136,12 @@ export function findWindowByWorkspace(roots: string[]): BrowserWindow | null {
   return null
 }
 
-/** 设置窗口关联的工作区 */
+/** 设置窗口关联的工作空间 */
 export function setWindowWorkspace(id: number, roots: string[]): void {
   windowWorkspaces.set(id, roots)
 }
 
-/** 获取窗口关联的工作区 */
+/** 获取窗口关联的工作空间 */
 export function getWindowWorkspace(id: number): string[] | null {
   return windowWorkspaces.get(id) || null
 }
@@ -295,7 +295,7 @@ export function createWindow(isEmpty = false, deferLoad = false): BrowserWindow 
   const primaryDisplay = screen.getPrimaryDisplay()
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
 
-  // 空窗口按屏幕 80% 显示，普通窗口最大化主屏工作区
+  // 空窗口按屏幕 80% 显示，普通窗口最大化主屏工作空间
   const winWidth = isEmpty ? Math.round(screenWidth * 0.8) : screenWidth
   const winHeight = isEmpty ? Math.round(screenHeight * 0.8) : screenHeight
   const winMinWidth = isEmpty ? WINDOW_CONFIG.EMPTY_MIN_WIDTH : WINDOW_CONFIG.MIN_WIDTH

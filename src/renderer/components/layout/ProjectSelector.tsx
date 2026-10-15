@@ -1,5 +1,5 @@
 /**
- * ProjectSelector - 现代风格工作区切换器
+ * ProjectSelector - 现代风格工作空间切换器
  * 融合胶囊设计与灵动交互
  */
 import { api } from '../../adapters/electronBridge'
@@ -25,12 +25,12 @@ export default function ProjectSelector() {
     const [recentWorkspaces, setRecentWorkspaces] = useState<RecentWorkspace[]>([])
     const containerRef = useRef<HTMLDivElement>(null)
 
-    // 获取当前工作区显示名称
+    // 获取当前工作空间显示名称
     const currentWorkspaceName = workspace?.roots[0]
         ? getFileName(workspace.roots[0]) || 'Workspace'
         : 'No Workspace'
 
-    // 加载最近工作区列表
+    // 加载最近工作空间列表
     const loadRecent = async () => {
         try {
             const recent = await api.workspace.getRecent()
@@ -129,7 +129,7 @@ export default function ProjectSelector() {
                                 onClick={() => {
                                     setIsOpen(false)
                                     const store = useStore.getState()
-                                    // 始终「显示」工作区面板（幂等）：先退出全屏页面/工作流视图，
+                                    // 始终「显示」工作空间面板（幂等）：先退出全屏页面/工作流视图，
                                     // 再确保面板可见并停留在 explorer，而非当前已显示时切换为隐藏
                                     store.closeAllFullPages()
                                     store.setShowWorkflow(false)
@@ -144,7 +144,7 @@ export default function ProjectSelector() {
                                     // 选择器同时接受文件夹与 .aweeclaw-workspace 文件（多根）
                                     const outcome = await workspaceManager.openFolderFromDialog()
                                     if (outcome.status === 'redirected') {
-                                        // 该工作区已在其他窗口打开：主进程已聚焦那个窗口，这里只做提示
+                                        // 该工作空间已在其他窗口打开：主进程已聚焦那个窗口，这里只做提示
                                         toast.info(t('workspace.alreadyOpenElsewhere', language))
                                     } else if (outcome.status === 'invalid') {
                                         toast.error(t('workspace.invalidTarget', language))
@@ -162,7 +162,7 @@ export default function ProjectSelector() {
                                 onClick={() => {
                                     setIsOpen(false)
                                     const store = useStore.getState()
-                                    // 授权入口统一收敛到设置页的「工作区外允许访问的目录」
+                                    // 授权入口统一收敛到设置页的「工作空间外允许访问的目录」
                                     store.setSettingsIntent({ tab: 'security', anchor: 'allowedExternalDirectories' })
                                     store.setShowSettingsPage(true)
                                 }}

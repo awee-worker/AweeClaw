@@ -87,20 +87,20 @@ export const BRAND = {
     oldKnowledge: '.aweeclaw/knowledge/manual.json',
     plan: '.aweeclaw/plan',
     skills: '.aweeclaw/skills',
-    /** 技能配置文件名：机器级，落在全局技能目录（{userConfigDir}/skills）下，未打开工作区同样持久化 */
+    /** 技能配置文件名：机器级，落在全局技能目录（{userConfigDir}/skills）下，未打开工作空间同样持久化 */
     skillsConfig: '.skills-config.json',
-    /** 旧版技能配置位置（工作区级），仅用于首次迁移读取，不再写入 */
+    /** 旧版技能配置位置（工作空间级），仅用于首次迁移读取，不再写入 */
     skillsConfigLegacy: '.aweeclaw/skills/.skills-config.json',
     rules: '.aweeclaw/rules.md',
     projectSummary: '.aweeclaw/project-summary.json',
     structuralIndex: '.aweeclaw/structural-index.json',
     indexStatus: '.aweeclaw/index-status.json',
     index: '.aweeclaw/index',
-    /** AI 执行过程产生的临时文件目录（工作区内，AI 可见、可清理） */
+    /** AI 执行过程产生的临时文件目录（工作空间内，AI 可见、可清理） */
     temp: '.aweeclaw/temp',
     uploads: '.aweeclaw/uploads',
     screenshot: '.aweeclaw/screenshot',
-    /** 项目附件（本地优先：跟随工作区走，后端仅作跨设备同步兜底） */
+    /** 项目附件（本地优先：跟随工作空间走，后端仅作跨设备同步兜底） */
     attachments: '.aweeclaw/attachments',
   },
 

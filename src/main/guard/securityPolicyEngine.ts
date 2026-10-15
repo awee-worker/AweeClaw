@@ -85,7 +85,7 @@ export interface SecurityPolicyPanel {
   deniedShellCommands?: string[]
   allowedGitSubcommands?: string[]
   showSecurityWarnings?: boolean
-  /** 工作区外允许访问的目录列表 */
+  /** 工作空间外允许访问的目录列表 */
   allowedExternalDirectories?: string[]
 }
 
@@ -94,17 +94,17 @@ interface SecurityModule {
   checkPermission: (operation: OperationType, target: string) => Promise<boolean>
   setPermission: (operation: OperationType, level: PermissionLevel) => void
 
-  // 工作区设置
+  // 工作空间设置
   setWorkspacePath: (workspacePath: string | null) => void
 
   // 安全操作日志（通过 logger 输出，不写文件）
   logOperation: (operation: OperationType, target: string, success: boolean, detail?: any) => void
 
-  // 工作区安全边界
+  // 工作空间安全边界
   validateWorkspacePath: (filePath: string, workspace: string | string[]) => boolean
   isSensitivePath: (filePath: string) => boolean
 
-  // 只读可信路径（仅放行读取，写入仍受工作区边界约束）
+  // 只读可信路径（仅放行读取，写入仍受工作空间边界约束）
   addTrustedReadOnlyPath: (dirPath: string) => void
   isTrustedReadOnlyPath: (filePath: string) => boolean
 
@@ -157,19 +157,19 @@ class SecurityManager implements SecurityModule {
   private sessionStorage: Map<string, boolean> = new Map()
   private config: Partial<SecurityPolicyPanel> = {}
   private allowedAppPaths: string[] = []
-  /** 用户配置的工作区外允许访问目录（持久化在 securitySettings.allowedExternalDirectories） */
+  /** 用户配置的工作空间外允许访问目录（持久化在 securitySettings.allowedExternalDirectories） */
   private allowedExternalDirs: string[] = []
   /**
-   * 只读可信路径：这些目录下的文件可被读取，但写入/删除/重命名仍受工作区边界约束。
+   * 只读可信路径：这些目录下的文件可被读取，但写入/删除/重命名仍受工作空间边界约束。
    *
    * 与 allowedAppPaths（读写全放行）的区别在于「只读」语义，用于「应用自己写入、
-   * 但落在工作区外」的数据目录 —— 典型场景见 addTrustedReadOnlyPath 注释。
+   * 但落在工作空间外」的数据目录 —— 典型场景见 addTrustedReadOnlyPath 注释。
    */
   private trustedReadOnlyDirs: string[] = []
 
   /**
    * 注册应用可信路径（如全局 Skills 目录）
-   * 可信路径下的文件操作跳过工作区边界检查，但仍检查敏感路径
+   * 可信路径下的文件操作跳过工作空间边界检查，但仍检查敏感路径
    */
   addAllowedAppPath(dirPath: string): void {
     const resolved = path.resolve(dirPath)
@@ -195,7 +195,7 @@ class SecurityManager implements SecurityModule {
   }
 
   /**
-   * 设置用户配置的工作区外允许访问目录列表
+   * 设置用户配置的工作空间外允许访问目录列表
    * 这些目录及其子目录下的文件可读写，但仍受敏感路径检查约束
    * @param dirs 目录绝对路径数组；传空数组清空列表
    */
@@ -207,7 +207,7 @@ class SecurityManager implements SecurityModule {
   }
 
   /**
-   * 检查路径是否在用户配置的工作区外允许访问目录下
+   * 检查路径是否在用户配置的工作空间外允许访问目录下
    * 与 isAllowedAppPath 区别：isAllowedAppPath 用于应用内置可信路径（如 Skills 目录），
    * isAllowedExternalDir 用于用户主动配置的额外可访问目录
    */
@@ -224,7 +224,7 @@ class SecurityManager implements SecurityModule {
   }
 
   /**
-   * 获取当前配置的工作区外允许访问目录列表
+   * 获取当前配置的工作空间外允许访问目录列表
    */
   getAllowedExternalDirectories(): string[] {
     return [...this.allowedExternalDirs]
@@ -233,9 +233,9 @@ class SecurityManager implements SecurityModule {
   /**
    * 注册只读可信路径（仅放行读取，不参与写入放行）
    *
-   * 使用场景：无工作区时附件落盘到 `<userData>/.aweeclaw/uploads`，
-   * 该绝对路径会被写入会话历史并长期保留。用户之后打开工作区，
-   * 历史附件路径就变成了「工作区外的绝对路径」——若按工作区边界一律拒绝，
+   * 使用场景：无工作空间时附件落盘到 `<userData>/.aweeclaw/uploads`，
+   * 该绝对路径会被写入会话历史并长期保留。用户之后打开工作空间，
+   * 历史附件路径就变成了「工作空间外的绝对路径」——若按工作空间边界一律拒绝，
    * AI 将永远读不到自己此前收到的图片/文档。
    *
    * 选择「只读」而非复用 addAllowedAppPath（读写全放行），是为了保持最小授权：
@@ -274,7 +274,7 @@ class SecurityManager implements SecurityModule {
   }
 
   /**
-   * 设置当前工作区路径（保留接口兼容）
+   * 设置当前工作空间路径（保留接口兼容）
    */
   setWorkspacePath(workspacePath: string | null) {
     logger.security.info('[Security] Workspace path set:', workspacePath)
@@ -364,30 +364,30 @@ class SecurityManager implements SecurityModule {
   }
 
   /**
-   * 验证工作区边界
+   * 验证工作空间边界
    *
    * 检查顺序：
-   * 1. 应用可信路径（isAllowedAppPath）：Skills 目录等内置可信路径，跳过工作区边界检查
-   * 2. 用户配置的外部目录（isAllowedExternalDir）：用户主动配置的额外可访问目录，跳过工作区边界检查
-   * 3. 严格工作区模式：未启用则允许所有路径（但仍检查敏感路径）
-   * 4. 工作区边界：路径必须在给定工作区内且非敏感路径
+   * 1. 应用可信路径（isAllowedAppPath）：Skills 目录等内置可信路径，跳过工作空间边界检查
+   * 2. 用户配置的外部目录（isAllowedExternalDir）：用户主动配置的额外可访问目录，跳过工作空间边界检查
+   * 3. 严格工作空间模式：未启用则允许所有路径（但仍检查敏感路径）
+   * 4. 工作空间边界：路径必须在给定工作空间内且非敏感路径
    *
    * 所有检查均保留敏感路径检查（isSensitivePath），确保 .ssh、.aws 等系统敏感目录始终被拒绝
    */
   validateWorkspacePath(filePath: string, workspace: string | string[]): boolean {
-    // 1. 可信应用路径跳过工作区边界检查，但仍检查敏感路径
+    // 1. 可信应用路径跳过工作空间边界检查，但仍检查敏感路径
     if (this.isAllowedAppPath(filePath)) {
       const resolvedPath = path.resolve(filePath)
       return !this.isSensitivePath(resolvedPath)
     }
 
-    // 2. 用户配置的工作区外允许访问目录，跳过工作区边界检查，但仍检查敏感路径
+    // 2. 用户配置的工作空间外允许访问目录，跳过工作空间边界检查，但仍检查敏感路径
     if (this.isAllowedExternalDir(filePath)) {
       const resolvedPath = path.resolve(filePath)
       return !this.isSensitivePath(resolvedPath)
     }
 
-    // 3. 如果未启用严格工作区模式，允许所有路径（但仍检查敏感路径）
+    // 3. 如果未启用严格工作空间模式，允许所有路径（但仍检查敏感路径）
     if (this.config.strictWorkspaceMode === false) {
       const resolvedPath = path.resolve(filePath)
       return !this.isSensitivePath(resolvedPath)

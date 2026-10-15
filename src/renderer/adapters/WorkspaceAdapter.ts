@@ -19,7 +19,7 @@ export class WorkspaceOpenError extends Error {
   }
 }
 
-/** 打开工作区选择器后的结果，供 UI 层决定提示文案 */
+/** 打开工作空间选择器后的结果，供 UI 层决定提示文案 */
 export type OpenFolderOutcome =
   | { status: 'opened' }
   | { status: 'cancelled' }
@@ -121,15 +121,15 @@ class WorkspaceManager {
   }
 
   /**
-   * 打开工作区
+   * 打开工作空间
    *
-   * 入参兼容两种形态：字符串（已知目录路径，如最近列表、默认工作区）与主进程
+   * 入参兼容两种形态：字符串（已知目录路径，如最近列表、默认工作空间）与主进程
    * 选择器返回的会话（含 configPath 与可能的多根 roots）。
    *
    * 打开前逐根校验目录是否存在：失效的根目录先从最近列表中剔除再抛错，
-   * 避免多根工作区因单个根目录被删除就永远打不开、也无法自我修复。
+   * 避免多根工作空间因单个根目录被删除就永远打不开、也无法自我修复。
    *
-   * @param target 目录路径或工作区会话
+   * @param target 目录路径或工作空间会话
    * @returns 切换成功返回 true
    */
   async openFolder(target: string | WorkspaceConfig): Promise<boolean> {
@@ -165,7 +165,7 @@ class WorkspaceManager {
   }
 
   /**
-   * 打开工作区选择器并切换到所选工作区
+   * 打开工作空间选择器并切换到所选工作空间
    *
    * 把「弹窗 → 判重定向 → 打开 → 归类失败原因」收敛到一处：UI 入口只按返回状态
    * 提示文案，不再各自 try/catch，避免漏处理导致的静默失败。
@@ -206,7 +206,7 @@ class WorkspaceManager {
     return checked.filter((root): root is string => root !== null)
   }
 
-  /** 将失效路径从最近工作区列表中剔除 */
+  /** 将失效路径从最近工作空间列表中剔除 */
   private async dropFromRecent(paths: string[]): Promise<void> {
     await Promise.all(paths.map((p) => api.workspace.removeFromRecent(p)))
   }

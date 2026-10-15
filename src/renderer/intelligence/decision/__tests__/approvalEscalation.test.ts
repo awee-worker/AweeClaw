@@ -158,7 +158,7 @@ describe('decideApprovalGateByMode', () => {
     })).toBe('block')
   })
 
-  it('手动审批：删除、危险命令与工作区外的写入在执行前拦下', () => {
+  it('手动审批：删除、危险命令与工作空间外的写入在执行前拦下', () => {
     expect(decideApprovalGateByMode('delete_file_or_folder', { path: 'src/a.ts' }, 'every-step', { workspacePath: workspace })).toBe('block')
     expect(decideApprovalGateByMode('mcp_filesystem__delete_file', { path: 'a.txt' }, 'every-step', { workspacePath: workspace })).toBe('block')
     expect(decideApprovalGateByMode('run_command', { command: 'git reset --hard HEAD~1' }, 'every-step', { workspacePath: workspace })).toBe('block')
@@ -214,7 +214,7 @@ describe('decideApprovalByMode', () => {
     expect(decideApprovalByMode('create_file_or_folder', { path: 'src/a.ts', content: '' }, 'every-step', { workspacePath: workspace })).toBe(true)
   })
 
-  it('手动审批：工作区外建目录仍要确认', () => {
+  it('手动审批：工作空间外建目录仍要确认', () => {
     expect(decideApprovalByMode('create_file_or_folder', { path: '/etc/newdir/' }, 'every-step', { workspacePath: workspace })).toBe(true)
     expect(decideApprovalByMode('create_file_or_folder', { path: '/etc/newdir/' }, 'every-step', {
       workspacePath: workspace,
@@ -226,7 +226,7 @@ describe('decideApprovalByMode', () => {
     expect(decideApprovalByMode('run_command', { command: 'git reset --hard HEAD~1' }, 'every-step', { workspacePath: workspace })).toBe(true)
   })
 
-  it('手动审批：外部内容（工作区与授权目录之外的路径）需要确认', () => {
+  it('手动审批：外部内容（工作空间与授权目录之外的路径）需要确认', () => {
     expect(decideApprovalByMode('read_file', { path: '/etc/hosts' }, 'every-step', { workspacePath: workspace })).toBe(true)
     expect(decideApprovalByMode('read_file', { path: '../outside/a.ts' }, 'every-step', { workspacePath: workspace })).toBe(true)
     expect(decideApprovalByMode('list_directory', { path: '/Users' }, 'every-step', { workspacePath: workspace })).toBe(true)
@@ -244,7 +244,7 @@ describe('decideApprovalByMode', () => {
     })).toBe(true)
   })
 
-  it('手动审批：关闭严格工作区模式后不再按外部内容确认', () => {
+  it('手动审批：关闭严格工作空间模式后不再按外部内容确认', () => {
     expect(decideApprovalByMode('read_file', { path: '/etc/hosts' }, 'every-step', {
       workspacePath: workspace,
       allowOutsideWorkspace: true,

@@ -1,8 +1,8 @@
 /**
  * ProjectFilesTab — 项目文件浏览器 Tab
  *
- * 显示项目目录下的文件和子文件夹（类似工作区文件浏览器）。
- * 项目目录来源：project.workspacePaths[0]，未设置时使用工作区根目录。
+ * 显示项目目录下的文件和子文件夹（类似工作空间文件浏览器）。
+ * 项目目录来源：project.workspacePaths[0]，未设置时使用工作空间根目录。
  *
  * 布局设计（独立预览）：
  * ┌────────────────────┬──────────────────────────┐
@@ -13,9 +13,9 @@
  * └────────────────────┴──────────────────────────┘
  *
  * 体验要点：
- *  - 单击文件即在右侧预览，不抢占工作区编辑器
+ *  - 单击文件即在右侧预览，不抢占工作空间编辑器
  *  - 中间分隔条可拖拽调整宽度，宽度持久化到 localStorage
- *  - 预览面板支持「最大化」全宽查看，「在工作区编辑器中打开」保留编辑入口
+ *  - 预览面板支持「最大化」全宽查看，「在工作空间编辑器中打开」保留编辑入口
  *  - 当前预览文件在树中高亮
  */
 import { useState, useCallback, useEffect, useMemo, useRef, useLayoutEffect } from 'react'
@@ -41,7 +41,7 @@ const DEFAULT_PREVIEW_WIDTH = 480  // 预览面板默认宽度
 const STORAGE_KEY_WIDTH = 'aweeclaw:project-file-preview-width'
 
 interface ProjectFilesTabProps {
-  /** 项目的工作区路径列表，取第一个作为项目目录 */
+  /** 项目的工作空间路径列表，取第一个作为项目目录 */
   workspacePaths: string[]
   isZh: boolean
 }
@@ -112,7 +112,7 @@ function loadPersistedWidth(): number {
 export function ProjectFilesTab({ workspacePaths, isZh }: ProjectFilesTabProps) {
   const workspaceRoot = useStore((s) => s.workspacePath)
 
-  // 项目目录：workspacePaths[0] 或工作区根目录
+  // 项目目录：workspacePaths[0] 或工作空间根目录
   const projectDir = useMemo(() => {
     return workspacePaths?.[0] || workspaceRoot || ''
   }, [workspacePaths, workspaceRoot])
@@ -137,7 +137,7 @@ export function ProjectFilesTab({ workspacePaths, isZh }: ProjectFilesTabProps) 
   const [contextMenu, setContextMenu] = useState<{ item: FileItem; x: number; y: number } | null>(null)
   const [clipboardItem, setClipboardItem] = useState(explorerClipboardService.getState().entry)
 
-  // ─── inline 创建状态（与工作区文件树交互一致） ────────
+  // ─── inline 创建状态（与工作空间文件树交互一致） ────────
   // creatingIn 记录「在哪个目录下创建什么类型」，树中对应位置渲染输入框
   const [creatingIn, setCreatingIn] = useState<{ path: string; type: 'file' | 'folder' } | null>(null)
 
@@ -273,7 +273,7 @@ export function ProjectFilesTab({ workspacePaths, isZh }: ProjectFilesTabProps) 
     })
   }, [dirContents, loadDir])
 
-  // ─── inline 创建：开始 / 提交 / 取消（与工作区文件树一致） ───
+  // ─── inline 创建：开始 / 提交 / 取消（与工作空间文件树一致） ───
 
   /** 开始创建：确保父目录展开，然后设置 creatingIn 触发 inline 输入框 */
   const handleStartCreate = useCallback((parentPath: string, type: 'file' | 'folder') => {
@@ -325,7 +325,7 @@ export function ProjectFilesTab({ workspacePaths, isZh }: ProjectFilesTabProps) 
     setCreatingIn(null)
   }, [])
 
-  // 单击文件 → 在右侧预览面板打开（不抢占工作区编辑器）
+  // 单击文件 → 在右侧预览面板打开（不抢占工作空间编辑器）
   const handleFilePreview = useCallback((item: FileItem) => {
     if (item.isDirectory) return
     setSelectedFile(item)
@@ -336,7 +336,7 @@ export function ProjectFilesTab({ workspacePaths, isZh }: ProjectFilesTabProps) 
     useStore.getState().setNavRailExpanded(false)
   }, [])
 
-  // 双击文件 / 头部「在编辑器中打开」→ 在工作区编辑器中打开（保留原能力）
+  // 双击文件 / 头部「在编辑器中打开」→ 在工作空间编辑器中打开（保留原能力）
   const handleOpenInEditor = useCallback(async (item: FileItem) => {
     if (item.isDirectory) return
     const ext = item.path.split('.').pop()?.toLowerCase() || ''
@@ -636,7 +636,7 @@ export function ProjectFilesTab({ workspacePaths, isZh }: ProjectFilesTabProps) 
         )}
       </div>
 
-      {/* 右键菜单（与工作区文件树行为一致） */}
+      {/* 右键菜单（与工作空间文件树行为一致） */}
       {contextMenu && (
         <ProjectFileContextMenu
           item={contextMenu.item}
@@ -667,7 +667,7 @@ interface FileTreeItemProps {
   onToggle: (item: FileItem) => void
   /** 单击文件 → 预览 */
   onPreview: (item: FileItem) => void
-  /** 双击文件 → 在工作区编辑器中打开 */
+  /** 双击文件 → 在工作空间编辑器中打开 */
   onOpenInEditor: (item: FileItem) => void
   /** 右键 → 弹出上下文菜单 */
   onContextMenu: (e: React.MouseEvent, item: FileItem) => void
@@ -758,7 +758,7 @@ function FileTreeItem({
       {/* 子目录内容（含 inline 创建输入框） */}
       {item.isDirectory && isExpanded && (
         <div>
-          {/* inline 创建输入框（在子项列表顶部，与工作区文件树一致） */}
+          {/* inline 创建输入框（在子项列表顶部，与工作空间文件树一致） */}
           {creatingIn?.path === item.path && (
             <div
               className="flex items-center gap-1.5 px-2 py-1"

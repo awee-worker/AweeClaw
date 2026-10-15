@@ -67,7 +67,7 @@ export const SCENE_TOOLS: SceneToolMeta[] = [
   { id: 'work-pomodoro', name: '番茄专注钟', nameEn: 'Pomodoro', icon: 'Timer', mode: 'work', description: '25 分钟专注循环，专注数据自动沉淀', tier: 'core', component: WorkPomodoro },
   { id: 'work-meeting', name: '会议助手', nameEn: 'Meeting Assistant', icon: 'Users', mode: 'work', description: '会前准备卡片 + 纪要要点 + 行动项', tier: 'core', component: WorkMeeting },
   { id: 'work-weekly', name: '周报生成器', nameEn: 'Weekly Report', icon: 'FileText', mode: 'work', description: '由待办完成与专注数据自动汇总周报', tier: 'enhanced', component: WorkWeeklyReport },
-  { id: 'work-files', name: '文件整理助手', nameEn: 'File Organizer', icon: 'FolderTree', mode: 'work', description: '按规则自动归类工作区文件', tier: 'enhanced', component: WorkFileOrganizer },
+  { id: 'work-files', name: '文件整理助手', nameEn: 'File Organizer', icon: 'FolderTree', mode: 'work', description: '按规则自动归类工作空间文件', tier: 'enhanced', component: WorkFileOrganizer },
   { id: 'work-hours', name: '工时记录', nameEn: 'Work Hours', icon: 'Clock', mode: 'work', description: '上下班打卡、加班统计', tier: 'enhanced', component: WorkHours },
   { id: 'work-snippets', name: '快捷话术库', nameEn: 'Snippets', icon: 'MessageSquareQuote', mode: 'work', description: '常用邮件模板与回复话术一键复制', tier: 'enhanced', component: WorkSnippets },
 

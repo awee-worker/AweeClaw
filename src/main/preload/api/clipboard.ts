@@ -19,7 +19,7 @@ export function createClipboardApi() {
     // 快速检测剪贴板是否包含文件（不解析路径，用于渲染进程决定是否 preventDefault）
     hasClipboardFiles: () => invoke<boolean>('clipboard:hasFiles')(),
     // 读取剪贴板中的文件并返回完整附件数据（base64 + 元信息）
-    // 绕过工作区安全检查，适用于用户主动粘贴的文件
+    // 绕过工作空间安全检查，适用于用户主动粘贴的文件
     getClipboardFileAttachments: () => invoke<unknown[]>('clipboard:getFileAttachments')(),
   }
 }

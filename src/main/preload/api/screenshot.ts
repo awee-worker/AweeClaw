@@ -25,7 +25,7 @@ export interface ScreenshotResultPayload {
   width: number
   /** 截图高度（像素） */
   height: number
-  /** 截图保存到工作区的绝对路径 */
+  /** 截图保存到工作空间的绝对路径 */
   filePath: string
   /** 截图文件名 */
   fileName: string

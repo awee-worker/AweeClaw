@@ -18,7 +18,7 @@
  *   ├── ipcHelpers.ts       IPC 调用辅助函数
  *   └── api/
  *       ├── appLifecycle.ts  应用生命周期 / 窗口 / 国际化
- *       ├── fileOps.ts       文件操作 / 工作区 / 搜索
+ *       ├── fileOps.ts       文件操作 / 工作空间 / 搜索
  *       ├── storage.ts       设置 / SQLite 持久化
  *       ├── ai.ts            LLM / Embedding / 健康检查
  *       ├── terminal.ts      终端 / Shell / 远程 / Git

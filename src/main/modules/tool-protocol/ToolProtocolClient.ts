@@ -569,8 +569,8 @@ export class McpClient extends EventEmitter {
       config.command,
     )
 
-    // 工作目录优先使用当前工作区路径，使插件生成的文件默认输出到工作区
-    // fallback 到插件目录（无工作区时）
+    // 工作目录优先使用当前工作空间路径，使插件生成的文件默认输出到工作空间
+    // fallback 到插件目录（无工作空间时）
     const workspaceDir = mcpManager.getWorkspaceRoot()
     const cwd = workspaceDir || pluginDir
     logger.mcp?.info(`[MCP:${config.id}] Plugin stdio cwd: ${cwd}${workspaceDir ? ' (workspace)' : ' (pluginDir)'}`)

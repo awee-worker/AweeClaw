@@ -222,8 +222,8 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
 
         try {
           // 直接读取文件附件数据（base64 + 元信息）
-          // 使用专用 clipboard:getFileAttachments handler，绕过工作区安全检查
-          // （用户主动粘贴是明确意图，不应被工作区边界限制）
+          // 使用专用 clipboard:getFileAttachments handler，绕过工作空间安全检查
+          // （用户主动粘贴是明确意图，不应被工作空间边界限制）
           const attachments = await api.clipboard?.getFileAttachments?.()
           if (attachments && attachments.length > 0) {
             for (const att of attachments) {
@@ -315,7 +315,7 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
 
       // 2. text/uri-list — 需将 file:// URI 转换为本地路径
       //    注意：原 regex file:\/\/\/(.+) 会丢失 Unix 路径的前导斜杠，
-      //    导致 path.resolve() 误判为相对路径，工作区边界校验失败。
+      //    导致 path.resolve() 误判为相对路径，工作空间边界校验失败。
       //    改用 convertUriToPath() 正确处理 file:/// → /path
       const uriList = e.dataTransfer.getData('text/uri-list')
       if (uriList) {
@@ -354,10 +354,10 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
    * 将附件落盘，返回本地绝对路径
    *
    * 路径解析顺序（核心目标：AI 必须拿到真实路径，不能"找不到图片"）：
-   *   1. 工作区上传目录：{workspacePath}/.aweeclaw/uploads/
-   *   2. 用户数据目录兜底：{userData}/.aweeclaw/uploads/（聊天窗口未打开工作区时；
-   *      注意主进程 strictWorkspaceMode 下该目录在工作区外，仅"无工作区"场景可写入）
-   *   3. 附件服务兜底：attachment:save（工作区/userData 由主进程解析，含 20 个上限）
+   *   1. 工作空间上传目录：{workspacePath}/.aweeclaw/uploads/
+   *   2. 用户数据目录兜底：{userData}/.aweeclaw/uploads/（聊天窗口未打开工作空间时；
+   *      注意主进程 strictWorkspaceMode 下该目录在工作空间外，仅"无工作空间"场景可写入）
+   *   3. 附件服务兜底：attachment:save（工作空间/userData 由主进程解析，含 20 个上限）
    *
    * 全部失败才返回 null，此时上层会明确告知模型「路径不可用」而不是留空。
    */
@@ -370,7 +370,7 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
     const safeName = (img.file.name || `attachment_${img.id}`).replace(/[^a-zA-Z0-9._-]/g, '_')
     const fileName = `${Date.now()}_${safeName}`
 
-    // 1. 工作区上传目录
+    // 1. 工作空间上传目录
     if (uploadDir) {
       const target = `${uploadDir}/${fileName}`
       try {
@@ -381,7 +381,7 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
       }
     }
 
-    // 2. 用户数据目录兜底（无工作区场景）
+    // 2. 用户数据目录兜底（无工作空间场景）
     try {
       const userDataPath = await api.settings.getUserDataPath()
       if (userDataPath) {

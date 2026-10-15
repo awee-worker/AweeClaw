@@ -1,16 +1,16 @@
 /**
- * 项目附件本地存储桥接 — 本地优先架构（工作区级存储）
+ * 项目附件本地存储桥接 — 本地优先架构（工作空间级存储）
  *
  * 数据安全隐私原则：
- * - 附件文件优先存储到【工作区】根目录下的 .aweeclaw/attachments/{projectId}/
- *   （跟随工作区走：换工作区即换附件集，拷贝工作区即带走全部附件）
+ * - 附件文件优先存储到【工作空间】根目录下的 .aweeclaw/attachments/{projectId}/
+ *   （跟随工作空间走：换工作空间即换附件集，拷贝工作空间即带走全部附件）
  * - 后端仅作为可选的跨设备同步兜底（当前未启用自动同步）
  * - AI 读取附件文本时优先从本地读取，无需请求后端
  *
  * 存储位置解析（优先级从高到低）：
- *   1. 当前窗口绑定的工作区根目录：{workspaceRoot}/.aweeclaw/attachments/{projectId}/
- *   2. 持久化的最近工作区：{lastWorkspaceRoot}/.aweeclaw/attachments/{projectId}/
- *   3. 兜底（无工作区时）：{userData}/.aweeclaw/attachments/{projectId}/
+ *   1. 当前窗口绑定的工作空间根目录：{workspaceRoot}/.aweeclaw/attachments/{projectId}/
+ *   2. 持久化的最近工作空间：{lastWorkspaceRoot}/.aweeclaw/attachments/{projectId}/
+ *   3. 兜底（无工作空间时）：{userData}/.aweeclaw/attachments/{projectId}/
  *
  * 目录结构：
  *   - 文件本体：{projectId}/{fileName}
@@ -54,7 +54,7 @@ const ALLOWED_EXTENSIONS = new Set<string>(BRAND.attachmentConfig.allowedExtensi
 // 类型定义
 // ============================================
 
-/** 获取当前工作区根目录的函数（同步） */
+/** 获取当前工作空间根目录的函数（同步） */
 export type WorkspaceRootGetter = () => string | null
 
 /** 本地附件元数据 */
@@ -82,21 +82,21 @@ interface AttachmentMetaFile {
 // ============================================
 
 /**
- * 解析附件根目录（工作区优先，userData 兜底）
+ * 解析附件根目录（工作空间优先，userData 兜底）
  *
  * 优先级：
- *   1. getWorkspaceRoot() 返回的当前工作区根 → {root}/.aweeclaw/attachments/
- *   2. 无工作区时回退到 userData → {userData}/.aweeclaw/attachments/
+ *   1. getWorkspaceRoot() 返回的当前工作空间根 → {root}/.aweeclaw/attachments/
+ *   2. 无工作空间时回退到 userData → {userData}/.aweeclaw/attachments/
  *
- * 设计意图：附件跟随工作区走，保证数据归属与项目代码同目录，
- * 拷贝/迁移工作区时附件随行；仅在未打开任何工作区时才落userData。
+ * 设计意图：附件跟随工作空间走，保证数据归属与项目代码同目录，
+ * 拷贝/迁移工作空间时附件随行；仅在未打开任何工作空间时才落userData。
  */
 function getAttachmentsBaseDir(getWorkspaceRoot: WorkspaceRootGetter): string {
   const workspaceRoot = getWorkspaceRoot()
   if (workspaceRoot && workspaceRoot.trim() !== '') {
     return path.join(workspaceRoot, BRAND.dirName, 'attachments')
   }
-  // 兜底：userData（无工作区场景，例如全局设置面板触发）
+  // 兜底：userData（无工作空间场景，例如全局设置面板触发）
   const userDataPath = app.getPath('userData')
   return path.join(userDataPath, BRAND.dirName, 'attachments')
 }
@@ -180,9 +180,9 @@ async function writeMetaFile(
 /**
  * 注册项目附件 IPC handlers
  *
- * @param getWorkspaceRoot 获取当前工作区根目录的函数
+ * @param getWorkspaceRoot 获取当前工作空间根目录的函数
  *   （参考 registerMainWindowScreenshotHandlers 的模式：
- *    优先窗口绑定工作区，兜底 lastWorkspaceSession）
+ *    优先窗口绑定工作空间，兜底 lastWorkspaceSession）
  */
 export function registerProjectAttachmentIpcHandlers(
   getWorkspaceRoot: WorkspaceRootGetter,
@@ -220,7 +220,7 @@ export function registerProjectAttachmentIpcHandlers(
       throw new Error(`附件数量已达上限（${MAX_ATTACHMENTS_PER_PROJECT} 个）`)
     }
 
-    // 4. 确保目录存在（工作区优先）
+    // 4. 确保目录存在（工作空间优先）
     const projectDir = getProjectDir(getWorkspaceRoot, projectId)
     await fs.mkdir(projectDir, { recursive: true })
 

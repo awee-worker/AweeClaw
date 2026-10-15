@@ -56,7 +56,7 @@ const DEFAULT_CONFIG: FileWatcherConfig = {
  *
  * 该库的 ignore 只接受 glob 字符串，正则会在下方被静默丢弃；
  * 因此依赖目录必须在这里以 glob 形式再声明一次，否则 node_modules / .git 等
- * 会被整棵遍历，切换工作区时建立监听会明显卡顿。
+ * 会被整棵遍历，切换工作空间时建立监听会明显卡顿。
  */
 const WATCHER_IGNORED_GLOBS = [
   '**/node_modules/**',

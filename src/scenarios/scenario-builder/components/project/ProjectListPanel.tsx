@@ -1,7 +1,7 @@
 /**
  * 项目列表面板
  *
- * 显示所有场景项目，支持创建、打开、编辑、删除、在工作区打开目录。
+ * 显示所有场景项目，支持创建、打开、编辑、删除、在工作空间打开目录。
  * 卡片集成校验 / 构建 / 打包 / 安装 / 发布 五大快捷操作，无需切换面板即可完成全流程。
  */
 import { useState, useEffect, useCallback } from 'react'
@@ -34,7 +34,7 @@ const ProjectListPanel: React.FC = () => {
   const [editingProject, setEditingProject] = useState<ScenarioProject | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [openingWorkspaceId, setOpeningWorkspaceId] = useState<string | null>(null)
-  // 本地操作（如"在工作区定位"）的失败详情，与 operations.lastError 互补
+  // 本地操作（如"在工作空间定位"）的失败详情，与 operations.lastError 互补
   const [localError, setLocalError] = useState<OpErrorInfo | null>(null)
 
   const selectedId = selectedProject?.id ?? null
@@ -66,7 +66,7 @@ const ProjectListPanel: React.FC = () => {
   )
 
   /**
-   * 打开项目工作区：选中项目并切换到 project-workspace 面板，
+   * 打开项目工作空间：选中项目并切换到 project-workspace 面板，
    * 让用户在该项目内进行配置/提示词/工具/脚本/数据库/校验/预览/安装/发布等操作。
    */
   const handleOpenWorkspace = useCallback(
@@ -145,7 +145,7 @@ const ProjectListPanel: React.FC = () => {
   )
 
   /**
-   * AI 开发：打开工作区文件树 + 定位项目目录 + 显示聊天窗口。
+   * AI 开发：打开工作空间文件树 + 定位项目目录 + 显示聊天窗口。
    *
    * 与"可视化开发"（进入 ProjectWorkspacePanel 图形化 Tab 编辑器）互补，
    * 这是"文件树 + AI 对话"的协作开发模式：
@@ -153,7 +153,7 @@ const ProjectListPanel: React.FC = () => {
    * - 显式 setChatVisible(true)，确保从 hideChat 面板切来时聊天可见
    * - 在文件树展开并定位到项目目录（优先 scenario.json）
    *
-   * 不替换工作区根目录，保留 .aweeclaw 配置。
+   * 不替换工作空间根目录，保留 .aweeclaw 配置。
    */
   const handleOpenInWorkspace = useCallback(
     async (project: ScenarioProject, e: React.MouseEvent) => {
@@ -186,7 +186,7 @@ const ProjectListPanel: React.FC = () => {
           return
         }
 
-        // 规范化路径比较：判断项目目录是否在当前工作区内
+        // 规范化路径比较：判断项目目录是否在当前工作空间内
         const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
         const workspaceNorm = norm(currentWorkspacePath)
         const projectNorm = norm(project.localPath)
@@ -205,7 +205,7 @@ const ProjectListPanel: React.FC = () => {
           return
         }
 
-        // 仅展开并定位到项目目录，不改变工作区根目录（保留 .aweeclaw 等工作区配置）
+        // 仅展开并定位到项目目录，不改变工作空间根目录（保留 .aweeclaw 等工作空间配置）
         setActiveSidePanel('explorer')
         setSelectedFolder(project.localPath)
         // 显式显示聊天窗口：AI 开发模式下需要 AI 辅助对话（从 hideChat 面板切来时 chatVisible 可能为 false）
@@ -391,7 +391,7 @@ const ProjectListPanel: React.FC = () => {
 
                   {/* 第四行：可视化开发 / AI 开发（两种开发模式横向平铺） */}
                   <div className="mt-2.5 grid grid-cols-2 gap-2 border-t border-border/60 pt-2.5">
-                    {/* 可视化开发：进入项目工作区 Tab 编辑器（配置/提示词/工具/脚本/校验/预览/安装/发布） */}
+                    {/* 可视化开发：进入项目工作空间 Tab 编辑器（配置/提示词/工具/脚本/校验/预览/安装/发布） */}
                     <button
                       onClick={(e) => handleOpenWorkspace(project, e)}
                       disabled={anyRunning}
@@ -406,7 +406,7 @@ const ProjectListPanel: React.FC = () => {
                       </svg>
                       <span>{t('builder.project.visualDevelop')}</span>
                     </button>
-                    {/* AI 开发：打开工作区文件树 + 定位项目 + 显示聊天窗口（配合 AI 辅助开发） */}
+                    {/* AI 开发：打开工作空间文件树 + 定位项目 + 显示聊天窗口（配合 AI 辅助开发） */}
                     <button
                       onClick={(e) => handleOpenInWorkspace(project, e)}
                       disabled={openingWorkspaceId === project.id || anyRunning}
@@ -467,7 +467,7 @@ const ProjectListPanel: React.FC = () => {
         />
       )}
 
-      {/* 操作失败弹窗：强制提醒用户并展示错误详情（优先展示五大操作的失败，其次为本地操作如"在工作区定位"） */}
+      {/* 操作失败弹窗：强制提醒用户并展示错误详情（优先展示五大操作的失败，其次为本地操作如"在工作空间定位"） */}
       <OperationErrorDialog
         error={operations.lastError ?? localError}
         onClose={() => {

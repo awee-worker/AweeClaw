@@ -67,7 +67,7 @@ export interface ContextAssemblyConfig {
   assistantId?: string
   /** 线程 ID */
   threadId?: string
-  /** 工作区路径 */
+  /** 工作空间路径 */
   workspacePath?: string | null
   /** Plan 特定上下文 */
   planContext?: {

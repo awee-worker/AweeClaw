@@ -1,6 +1,6 @@
 /**
  * ScenarioSelector - 场景应用切换器（顶部栏内嵌）
- * 紧凑下拉样式，放在工作区选择器右侧
+ * 紧凑下拉样式，放在工作空间选择器右侧
  */
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Sparkles, ChevronDown, Check, Store } from 'lucide-react'

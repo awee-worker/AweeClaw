@@ -2,11 +2,11 @@
  * Git 设置面板（设置 → Git）
  *
  * 区域划分：
- *   1. 仓库状态 — 工作区是否 Git 仓库、分支、远程、变更概览；非仓库时提供一键初始化
+ *   1. 仓库状态 — 工作空间是否 Git 仓库、分支、远程、变更概览；非仓库时提供一键初始化
  *   2. 仓库身份 — user.name / user.email（本仓库 或 全局）
  *   3. 凭证管理 — 已保存凭证（掩码展示 + 删除 / 清空）；明文永不回渲染进程
  *   4. AI 能力   — 允许 AI 写仓库 / 远程同步（工具级开关，实时生效）
- *   5. 行为      — 自动刷新、打开工作区自动 fetch、凭证弹窗默认记住
+ *   5. 行为      — 自动刷新、打开工作空间自动 fetch、凭证弹窗默认记住
  *
  * 持久化：读写 editorConfig.git（与 EditorConfig 同通道，无需新增设置项）。
  *
@@ -244,7 +244,7 @@ export function GitSettingsPanel({ language, settings, setSettings }: GitSetting
         </header>
 
         {!workspacePath ? (
-          <p className="text-xs text-text-muted">{zh ? '请先打开一个工作区目录。' : 'Open a workspace folder first.'}</p>
+          <p className="text-xs text-text-muted">{zh ? '请先打开一个工作空间目录。' : 'Open a workspace folder first.'}</p>
         ) : repo.loading ? (
           <div className="flex items-center gap-2 text-xs text-text-muted">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -254,7 +254,7 @@ export function GitSettingsPanel({ language, settings, setSettings }: GitSetting
           <div className="space-y-3">
             <p className="text-xs text-text-muted leading-relaxed">
               {zh
-                ? '当前工作区不是 Git 仓库。初始化后 AI 即可使用版本控制工具（状态查看、提交、分支、远程同步）。'
+                ? '当前工作空间不是 Git 仓库。初始化后 AI 即可使用版本控制工具（状态查看、提交、分支、远程同步）。'
                 : 'This workspace is not a Git repository. Initialize it to let the AI use version-control tools.'}
             </p>
             <ActionButton
@@ -460,10 +460,10 @@ export function GitSettingsPanel({ language, settings, setSettings }: GitSetting
 
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-xs text-text-primary">{zh ? '允许 AI 创建隔离工作区' : 'Allow AI to use worktrees'}</p>
+            <p className="text-xs text-text-primary">{zh ? '允许 AI 创建隔离工作空间' : 'Allow AI to use worktrees'}</p>
             <p className="text-[11px] text-text-muted leading-relaxed mt-0.5">
               {zh
-                ? '对应 git_worktree 工具：在工作区同级目录新建独立工作目录，让并行任务互不污染未提交改动。默认关闭。'
+                ? '对应 git_worktree 工具：在工作空间同级目录新建独立工作目录，让并行任务互不污染未提交改动。默认关闭。'
                 : 'Gates the git_worktree tool — adds a sibling working directory so parallel tasks never collide. Off by default.'}
             </p>
           </div>
@@ -511,7 +511,7 @@ export function GitSettingsPanel({ language, settings, setSettings }: GitSetting
 
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-xs text-text-primary">{zh ? '打开工作区时自动 fetch' : 'Fetch on workspace open'}</p>
+            <p className="text-xs text-text-primary">{zh ? '打开工作空间时自动 fetch' : 'Fetch on workspace open'}</p>
             <p className="text-[11px] text-text-muted mt-0.5">
               {zh ? '静默更新远程分支信息，失败不会打扰你' : 'Silently updates remote refs; failures are ignored'}
             </p>

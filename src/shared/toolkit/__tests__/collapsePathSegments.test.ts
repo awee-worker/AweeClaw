@@ -3,7 +3,7 @@
  *
  * 目标：让「折叠后仍落在允许范围内」的相对写法（src/../lib/x.ts、
  * ../sibling/y.ts）不再被误判为目录穿越，同时保证真正越界的路径
- * 在折叠后依然会被工作区边界校验拦下（折叠不能变成绕过安全校验的手段）。
+ * 在折叠后依然会被工作空间边界校验拦下（折叠不能变成绕过安全校验的手段）。
  */
 
 import { describe, it, expect } from 'vitest'
@@ -40,10 +40,10 @@ describe('collapsePathSegments', () => {
 describe('resolveToolPathInput', () => {
   const workspace = '/w/project'
 
-  it('相对路径按工作区根展开并折叠', () => {
+  it('相对路径按工作空间根展开并折叠', () => {
     expect(resolveToolPathInput('src/a.ts', workspace)).toBe('/w/project/src/a.ts')
     expect(resolveToolPathInput('src/../lib/a.ts', workspace)).toBe('/w/project/lib/a.ts')
-    // 向上走一级再回到工作区内部：折叠后仍在工作区内，应被放行
+    // 向上走一级再回到工作空间内部：折叠后仍在工作空间内，应被放行
     expect(resolveToolPathInput('../project/lib/a.ts', workspace)).toBe('/w/project/lib/a.ts')
   })
 
@@ -55,14 +55,14 @@ describe('resolveToolPathInput', () => {
 describe('折叠 + 边界校验（安全性不因折叠而下降）', () => {
   const workspace = '/w/project'
 
-  it('折叠后仍在工作区内 → 放行', () => {
+  it('折叠后仍在工作空间内 → 放行', () => {
     const resolved = resolveToolPathInput('src/../lib/a.ts', workspace)
     const result = validatePath(resolved, workspace)
     expect(result.valid).toBe(true)
     expect(result.sanitizedPath).toBe('/w/project/lib/a.ts')
   })
 
-  it('折叠后越出工作区 → 仍然拒绝', () => {
+  it('折叠后越出工作空间 → 仍然拒绝', () => {
     const escaped = resolveToolPathInput('../sibling/a.ts', workspace)
     expect(escaped).toBe('/w/sibling/a.ts')
     const result = validatePath(escaped, workspace)

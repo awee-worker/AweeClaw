@@ -91,7 +91,7 @@ function flattenSymbols(raw: unknown[]): FlatSymbol[] {
 
 export function SymbolBreadcrumbs({ filePath, language }: SymbolBreadcrumbsProps) {
   const cursorLine = useStore((s) => s.cursorPosition.line)
-  const listScrollTop = useStore((s) => s.workspacePath) // 仅用于触发工作区切换后的重算
+  const listScrollTop = useStore((s) => s.workspacePath) // 仅用于触发工作空间切换后的重算
 
   const [symbols, setSymbols] = useState<FlatSymbol[]>([])
   const [openSegmentId, setOpenSegmentId] = useState<string | null>(null)
@@ -105,7 +105,7 @@ export function SymbolBreadcrumbs({ filePath, language }: SymbolBreadcrumbsProps
     setSymbols(flattenSymbols(Array.isArray(result) ? result : []))
   }, [filePath])
 
-  // 文件切换 / 工作区切换 → 重新拉取符号
+  // 文件切换 / 工作空间切换 → 重新拉取符号
   useEffect(() => {
     setSymbols([])
     setOpenSegmentId(null)

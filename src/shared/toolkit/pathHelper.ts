@@ -2,7 +2,7 @@
  * 路径处理工具集
  *
  * 架构分层：
- * 1. 路径安全层 — 路径穿越检测、敏感路径识别、工作区边界校验
+ * 1. 路径安全层 — 路径穿越检测、敏感路径识别、工作空间边界校验
  * 2. 路径规范化层 — 分隔符统一、大小写处理、路径比较
  * 3. 路径解析层 — 相对/绝对路径转换、模块导入解析
  * 4. 跨平台层 — 平台检测、可执行文件名、包管理器命令
@@ -60,7 +60,7 @@ export const hasPathTraversal = sharedHasPathTraversal
 export const isSensitivePath = sharedIsSensitivePath
 
 /**
- * 判断路径是否位于工作区范围内
+ * 判断路径是否位于工作空间范围内
  *
  * 同时支持绝对路径与以 "./" 开头的相对路径
  */
@@ -91,11 +91,11 @@ export interface PathSafetyAssertion {
  * 校验路径安全性，返回校验结果与规范化后的路径
  *
  * @param target 待校验的路径
- * @param workspaceRoot 工作区根目录
+ * @param workspaceRoot 工作空间根目录
  * @param options.allowSensitive 是否允许访问敏感路径（如 .ssh、.aws）
- * @param options.allowOutsideWorkspace 是否允许访问工作区外路径（跳过工作区边界检查）
+ * @param options.allowOutsideWorkspace 是否允许访问工作空间外路径（跳过工作空间边界检查）
  * @param options.extraAllowedRoots 额外允许访问的根目录列表（如项目目录），
- *        路径在这些目录下也视为合法，用于项目目录不在工作区内时的放行
+ *        路径在这些目录下也视为合法，用于项目目录不在工作空间内时的放行
  */
 export function assertPathSafety(
   target: string,
@@ -117,7 +117,7 @@ export function assertPathSafety(
     return { valid: false, error: 'Access to sensitive path denied' }
   }
   if (!allowOutsideWorkspace && workspaceRoot && !isPathWithinWorkspace(target, workspaceRoot)) {
-    // 不在工作区内时，检查是否在额外允许的根目录下（如项目目录）
+    // 不在工作空间内时，检查是否在额外允许的根目录下（如项目目录）
     const inExtraRoot = extraAllowedRoots.some(root =>
       root && isPathWithinWorkspace(target, root)
     )
@@ -272,10 +272,10 @@ export function resolveToAbsolute(relativePath: string, workspaceRoot: string | 
  * 折叠路径中的 "." 与 ".." 片段（纯词法处理，不访问文件系统）
  *
  * 为什么需要：assertPathSafety 会把含 ".." 的原始输入直接判为「目录穿越」，
- * 于是 "src/../lib/x.ts"、"../b/y.ts"（折叠后仍落在工作区内）这类合法写法被误判，
+ * 于是 "src/../lib/x.ts"、"../b/y.ts"（折叠后仍落在工作空间内）这类合法写法被误判，
  * AI 侧表现为「Path is outside workspace / 路径校验失败」。
- * 先按工作区根解析成绝对路径、再折叠、最后才做边界校验，
- * 既能放行合法写法，也不会放过真正逃出工作区的路径。
+ * 先按工作空间根解析成绝对路径、再折叠、最后才做边界校验，
+ * 既能放行合法写法，也不会放过真正逃出工作空间的路径。
  *
  * 规则：
  * - 反斜杠统一成正斜杠；"." 片段丢弃；".." 折叠上一级
@@ -321,7 +321,7 @@ export function collapsePathSegments(target: unknown): string {
 }
 
 /**
- * 解析工具入参路径：相对路径按工作区根展开为绝对路径，并折叠 "." / ".."
+ * 解析工具入参路径：相对路径按工作空间根展开为绝对路径，并折叠 "." / ".."
  *
  * 与 assertPathSafety 搭配使用（先折叠、后校验），避免合法相对写法被误判为目录穿越。
  */
@@ -330,9 +330,9 @@ export function resolveToolPathInput(target: string, workspaceRoot: string | nul
 }
 
 /**
- * 将绝对路径解析为相对于工作区的路径
+ * 将绝对路径解析为相对于工作空间的路径
  *
- * 如果路径不在工作区内，返回原始路径
+ * 如果路径不在工作空间内，返回原始路径
  */
 export function resolveToRelative(absolutePath: string, workspaceRoot: string | null): string {
   if (!workspaceRoot) return absolutePath
@@ -400,7 +400,7 @@ export function resolveModuleImport(
  * 聊天窗口落盘、桌面伴侣迷你聊天落盘、主进程只读可信目录注册。
  * 集中在此，避免各写一份拼接逻辑导致「落盘目录」与「放行目录」不一致。
  *
- * @param root 根目录（工作区根目录，或应用 userData 目录）
+ * @param root 根目录（工作空间根目录，或应用 userData 目录）
  */
 export function resolveUploadDir(root: string): string {
   return `${root.replace(/[/\\]+$/, '')}/${BRAND.paths.uploads}`

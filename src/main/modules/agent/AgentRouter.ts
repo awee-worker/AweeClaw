@@ -48,10 +48,10 @@ export interface AgentRoutingRule {
 }
 
 // ============================================
-// Agent 工作区定义
+// Agent 工作空间定义
 // ============================================
 
-/** Agent 独立工作区 */
+/** Agent 独立工作空间 */
 export interface AgentWorkspace {
   agentId: string
   /** 工作目录 */
@@ -101,7 +101,7 @@ export interface RoutingResult {
 class AgentRouter extends EventEmitter {
   /** Agent 绑定关系 */
   private bindings = new Map<string, AgentBinding>()
-  /** Agent 工作区 */
+  /** Agent 工作空间 */
   private workspaces = new Map<string, AgentWorkspace>()
   /** Agent 认证上下文 */
   private authContexts = new Map<string, AgentAuthContext>()
@@ -342,11 +342,11 @@ class AgentRouter extends EventEmitter {
   }
 
   // ============================================
-  // 工作区管理
+  // 工作空间管理
   // ============================================
 
   /**
-   * 设置 Agent 工作区
+   * 设置 Agent 工作空间
    */
   setWorkspace(workspace: AgentWorkspace): void {
     this.workspaces.set(workspace.agentId, workspace)
@@ -355,7 +355,7 @@ class AgentRouter extends EventEmitter {
   }
 
   /**
-   * 获取 Agent 工作区
+   * 获取 Agent 工作空间
    */
   getWorkspace(agentId: string): AgentWorkspace | undefined {
     return this.workspaces.get(agentId)

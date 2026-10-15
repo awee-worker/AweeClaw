@@ -538,7 +538,7 @@ export async function executeAgentCycle(
     // 才对 LLM 可见；执行任务/开发时 AI 任务跟踪应使用系统内置 todo_write 等（致命问题 #4）
     sceneToolsEnabled: resolveSceneToolsIntentFromMessages(llmMessages).value,
     // Git 工具按需暴露：用户没有提出 Git 操作时不把 git_* 下发给 LLM。
-    // 工作区并非都是 Git 仓库，AI 自己「探路」（git_status / git_log）会稳定失败
+    // 工作空间并非都是 Git 仓库，AI 自己「探路」（git_status / git_log）会稳定失败
     gitToolsEnabled: resolveGitToolsIntentFromMessages(llmMessages).value,
     externalAgentEnabled: isExternalAgentToolsExposed(),
     ...agentToolFields,

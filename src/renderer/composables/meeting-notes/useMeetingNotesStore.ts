@@ -5,7 +5,7 @@
  * - 维护会议状态机：idle → recording ⇄ paused → finishing → done / organizing → done
  * - 维护发言段列表（按时间顺序，支持异步更新 STT/翻译结果）
  * - 维护说话人列表（预设：我/A/B/C/环境音/未知；用户可重命名）
- * - 维护工作区路径、当前说话人选择、错误信息
+ * - 维护工作空间路径、当前说话人选择、错误信息
  * - 维护整理状态（organizing + 进度）
  *
  * 设计原则：
@@ -116,7 +116,7 @@ export interface MeetingNotesState {
   startTime: number
   /** 会议结束时间戳 */
   endTime: number
-  /** 工作区根路径（启动时从主进程获取） */
+  /** 工作空间根路径（启动时从主进程获取） */
   workspacePath: string | null
   /** 当前选择的说话人 ID（用于手动标注新段） */
   currentSpeakerId: string
@@ -136,7 +136,7 @@ export interface MeetingNotesState {
   // ── Actions ──
   /** 重置到初始状态（开始新会议） */
   reset: () => void
-  /** 设置工作区路径 */
+  /** 设置工作空间路径 */
   setWorkspacePath: (path: string | null) => void
   /** 设置当前说话人 */
   setCurrentSpeaker: (speakerId: string) => void
@@ -230,7 +230,7 @@ export const useMeetingNotesStore = create<MeetingNotesState>((set, get) => ({
     set({
       ...initialState,
       speakers: DEFAULT_SPEAKERS.map((s) => ({ ...s })),
-      // 工作区路径保留（同一会话内不变）
+      // 工作空间路径保留（同一会话内不变）
       workspacePath: get().workspacePath,
     })
   },

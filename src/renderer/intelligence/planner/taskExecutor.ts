@@ -816,7 +816,7 @@ export function listGraphCheckpoints(planId: string) {
  *
  * @param plan 当前 plan（调用方已校验 graphVersion=2 且非终态）
  * @param state 持久化状态文件内容
- * @param workspacePath 工作区路径
+ * @param workspacePath 工作空间路径
  * @returns 恢复结果
  */
 export async function recoverSession(

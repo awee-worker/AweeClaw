@@ -1,7 +1,7 @@
 /**
  * 文件整理助手 — 工作模式增强工具
  *
- * 功能：维护"关键词 → 目标目录"整理规则；一键整理工作区内未分类文件。
+ * 功能：维护"关键词 → 目标目录"整理规则；一键整理工作空间内未分类文件。
  * 说明：桌面端通过主进程文件系统 API 执行真实移动，此处保留规则管理与执行入口。
  */
 
@@ -37,10 +37,10 @@ export default function WorkFileOrganizer() {
     setRunning(true)
     setResult(null)
     try {
-      // 通过 IPC 调用主进程整理工作区文件（若宿主未实现则提示规则已就绪）
+      // 通过 IPC 调用主进程整理工作空间文件（若宿主未实现则提示规则已就绪）
       const workspacePath = useStore.getState().workspacePath
       if (!workspacePath) {
-        setResult('未打开工作区，规则已就绪（可稍后在项目内使用）')
+        setResult('未打开工作空间，规则已就绪（可稍后在项目内使用）')
         return
       }
       const { api } = await import('@renderer/adapters/electronBridge')
@@ -69,7 +69,7 @@ export default function WorkFileOrganizer() {
 
       <div className="flex items-start gap-1.5 px-1 mb-2 text-[12px] text-text-muted/80">
         <Info className="w-3 h-3 mt-px flex-shrink-0" />
-        <span>定义"文件名关键词 → 目标目录"规则，一键整理工作区未分类文件。</span>
+        <span>定义"文件名关键词 → 目标目录"规则，一键整理工作空间未分类文件。</span>
       </div>
 
       {showForm && (
@@ -118,7 +118,7 @@ export default function WorkFileOrganizer() {
           disabled={running}
           className="mt-2 w-full py-1.5 rounded-lg bg-accent text-white text-[12px] flex items-center justify-center gap-1.5 hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
-          <Wand2 className="w-3.5 h-3.5" /> {running ? '整理中…' : '一键整理工作区'}
+          <Wand2 className="w-3.5 h-3.5" /> {running ? '整理中…' : '一键整理工作空间'}
         </button>
       )}
       {result && <div className="mt-1.5 text-[12px] text-emerald-500 text-center">{result}</div>}

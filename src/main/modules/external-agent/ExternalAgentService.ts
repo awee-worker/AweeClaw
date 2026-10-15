@@ -8,7 +8,7 @@
  * - 会话管理：start / wait / abort / status（支持 LLM 工具侧非阻塞委托）
  *
  * 安全边界：
- * - workdir 必须在工作区根目录内（由 IPC 层注入 resolver 校验）
+ * - workdir 必须在工作空间根目录内（由 IPC 层注入 resolver 校验）
  * - 子进程环境变量仅注入增强 PATH 与用户配置的 API Key
  * - 危险命令黑名单沿用 securityManager 体系（Agent 内部命令由 Agent 自身权限模式控制）
  */
@@ -198,7 +198,7 @@ class ExternalAgentService {
    * 启动一次外部 Agent 运行（非阻塞，立即返回 requestId）
    *
    * @param request 运行请求
-   * @param workdirAllowed 工作目录白名单校验（由 IPC 层注入工作区根）
+   * @param workdirAllowed 工作目录白名单校验（由 IPC 层注入工作空间根）
    * @param push 流式事件推送器（可选，绑定到发起窗口）
    */
   async start(
@@ -215,9 +215,9 @@ class ExternalAgentService {
       return { requestId: '', error: `外部智能体 ${agent} 未启用，请在设置 → 外部智能体中开启` }
     }
 
-    // 安全边界：workdir 必须在工作区内
+    // 安全边界：workdir 必须在工作空间内
     if (!workdirAllowed(request.workdir)) {
-      return { requestId: '', error: `工作目录不在允许的工作区内: ${request.workdir}` }
+      return { requestId: '', error: `工作目录不在允许的工作空间内: ${request.workdir}` }
     }
 
     const permissionMode: AgentPermissionMode =

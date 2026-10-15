@@ -63,7 +63,7 @@ function filterHidden(items: FileItem[]): FileItem[] {
 // ============================================
 
 interface ExecutionFileTreeProps {
-  /** 工作区根路径 */
+  /** 工作空间根路径 */
   workspacePath: string | null
   /** 文件点击回调 */
   onFileSelect?: (filePath: string) => void
@@ -240,7 +240,7 @@ export function ExecutionFileTree({ workspacePath, onFileSelect }: ExecutionFile
     return (
       <div className="flex flex-col items-center justify-center h-full text-text-muted/50 py-4">
         <HardDrive className="w-6 h-6 mb-1.5 opacity-30" />
-        <span className="text-[12px]">未加载工作区</span>
+        <span className="text-[12px]">未加载工作空间</span>
       </div>
     )
   }

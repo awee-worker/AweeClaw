@@ -1,16 +1,16 @@
 /**
  * ArtifactContextMenu — 「产物」面板的文件右键菜单
  *
- * 与工作区文件树（VirtualTreeRenderer）的文件右键菜单保持一致：相同的菜单项、
+ * 与工作空间文件树（VirtualTreeRenderer）的文件右键菜单保持一致：相同的菜单项、
  * 相同的顺序、相同的公共服务（api.file / 共享剪贴板 / 目录缓存 / 集成终端）。
  *
- * 产物条目只可能是文件，因此这里只对齐工作区菜单的「文件」分支：
+ * 产物条目只可能是文件，因此这里只对齐工作空间菜单的「文件」分支：
  *   在浏览器中打开(HTML) | 转换为 Word/PDF(Markdown) | 导出 | 分享 |
  *   在此处打开终端 | 复制 / 粘贴 | 重命名 / 删除 |
  *   复制路径 / 相对路径 | 在文件夹中显示 | 显示/隐藏系统目录
  *
  * 菜单内的删除与重命名会同步产物列表（删除即移除条目、重命名即改为新路径），
- * 并通过 workspace:files-changed 事件让工作区文件树一并刷新。
+ * 并通过 workspace:files-changed 事件让工作空间文件树一并刷新。
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -74,7 +74,7 @@ export function ArtifactContextMenu({ path, position, onClose }: ArtifactContext
   const fileName = getFileName(path)
   const dirPath = getDirPath(path)
 
-  /** 通知工作区文件树刷新受影响目录 */
+  /** 通知工作空间文件树刷新受影响目录 */
   const notifyFilesChanged = useCallback((affectedDir: string, deletedPath?: string) => {
     if (!affectedDir) return
     directoryCacheService.invalidate(affectedDir)
@@ -230,7 +230,7 @@ export function ArtifactContextMenu({ path, position, onClose }: ArtifactContext
     onClose()
   }, [path, language, onClose])
 
-  // ─── 操作：导出到工作区外 ─────────────────────────────
+  // ─── 操作：导出到工作空间外 ─────────────────────────────
   const handleExport = useCallback(async () => {
     const targetDir = await api.file.selectForExport({
       title: t('file-tree.exportto', language as Language),
@@ -302,7 +302,7 @@ export function ArtifactContextMenu({ path, position, onClose }: ArtifactContext
     onClose()
   }, [path, dirPath, language, notifyFilesChanged, onClose])
 
-  // ─── 构建菜单项（与工作区文件菜单的文件分支对齐） ────────
+  // ─── 构建菜单项（与工作空间文件菜单的文件分支对齐） ────────
   const items: ContextMenuItem[] = []
   const lowerName = fileName.toLowerCase()
   const isHtmlFile = lowerName.endsWith('.html') || lowerName.endsWith('.htm')

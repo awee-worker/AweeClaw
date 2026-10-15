@@ -79,7 +79,7 @@ async function onAuthSuccess(userId: string | undefined): Promise<void> {
  * - 登录/注册/手机号登录成功后调用
  * - token 刷新后调用（让 WS / Bridge 用新 token 重连）
  * - restoreSession 成功后调用（应用启动时恢复连接）
- * - 工作区切换后可再次调用以更新 workspacePath
+ * - 工作空间切换后可再次调用以更新 workspacePath
  *
  * 涉及模块：
  * - device-link：建立与后端的 WebSocket 长连接（deviceName 不传，由主进程自动填充）

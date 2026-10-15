@@ -81,7 +81,7 @@ const CODE_TOOL_PACK: ToolPack = {
     'read_terminal_output',
     'send_terminal_input',
     'stop_terminal',
-    // Git（工作区仓库操作，网络命令自动处理凭证）
+    // Git（工作空间仓库操作，网络命令自动处理凭证）
     'git_status',
     'git_diff',
     'git_log',

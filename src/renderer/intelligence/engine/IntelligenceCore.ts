@@ -83,7 +83,7 @@ export class AgentClass {
    * 
    * @param userMessage - 用户消息（文本或多模态内容）
    * @param config - LLM 配置
-   * @param workspacePath - 工作区路径
+   * @param workspacePath - 工作空间路径
    * @param chatMode - 工作模式（chat/plan）
    * @param promptOptions - 构建系统提示词所需的元数据
    */
@@ -165,7 +165,7 @@ export class AgentClass {
       ? (store.threads[threadId]?.contextItems || [])
       : (store.getCurrentThread()?.contextItems || [])
 
-    // 历史消息可能还停留在懒加载状态（应用刚启动、刚切换工作区或刚从历史列表进入）：
+    // 历史消息可能还停留在懒加载状态（应用刚启动、刚切换工作空间或刚从历史列表进入）：
     // 此刻内存里的消息列表是空的，直接取用会组装出「没有任何历史」的请求 —— 模型
     // 于是不知道上一轮自己回了什么，整段会话失去连贯性。组装前先把该线程的历史补齐。
     // 加载失败不阻塞本次发送（宁可少上下文，也不能让用户发不出消息）。
@@ -844,7 +844,7 @@ export class AgentClass {
    * 清除会话缓存
    *
    * 用于：
-   * - 切换工作区时清除缓存
+   * - 切换工作空间时清除缓存
    * - 手动刷新时清除缓存
    */
   clearSession(): void {

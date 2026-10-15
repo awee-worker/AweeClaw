@@ -64,7 +64,7 @@ const replacements = [
   ["language === 'zh' ? '用逗号分隔，这些工具调用时不需要用户确认' : 'Comma-separated. These tools will not require user approval'", "t('mcp.autoApproveHint', language as Language)"],
   ["language === 'zh' ? '保存到：' : 'Save to:'", "t('mcp.saveTo', language as Language)"],
   ["language === 'zh' ? '全局配置' : 'Global'", "t('mcp.globalConfig', language as Language)"],
-  ["language === 'zh' ? '工作区配置' : 'Workspace'", "t('mcp.workspaceConfig', language as Language)"],
+  ["language === 'zh' ? '工作空间配置' : 'Workspace'", "t('mcp.workspaceConfig', language as Language)"],
   ["language === 'zh' ? '返回' : 'Back'", "t('mcp.back', language as Language)"],
   ["language === 'zh' ? '取消' : 'Cancel'", "t('cancel', language as Language)"],
   ["language === 'zh' ? '添加服务器' : 'Add Server'", "t('mcp.addServer', language as Language)"],

@@ -100,7 +100,7 @@ afterAll(() => {
 // ─── 参数与路径边界 ────────────────────────────────────────
 
 describe('MediaBridge 参数与路径边界', () => {
-  it('拒绝工作区外的输入路径', async () => {
+  it('拒绝工作空间外的输入路径', async () => {
     await expect(mediaBridge.probe('/etc/passwd')).rejects.toThrow(/越界/)
   })
 

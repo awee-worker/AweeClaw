@@ -66,7 +66,7 @@ export class McpConfigLoader {
     return getConfigFilePath(CONFIG_FILES.MCP, CONFIG_FILES.SETTINGS_DIR)
   }
 
-  /** 设置工作区根目录 */
+  /** 设置工作空间根目录 */
   setWorkspaceRoots(roots: string[]): void {
     this.workspaceRoots = roots
     this.setupWatchers()
@@ -140,7 +140,7 @@ export class McpConfigLoader {
       }
     }
 
-    // 2. 加载工作区配置（后面的覆盖前面的）
+    // 2. 加载工作空间配置（后面的覆盖前面的）
     for (const root of this.workspaceRoots) {
       const workspaceConfigPath = this.getWorkspaceConfigPath(root)
       const workspaceConfig = await this.loadConfigFile(workspaceConfigPath)
@@ -178,7 +178,7 @@ export class McpConfigLoader {
   }
 
   /**
-   * 将用户/工作区配置合并到内置插件配置上。
+   * 将用户/工作空间配置合并到内置插件配置上。
    * 内置插件（如 computer-use）的 type/pluginKey/pluginVersion 等字段固定不可覆盖，
    * 仅允许覆盖 disabled / autoApprove / presetId 等运行时字段。
    */
@@ -209,7 +209,7 @@ export class McpConfigLoader {
   }
 
   /**
-   * 将用户/工作区配置合并到内置配置上。
+   * 将用户/工作空间配置合并到内置配置上。
    *
    * 内置配置的 type/builtin/id/name 字段固定不可覆盖（防止用户写错导致连接失败），
    * 仅允许覆盖 disabled / autoApprove / presetId 等运行时字段。
@@ -241,7 +241,7 @@ export class McpConfigLoader {
     await this.saveConfigFile(this.userConfigPath, config)
   }
 
-  /** 保存工作区配置 */
+  /** 保存工作空间配置 */
   async saveWorkspaceConfig(workspaceRoot: string, config: McpConfig): Promise<void> {
     const configPath = this.getWorkspaceConfigPath(workspaceRoot)
     await this.saveConfigFile(configPath, config)
@@ -252,12 +252,12 @@ export class McpConfigLoader {
     return this.userConfigPath
   }
 
-  /** 获取工作区根目录列表 */
+  /** 获取工作空间根目录列表 */
   getWorkspaceRoots(): string[] {
     return this.workspaceRoots
   }
 
-  /** 获取工作区配置路径 */
+  /** 获取工作空间配置路径 */
   getWorkspaceConfigPath(workspaceRoot: string): string {
     return getWorkspaceConfigFilePath(workspaceRoot, CONFIG_FILES.MCP, CONFIG_FILES.SETTINGS_DIR)
   }
@@ -383,7 +383,7 @@ export class McpConfigLoader {
     // 监听用户配置
     this.watchConfigFile(this.userConfigPath)
 
-    // 监听工作区配置
+    // 监听工作空间配置
     for (const root of this.workspaceRoots) {
       const configPath = this.getWorkspaceConfigPath(root)
       this.watchConfigFile(configPath)

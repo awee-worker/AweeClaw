@@ -22,7 +22,7 @@ import type { Branch } from '@intelligence/state/slices'
 export interface WorkspaceLoadOptions {
   rehydrateAgentStore?: boolean
   initializeMcp?: boolean
-  /** 恢复会话后是否自动打开上次的会话（默认 false：切换工作区后停在「新建任务」页） */
+  /** 恢复会话后是否自动打开上次的会话（默认 false：切换工作空间后停在「新建任务」页） */
   activateLastThread?: boolean
 }
 
@@ -71,7 +71,7 @@ export interface RestoreAgentStoreOptions {
   /**
    * 是否自动打开快照里记录的会话。
    * - true（默认，应用启动）：续接上次停留的会话；
-   * - false（切换工作区）：会话列表照常恢复，但聊天区停在「新建任务」
+   * - false（切换工作空间）：会话列表照常恢复，但聊天区停在「新建任务」
    *   空状态，由用户从左侧历史列表主动进入某个会话。
    */
   activateLastThread?: boolean
@@ -99,7 +99,7 @@ export async function restoreWorkspaceAgentStore(options: RestoreAgentStoreOptio
     return
   }
 
-  // 切换工作区：不续接上次会话。会话数据照常恢复（左侧历史列表可用），
+  // 切换工作空间：不续接上次会话。会话数据照常恢复（左侧历史列表可用），
   // 但聊天区停在「新建任务」空状态，用户需主动进入某个会话。
   if (!activateLastThread) {
     suspendAgentStorageWrites()
@@ -236,16 +236,16 @@ export async function bindWorkspaceRoot(shellState: WorkspaceShellState): Promis
   await workspaceStorageRuntime.bindPrimaryRoot(shellState.primaryRoot)
   gitService.setWorkspace(shellState.primaryRoot)
 
-  // 后台静默 fetch（受「设置 → Git → 打开工作区时自动 fetch」控制）
-  // 不 await：工作区加载不应被网络请求拖慢
+  // 后台静默 fetch（受「设置 → Git → 打开工作空间时自动 fetch」控制）
+  // 不 await：工作空间加载不应被网络请求拖慢
   void autoFetchOnOpen(shellState.primaryRoot)
 }
 
 /**
- * 打开工作区时静默执行 git fetch
+ * 打开工作空间时静默执行 git fetch
  *
  * 刻意使用 fetchQuiet（不弹凭证框）：
- * 打开工作区属于被动行为，这里弹凭证框会打扰用户；
+ * 打开工作空间属于被动行为，这里弹凭证框会打扰用户；
  * 需要凭证的同步操作应由用户主动点击或 AI 工具显式发起。
  */
 async function autoFetchOnOpen(workspacePath: string): Promise<void> {
@@ -264,7 +264,7 @@ async function autoFetchOnOpen(workspacePath: string): Promise<void> {
   }
 }
 
-/** 轻量级绑定 — 仅创建目录 + 设置 git 工作区，不初始化 SQLite */
+/** 轻量级绑定 — 仅创建目录 + 设置 git 工作空间，不初始化 SQLite */
 export async function bindWorkspaceRootLite(shellState: WorkspaceShellState): Promise<void> {
   if (!shellState.primaryRoot) {
     gitService.setWorkspace(null)
@@ -284,7 +284,7 @@ export function commitWorkspaceShell(shellState: WorkspaceShellState): void {
 /**
  * MCP 初始化串行队列
  *
- * 工作区切换不再等待 MCP 初始化，用户可能在上一轮尚未结束时再次切换；
+ * 工作空间切换不再等待 MCP 初始化，用户可能在上一轮尚未结束时再次切换；
  * 用一条链把初始化按序串起来，避免两轮初始化并发操作同一批服务器进程。
  */
 let mcpInitChain: Promise<void> = Promise.resolve()
@@ -303,18 +303,18 @@ export async function initializeWorkspaceServices(
   const {
     rehydrateAgentStore: shouldRehydrateAgentStore = true,
     initializeMcp: shouldInitializeMcp = true,
-    // 进入工作区默认不续接上次会话：本函数只服务「切换工作区」这条链路，
+    // 进入工作空间默认不续接上次会话：本函数只服务「切换工作空间」这条链路，
     // 切换后停在「新建任务」页；应用启动的续接走 appInitializer 单独调用。
     activateLastThread = false,
   } = options
 
   // MCP 初始化需要逐个拉起外部进程，耗时不可控，且只影响工具可用性。
-  // 放到后台串行执行：不阻塞工作区切换返回，失败只记录日志，不回滚整个切换。
+  // 放到后台串行执行：不阻塞工作空间切换返回，失败只记录日志，不回滚整个切换。
   if (shouldInitializeMcp) {
     scheduleMcpInitialize(workspace.roots)
   }
 
-  // 历史会话是进入工作区后立刻要看的内容，保持等待
+  // 历史会话是进入工作空间后立刻要看的内容，保持等待
   if (shouldRehydrateAgentStore) {
     await restoreWorkspaceAgentStore({ activateLastThread })
   }
@@ -326,7 +326,7 @@ export async function loadWorkspace(
 ): Promise<void> {
   const shellState = await prepareWorkspaceShell(workspace)
 
-  // 先把工作区与文件树提交到 store：标题栏与文件树立即切换到新工作区，
+  // 先把工作空间与文件树提交到 store：标题栏与文件树立即切换到新工作空间，
   // 不再等待存储引擎初始化、会话恢复与 MCP 启动这些耗时操作
   commitWorkspaceShell(shellState)
 

@@ -48,7 +48,7 @@ export interface AppMenuTopLevel {
   entries: AppMenuEntry[]
 }
 
-/** 最近工作区条目 */
+/** 最近工作空间条目 */
 export interface RecentWorkspaceEntry {
   path: string
   name: string

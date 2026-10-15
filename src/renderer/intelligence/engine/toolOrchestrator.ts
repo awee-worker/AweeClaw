@@ -369,7 +369,7 @@ function isMcpTool(toolName: string): boolean {
   return toolName.startsWith('mcp_')
 }
 
-/** 把候选路径展开成可校验的绝对路径（相对路径按工作区解析） */
+/** 把候选路径展开成可校验的绝对路径（相对路径按工作空间解析） */
 function expandPathCandidates(candidate: string, workspacePath: string | null): string[] {
   const isAbsolute = candidate.startsWith('/')
     || /^[a-zA-Z]:[\\/]/.test(candidate)
@@ -381,7 +381,7 @@ function expandPathCandidates(candidate: string, workspacePath: string | null): 
 /**
  * 解析 MCP 工具落盘的产出文件
  *
- * MCP 工具在独立进程里写文件，既不会发 file:written，也不会触发工作区刷新，
+ * MCP 工具在独立进程里写文件，既不会发 file:written，也不会触发工作空间刷新，
  * 表现为「AI 生成的文件不出现在文件树和产物栏」。这里按两类线索还原产出路径：
  *   1. 工具参数中显式给出的文件名 / 输出路径（MCP 文档工具的主要线索）
  *   2. 结果文本中的绝对路径（Unix 或 Windows 盘符风格）
@@ -468,7 +468,7 @@ function isMcpReadonlyTool(toolName: string): boolean {
  * 执行前快照 MCP 工具参数里已存在的候选产出路径
  *
  * MCP 生成类工具落盘后目标文件必然存在，届时再判断只能一律得到「编辑」，
- * 无法区分「覆盖工作区已有文件」与「新建文件」。因此必须在执行前先确认参数
+ * 无法区分「覆盖工作空间已有文件」与「新建文件」。因此必须在执行前先确认参数
  * 给出的输出路径是否已存在，产物标识据此判定为编辑还是新建。
  */
 async function snapshotExistingProducedPaths(
@@ -521,7 +521,7 @@ export interface ApprovalGateToolInfo {
  * 「自动审批」「自由模式」「自动批准危险操作」选择的都是少问日常操作，
  * 不包含让不可逆操作静默执行的授权。
  *
- * @param workspacePath 当前工作区路径；手动审批模式下用于判定「外部内容」
+ * @param workspacePath 当前工作空间路径；手动审批模式下用于判定「外部内容」
  */
 export function resolveApprovalGate(
   toolCall: ApprovalGateToolInfo,
@@ -540,7 +540,7 @@ export function resolveApprovalGate(
 
   // 授权方式已设置：交给统一判定
   if (authMode !== undefined) {
-    // 「外部内容」以用户的实际授权范围为准：工作区 + 安全设置里的允许目录
+    // 「外部内容」以用户的实际授权范围为准：工作空间 + 安全设置里的允许目录
     // + 项目执行窗口的项目目录 + 可信应用数据目录
     const policy = buildToolPathPolicy({
       allowedToolPaths: mainStore.allowedToolPaths,
@@ -963,7 +963,7 @@ async function invokeToolInvocation(
         }
 
         // MCP 工具（Word / Excel 生成等）在自己的进程里写文件，不经过内置写入通道，
-        // 因此既不会记录产物，也不会刷新工作区文件树。这里补上这条链路。
+        // 因此既不会记录产物，也不会刷新工作空间文件树。这里补上这条链路。
         //
         // 只读类 MCP 工具（read_file / get_* / list_* 等）只消费文件、不产出文件，
         // 必须排除：否则参数里的输入路径会被误判成产物，表现为「AI 读一下文件
@@ -976,7 +976,7 @@ async function invokeToolInvocation(
           )
           if (producedPath) {
             logger.agent.info(`[Tools] ${toolCall.name} produced file: ${producedPath}`)
-            // 「覆盖工作区已有文件」与「新建文件」以执行前的存在性快照为准
+            // 「覆盖工作空间已有文件」与「新建文件」以执行前的存在性快照为准
             const isEdit = mcpExistedPaths?.has(normalizePath(producedPath)) ?? false
             useStore.getState().recordArtifact({
               path: producedPath,

@@ -44,7 +44,7 @@ export interface UseMeetingNotesConfigResult {
   llmConfig: LLMConfig | null
   /** 云端模式 */
   cloudMode: 'cloud' | 'local'
-  /** 工作区路径 */
+  /** 工作空间路径 */
   workspacePath: string | null
   /** 加载错误 */
   error: string | null

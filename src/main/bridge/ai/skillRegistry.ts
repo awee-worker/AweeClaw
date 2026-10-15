@@ -13,7 +13,7 @@
  *
  * 作用域：
  * - global：{userConfigDir}/skills/
- * - workspace：{workspaceRoot}/.aweeclaw/skills/（可多个工作区）
+ * - workspace：{workspaceRoot}/.aweeclaw/skills/（可多个工作空间）
  * - bundled：随客户端分发的内置技能（只读，优先级最低）
  * - 同名技能 global 优先；workspace 与 bundled 仅作补充，不覆盖 global
  */
@@ -50,7 +50,7 @@ function getGlobalSkillsDir(): string {
   return path.join(getUserConfigDir(), 'skills')
 }
 
-/** 工作区技能目录（每个工作区根下的 .aweeclaw/skills/） */
+/** 工作空间技能目录（每个工作空间根下的 .aweeclaw/skills/） */
 function getWorkspaceSkillsDir(workspaceRoot: string): string {
   return path.join(workspaceRoot, '.aweeclaw', 'skills')
 }

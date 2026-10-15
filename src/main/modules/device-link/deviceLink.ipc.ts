@@ -70,7 +70,7 @@ let isInitialized = false
  *
  * @param configStore 应用配置 store
  * @param getMainWindow 主窗口获取函数
- * @param resolveWorkspaceRoot 工作区根路径解析器
+ * @param resolveWorkspaceRoot 工作空间根路径解析器
  */
 export function initDeviceLinkModule(opts: {
   configStore: Store<Record<string, unknown>>

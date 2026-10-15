@@ -1,16 +1,16 @@
 /**
  * AI 临时目录兜底清理
  *
- * AI 产生的临时文件统一存放在工作区的 `.aweeclaw/temp`（见 shared/brand 的 paths.temp）。
- * 该目录位于工作区内、且已列入可删除白名单，用户与 AI 都能自由清理，
+ * AI 产生的临时文件统一存放在工作空间的 `.aweeclaw/temp`（见 shared/brand 的 paths.temp）。
+ * 该目录位于工作空间内、且已列入可删除白名单，用户与 AI 都能自由清理，
  * 因此不需要应用侧定时清理。
  *
- * 本模块只负责清理「应用级回退临时目录」（userData/tmp）——即没有打开工作区、
- * 无法使用工作区临时目录时的兜底位置：
+ * 本模块只负责清理「应用级回退临时目录」（userData/tmp）——即没有打开工作空间、
+ * 无法使用工作空间临时目录时的兜底位置：
  * - 应用启动时清空一次（此时不会有正在执行的脚本）；
  * - 运行期间定时清理超过 TTL 的残留文件。
  *
- * 放在主进程执行，是为了不经过渲染进程的工作区边界与 .aweeclaw 保护校验。
+ * 放在主进程执行，是为了不经过渲染进程的工作空间边界与 .aweeclaw 保护校验。
  */
 
 import { app } from 'electron'
@@ -26,7 +26,7 @@ const STALE_TTL_MS = 2 * 60 * 60 * 1000
 
 let timer: NodeJS.Timeout | null = null
 
-/** 应用级回退临时目录（无工作区时使用） */
+/** 应用级回退临时目录（无工作空间时使用） */
 function fallbackTempDir(): string {
   return path.join(app.getPath('userData'), APP_TEMP_ROOT_NAME)
 }

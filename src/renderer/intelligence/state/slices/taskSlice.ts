@@ -100,7 +100,7 @@ function normalizeLoadedPlan(plan: TaskPlan): TaskPlan {
 /**
  * 从指定目录加载所有 plan JSON 文件
  *
- * @param workspacePath 工作区路径
+ * @param workspacePath 工作空间路径
  * @param dirName 目录名（planner 或 plan）
  * @returns 加载的 plan 列表（可能为空）
  */

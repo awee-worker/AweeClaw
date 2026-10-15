@@ -109,13 +109,13 @@ const zh: Record<MenuKey, string> = {
   settings: '设置...',
 
   openFolder: '打开文件夹...',
-  addFolderToWorkspace: '添加文件夹到工作区...',
-  saveWorkspaceAs: '保存工作区为...',
+  addFolderToWorkspace: '添加文件夹到工作空间...',
+  saveWorkspaceAs: '保存工作空间为...',
   saveFile: '保存文件',
   refreshFiles: '刷新文件资源管理器',
-  recentWorkspaces: '最近打开的工作区',
-  noRecentWorkspaces: '无最近的工作区',
-  clearRecentWorkspaces: '清除最近的工作区',
+  recentWorkspaces: '最近打开的工作空间',
+  noRecentWorkspaces: '无最近的工作空间',
+  clearRecentWorkspaces: '清除最近的工作空间',
 
   undo: '撤销',
   redo: '重做',

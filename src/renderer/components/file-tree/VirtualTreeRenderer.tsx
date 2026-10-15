@@ -288,7 +288,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     const normalizedFilePath = normalizePath(filePath)
     const normalizedWorkspace = normalizePath(workspacePath)
 
-    // 收集需要展开的目录路径（从工作区根目录开始，到文件的直接父目录）
+    // 收集需要展开的目录路径（从工作空间根目录开始，到文件的直接父目录）
     const pathsToExpand: string[] = []
     let currentPath = getDirPath(normalizedFilePath)
 
@@ -1048,7 +1048,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       const result = convertFn ? await convertFn(sourcePath, targetFormat, targetPath) : false
       if (result) {
         toast.success(t('contextMenu.convertSuccess', language as Language) || `Converted to ${targetFormat}`)
-        // 刷新工作区
+        // 刷新工作空间
         window.dispatchEvent(new CustomEvent('workspace:files-changed', {
           detail: { affectedPaths: [getDirPath(sourcePath)], refreshRoot: false },
         }))

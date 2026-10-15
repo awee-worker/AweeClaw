@@ -1162,7 +1162,7 @@ export default function ChatPanel() {
           {/* 计划任务状态栏：常驻展示所有计划，点击从右侧打开任务面板 */}
           <PlanStatusBar />
 
-          {/* 工作区/聊天切换栏 */}
+          {/* 工作空间/聊天切换栏 */}
           {activeWorkspaceSession && !teamModeEnabled && (
             <WorkspaceToggleBar
               workspaceViewVisible={workspaceViewVisible}
@@ -1172,7 +1172,7 @@ export default function ChatPanel() {
             />
           )}
 
-          {/* 工作区视图 */}
+          {/* 工作空间视图 */}
           {showWorkspaceView ? (
             <div className="flex-1 min-h-0">
               <AgentWorkspace />

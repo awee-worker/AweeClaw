@@ -1,6 +1,6 @@
 /**
  * 内置 LSP 管理器
- * 支持多根目录工作区（为每个根目录启动独立的服务器实例）
+ * 支持多根目录工作空间（为每个根目录启动独立的服务器实例）
  * 
  * 增强功能：
  * - 智能根目录检测
@@ -325,7 +325,7 @@ const LSP_SERVERS: LspServerConfig[] = [
     // 智能根目录检测：优先查找 go.work，然后 go.mod
     findRoot: async (filePath, workspacePath) => {
       const fileDir = path.dirname(filePath)
-      // 先查找 go.work（工作区模式）
+      // 先查找 go.work（工作空间模式）
       const workRoot = await findNearestRoot(fileDir, workspacePath, ['go.work'])
       if (workRoot) return workRoot
       // 再查找 go.mod
@@ -1139,7 +1139,7 @@ class LspManager {
   // ============ 智能根目录检测 ============
 
   /**
-   * 根据文件路径和语言获取最佳的工作区根目录
+   * 根据文件路径和语言获取最佳的工作空间根目录
    */
   async findBestRoot(filePath: string, languageId: LanguageId, workspacePath: string): Promise<string> {
     const serverName = this.getServerForLanguage(languageId)

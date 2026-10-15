@@ -194,7 +194,7 @@ function formatPreviewHealth(
 }
 
 /**
- * Git 工具的公共前置检查：工作区存在 + 目标目录是 git 仓库
+ * Git 工具的公共前置检查：工作空间存在 + 目标目录是 git 仓库
  *
  * 所有 git_* 工具都先过这一关，避免把「不是仓库」这类环境问题
  * 当成命令执行失败抛给 AI（会让 AI 反复重试同样无效的命令）。
@@ -219,7 +219,7 @@ async function resolveGitWorkspace(
                 case 'worktree':
                     return {
                         enabled: gitSettings?.aiWorktreeEnabled === true,
-                        label: '「允许 AI 创建隔离工作区」',
+                        label: '「允许 AI 创建隔离工作空间」',
                         detail: '无法创建 / 删除链接工作树（git worktree）',
                     }
                 case 'audit':
@@ -268,7 +268,7 @@ async function resolveGitWorkspace(
             result: {
                 success: false,
                 result:
-                    '当前工作区不是 Git 仓库（未检测到 .git 目录）。\n' +
+                    '当前工作空间不是 Git 仓库（未检测到 .git 目录）。\n' +
                     '请在「设置 → Git」中初始化仓库，或在终端执行 git init 后再试。',
                 error: 'Not a git repository',
             },
@@ -287,7 +287,7 @@ function formatGitChange(change: { path: string; status: string }): string {
 /**
  * 解析 worktree 目标路径
  *
- * 只允许「工作区的同级目录」：工作树写在仓库内部会污染 git status（出现大量未跟踪条目），
+ * 只允许「工作空间的同级目录」：工作树写在仓库内部会污染 git status（出现大量未跟踪条目），
  * 写到任意绝对路径又可能误伤系统目录。AI 只需给一个相对名（如 "myrepo-spike"）即可。
  */
 function resolveWorktreePath(
@@ -307,16 +307,16 @@ function resolveWorktreePath(
     ).replace(/\/+$/, '')
 
     if (candidate === workspace) {
-        return { ok: false, error: 'path 指向工作区自身，请换一个同级目录名' }
+        return { ok: false, error: 'path 指向工作空间自身，请换一个同级目录名' }
     }
     if (getDirname(candidate) !== parentDir) {
         return {
             ok: false,
-            error: `path 必须是工作区同级目录下的单层目录（应形如 ${parentDir}/<名称>，实际为 ${candidate}）`,
+            error: `path 必须是工作空间同级目录下的单层目录（应形如 ${parentDir}/<名称>，实际为 ${candidate}）`,
         }
     }
     if (candidate === `${parentDir}/${workspaceName}`) {
-        return { ok: false, error: 'path 与工作区同名，请换一个名字' }
+        return { ok: false, error: 'path 与工作空间同名，请换一个名字' }
     }
 
     return { ok: true, path: candidate }
@@ -543,17 +543,17 @@ function resolvePath(p: unknown, workspacePath: string | null, allowRead = false
     }
 
     // 先「展开 + 折叠」再做安全校验：
-    // "src/../lib/x.ts"、"../b/y.ts" 这类写法折叠后仍落在工作区内，属于合法输入；
+    // "src/../lib/x.ts"、"../b/y.ts" 这类写法折叠后仍落在工作空间内，属于合法输入；
     // 旧实现把原始串直接交给 assertPathSafety，会被 hasPathTraversal 直接判为
     // 目录穿越，AI 侧表现为「路径校验失败 / Path is outside workspace」。
-    // 折叠后真正越出工作区的路径，依然会被下面的边界校验拦下。
+    // 折叠后真正越出工作空间的路径，依然会被下面的边界校验拦下。
     const isAbsoluteInput = p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('\\\\')
     const input = workspacePath || isAbsoluteInput ? resolveToolPathInput(p, workspacePath) : p
 
     const state = useStore.getState()
     // 放行策略：项目执行窗口的项目目录 + 用户在「设置 → 安全设置」中配置的
-    // 工作区外允许访问目录 + 可信应用数据目录（插件 / 场景 / 技能 / 运行时）
-    // + 严格工作区模式开关（与主进程安全策略保持一致）
+    // 工作空间外允许访问目录 + 可信应用数据目录（插件 / 场景 / 技能 / 运行时）
+    // + 严格工作空间模式开关（与主进程安全策略保持一致）
     const policy = buildToolPathPolicy({
         allowedToolPaths: state.allowedToolPaths,
         securitySettings: state.securitySettings,
@@ -570,7 +570,7 @@ function resolvePath(p: unknown, workspacePath: string | null, allowRead = false
     })
     if (!validation.valid) {
         // 诊断：路径被拒时记录本次放行来源。
-        // 「设置里已配置工作区外允许访问目录却仍报 Path is outside workspace」
+        // 「设置里已配置工作空间外允许访问目录却仍报 Path is outside workspace」
         // 的根因通常是当前窗口的 store.securitySettings 没有该配置
         // （extraAllowedRoots 为空），这条日志可直接判定。
         logger.agent.warn('[ToolPath] Path rejected:', {
@@ -581,7 +581,7 @@ function resolvePath(p: unknown, workspacePath: string | null, allowRead = false
             extraAllowedRoots: policy.extraAllowedRoots,
             reason: validation.error,
         })
-        // 把「被拒路径 + 工作区根」一并回给模型，让它能直接改成正确路径重试，
+        // 把「被拒路径 + 工作空间根」一并回给模型，让它能直接改成正确路径重试，
         // 而不是反复用同一个越界路径重试到任务卡住。
         const hint = validation.error === 'Path is outside workspace' && workspacePath
             ? ` (path: ${input}, workspace root: ${workspacePath})`
@@ -702,7 +702,7 @@ function joinPath(basePath: string, ...parts: string[]): string {
     return [trimmedBase, ...trimmedParts].join(sep)
 }
 
-/** .history 备份根目录名（位于工作区根目录下，保持原始目录结构） */
+/** .history 备份根目录名（位于工作空间根目录下，保持原始目录结构） */
 const HISTORY_DIR_NAME = '.history'
 
 /** 单个目录快照的文件数量上限：防止超大目录在删除前的备份拖垮主流程 */
@@ -716,19 +716,19 @@ function buildBackupTimestamp(): string {
 }
 
 /**
- * 计算某路径的备份落点（工作区根 .history 下、保持相对目录结构）
+ * 计算某路径的备份落点（工作空间根 .history 下、保持相对目录结构）
  *
  * 规则：{workspacePath}/.history/{相对目录}/{文件名}_{时间戳}{扩展名}
  * 例如：{ws}/src/utils/a.ts → {ws}/.history/src/utils/a_20260928184400.ts
  *
  * 返回 null 表示该路径不应备份：
- * - 不在工作区内（相对路径无法换算）
+ * - 不在工作空间内（相对路径无法换算）
  * - 已经位于 .history 目录内（避免备份被再次备份而无限套娃）
  */
 function resolveBackupPath(filePath: string, workspacePath: string | null): { backupPath: string; backupDir: string } | null {
     if (!filePath || !workspacePath) return null
     const relative = toRelativePath(filePath, workspacePath)
-    // 未落在工作区内时 toRelativePath 会原样返回绝对路径，据此判定越界
+    // 未落在工作空间内时 toRelativePath 会原样返回绝对路径，据此判定越界
     if (!relative || relative === filePath) return null
 
     const relNorm = relative.replace(/[\\/]+/g, '/').replace(/^\/+/, '').replace(/\/+$/, '')
@@ -749,7 +749,7 @@ function resolveBackupPath(filePath: string, workspacePath: string | null): { ba
 }
 
 /**
- * 备份单个文件到工作区根 .history 目录（保持目录结构，零 Token 消耗）
+ * 备份单个文件到工作空间根 .history 目录（保持目录结构，零 Token 消耗）
  */
 async function backupFile(filePath: string, workspacePath: string | null): Promise<void> {
     try {
@@ -767,7 +767,7 @@ async function backupFile(filePath: string, workspacePath: string | null): Promi
 /**
  * 递归备份目录内的所有文件（删除目录前保留快照）
  *
- * - 保持相对工作区的目录结构，与单文件备份一致
+ * - 保持相对工作空间的目录结构，与单文件备份一致
  * - 受 HISTORY_BACKUP_MAX_FILES 上限约束，超出即停止，避免超大目录拖慢删除
  */
 async function backupDirectory(
@@ -790,7 +790,7 @@ async function backupDirectory(
 }
 
 /**
- * 备份目标（文件或目录）到工作区根 .history 目录
+ * 备份目标（文件或目录）到工作空间根 .history 目录
  *
  * 编辑 / 覆写 / 删除前的统一入口：文件按单文件备份，目录递归备份其内部文件。
  * 目录判定走 readDir：能列出条目即为目录。
@@ -924,8 +924,8 @@ async function runInlineScriptViaTempFile(
         }
     }
 
-    // 临时脚本统一落在工作区的 .aweeclaw/temp（AI 可见、可清理，删除不受 .aweeclaw 保护拦截）；
-    // 无工作区时回退到应用级临时目录。
+    // 临时脚本统一落在工作空间的 .aweeclaw/temp（AI 可见、可清理，删除不受 .aweeclaw 保护拦截）；
+    // 无工作空间时回退到应用级临时目录。
     const tempDir = ctx.workspacePath
         ? joinPath(ctx.workspacePath, BRAND.paths.temp)
         : await api.settings.getTempDir()
@@ -1496,7 +1496,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             return { success: false, result: '', error: 'file_path is required' }
         }
 
-        // 读取语义：允许读取只读可信目录（如工作区外的历史附件文档），
+        // 读取语义：允许读取只读可信目录（如工作空间外的历史附件文档），
         // 敏感路径仍由 validatePath 内部拦截
         const filePath = resolvePath(rawPath, ctx.workspacePath, true)
         const ext = filePath.split('.').pop()?.toLowerCase() || ''
@@ -1592,7 +1592,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 发送文件正在编写事件，触发自动打开预览
         EventBus.emit({ type: 'file:writing', filePath: path, workspacePath: ctx.workspacePath || '' })
 
-        // 备份原文件到工作区根 .history（保持目录结构，不传内容给 AI，零 Token 消耗）
+        // 备份原文件到工作空间根 .history（保持目录结构，不传内容给 AI，零 Token 消耗）
         await backupFile(path, ctx.workspacePath)
 
         const originalContent = await api.file.read(path)
@@ -1996,7 +1996,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
         // 目录被当成文件写入的兜底：无扩展名 + 空内容 + 目标不存在时，
         // 落盘只会得到一个没用处的无后缀空文件，多半是模型想建目录。
-        // 直接拒绝并给出正确写法，避免污染工作区。
+        // 直接拒绝并给出正确写法，避免污染工作空间。
         const directoryMisuse = await detectDirectoryMisuse(path, content)
         if (directoryMisuse) {
             return { success: false, result: '', error: directoryMisuse }
@@ -2018,7 +2018,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 只看内容是否为空会把项目里原有的空文件误判成新建。
         const fileExisted = await api.file.exists(path)
         const originalContent = await api.file.read(path) || ''
-        // 备份原文件到工作区根 .history（保持目录结构，不传内容给 AI，零 Token 消耗）
+        // 备份原文件到工作空间根 .history（保持目录结构，不传内容给 AI，零 Token 消耗）
         if (originalContent) await backupFile(path, ctx.workspacePath)
         const writeDecision = guardWriteFile({
             path,
@@ -2126,7 +2126,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
         const originalContent = await api.file.read(path) ?? null
         // 落盘前确认目标是否已存在：产物标识据此区分「新建」与「编辑」，
-        // 工作区本来就有的文件属于编辑，只有真正新建的文件才算新建。
+        // 工作空间本来就有的文件属于编辑，只有真正新建的文件才算新建。
         const existedBefore = await api.file.exists(path)
         const content = (args.content as string) || ''
         // 覆盖已有文件时须按「编辑」记录：oldContent、变更行数与 isNewFile 都要如实反映，
@@ -2209,7 +2209,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 error: 'Protected directory',
             }
         }
-        // 删除前把目标（文件，或目录内的全部文件）快照到工作区根 .history，便于误删后恢复
+        // 删除前把目标（文件，或目录内的全部文件）快照到工作空间根 .history，便于误删后恢复
         await backupTarget(path, ctx.workspacePath)
 
         const success = await api.file.delete(path)
@@ -2221,7 +2221,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
     async run_command(args, ctx) {
         const command = args.command as string
-        // cwd 解析：若 AI 传了 cwd 参数，解析为绝对路径；否则用工作区根目录
+        // cwd 解析：若 AI 传了 cwd 参数，解析为绝对路径；否则用工作空间根目录
         const resolvedCwd = args.cwd ? resolvePath(args.cwd, ctx.workspacePath, true) : null
         const isBackground = args.is_background as boolean
         // 超时在下方「执行通道判定」之后按分层策略计算（resolveCommandTimeout）：
@@ -2323,7 +2323,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             )
             return {
                 success: false,
-                result: `命令被安全策略拦截："${PROTECTED_APP_DIR_NAME}" 是受保护的工作区系统目录（存储项目配置、记忆、索引），禁止删除其内容。请勿再尝试删除该目录。`,
+                result: `命令被安全策略拦截："${PROTECTED_APP_DIR_NAME}" 是受保护的工作空间系统目录（存储项目配置、记忆、索引），禁止删除其内容。请勿再尝试删除该目录。`,
                 error: 'Protected directory cannot be deleted',
                 meta: {
                     command,
@@ -2485,7 +2485,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             // 用户可通过命令容器右侧的">_终端"按钮手动打开终端查看当前命令。
             // 长进程也不再自动弹出面板（通过 ToolCallCard 的"运行中"状态和终端按钮提示用户）
 
-            // 获取或复用 Agent 专属终端（初始 cwd 用工作区根目录，避免反复改变终端目录）
+            // 获取或复用 Agent 专属终端（初始 cwd 用工作空间根目录，避免反复改变终端目录）
             const termId = await terminalManager.getOrCreateAgentTerminal(
                 ctx.workspacePath || '/'
             )
@@ -2708,7 +2708,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         }
     },
 
-    // ===== Git 工具（工作区仓库操作；网络命令自动处理凭证） =====
+    // ===== Git 工具（工作空间仓库操作；网络命令自动处理凭证） =====
 
     async git_status(args, ctx) {
         const workspace = await resolveGitWorkspace(ctx)
@@ -3062,7 +3062,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             case 'fetch': {
                 const result = await gitService.fetch(workspace.path)
                 return result.success
-                    ? { success: true, result: 'fetch 完成：远程引用已更新（工作区文件未改动）' }
+                    ? { success: true, result: 'fetch 完成：远程引用已更新（工作空间文件未改动）' }
                     : failure(result, 'git fetch')
             }
 
@@ -3393,7 +3393,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                         )
                         return {
                             success: false,
-                            result: `输入被安全策略拦截："${PROTECTED_APP_DIR_NAME}" 是受保护的工作区系统目录（存储项目配置、记忆、索引），禁止删除其内容。`,
+                            result: `输入被安全策略拦截："${PROTECTED_APP_DIR_NAME}" 是受保护的工作空间系统目录（存储项目配置、记忆、索引），禁止删除其内容。`,
                             error: 'Protected directory cannot be deleted',
                             meta: { terminalId, sentCtrl: isCtrl, reason: 'protected_dir_violation' },
                         }
@@ -3443,7 +3443,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         if (!task) return { success: false, result: '', error: 'task is required' }
         if (!ctx.workspacePath) return { success: false, result: '', error: 'No workspace open — external agents require a workspace' }
 
-        // 工作目录：相对路径基于工作区根解析，主进程再按工作区白名单校验
+        // 工作目录：相对路径基于工作空间根解析，主进程再按工作空间白名单校验
         const workdirRaw = args.workdir ? String(args.workdir) : '.'
         const workdir = workdirRaw === '.' ? ctx.workspacePath : resolvePath(workdirRaw, ctx.workspacePath, true)
 
@@ -4404,7 +4404,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
     /**
      * 在内置浏览器打开预览（本地静态页面 / 本地服务地址）
      *
-     * 路径按工具的统一规则解析与校验（工作区 + 授权目录 + 敏感路径拦截），
+     * 路径按工具的统一规则解析与校验（工作空间 + 授权目录 + 敏感路径拦截），
      * 再由主进程的预览静态服务转成回环 http 地址交给内置浏览器 —— 内置浏览器的
      * webview 只接受 http/https 源，本地文件不能直接加载。
      */

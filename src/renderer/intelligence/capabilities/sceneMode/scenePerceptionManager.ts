@@ -8,7 +8,7 @@
  * - desktopWindowSwitching: 桌面窗口切换检测
  * - activeAppTracking: 活动应用检测
  * - calendarEvents: 日历事件
- * - workspaceFileChanges: 工作区文件改动
+ * - workspaceFileChanges: 工作空间文件改动
  * - screenIdleTime: 屏幕久坐时长
  * - weather: 天气
  * - iotHealth: IoT 健康设备

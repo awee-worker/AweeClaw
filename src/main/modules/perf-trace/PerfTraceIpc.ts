@@ -33,10 +33,10 @@ import { PerfTraceService } from './PerfTraceService'
 let registered = false
 
 /**
- * 未指定落盘目录时的默认位置：当前窗口工作区下的 tmp-diag。
+ * 未指定落盘目录时的默认位置：当前窗口工作空间下的 tmp-diag。
  *
- * 放在工作区里而不是应用数据目录，是为了让产出的 JSONL 与正在排查的
- * 代码在同一棵树内，事后可直接按相对路径读取。拿不到工作区时返回
+ * 放在工作空间里而不是应用数据目录，是为了让产出的 JSONL 与正在排查的
+ * 代码在同一棵树内，事后可直接按相对路径读取。拿不到工作空间时返回
  * undefined，由服务退回应用数据目录。
  */
 function defaultDirFor(event: IpcMainInvokeEvent): string | undefined {

@@ -168,12 +168,12 @@ function AppContent() {
   const hasWorkspace = useMemo(() => Boolean(workspace && workspace.roots.length > 0), [workspace])
 
   /**
-   * 独立全屏欢迎页：只在「尚未选择工作区」时由它独占界面。
+   * 独立全屏欢迎页：只在「尚未选择工作空间」时由它独占界面。
    *
-   * 空窗口（新建窗口 / ?empty=1）不会恢复工作区，欢迎页就是它的起始页；
+   * 空窗口（新建窗口 / ?empty=1）不会恢复工作空间，欢迎页就是它的起始页；
    * 用户点击卡片（新建任务 / 场景市场 / 场景工具…）后 showWelcomePage 会被置为 false，
-   * 此时必须放行到主界面，否则看起来「点击没有反应」——因为界面又被无工作区兜底逻辑
-   * 拉回欢迎页。有工作区时欢迎页由 MainContentArea 在主布局内渲染，不走这里。
+   * 此时必须放行到主界面，否则看起来「点击没有反应」——因为界面又被无工作空间兜底逻辑
+   * 拉回欢迎页。有工作空间时欢迎页由 MainContentArea 在主布局内渲染，不走这里。
    */
   const showStandaloneWelcomePage = !hasWorkspace && showWelcomePage
 
@@ -316,7 +316,7 @@ function AppContent() {
 
       <div className="relative z-10 flex h-full w-full">
         {showStandaloneWelcomePage ? (
-          // 无工作区入口页：独立全屏渲染，点击任一卡片即可退出到主界面
+          // 无工作空间入口页：独立全屏渲染，点击任一卡片即可退出到主界面
           <div className="flex-1 overflow-hidden">
             <Suspense fallback={<FullScreenLoading />}>
               <WelcomePage />

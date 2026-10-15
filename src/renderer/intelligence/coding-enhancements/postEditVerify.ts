@@ -105,7 +105,7 @@ export async function verifyEditedFile(
   const rawPath = extractVerifyPath(args)
   if (!rawPath || !hasVerifyExtension(rawPath)) return null
 
-  // 绝对路径直接用；相对路径按工作区解析（与编辑工具的解析规则一致）
+  // 绝对路径直接用；相对路径按工作空间解析（与编辑工具的解析规则一致）
   const filePath = /^([A-Za-z]:[\\/]|\/)/.test(rawPath)
     ? rawPath
     : workspacePath

@@ -433,7 +433,7 @@ class CursorAdapter implements ExternalAgentAdapter {
     const binary = findCursorBinary()
     if (!binary) return null
 
-    // resumeSession：Cursor CLI 无 --resume 参数（会话历史绑定工作区目录），
+    // resumeSession：Cursor CLI 无 --resume 参数（会话历史绑定工作空间目录），
     // 用续接提示词回灌上下文，使 Agent 从上次中断处继续
     const finalTask = options.resumeSession
       ? `${task}\n\n[Continuing previous agent session "${options.resumeSession}" — its file changes may already exist in the workspace; inspect current state before proceeding, and do not repeat completed steps.]`

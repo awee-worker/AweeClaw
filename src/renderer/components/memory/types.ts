@@ -317,7 +317,7 @@ export const ORIGIN_TRUST_META: Record<
   { label: string; labelEn: string; color: string; description: string }
 > = {
   instruction: { label: '指令', labelEn: 'Instruction', color: '#3B82F6', description: '系统提示、用户直输指令' },
-  trusted: { label: '可信', labelEn: 'Trusted', color: '#10B981', description: '工作区文件、本地知识库、本地执行结果' },
+  trusted: { label: '可信', labelEn: 'Trusted', color: '#10B981', description: '工作空间文件、本地知识库、本地执行结果' },
   untrusted: { label: '不可信', labelEn: 'Untrusted', color: '#EF4444', description: '网页、外部服务、渠道消息、外部智能体' },
   unknown: { label: '来源未知', labelEn: 'Unknown', color: '#6B7280', description: '历史数据，未记录来源' },
 }

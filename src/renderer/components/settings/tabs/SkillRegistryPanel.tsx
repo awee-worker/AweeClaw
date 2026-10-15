@@ -1,7 +1,7 @@
 /**
  * Skills 设置组件
  *
- * 管理工作区 Skills（基于 agentskills.io 标准）
+ * 管理工作空间 Skills（基于 agentskills.io 标准）
  * 支持从 skills.sh 市场搜索安装、GitHub URL 安装、手动创建
  * 单列流式布局，卡片式展示已安装 Skills
  */

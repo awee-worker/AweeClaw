@@ -171,7 +171,7 @@ export class ProjectExecutionWindowManager {
   /**
    * 创建执行窗口
    *
-   * 全屏窗口：占满整个工作区（不含任务栏/Dock），三栏布局需要足够宽度。
+   * 全屏窗口：占满整个工作空间（不含任务栏/Dock），三栏布局需要足够宽度。
    */
   private createWindow(params: OpenExecutionWindowParams): BrowserWindow {
     const workArea = screen.getPrimaryDisplay().workArea

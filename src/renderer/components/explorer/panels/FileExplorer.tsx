@@ -1,5 +1,5 @@
 /**
- * 工作区视图
+ * 工作空间视图
  */
 
 import { api } from '../../../adapters/electronBridge'
@@ -100,7 +100,7 @@ export function ExplorerView() {
     }
   }, [isResizingArtifacts, setArtifactRatio])
 
-  // 产物栏显隐跟随产物：当前工作区有产物自动展开，产物清空后自动收起。
+  // 产物栏显隐跟随产物：当前工作空间有产物自动展开，产物清空后自动收起。
   // 只订阅「是否有产物」这个布尔值，产物落盘引起的列表更新不会带来额外渲染。
   const hasArtifacts = useStore(state => {
     if (state.artifacts.length === 0) return false
@@ -117,7 +117,7 @@ export function ExplorerView() {
     artifactPresenceRef.current = { workspacePath, hasArtifacts }
 
     const workspaceChanged = !previous || previous.workspacePath !== workspacePath
-    // 切换工作区或产物有无发生翻转时重新判定；其余情况交给用户自己控制
+    // 切换工作空间或产物有无发生翻转时重新判定；其余情况交给用户自己控制
     if (!workspaceChanged && previous.hasArtifacts === hasArtifacts) return
 
     setArtifactCollapsed(!hasArtifacts)
@@ -140,7 +140,7 @@ export function ExplorerView() {
 
     gitService.setWorkspace(workspacePath)
     
-    // 重试逻辑：有时工作区刚设置时 git 命令可能失败
+    // 重试逻辑：有时工作空间刚设置时 git 命令可能失败
     let retries = 3
     let isRepo = false
     
@@ -200,14 +200,14 @@ export function ExplorerView() {
     void updateGitStatus()
   }, [workspacePath, setFiles, updateGitStatus])
 
-  // 工作区变化时更新 Git 状态（只在初始化时执行一次）
+  // 工作空间变化时更新 Git 状态（只在初始化时执行一次）
   useEffect(() => {
     if (!workspacePath) return
     updateGitStatus()
   }, [workspacePath])
 
-  // 挂载时（即用户切换到工作区面板时）自动刷新一次目录
-  // ExplorerView 在切换侧边栏面板时会卸载/重新挂载，因此此 effect 会在每次激活工作区时触发
+  // 挂载时（即用户切换到工作空间面板时）自动刷新一次目录
+  // ExplorerView 在切换侧边栏面板时会卸载/重新挂载，因此此 effect 会在每次激活工作空间时触发
   useEffect(() => {
     if (!workspacePath) return
     void refreshFiles({ refreshRoot: true })

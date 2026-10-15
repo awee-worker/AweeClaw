@@ -24,7 +24,7 @@ interface FileGroup {
   items: ReferenceItem[]
 }
 
-/** 相对工作区展示路径（不在工作区内时回退为原路径） */
+/** 相对工作空间展示路径（不在工作空间内时回退为原路径） */
 function toDisplayDir(dirPath: string, workspacePath: string | null): string {
   if (!dirPath) return ''
   if (!workspacePath) return dirPath

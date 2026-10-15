@@ -78,7 +78,7 @@ export class McpService {
   /**
    * 初始化 MCP 服务
    *
-   * @param workspaces 工作区路径列表
+   * @param workspaces 工作空间路径列表
    */
   async initialize(workspaces: string[]): Promise<void> {
     const api = getMcpAPI()

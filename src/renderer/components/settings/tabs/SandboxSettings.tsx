@@ -362,7 +362,7 @@ export function SandboxSettings({ language }: SandboxSettingsProps) {
             title={zh ? '关闭（默认）' : 'Off (default)'}
             desc={
               zh
-                ? 'run_command 与改造前完全一致，直接在工作区终端执行'
+                ? 'run_command 与改造前完全一致，直接在工作空间终端执行'
                 : 'run_command behaves exactly as before'
             }
             active={policy === 'off'}

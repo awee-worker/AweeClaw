@@ -83,7 +83,7 @@ function buildSceneText(params: {
  */
 function inferApp(workspacePath: string | null): string {
   if (!workspacePath) return 'Unknown'
-  // 简化：基于工作区路径推断
+  // 简化：基于工作空间路径推断
   return 'Code'
 }
 

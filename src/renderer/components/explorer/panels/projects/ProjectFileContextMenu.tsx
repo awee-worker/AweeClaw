@@ -1,18 +1,18 @@
 /**
  * ProjectFileContextMenu — 项目文件树右键菜单
  *
- * 设计目标：与工作区文件树（VirtualTreeRenderer）右键菜单行为一致，
- * 但状态自洽、不依赖工作区特有的 props（onStartCreate / onRefresh 等内部状态机）。
+ * 设计目标：与工作空间文件树（VirtualTreeRenderer）右键菜单行为一致，
+ * 但状态自洽、不依赖工作空间特有的 props（onStartCreate / onRefresh 等内部状态机）。
  *
- * 复用的公共服务（与工作区同源，保证行为一致）：
+ * 复用的公共服务（与工作空间同源，保证行为一致）：
  *  - api.file.*            文件操作（删除/重命名/复制/exists/mkdir/write/showInFolder/openInBrowser）
- *  - explorerClipboardService  剪贴板（复制/粘贴，与工作区共享剪贴板）
+ *  - explorerClipboardService  剪贴板（复制/粘贴，与工作空间共享剪贴板）
  *  - directoryCacheService    目录缓存失效
  *  - terminalManager          集成终端
  *  - globalDecide             确认弹窗
  *  - toast                    操作反馈
  *
- * 菜单项（与工作区对齐）：
+ * 菜单项（与工作空间对齐）：
  *  - 文件夹：新建文件/文件夹 | 复制/粘贴 | 重命名/删除 | 复制路径/相对路径 | 在文件夹中显示 | 在此处打开终端
  *  - 文件：   在浏览器打开(HTML) | 复制/粘贴 | 重命名/删除 | 复制路径/相对路径 | 在文件夹中显示 | 在此处打开终端
  *
@@ -48,7 +48,7 @@ export interface ProjectFileContextMenuProps {
   hasClipboard: boolean
   /** 操作完成后回调，通知父组件刷新指定目录 */
   onRefresh: (dirPath: string) => void
-  /** 开始 inline 创建（文件/文件夹）— 与工作区文件树交互一致 */
+  /** 开始 inline 创建（文件/文件夹）— 与工作空间文件树交互一致 */
   onStartCreate: (parentPath: string, type: 'file' | 'folder') => void
   /** 关闭菜单 */
   onClose: () => void
@@ -216,7 +216,7 @@ export function ProjectFileContextMenu({
     onClose()
   }, [item.path, language, onClose])
 
-  // ─── 操作：新建文件 / 文件夹（inline 编辑，与工作区一致） ────
+  // ─── 操作：新建文件 / 文件夹（inline 编辑，与工作空间一致） ────
   // 仅触发回调，实际创建逻辑（inline input + api 调用）由父组件 ProjectFilesTab 处理
   const handleNewFile = useCallback(() => {
     onStartCreate(item.path, 'file')

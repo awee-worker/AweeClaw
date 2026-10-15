@@ -1,17 +1,17 @@
 /**
- * 工作区守卫 — 工作区相关的 IPC 处理器
+ * 工作空间守卫 — 工作空间相关的 IPC 处理器
  *
  * 设计理念：
- * - 模块化拆分：将工作区操作分为标记管理、会话恢复、文件操作三大模块
+ * - 模块化拆分：将工作空间操作分为标记管理、会话恢复、文件操作三大模块
  * - 声明式注册：使用辅助函数消除重复的 IPC 注册模板
  * - 路径安全：所有路径操作经过规范化与校验
- * - 多窗口协调：支持工作区重定向到已打开的窗口
+ * - 多窗口协调：支持工作空间重定向到已打开的窗口
  * - 可观测性：关键操作记录日志，便于审计
  *
  * 差异化特性（相比基础实现）：
  * - ShareMenu 支持（macOS 分享菜单）
  * - 递归目录复制（copyDirRecursive）
- * - 工作区标记版本管理
+ * - 工作空间标记版本管理
  * - 会话恢复失败时返回详细错误信息
  * - 品牌配置通过 `@shared/brand` 集中管理
  */
@@ -34,17 +34,17 @@ export interface WindowManagerContext {
   setWindowWorkspace?: (windowId: number, roots: string[]) => void
 }
 
-/** 存储的工作区会话 */
+/** 存储的工作空间会话 */
 interface StoredWorkspaceSession {
   configPath: string | null
   roots: string[]
   workspaceId?: string
 }
 
-/** 工作区恢复失败原因 */
+/** 工作空间恢复失败原因 */
 type RestoreError = 'missing-workspace' | 'invalid-session'
 
-/** 工作区恢复结果 */
+/** 工作空间恢复结果 */
 interface WorkspaceRestoreResult {
   configPath: string | null
   roots: string[]
@@ -64,10 +64,10 @@ interface FileOperationResult {
 /* 常量                                                                */
 /* ------------------------------------------------------------------ */
 
-/** 工作区标记文件相对路径 */
+/** 工作空间标记文件相对路径 */
 const WORKSPACE_MARKER_RELATIVE_PATH = path.join(BRAND.dirName, 'workspace.json')
 
-/** 最近工作区最大数量 */
+/** 最近工作空间最大数量 */
 const MAX_RECENT_WORKSPACES = 10
 
 /* ------------------------------------------------------------------ */
@@ -75,7 +75,7 @@ const MAX_RECENT_WORKSPACES = 10
 /* ------------------------------------------------------------------ */
 
 /**
- * 规范化工作区路径
+ * 规范化工作空间路径
  *
  * - 去除首尾空白
  * - 规范化路径分隔符
@@ -101,9 +101,9 @@ function normalizeWorkspacePath(targetPath: string): string {
 }
 
 /**
- * 生成工作区 ID
+ * 生成工作空间 ID
  *
- * @returns 唯一工作区 ID
+ * @returns 唯一工作空间 ID
  */
 function generateWorkspaceId(): string {
   return `ws_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
@@ -153,7 +153,7 @@ async function copyDirRecursive(source: string, destination: string): Promise<vo
  * 重启窗口的文件监听器
  *
  * @param sender 窗口 webContents
- * @param roots 工作区根目录列表
+ * @param roots 工作空间根目录列表
  */
 async function restartWindowFileWatcher(
   sender: Electron.WebContents,
@@ -176,14 +176,14 @@ async function restartWindowFileWatcher(
 }
 
 /* ------------------------------------------------------------------ */
-/* 工作区标记管理                                                      */
+/* 工作空间标记管理                                                      */
 /* ------------------------------------------------------------------ */
 
 /**
- * 读取工作区标记 ID
+ * 读取工作空间标记 ID
  *
- * @param root 工作区根目录
- * @returns 工作区 ID；不存在或无效则返回 null
+ * @param root 工作空间根目录
+ * @returns 工作空间 ID；不存在或无效则返回 null
  */
 async function readWorkspaceMarkerId(root: string): Promise<string | null> {
   try {
@@ -198,12 +198,12 @@ async function readWorkspaceMarkerId(root: string): Promise<string | null> {
 }
 
 /**
- * 确保工作区标记存在
+ * 确保工作空间标记存在
  *
- * 如果标记不存在则创建，包含工作区 ID、创建时间、版本号
+ * 如果标记不存在则创建，包含工作空间 ID、创建时间、版本号
  *
- * @param root 工作区根目录
- * @returns 工作区 ID；目录不可访问则返回 null
+ * @param root 工作空间根目录
+ * @returns 工作空间 ID；目录不可访问则返回 null
  */
 async function ensureWorkspaceMarker(root: string): Promise<string | null> {
   // 校验根目录可访问
@@ -247,11 +247,11 @@ async function ensureWorkspaceMarker(root: string): Promise<string | null> {
 /* ------------------------------------------------------------------ */
 
 /**
- * 校验工作区会话是否可恢复
+ * 校验工作空间会话是否可恢复
  *
  * 检查项：
  * - 所有根目录是否存在且可访问
- * - 工作区标记 ID 是否匹配
+ * - 工作空间标记 ID 是否匹配
  *
  * @param session 存储的会话
  * @returns 可恢复返回 true；否则返回 false
@@ -268,7 +268,7 @@ async function isWorkspaceSessionRestorable(
     return false
   }
 
-  // 校验工作区标记 ID 匹配
+  // 校验工作空间标记 ID 匹配
   const currentWorkspaceId = await readWorkspaceMarkerId(session.roots[0])
   if (!currentWorkspaceId || !session.workspaceId) {
     return false
@@ -278,17 +278,17 @@ async function isWorkspaceSessionRestorable(
 }
 
 /* ------------------------------------------------------------------ */
-/* 最近工作区管理                                                       */
+/* 最近工作空间管理                                                       */
 /* ------------------------------------------------------------------ */
 
 /**
- * 添加路径到最近工作区列表
+ * 添加路径到最近工作空间列表
  *
  * - 去重（大小写不敏感）
  * - 保留最近 MAX_RECENT_WORKSPACES 条
  *
  * @param store electron-store 实例
- * @param workspacePath 工作区路径
+ * @param workspacePath 工作空间路径
  */
 function addRecentWorkspace(store: any, workspacePath: string): void {
   const normalizedPath = normalizeWorkspacePath(workspacePath)
@@ -302,7 +302,7 @@ function addRecentWorkspace(store: any, workspacePath: string): void {
   const updated = [normalizedPath, ...filtered].slice(0, MAX_RECENT_WORKSPACES)
   store.set('recentWorkspaces', updated)
 
-  logger.system.info('[workspaceGuard] 更新最近工作区', { count: updated.length })
+  logger.system.info('[workspaceGuard] 更新最近工作空间', { count: updated.length })
 }
 
 /* ------------------------------------------------------------------ */
@@ -310,10 +310,10 @@ function addRecentWorkspace(store: any, workspacePath: string): void {
 /* ------------------------------------------------------------------ */
 
 /**
- * 检查并重定向到已打开的工作区窗口
+ * 检查并重定向到已打开的工作空间窗口
  *
  * @param windowManager 窗口管理上下文
- * @param roots 工作区根目录
+ * @param roots 工作空间根目录
  * @param currentWindow 当前窗口
  * @returns 已重定向返回 true；否则返回 false
  */
@@ -336,19 +336,19 @@ function redirectToExistingWindow(
   }
   existingWindow.focus()
 
-  logger.system.info('[workspaceGuard] 工作区已在其他窗口打开', { roots })
+  logger.system.info('[workspaceGuard] 工作空间已在其他窗口打开', { roots })
   return true
 }
 
 /* ------------------------------------------------------------------ */
-/* 工作区文件解析                                                       */
+/* 工作空间文件解析                                                       */
 /* ------------------------------------------------------------------ */
 
 /**
- * 解析工作区配置文件
+ * 解析工作空间配置文件
  *
  * @param configPath 配置文件路径
- * @returns 工作区根目录列表；解析失败返回 null
+ * @returns 工作空间根目录列表；解析失败返回 null
  */
 async function parseWorkspaceConfig(configPath: string): Promise<string[] | null> {
   try {
@@ -361,7 +361,7 @@ async function parseWorkspaceConfig(configPath: string): Promise<string[] | null
 
     return config.folders.map((f) => normalizeWorkspacePath(f.path))
   } catch (e) {
-    logger.system.warn('[workspaceGuard] 解析工作区文件失败', { path: configPath, error: String(e) })
+    logger.system.warn('[workspaceGuard] 解析工作空间文件失败', { path: configPath, error: String(e) })
     return null
   }
 }
@@ -400,11 +400,11 @@ export function resolveDialogParent(
 /* ------------------------------------------------------------------ */
 
 /**
- * 注册工作区相关的 IPC 处理器
+ * 注册工作空间相关的 IPC 处理器
  *
  * @param getMainWindowFn 获取主窗口的函数
  * @param store electron-store 实例
- * @param _getWorkspaceSessionFn 获取当前工作区会话的函数（保留兼容性）
+ * @param _getWorkspaceSessionFn 获取当前工作空间会话的函数（保留兼容性）
  * @param windowManager 窗口管理上下文
  */
 export function registerWorkspaceHandlers(
@@ -413,17 +413,17 @@ export function registerWorkspaceHandlers(
   _getWorkspaceSessionFn: (event?: Electron.IpcMainInvokeEvent) => { roots: string[] } | null,
   windowManager?: WindowManagerContext,
 ): void {
-  /* -------- 打开工作区（文件夹 / 工作区文件） -------- */
+  /* -------- 打开工作空间（文件夹 / 工作空间文件） -------- */
 
   /**
-   * 统一的工作区选择入口
+   * 统一的工作空间选择入口
    *
    * 同时服务 `file:openFolder` 与 `workspace:open`：对话框既接受普通目录（单根），
    * 也接受 .aweeclaw-workspace 文件（多根）。两个 IPC 通道共用同一份实现，
    * 避免两条链路在重定向、标记写入、最近列表上行为分叉。
    *
    * @param event IPC 调用事件，用于解析对话框父窗口与文件监听器归属
-   * @returns 工作区会话；已在其他窗口打开时返回 redirected；目标非法时返回 invalid
+   * @returns 工作空间会话；已在其他窗口打开时返回 redirected；目标非法时返回 invalid
    */
   const openWorkspaceDialog = async (
     event: Electron.IpcMainInvokeEvent,
@@ -449,15 +449,15 @@ export function registerWorkspaceHandlers(
     if (isConfigFile) {
       const parsed = await parseWorkspaceConfig(targetPath)
       if (!parsed || parsed.length === 0) {
-        logger.system.warn('[workspaceGuard] 工作区文件不可用', { path: targetPath })
+        logger.system.warn('[workspaceGuard] 工作空间文件不可用', { path: targetPath })
         return { invalid: true }
       }
       roots = parsed
     } else {
-      // 目录之外的目标不是有效的工作区根，直接拒绝而不是把它当成根目录继续处理
+      // 目录之外的目标不是有效的工作空间根，直接拒绝而不是把它当成根目录继续处理
       const stats = await fsPromises.stat(targetPath).catch(() => null)
       if (!stats?.isDirectory()) {
-        logger.system.warn('[workspaceGuard] 打开目标既非文件夹也非工作区文件', {
+        logger.system.warn('[workspaceGuard] 打开目标既非文件夹也非工作空间文件', {
           path: targetPath,
         })
         return { invalid: true }
@@ -470,7 +470,7 @@ export function registerWorkspaceHandlers(
       return { redirected: true, roots }
     }
 
-    // 记录当前窗口的工作区；键必须用窗口 ID，与 findWindowByWorkspace 的查找口径保持一致
+    // 记录当前窗口的工作空间；键必须用窗口 ID，与 findWindowByWorkspace 的查找口径保持一致
     if (windowManager?.setWindowWorkspace) {
       windowManager.setWindowWorkspace(currentWindow.id, roots)
     }
@@ -489,7 +489,7 @@ export function registerWorkspaceHandlers(
     roots.forEach((r) => addRecentWorkspace(store, r))
     await restartWindowFileWatcher(event.sender, roots)
 
-    logger.system.info('[workspaceGuard] 工作区已打开', {
+    logger.system.info('[workspaceGuard] 工作空间已打开', {
       configPath: session.configPath,
       roots,
     })
@@ -502,7 +502,7 @@ export function registerWorkspaceHandlers(
   ipcMain.handle('workspace:open', (event) => openWorkspaceDialog(event))
 
 
-  /* -------- 添加文件夹到工作区 -------- */
+  /* -------- 添加文件夹到工作空间 -------- */
 
   ipcMain.handle('workspace:addFolder', async (event) => {
     const currentWindow = resolveDialogParent(event, getMainWindowFn)
@@ -518,7 +518,7 @@ export function registerWorkspaceHandlers(
     return null
   })
 
-  /* -------- 保存工作区 -------- */
+  /* -------- 保存工作空间 -------- */
 
   ipcMain.handle('workspace:save', async (event, configPath: string, roots: string[]) => {
     if (!configPath || !roots) return false
@@ -545,12 +545,12 @@ export function registerWorkspaceHandlers(
       await fsPromises.writeFile(targetPath, content, 'utf-8')
       return true
     } catch (e) {
-      logger.system.warn('[workspaceGuard] 保存工作区失败', { path: targetPath, error: String(e) })
+      logger.system.warn('[workspaceGuard] 保存工作空间失败', { path: targetPath, error: String(e) })
       return false
     }
   })
 
-  /* -------- 恢复工作区 -------- */
+  /* -------- 恢复工作空间 -------- */
 
   ipcMain.handle('workspace:restore', async (event) => {
     const session = store.get('lastWorkspaceSession') as StoredWorkspaceSession | null
@@ -612,7 +612,7 @@ export function registerWorkspaceHandlers(
     return null
   })
 
-  /* -------- 设置活动工作区 -------- */
+  /* -------- 设置活动工作空间 -------- */
 
   ipcMain.handle('workspace:setActive', async (event, roots: string[]) => {
     if (!roots || roots.length === 0) return false
@@ -634,11 +634,11 @@ export function registerWorkspaceHandlers(
     roots.forEach((r) => addRecentWorkspace(store, r))
     await restartWindowFileWatcher(event.sender, roots)
 
-    logger.system.info('[workspaceGuard] 活动工作区已设置', { roots })
+    logger.system.info('[workspaceGuard] 活动工作空间已设置', { roots })
     return true
   })
 
-  /* -------- 最近工作区管理 -------- */
+  /* -------- 最近工作空间管理 -------- */
 
   ipcMain.handle('workspace:getRecent', () => {
     const recent = store.get('recentWorkspaces', []) as string[]
@@ -682,7 +682,7 @@ export function registerWorkspaceHandlers(
     )
 
     store.set('recentWorkspaces', filtered)
-    logger.system.info('[workspaceGuard] 已从最近工作区移除', { path: normalizedPath })
+    logger.system.info('[workspaceGuard] 已从最近工作空间移除', { path: normalizedPath })
     return true
   })
 
@@ -840,5 +840,5 @@ export function registerWorkspaceHandlers(
     }
   })
 
-  logger.system.info(`[workspaceGuard] ${BRAND.name} 工作区 IPC 已注册`)
+  logger.system.info(`[workspaceGuard] ${BRAND.name} 工作空间 IPC 已注册`)
 }

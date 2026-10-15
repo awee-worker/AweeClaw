@@ -66,7 +66,7 @@ export const DEFAULT_TIMEOUT_MS = 120000
  * `find / ...`、`grep -r xxx /`、`du -sh /`、`locate` 等从根目录 / 家目录开始递归遍历的命令，
  * 在 macOS 上需要进入 /System、/Applications、/Library 等数十万文件，即便给足 120s 也几乎必然超时。
  * 与其让 AI 干等，不如 60s 快速失败，并把「缩小搜索范围」的诊断返回给 AI，
- * 让 AI 立刻改用限定在工作区目录的写法重试。
+ * 让 AI 立刻改用限定在工作空间目录的写法重试。
  */
 export const BROAD_SCAN_TIMEOUT_MS = 60000
 
@@ -150,10 +150,10 @@ export function matchesExtendedTimeoutCommand(command: string): boolean {
  *
  * 这类命令的判定要同时满足两点，避免误伤正常命令：
  * 1. 命令是扫描/遍历类：find / grep -r / rg / du / locate / mdfind / fd
- * 2. 扫描目标落在文件系统根、家目录或系统级目录，而不是工作区里的相对路径
+ * 2. 扫描目标落在文件系统根、家目录或系统级目录，而不是工作空间里的相对路径
  *    （例如 `find . -name x`、`grep -r foo ./src` 都不算大范围扫描）
  *
- * 若命令中显式出现了工作区绝对路径，说明 AI 已限定范围，也不按大范围扫描处理。
+ * 若命令中显式出现了工作空间绝对路径，说明 AI 已限定范围，也不按大范围扫描处理。
  */
 export function matchesBroadScanCommand(command: string, workspacePath?: string): boolean {
   const cmd = command.trim()
@@ -161,7 +161,7 @@ export function matchesBroadScanCommand(command: string, workspacePath?: string)
   if (!/(?:^|&&|;|\|\||\|)\s*(?:find|grep|rg|ag|du|locate|mdfind|fd)\b/.test(cmd)) {
     return false
   }
-  // 2. 已显式限定在工作区目录内 → 不算大范围扫描
+  // 2. 已显式限定在工作空间目录内 → 不算大范围扫描
   if (workspacePath && cmd.includes(workspacePath)) {
     return false
   }

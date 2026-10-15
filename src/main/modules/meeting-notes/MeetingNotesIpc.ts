@@ -2,9 +2,9 @@
  * 会议纪要 IPC 处理器（主进程）
  *
  * 集中注册 meeting-notes:* 频道 handler，职责：
- * - save-transcript：将段列表格式化为 txt 落盘到工作区按日期分文件夹
+ * - save-transcript：将段列表格式化为 txt 落盘到工作空间按日期分文件夹
  * - generate-docx：调用 DocxGenerator 生成 .docx 并落盘到同目录
- * - get-workspace：返回工作区根路径（供渲染层预览保存位置）
+ * - get-workspace：返回工作空间根路径（供渲染层预览保存位置）
  *
  * 文件落盘路径：{workspaceRoot}/会议纪要/{YYYY-MM-DD}/
  *   - 录音原文_{HHmmss}.txt
@@ -40,12 +40,12 @@ export function registerMeetingNotesIpc(manager: MeetingNotesManager): void {
   const getWorkspacePath = manager.getWorkspacePathGetter()
 
   // --------------------------------------------
-  // 获取工作区路径（渲染层显示保存位置预览用）
+  // 获取工作空间路径（渲染层显示保存位置预览用）
   // --------------------------------------------
   safeIpcHandle('meeting-notes:get-workspace', async () => {
     const workspacePath = getWorkspacePath()
     if (!workspacePath) {
-      return { success: false, error: '未打开工作区，请先在主窗口打开一个文件夹' }
+      return { success: false, error: '未打开工作空间，请先在主窗口打开一个文件夹' }
     }
     return { success: true, data: { workspacePath } }
   })
@@ -69,7 +69,7 @@ export function registerMeetingNotesIpc(manager: MeetingNotesManager): void {
         if (!workspacePath) {
           return {
             success: false,
-            error: '未打开工作区，请先在主窗口打开一个文件夹后再保存',
+            error: '未打开工作空间，请先在主窗口打开一个文件夹后再保存',
           }
         }
 
@@ -122,7 +122,7 @@ export function registerMeetingNotesIpc(manager: MeetingNotesManager): void {
         if (!workspacePath) {
           return {
             success: false,
-            error: '未打开工作区，请先在主窗口打开一个文件夹后再保存',
+            error: '未打开工作空间，请先在主窗口打开一个文件夹后再保存',
           }
         }
 

@@ -141,7 +141,7 @@ export function ProjectExecutionWindowApp({ onReady }: ProjectExecutionWindowApp
 
   // ─── 项目目录路径（文件树的根目录）─────────────────────────
   // 优先使用创建项目时选择的目录（project.workspacePaths[0]），
-  // 若项目未设置目录则回退到全局工作区 workspacePath。
+  // 若项目未设置目录则回退到全局工作空间 workspacePath。
   const [projectPath, setProjectPath] = useState<string | null>(null)
 
   // ─── 线程相位订阅（用于状态推送）─────────
@@ -203,13 +203,13 @@ export function ProjectExecutionWindowApp({ onReady }: ProjectExecutionWindowApp
           }
         }
 
-        // 3. 恢复工作区（含 workspacePath）
+        // 3. 恢复工作空间（含 workspacePath）
         // ⚠️ 必须将返回的 workspace session 设置到 store 中（调用 setWorkspace），
         //    否则 workspacePath 为 null，工具调用会报 "Workspace is required for this tool"
         try {
           const workspaceConfig = await api.workspace.restore()
           if (workspaceConfig?.roots?.length) {
-            // 将工作区配置设置到 store，更新 workspacePath
+            // 将工作空间配置设置到 store，更新 workspacePath
             useStore.getState().setWorkspace({
               configPath: workspaceConfig.configPath ?? null,
               roots: workspaceConfig.roots,
@@ -588,9 +588,9 @@ export function ProjectExecutionWindowApp({ onReady }: ProjectExecutionWindowApp
 
   // ─── 获取项目目录路径（文件树根目录 + 工具放行路径）──────────
   // 优先从项目详情的 workspacePaths[0] 获取（创建项目时选择的目录），
-  // 若项目未设置目录则回退到全局工作区 workspacePath。
+  // 若项目未设置目录则回退到全局工作空间 workspacePath。
   // 同时将该目录写入 store.allowedToolPaths，允许 AI 工具读写项目目录
-  // （当项目目录不在工作区内时，避免 "Path is outside workspace" 错误）。
+  // （当项目目录不在工作空间内时，避免 "Path is outside workspace" 错误）。
   useEffect(() => {
     if (!activeTabId) return
     const activeTab = tabs.find((t) => t.id === activeTabId)
@@ -610,7 +610,7 @@ export function ProjectExecutionWindowApp({ onReady }: ProjectExecutionWindowApp
       } catch (e) {
         if (cancelled) return
         logger.system.warn('[ExecutionWindow] Failed to load project directory:', e)
-        // 加载失败也回退到全局工作区，保证文件树可用
+        // 加载失败也回退到全局工作空间，保证文件树可用
         const fallback = useStore.getState().workspacePath
         setProjectPath(fallback)
         useStore.getState().setAllowedToolPaths(fallback ? [fallback] : [])

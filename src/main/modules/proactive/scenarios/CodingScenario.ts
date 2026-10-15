@@ -168,7 +168,7 @@ export class ImpactAnalysisDetector implements ScenarioDetector {
         return []
       }
 
-      // 获取工作区路径
+      // 获取工作空间路径
       const workspacePath = this.getWorkspacePath()
       if (!workspacePath) return []
 
@@ -213,17 +213,17 @@ export class ImpactAnalysisDetector implements ScenarioDetector {
     }
   }
 
-  /** 获取工作区路径（从 app 命令行参数或默认路径） */
+  /** 获取工作空间路径（从 app 命令行参数或默认路径） */
   private getWorkspacePath(): string | null {
-    // 优先从最近的活动文件推断工作区
+    // 优先从最近的活动文件推断工作空间
     // 兜底：使用 app 的 userData 目录上级（不理想但避免硬编码）
     return this.cachedWorkspacePath
   }
 
-  /** 缓存的工作区路径（由外部设置） */
+  /** 缓存的工作空间路径（由外部设置） */
   private cachedWorkspacePath: string | null = null
 
-  /** 设置工作区路径（由 moduleInitializer 调用） */
+  /** 设置工作空间路径（由 moduleInitializer 调用） */
   setWorkspacePath(path: string): void {
     this.cachedWorkspacePath = path
   }
@@ -322,7 +322,7 @@ export const codingDetectors: ScenarioDetector[] = [
   new DebugStallDetector(),
 ]
 
-/** 影响分析探测器单例引用（用于外部设置工作区路径和最近文件） */
+/** 影响分析探测器单例引用（用于外部设置工作空间路径和最近文件） */
 export const impactAnalysisDetector = codingDetectors.find(
   (d) => d.name === 'ImpactAnalysisDetector',
 ) as ImpactAnalysisDetector

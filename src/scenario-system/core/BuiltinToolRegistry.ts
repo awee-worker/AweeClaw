@@ -23,7 +23,7 @@ const AVAILABLE_BUILTIN_TOOLS: ReadonlySet<string> = new Set([
   'read_terminal_output',
   'send_terminal_input',
   'stop_terminal',
-  // Git 版本控制（工作区仓库操作；网络命令由客户端统一处理凭证）
+  // Git 版本控制（工作空间仓库操作；网络命令由客户端统一处理凭证）
   'git_status',
   'git_diff',
   'git_log',

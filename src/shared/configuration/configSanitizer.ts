@@ -453,7 +453,7 @@ export interface AppSettingsSchema {
    * 以下三项除独立持久化键外，也会随 app-settings 一并写入。
    * 必须原样透传（不做字段裁剪），否则 securitySettings 里
    * allowedExternalDirectories 这类扩展字段会在清洗时被丢弃，
-   * 造成「安全设置里配了工作区外允许访问目录却不生效」。
+   * 造成「安全设置里配了工作空间外允许访问目录却不生效」。
    */
   editorConfig?: Record<string, unknown>
   securitySettings?: Record<string, unknown>

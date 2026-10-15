@@ -233,7 +233,7 @@ export async function revealLocation(location: CodeLocation, options: RevealOpti
   setPendingNavigation({ filePath: location.filePath, line: location.line, col: location.column })
   const result = await safeOpenFile(location.filePath, { showWarning: false, confirmLargeFile: false })
   if (!result.success) {
-    // 目标不可打开（stdlib、工作区外、超大文件）→ 清除挂起导航，静默失败
+    // 目标不可打开（stdlib、工作空间外、超大文件）→ 清除挂起导航，静默失败
     setPendingNavigation({ filePath: '', line: 0, col: 0 })
     logger.system.info('[EditorNavigation] 跳转目标不可打开', location.filePath)
     return false

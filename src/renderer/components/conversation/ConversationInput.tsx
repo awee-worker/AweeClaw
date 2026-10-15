@@ -605,7 +605,7 @@ const ChatInput = memo(function ChatInput({
     }, 30000)
 
     try {
-      // 收集上下文信息：工作区路径、当前文件、近期对话历史
+      // 收集上下文信息：工作空间路径、当前文件、近期对话历史
       const agentState = useAgentStore.getState()
       const uiState = useStore.getState()
       const currentThreadId = agentState.currentThreadId
@@ -621,7 +621,7 @@ const ChatInput = memo(function ChatInput({
       let contextNote = ''
       if (workspacePath) {
         const dirName = workspacePath.split(/[/\\]/).pop()
-        contextNote += `\n\n## 工作区上下文\n- 工作目录：${dirName}（${workspacePath}）`
+        contextNote += `\n\n## 工作空间上下文\n- 工作目录：${dirName}（${workspacePath}）`
       }
       if (fileName) {
         contextNote += `\n- 当前打开文件：${fileName}`

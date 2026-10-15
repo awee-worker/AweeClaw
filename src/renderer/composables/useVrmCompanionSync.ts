@@ -108,7 +108,7 @@ export function useVrmCompanionSync(): void {
       updatedAt: Date.now(),
     }
 
-    // 指纹只取关键字段：llmConfig / token 末 8 位 / 模式 / 语言 / 工作区
+    // 指纹只取关键字段：llmConfig / token 末 8 位 / 模式 / 语言 / 工作空间
     // token 取末位是为了在刷新后也能检测到变化（accessToken 前缀通常不变）
     const signature = JSON.stringify({
       llmConfig: voiceContext.llmConfig,

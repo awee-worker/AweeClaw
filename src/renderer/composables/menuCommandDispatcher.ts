@@ -69,7 +69,7 @@ export function dispatchMenuCommand(
 
       // ===== 文件菜单 =====
       case 'open-folder':
-        // 与顶部工作区菜单共用同一链路：选择器同时接受文件夹与多根工作区文件
+        // 与顶部工作空间菜单共用同一链路：选择器同时接受文件夹与多根工作空间文件
         void workspaceManager.openFolderFromDialog().catch((err) => {
           logger.system.error('[MenuBridge] Open folder failed', err)
         })

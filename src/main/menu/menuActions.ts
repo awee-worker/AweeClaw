@@ -5,7 +5,7 @@
  * - 菜单项 click 通过此模块统一发送到 renderer
  * - renderer 端通过 api.onExecuteCommand 监听并分发到 commandRegistry
  * - 命令 ID 与 commandRegistry.ts 的 STATIC_COMMANDS id 保持一致
- * - 部分命令（最近工作区）带参数，通过 payload 传递
+ * - 部分命令（最近工作空间）带参数，通过 payload 传递
  */
 
 import { BrowserWindow } from 'electron'
@@ -15,7 +15,7 @@ import { BrowserWindow } from 'electron'
  *
  * @param win 目标窗口（默认主窗口）
  * @param commandId 命令 ID（与 commandRegistry 对齐）
- * @param payload 可选参数（工作区路径等）
+ * @param payload 可选参数（工作空间路径等）
  */
 export function sendCommand(
   win: BrowserWindow | null,
@@ -40,7 +40,7 @@ export function createCommandSender(
 }
 
 /**
- * 发送打开最近工作区命令
+ * 发送打开最近工作空间命令
  *
  * 命令格式：workspace.openRecent + payload = { path }
  * renderer 端监听后调用 api.workspace.openPath(path)

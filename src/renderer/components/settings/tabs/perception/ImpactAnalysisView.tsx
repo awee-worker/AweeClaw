@@ -8,7 +8,7 @@
  * - 支持重建依赖图（forceRebuild）
  *
  * 数据来源：
- * - useStore().workspacePath - 当前工作区路径
+ * - useStore().workspacePath - 当前工作空间路径
  * - useStore().gitStatus - 当前 Git 变更状态（自动模式使用）
  * - window.electronAPI.perception.analyzeImpact - 影响分析 IPC
  */

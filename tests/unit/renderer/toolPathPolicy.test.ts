@@ -1,7 +1,7 @@
 /**
  * 工具路径放行策略单元测试
  *
- * 回归保护：用户在「设置 → 安全设置 → 工作区外允许访问的目录」中配置的目录
+ * 回归保护：用户在「设置 → 安全设置 → 工作空间外允许访问的目录」中配置的目录
  * 必须被纳入工具执行前的路径放行列表，否则 AI 访问该目录会报
  * "Security: Path is outside workspace"。
  */
@@ -14,7 +14,7 @@ const WORKSPACE = '/Volumes/MacData/Ai/aweeclaw'
 const EXTERNAL_DIR = '/Volumes/MacData/Customers/Application/depuapp/depu-boot'
 
 describe('buildToolPathPolicy', () => {
-    it('把用户配置的工作区外目录纳入放行列表', () => {
+    it('把用户配置的工作空间外目录纳入放行列表', () => {
         const policy = buildToolPathPolicy({
             allowedToolPaths: [],
             securitySettings: {
@@ -64,7 +64,7 @@ describe('buildToolPathPolicy', () => {
         expect(policy.extraAllowedRoots).toContain(EXTERNAL_DIR)
     })
 
-    it('关闭严格工作区模式时跳过工作区边界检查', () => {
+    it('关闭严格工作空间模式时跳过工作空间边界检查', () => {
         const policy = buildToolPathPolicy({
             securitySettings: {
                 allowedExternalDirectories: [],
@@ -75,7 +75,7 @@ describe('buildToolPathPolicy', () => {
         expect(policy.allowOutsideWorkspace).toBe(true)
     })
 
-    it('放行策略可让工作区外目录通过 assertPathSafety 校验', () => {
+    it('放行策略可让工作空间外目录通过 assertPathSafety 校验', () => {
         const policy = buildToolPathPolicy({
             securitySettings: {
                 allowedExternalDirectories: [EXTERNAL_DIR],
@@ -85,7 +85,7 @@ describe('buildToolPathPolicy', () => {
 
         const target = `${EXTERNAL_DIR}/src/main/java/depu`
 
-        // 未配置外部目录时：被工作区边界拦截（复现用户报的问题）
+        // 未配置外部目录时：被工作空间边界拦截（复现用户报的问题）
         expect(
             assertPathSafety(target, WORKSPACE, { extraAllowedRoots: [] }),
         ).toMatchObject({ valid: false, error: 'Path is outside workspace' })
@@ -176,7 +176,7 @@ describe('buildToolPathPolicy', () => {
         ).toMatchObject({ valid: false, error: 'Path is outside workspace' })
     })
 
-    it('工作区外目录放行后仍拦截敏感路径', () => {
+    it('工作空间外目录放行后仍拦截敏感路径', () => {
         const homeDir = '/Users/someone'
         const policy = buildToolPathPolicy({
             securitySettings: {

@@ -88,7 +88,7 @@ export interface ExternalAgentRunRequest {
   agent: ExternalAgentId
   /** 自然语言任务描述 */
   task: string
-  /** 受控工作目录（必须在用户工作区内） */
+  /** 受控工作目录（必须在用户工作空间内） */
   workdir: string
   /** 权限模式（缺省由各 Agent 默认值决定） */
   permissionMode?: AgentPermissionMode

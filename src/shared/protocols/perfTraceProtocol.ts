@@ -521,8 +521,8 @@ export interface PerfTraceStartOptions {
   /**
    * JSONL 落盘目录。
    *
-   * 省略时由调用方语境决定：IPC 侧默认写入工作区下的 tmp-diag，
-   * 无工作区则退回应用数据目录。
+   * 省略时由调用方语境决定：IPC 侧默认写入工作空间下的 tmp-diag，
+   * 无工作空间则退回应用数据目录。
    */
   dir?: string
   /** 采样间隔（毫秒），省略取默认值 */

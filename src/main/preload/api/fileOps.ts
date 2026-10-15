@@ -1,10 +1,10 @@
 /**
- * 文件操作 / 工作区 / 搜索 API
+ * 文件操作 / 工作空间 / 搜索 API
  *
  * 覆盖 IPC 频道：
  * - file:*      文件读写 / 目录 / 知识库 / 文档提取
  * - dialog:*    导入 / 导出对话框
- * - workspace:* 工作区管理
+ * - workspace:* 工作空间管理
  * - search:*    流式搜索结果推送
  * - file:changed 文件变更监听
  * - shell:openExternalUrl / file:openInBrowser
@@ -75,7 +75,7 @@ export function createFileOpsApi() {
       invoke('file:exportFromWorkspace')(sourcePath, targetDir),
     shareItem: (filePaths: string[]) => invoke('file:shareItem')(filePaths),
 
-    // ── 工作区 ──
+    // ── 工作空间 ──
     openWorkspace: invoke('workspace:open'),
     addFolderToWorkspace: invoke('workspace:addFolder'),
     saveWorkspace: (configPath: string, roots: string[]) =>

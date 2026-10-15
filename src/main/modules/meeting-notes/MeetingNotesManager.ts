@@ -5,7 +5,7 @@
  * - 创建/复用/显示/聚焦/销毁会议纪要 BrowserWindow
  * - 常规独立窗口（980×680，有标题栏，可调整大小），区别于截图的全屏透明覆盖窗口
  * - 常驻复用：show() 时若窗口已存在则 restore+focus，不重建（用户可能中途切走再回来）
- * - 持有工作区路径获取器（用于文件落盘）
+ * - 持有工作空间路径获取器（用于文件落盘）
  * - 注册 IPC handler（委托给 registerMeetingNotesIpc，幂等）
  *
  * 窗口属性要点：
@@ -53,7 +53,7 @@ export class MeetingNotesManager {
     return MeetingNotesManager.instance
   }
 
-  /** 暴露工作区路径获取器（供 IPC handler 使用） */
+  /** 暴露工作空间路径获取器（供 IPC handler 使用） */
   getWorkspacePathGetter(): WorkspacePathGetter {
     return this.getWorkspacePath
   }

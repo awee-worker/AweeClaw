@@ -3,7 +3,7 @@
  *
  * 一处集中定义「哪些操作要用户确认」，三种授权方式对应三套规则：
  *
- * - every-step（手动审批）：删除文件、危险命令、外部内容（工作区与授权目录之外的路径）
+ * - every-step（手动审批）：删除文件、危险命令、外部内容（工作空间与授权目录之外的路径）
  *   在执行前拦下等用户放行；创建与修改文件不走这一步 —— 改动落到审批条上，由用户
  *   在输入框上方决定保留还是撤销，AI 不因逐次确认中断（见 ApprovalGate 的 review）。
  *   只创建目录也不在此列 —— 它不产生文件内容变更，逐次确认只有打扰没有收益
@@ -152,16 +152,16 @@ export function isRiskyCommand(
 
 /** 判定所需的上下文 */
 export interface ApprovalModeContext {
-  /** 当前工作区路径，用于识别「外部内容」（工作区与授权目录之外的路径） */
+  /** 当前工作空间路径，用于识别「外部内容」（工作空间与授权目录之外的路径） */
   workspacePath?: string | null
   /**
-   * 用户授权在工作区外访问的目录
+   * 用户授权在工作空间外访问的目录
    *
    * 来自「设置 → 安全设置」的允许目录与项目执行窗口的项目目录。
    * 这些位置属于用户已明确授权访问的范围，不算「外部内容」。
    */
   authorizedRoots?: readonly string[]
-  /** 是否跳过工作区边界（用户关闭严格工作区模式时，区外访问已在设置层授权） */
+  /** 是否跳过工作空间边界（用户关闭严格工作空间模式时，区外访问已在设置层授权） */
   allowOutsideWorkspace?: boolean
   /** 本轮上下文的不可信来源信号 */
   untrustedContext?: UntrustedContextSignal
@@ -187,7 +187,7 @@ export type ApprovalGate = 'none' | 'block' | 'review'
  * @param toolName          工具名
  * @param args              工具调用参数
  * @param authorizationMode 授权方式
- * @param context           工作区路径与本轮不可信来源信号
+ * @param context           工作空间路径与本轮不可信来源信号
  */
 function evaluateApprovalGate(
   toolName: string,
@@ -211,8 +211,8 @@ function evaluateApprovalGate(
     if (approvalType === 'dangerous') return 'block'
     // 危险命令
     if (isRiskyCommand(toolName, args)) return 'block'
-    // 外部内容：工作区与授权目录之外的路径。
-    // 用户关闭严格工作区模式时区外访问已在设置层授权，不再重复确认
+    // 外部内容：工作空间与授权目录之外的路径。
+    // 用户关闭严格工作空间模式时区外访问已在设置层授权，不再重复确认
     if (!context?.allowOutsideWorkspace &&
       accessesOutsideScope(toolName, args, context?.workspacePath, context?.authorizedRoots)) {
       return 'block'

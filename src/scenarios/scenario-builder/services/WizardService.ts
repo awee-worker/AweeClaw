@@ -108,7 +108,7 @@ export class WizardService {
 
     const workspacePath = ctx.workspacePath
     if (!workspacePath) {
-      return { success: false, error: '未打开工作区，无法生成场景' }
+      return { success: false, error: '未打开工作空间，无法生成场景' }
     }
 
     const type = params.type ?? 'declarative'
@@ -226,7 +226,7 @@ export class WizardService {
             id: 'explorer',
             icon: 'Files',
             label: 'Workspace',
-            labelZh: '工作区',
+            labelZh: '工作空间',
             component: 'ExplorerView',
             position: 0,
           },

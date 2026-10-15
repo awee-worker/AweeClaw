@@ -363,7 +363,7 @@ export interface WorkspaceConfig {
   workspaceId?: string
 }
 
-/** 工作区选择器的返回结果 */
+/** 工作空间选择器的返回结果 */
 export type WorkspaceOpenResult =
   | WorkspaceConfig
   | { redirected: true; roots: string[] }
@@ -1691,10 +1691,10 @@ export interface ElectronAPI {
   extractKnowledgePptText: (filePath: string) => Promise<string | null>
   extractKnowledgePdfText: (filePath: string) => Promise<string | null>
   /**
-   * 打开工作区选择器：可选中文件夹（单根），也可选中 .aweeclaw-workspace 文件（多根）
+   * 打开工作空间选择器：可选中文件夹（单根），也可选中 .aweeclaw-workspace 文件（多根）
    *
-   * 返回工作区会话；若目标已在其他窗口打开，主进程会聚焦那个窗口并返回 redirected；
-   * 目标非法（普通文件、损坏的工作区文件）时返回 invalid
+   * 返回工作空间会话；若目标已在其他窗口打开，主进程会聚焦那个窗口并返回 redirected；
+   * 目标非法（普通文件、损坏的工作空间文件）时返回 invalid
    */
   openFolder: () => Promise<WorkspaceOpenResult>
   selectFolder: () => Promise<string | null>
@@ -3038,17 +3038,17 @@ export interface ElectronAPI {
   meetingNotes: {
     /** 显示/聚焦会议纪要窗口 */
     show: () => Promise<{ success: boolean; error?: string }>
-    /** 获取当前工作区路径（用于显示保存位置预览） */
+    /** 获取当前工作空间路径（用于显示保存位置预览） */
     getWorkspace: () => Promise<{
       success: boolean
       data?: { workspacePath: string }
       error?: string
     }>
-    /** 保存录音原文 txt 到工作区/会议纪要/YYYY-MM-DD/ */
+    /** 保存录音原文 txt 到工作空间/会议纪要/YYYY-MM-DD/ */
     saveTranscript: (
       payload: import('@protocols/meetingNotes').SaveTranscriptPayload,
     ) => Promise<import('@protocols/meetingNotes').SaveTranscriptResult>
-    /** 生成并保存 docx 到工作区/会议纪要/YYYY-MM-DD/ */
+    /** 生成并保存 docx 到工作空间/会议纪要/YYYY-MM-DD/ */
     generateDocx: (
       payload: import('@protocols/meetingNotes').GenerateDocxPayload,
     ) => Promise<import('@protocols/meetingNotes').GenerateDocxResult>
@@ -4039,7 +4039,7 @@ export interface ElectronAPI {
    * 控制台触发时不必绕到这里。
    */
   perfTrace: {
-    /** 开始追踪，省略 options 时写入当前工作区下的 tmp-diag */
+    /** 开始追踪，省略 options 时写入当前工作空间下的 tmp-diag */
     start: (options?: {
       dir?: string
       /** 采样与上报间隔（毫秒），默认 1000 */

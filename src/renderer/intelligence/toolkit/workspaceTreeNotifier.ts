@@ -1,7 +1,7 @@
 /**
- * 工作区文件树刷新通知
+ * 工作空间文件树刷新通知
  *
- * 工具在磁盘上新增 / 修改 / 删除文件后，通过这里通知工作区面板刷新对应目录。
+ * 工具在磁盘上新增 / 修改 / 删除文件后，通过这里通知工作空间面板刷新对应目录。
  * 独立成模块是因为落盘的不止内置写入工具：MCP 工具（Word / Excel 生成等）
  * 在自己的进程里直接写文件，同样需要走这条刷新链路，且 Windows 上
  * 「写入后目录延迟可见」的兜底节奏必须保持一致。
@@ -10,7 +10,7 @@
 import { platform, getDirname } from '@shared/toolkit/pathHelper'
 
 export interface WorkspaceTreeChangeOptions {
-    /** 当前工作区根路径 */
+    /** 当前工作空间根路径 */
     workspacePath: string
     /** 发生变化的文件 / 目录绝对路径 */
     targetPath: string
@@ -50,7 +50,7 @@ export function notifyWorkspaceTreeChange(opts: WorkspaceTreeChangeOptions): voi
 
     // Windows 文件系统存在写入后延迟可见的问题：
     // writeFileSync 返回后，readdir 可能暂时读不到新文件，
-    // 导致工作区目录刷新后仍看不到刚写入的文件。
+    // 导致工作空间目录刷新后仍看不到刚写入的文件。
     // 解决方案：Windows 上延迟派发事件给文件系统 flush 时间，
     // 并在更长延迟后二次刷新作为兜底，确保文件最终可见。
     if (platform.isWindows) {

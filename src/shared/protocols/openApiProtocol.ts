@@ -151,11 +151,11 @@ export interface OpenApiToolRequestPayload {
   /** action='call' 时的调用参数 */
   args?: Record<string, unknown>
   /**
-   * 当前工作区路径。
+   * 当前工作空间路径。
    *
-   * 由主进程下发而不是渲染层自己查：主进程持有「窗口 ↔ 工作区」的实际绑定
+   * 由主进程下发而不是渲染层自己查：主进程持有「窗口 ↔ 工作空间」的实际绑定
    * （`getWindowWorkspace`），渲染层各处 store 的同步时机不一致，
-   * 从这里取值能保证「外部请求用的工作区」与「窗口里看到的工作区」是同一个。
+   * 从这里取值能保证「外部请求用的工作空间」与「窗口里看到的工作空间」是同一个。
    */
   workspacePath?: string | null
   /**

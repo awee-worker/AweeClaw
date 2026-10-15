@@ -46,20 +46,20 @@ export interface ScreenshotResultPayload {
   width: number
   /** 截图高度（像素） */
   height: number
-  /** 截图保存到工作区的绝对路径（.aweeclaw/screenshot/xxx.png） */
+  /** 截图保存到工作空间的绝对路径（.aweeclaw/screenshot/xxx.png） */
   filePath: string
   /** 截图文件名（含扩展名） */
   fileName: string
 }
 
-/** 工作区路径获取函数（由外部注入，避免直接依赖 windowManager 造成循环依赖） */
+/** 工作空间路径获取函数（由外部注入，避免直接依赖 windowManager 造成循环依赖） */
 export type WorkspacePathGetter = () => string | null
 
 export class ScreenshotAskManager {
   private overlayWindow: BrowserWindow | null = null
   /** 主屏缩放因子 */
   private scaleFactor: number = 1
-  /** 工作区路径获取函数（用于截图落盘到 .aweeclaw/screenshot） */
+  /** 工作空间路径获取函数（用于截图落盘到 .aweeclaw/screenshot） */
   private readonly getWorkspacePath: WorkspacePathGetter
   /** 当前截图流程的窗口可见性回调（start 时隐藏迷你助手，end 时恢复） */
   private onVisibilityChange: ((phase: 'start' | 'end') => void) | null = null
@@ -328,7 +328,7 @@ export class ScreenshotAskManager {
   }
 
   /**
-   * 将截图保存到工作区 .aweeclaw/screenshot 目录
+   * 将截图保存到工作空间 .aweeclaw/screenshot 目录
    *
    * 文件名格式：screenshot_YYYYMMDD_HHmmss.png
    * 落盘失败时返回 null（不阻断截图流程，base64 仍会推送给头像窗口）

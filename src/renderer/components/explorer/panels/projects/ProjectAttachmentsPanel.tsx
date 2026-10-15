@@ -14,7 +14,7 @@
  * - 扩展名白名单来自 BRAND.attachmentConfig，与主进程校验一致
  *
  * 数据安全隐私：
- * - 附件文件优先存储到工作区 .aweeclaw/attachments/ 目录
+ * - 附件文件优先存储到工作空间 .aweeclaw/attachments/ 目录
  * - 后端仅作为可选的跨设备同步兜底
  * - 所有读写操作通过 localAttachmentsService → 主进程 IPC 完成
  */
@@ -80,7 +80,7 @@ export function ProjectAttachmentsPanel({ projectId, isZh }: ProjectAttachmentsP
     loadAttachments()
   }, [loadAttachments])
 
-  /** 处理文件上传（存到工作区 .aweeclaw/attachments/） */
+  /** 处理文件上传（存到工作空间 .aweeclaw/attachments/） */
   const handleUpload = useCallback(async (files: File[]) => {
     if (files.length === 0) return
     setUploading(true)
@@ -158,7 +158,7 @@ export function ProjectAttachmentsPanel({ projectId, isZh }: ProjectAttachmentsP
             {isZh ? `附件 (${attachments.length})` : `Attachments (${attachments.length})`}
           </span>
           <span className="text-[12px] text-text-muted/60 ml-1">
-            {isZh ? '工作区本地存储' : 'Workspace local'}
+            {isZh ? '工作空间本地存储' : 'Workspace local'}
           </span>
         </div>
         <button

@@ -28,7 +28,7 @@ interface InlineEditState {
   lineRange: [number, number]
 }
 
-/** 工作区相对路径展示（不在工作区内时回退原路径） */
+/** 工作空间相对路径展示（不在工作空间内时回退原路径） */
 function toDisplayPath(filePath: string): string {
   const workspacePath = useStore.getState().workspacePath
   if (!workspacePath) return filePath
@@ -93,7 +93,7 @@ export async function navigateToDefinition(
   }
 
   const target = candidates[0]
-  // stdlib / 工作区外文件会被安全模块拦截，revealLocation 内部静默失败
+  // stdlib / 工作空间外文件会被安全模块拦截，revealLocation 内部静默失败
   await revealLocation({ filePath: target.filePath, line: target.line, column: target.column })
 }
 

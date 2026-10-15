@@ -128,7 +128,7 @@ export const DEFAULT_MINI_CHAT_SYSTEM_PROMPT = [
  * - 允许 Markdown 和代码块（语音模式禁止）
  * - 使用文字对话风格而非口语化风格
  *
- * @param options 工作区上下文信息
+ * @param options 工作空间上下文信息
  * @returns 完整的系统提示词
  */
 export function buildMiniChatSystemPrompt(options: {
@@ -150,9 +150,9 @@ export function buildMiniChatSystemPrompt(options: {
     `\n## 当前时间\n${dateStr} ${timeStr}\n用户提到"今天""明天""后天"等相对日期时，请基于上述时间计算。`,
   );
 
-  // 注入工作区上下文
+  // 注入工作空间上下文
   if (workspacePath) {
-    contextParts.push(`\n## 用户工作区\n当前工作目录：${workspacePath}`);
+    contextParts.push(`\n## 用户工作空间\n当前工作目录：${workspacePath}`);
   }
 
   if (openFiles && openFiles.length > 0) {
@@ -168,12 +168,12 @@ export function buildMiniChatSystemPrompt(options: {
 }
 
 /**
- * 构建系统提示词，注入工作区上下文
+ * 构建系统提示词，注入工作空间上下文
  *
  * 让 AI 知道用户当前的工作目录和打开的文件，
  * 这样用户可以通过语音询问"这个文件里的xxx是什么意思"等问题。
  *
- * @param options 工作区上下文信息
+ * @param options 工作空间上下文信息
  * @returns 完整的系统提示词
  */
 export function buildVoiceSystemPrompt(options: {
@@ -195,10 +195,10 @@ export function buildVoiceSystemPrompt(options: {
     `\n## 当前时间\n${dateStr} ${timeStr}\n用户提到"今天""明天""后天"等相对日期时，请基于上述时间计算。`,
   )
 
-  // 注入工作区上下文
+  // 注入工作空间上下文
   if (workspacePath) {
     contextParts.push(
-      `\n## 用户工作区\n当前工作目录：${workspacePath}`,
+      `\n## 用户工作空间\n当前工作目录：${workspacePath}`,
     );
   }
 
@@ -215,7 +215,7 @@ export function buildVoiceSystemPrompt(options: {
     contextParts.push(
       '\n## 注意\n' +
         '- 你现在处于语音对话模式，回复要简短自然、适合口语表达。\n' +
-        '- 用户可能询问当前工作区或文件相关的问题，请基于上下文回答。\n' +
+        '- 用户可能询问当前工作空间或文件相关的问题，请基于上下文回答。\n' +
         '- 你可以调用工具执行文件操作、终端命令等，工具调用前请先告诉用户你的意图。\n' +
         '- 不要在回复中使用括号标注动作或语气，这些会被 TTS 朗读出来。',
     );

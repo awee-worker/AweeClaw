@@ -40,7 +40,7 @@ export const declarativeBasicTemplate: ScenarioTemplate = {
       layout: 'chat-centric',
       panels: [],
       sidebarItems: [
-        { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
+        { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作空间', component: 'ExplorerView', position: 0 },
       ],
       statusBarItems: [],
     },

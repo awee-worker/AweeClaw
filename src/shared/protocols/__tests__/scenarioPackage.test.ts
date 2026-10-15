@@ -29,8 +29,8 @@ function manifest(overrides: Partial<ScenarioPackageManifest> = {}): ScenarioPac
     requiredTools: ['read_file', 'write_file'],
     requiredToolPacks: [],
     permissions: [
-      { kind: 'read', scope: '工作区内的 pdf 文件', reason: '需要读取待加水印的文件' },
-      { kind: 'write', scope: '工作区内的输出目录', reason: '需要写入处理后的文件' },
+      { kind: 'read', scope: '工作空间内的 pdf 文件', reason: '需要读取待加水印的文件' },
+      { kind: 'write', scope: '工作空间内的输出目录', reason: '需要写入处理后的文件' },
     ],
     ...overrides,
   }
@@ -200,7 +200,7 @@ describe('权限声明展示', () => {
 
     expect(text).toContain('PDF 水印')
     expect(text).toContain('读取文件')
-    expect(text).toContain('工作区内的 pdf 文件')
+    expect(text).toContain('工作空间内的 pdf 文件')
     expect(text).toContain('需要读取待加水印的文件')
   })
 

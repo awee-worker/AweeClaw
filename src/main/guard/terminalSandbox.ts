@@ -349,7 +349,7 @@ export function registerSecureTerminalHandlers(
   getWindowWorkspace?: (windowId: number) => string[] | null
 ) {
   /**
-   * 安全的命令执行（白名单 + 工作区边界）
+   * 安全的命令执行（白名单 + 工作空间边界）
    * 替代原来的 shell:execute
    */
   safeIpcHandle('shell:executeSecure', async (
@@ -371,20 +371,20 @@ export function registerSecureTerminalHandlers(
       return { success: false, error: '主窗口未就绪' }
     }
 
-    // 1. 工作区检查（支持无工作区模式）
+    // 1. 工作空间检查（支持无工作空间模式）
     let targetPath: string
     if (workspace) {
       targetPath = cwd || workspace.roots[0]
       if (!securityManager.validateWorkspacePath(targetPath, workspace.roots)) {
         securityManager.logOperation(OperationType.SHELL_EXECUTE, command, false, {
-          reason: '路径在工作区外',
+          reason: '路径在工作空间外',
           targetPath,
           workspace: workspace.roots,
         })
-        return { success: false, error: '不允许在工作区外执行命令' }
+        return { success: false, error: '不允许在工作空间外执行命令' }
       }
     } else {
-      // 无工作区模式：使用 cwd 或当前进程工作目录
+      // 无工作空间模式：使用 cwd 或当前进程工作目录
       targetPath = cwd || process.cwd()
       logger.security.info(`[Security] No workspace set, using: ${targetPath}`)
     }
@@ -402,7 +402,7 @@ export function registerSecureTerminalHandlers(
     // 2.5 受保护应用数据目录（.aweeclaw）删除拦截 —— 静默拒绝，不弹窗
     if (isProtectedAppDirDeletion(fullCommand)) {
       securityManager.logOperation(OperationType.SHELL_EXECUTE, fullCommand, false, {
-        reason: '安全底线：禁止删除工作区系统目录 (.aweeclaw)，已静默拒绝',
+        reason: '安全底线：禁止删除工作空间系统目录 (.aweeclaw)，已静默拒绝',
       })
       return {
         success: false,
@@ -491,7 +491,7 @@ export function registerSecureTerminalHandlers(
     cwd: string,
     options?: GitExecOptions
   ): Promise<GitExecResponse> => {
-    // 优先使用请求来源窗口的工作区（支持多窗口隔离）
+    // 优先使用请求来源窗口的工作空间（支持多窗口隔离）
     const windowId = event.sender.id
     const windowRoots = getWindowWorkspace?.(windowId)
     const workspace = windowRoots ? { roots: windowRoots } : getWorkspace()
@@ -504,20 +504,20 @@ export function registerSecureTerminalHandlers(
       cwd,
     })
 
-    // 1. 工作区检查（允许无工作区模式以支持新窗口）
+    // 1. 工作空间检查（允许无工作空间模式以支持新窗口）
     if (!workspace || workspace.roots.length === 0) {
-      // 无工作区时信任传入的cwd路径
+      // 无工作空间时信任传入的cwd路径
       logger.security.info('[Git] No workspace set, trusting cwd:', cwd)
     } else {
-      // 2. 验证工作区边界
+      // 2. 验证工作空间边界
       if (!securityManager.validateWorkspacePath(cwd, workspace.roots)) {
         logger.security.warn('[Git] Path validation failed:', { cwd, roots: workspace.roots })
         securityManager.logOperation(OperationType.GIT_EXEC, args.join(' '), false, {
-          reason: '路径在工作区外',
+          reason: '路径在工作空间外',
           cwd,
           workspace: workspace.roots,
         })
-        return { success: false, error: '不允许在工作区外执行Git命令' }
+        return { success: false, error: '不允许在工作空间外执行Git命令' }
       }
     }
 
@@ -1148,10 +1148,10 @@ export function registerSecureTerminalHandlers(
 
     if (workspace && workspace.roots.length > 0 && !remote?.host && !securityManager.validateWorkspacePath(targetCwd, workspace.roots)) {
       securityManager.logOperation(OperationType.TERMINAL_INTERACTIVE, 'terminal:create', false, {
-        reason: '路径在工作区外',
+        reason: '路径在工作空间外',
         cwd: targetCwd,
       })
-      return { success: false, error: '终端只能在工作区内创建' }
+      return { success: false, error: '终端只能在工作空间内创建' }
     }
 
     try {
@@ -1448,7 +1448,7 @@ export function registerSecureTerminalHandlers(
     // 安全检查：受保护应用数据目录（.aweeclaw）删除拦截 —— 静默拒绝，不弹窗
     if (isProtectedAppDirDeletion(command)) {
       securityManager.logOperation(OperationType.SHELL_EXECUTE, command, false, {
-        reason: '安全底线：禁止删除工作区系统目录 (.aweeclaw)，已静默拒绝',
+        reason: '安全底线：禁止删除工作空间系统目录 (.aweeclaw)，已静默拒绝',
         source: 'executeBackground',
       })
       return {

@@ -506,7 +506,7 @@ For long-running servers or watch tasks:
         },
     },
 
-    // ===== Git 工具（工作区仓库操作；网络命令自动处理凭证） =====
+    // ===== Git 工具（工作空间仓库操作；网络命令自动处理凭证） =====
     git_status: {
         name: 'git_status',
         displayName: 'Git Status',

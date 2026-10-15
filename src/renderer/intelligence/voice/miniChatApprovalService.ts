@@ -68,7 +68,7 @@ class MiniChatApprovalCoordinator {
    * @param toolCall 工具调用信息
    * @param authorizationMode 授权方式（来自 voiceContext）
    * @param chatMode 聊天模式（'agent' / 'chat'）
-   * @param workspacePath 当前工作区路径，用于判定「外部内容」
+   * @param workspacePath 当前工作空间路径，用于判定「外部内容」
    * @returns 是否需要审批
    */
   checkApprovalNeeded(

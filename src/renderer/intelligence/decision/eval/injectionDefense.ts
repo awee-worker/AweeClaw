@@ -22,7 +22,7 @@ import { shouldEscalateForUntrusted } from '../approvalEscalation'
 import { INJECTION_DEFENSE_SAMPLES } from './dataset'
 import type { InjectionDefenseOutcome, InjectionDefenseSample } from './types'
 
-/** 评测用工作区：文件类工具的落点判定基准 */
+/** 评测用工作空间：文件类工具的落点判定基准 */
 export const EVAL_WORKSPACE = '/workspace/demo'
 
 /** 构造一条带来源标签的工具结果消息 */

@@ -169,7 +169,7 @@ const runtimeLatestRevision = new Map<string, number>()
  * - revision 防覆盖：旧写不覆盖新状态
  * - 原子写：write .tmp + rename
  *
- * @param workspacePath 工作区路径
+ * @param workspacePath 工作空间路径
  * @param state 待保存的状态
  */
 export function saveRuntimeStateDebounced(
