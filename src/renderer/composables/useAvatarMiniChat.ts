@@ -39,10 +39,12 @@ import {
 import { toolManager } from '@intelligence/toolkit'
 import { buildAgentSystemPrompt } from '@intelligence/prompt-engine/PromptComposer'
 import { compressImageFromBase64 } from '@intelligence/utils/imageCompressor'
+import { canSendImagePixelsToModel, buildToolResultImageMessage } from '@intelligence/utils/toolResultImages'
 import { resolveVisualAnalysisIntent } from '../intelligence/decision/intentResolvers'
 import { resolveUploadDir } from '@shared/toolkit/pathHelper'
 import type { MainConversationSnapshot, VoiceContextPayload } from '../types/electronBridge'
 import type { LLMConfig, LLMMessage, MessageContentPart } from '@shared/protocols/modelProtocol'
+import type { ToolResultImage } from '@intelligence/providerTypes'
 
 // ============================================
 // 类型定义
@@ -313,6 +315,9 @@ export function useAvatarMiniChat(
       if (streamingRef.current) return
 
       const llmConfig = voiceContext?.llmConfig as LLMConfig | null
+      // 工具截图先按原样送，模型拒收图片时由 callLLMWithTools 自动去图重试；
+      // 用户附件仍走 referenceOnly 保守策略（见 canSendImagePixelsToModel）
+      const canAttachImages = canSendImagePixelsToModel(llmConfig)
       if (!llmConfig) {
         const msg = 'LLM 配置缺失，无法发送消息'
         logger.system.warn('[AvatarMiniChat] No LLM config')
@@ -603,7 +608,7 @@ export function useAvatarMiniChat(
           })
 
           const toolPromises = result.toolCalls.map((tc) =>
-            executeMiniChatToolCall(tc, voiceContext?.workspacePath || null, requestId, authorizationMode),
+            executeMiniChatToolCall(tc, voiceContext?.workspacePath || null, requestId, authorizationMode, canAttachImages),
           )
           const toolResults = await Promise.all(toolPromises)
 
@@ -645,9 +650,23 @@ export function useAvatarMiniChat(
           // 5. 工具执行完毕：不再在这里写「继续思考…」——下一轮请求只是刚发出、
           // 首包未到，属于等待响应；循环顶部会统一把活动状态置为「等待模型响应」。
 
-          // 6. 将工具结果添加到 LLM 消息历史
+          // 6. 将工具结果添加到 LLM 消息历史（图片字段只用于随后的附图消息，不随 tool 消息下发）
+          const attachedImages: ToolResultImage[] = []
+          const attachedToolNames: string[] = []
           for (const toolResult of toolResults) {
-            llmMessagesRef.current.push(toolResult)
+            if (toolResult.images?.length) {
+              attachedImages.push(...toolResult.images)
+              attachedToolNames.push(toolResult.name)
+            }
+            llmMessagesRef.current.push({
+              role: 'tool',
+              content: toolResult.content,
+              tool_call_id: toolResult.tool_call_id,
+              name: toolResult.name,
+            })
+          }
+          if (attachedImages.length > 0) {
+            llmMessagesRef.current.push(buildToolResultImageMessage(attachedToolNames, attachedImages))
           }
 
           // 继续下一轮 LLM 调用（工具结果已反馈，LLM 将基于结果生成回复）

@@ -45,6 +45,15 @@ const MAX_CONSOLE_ENTRIES = 50
 /** 单会话保留的加载失败记录上限 */
 const MAX_LOAD_FAILURES = 20
 
+/**
+ * 等待预览 guest 登记的超时与轮询间隔
+ *
+ * open_preview 返回时 webview 还要走「挂载 → dom-ready → 上报 guest」的链路，
+ * 紧接着定位标签页会扑空。等待窗口按首次打开的最坏耗时取，轮询间隔取小以免多等。
+ */
+const GUEST_WAIT_TIMEOUT_MS = 5_000
+const GUEST_WAIT_INTERVAL_MS = 150
+
 /** 状态推送节拍：同一节拍内的多条记录合并为一次 IPC */
 const PUSH_INTERVAL_MS = 250
 
@@ -392,6 +401,31 @@ class PreviewHealthMonitor {
         }
 
         return records.length > 0 ? this.toResolvedGuest(records[0]) : null
+    }
+
+    /**
+     * 等待一个符合条件的预览会话登记上来
+     *
+     * open_preview 返回时 webview 可能尚未完成挂载与 guest 上报，浏览器自动化工具
+     * 紧接着定位标签页就会扑空。这里在限时窗口内轮询，把「刚打开就调用」的时序竞争
+     * 吸收成一次正常命中；超时仍未出现才返回 null，由调用方给模型明确提示。
+     */
+    async waitForGuest(
+        filter: { sessionId?: string; url?: string } = {},
+        timeoutMs: number = GUEST_WAIT_TIMEOUT_MS,
+        intervalMs: number = GUEST_WAIT_INTERVAL_MS,
+    ): Promise<ResolvedPreviewGuest | null> {
+        const immediate = this.resolveGuest(filter)
+        if (immediate) return immediate
+
+        const deadline = Date.now() + Math.max(0, timeoutMs)
+        while (Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, intervalMs))
+            const resolved = this.resolveGuest(filter)
+            if (resolved) return resolved
+        }
+
+        return null
     }
 
     private toResolvedGuest(record: SessionRecord): ResolvedPreviewGuest | null {

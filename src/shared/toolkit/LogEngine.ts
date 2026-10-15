@@ -439,8 +439,17 @@ class FileSink implements LogSink {
     this.flushing = true
     try {
       if (!this.fsModule) {
-        this.fsModule = await import('fs/promises')
-        this.pathModule = await import('path')
+        // 用变量间接引用这两个 Node 内置模块。
+        // 它们只在主进程的 FileSink 落盘路径上使用，渲染进程不会执行到这里
+        // （渲染进程不配置 logFilePath，flush 会提前返回）；但本文件是 shared 代码，
+        // 渲染进程构建时若见到字面量的 import('fs/promises') / import('path')，
+        // 会被判定为浏览器不兼容而 externalize 成空模块并告警。
+        // 改为变量传递后打包器不再静态解析：主进程 CJS 输出保留为动态 require，
+        // 渲染进程 ESM 输出保留为原生 import()（永不执行），运行时行为不变。
+        const fsModuleId = 'fs/promises'
+        const pathModuleId = 'path'
+        this.fsModule = (await import(/* @vite-ignore */ fsModuleId)) as typeof import('fs/promises')
+        this.pathModule = (await import(/* @vite-ignore */ pathModuleId)) as typeof import('path')
       }
       const fs = this.fsModule
       const path = this.pathModule!

@@ -9,6 +9,7 @@ import type {
     UserMessage,
     AssistantMessage,
     ToolResultMessage,
+    ToolResultImage,
     CheckpointMessage,
     MessageContent,
     ContextItem,
@@ -49,7 +50,7 @@ export interface MessageActions {
     finalizeAssistant: (messageId: string, targetThreadId?: string) => void
     finalizeTextBeforeToolCall: (messageId: string, targetThreadId?: string) => void
     updateMessage: (messageId: string, updates: Partial<ChatMessage>, targetThreadId?: string) => void
-    addToolResult: (toolCallId: string, name: string, content: string, type: ToolResultType, rawParams?: Record<string, unknown>, targetThreadId?: string, executionRoot?: string | null) => string
+    addToolResult: (toolCallId: string, name: string, content: string, type: ToolResultType, rawParams?: Record<string, unknown>, targetThreadId?: string, executionRoot?: string | null, images?: ToolResultImage[]) => string
     addCheckpoint: (type: 'user_message' | 'tool_edit', fileSnapshots: Record<string, FileSnapshot>, targetThreadId?: string) => string
     clearMessages: (targetThreadId?: string) => void
     deleteMessagesAfter: (messageId: string, targetThreadId?: string) => void
@@ -577,7 +578,7 @@ export const createMessageSlice: StateCreator<
     },
 
     // 添加工具结果
-    addToolResult: (toolCallId, name, content, type, rawParams, targetThreadId, executionRoot) => {
+    addToolResult: (toolCallId, name, content, type, rawParams, targetThreadId, executionRoot, images) => {
         const threadId = targetThreadId || get().currentThreadId
         if (!threadId) return ''
 
@@ -614,6 +615,8 @@ export const createMessageSlice: StateCreator<
             type,
             rawParams,
             origin,
+            // 工具产出的图片（如浏览器截图）：仅用于当轮把画面送进模型上下文，不落盘
+            ...(images && images.length > 0 ? { images } : {}),
         }
 
         set(state => {

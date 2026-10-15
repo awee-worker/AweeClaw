@@ -38,6 +38,31 @@ function detectCustomOption(option: OptionItem): boolean {
   return CUSTOM_KEYWORDS.some((kw) => id.includes(kw) || label.includes(kw))
 }
 
+/**
+ * 自动补入的「其他」选项 ID
+ *
+ * 它不属于 AI 给出的选项数据，只在渲染层追加，用来给「选项里没有我想选的」留出口。
+ */
+const OTHER_OPTION_ID = 'custom'
+
+/**
+ * 组装实际渲染的选项列表
+ *
+ * AI 列出的选项未必覆盖用户心中所想，因此除两种情况外一律补一个「其他」入口：
+ *  - AI 声明选项已穷举（allowCustom === false），例如是/否这类确认；
+ *  - AI 自己已经给了一个「其他/自定义」选项，此时不再重复追加。
+ * 追加后的列表参与单选/多选的全部逻辑，走的是与 AI 自定义项完全相同的通路。
+ */
+function buildRenderOptions(
+  baseOptions: OptionItem[],
+  allowCustom: boolean | undefined,
+  language: Language,
+): OptionItem[] {
+  if (allowCustom === false) return baseOptions
+  if (baseOptions.some(detectCustomOption)) return baseOptions
+  return [...baseOptions, { id: OTHER_OPTION_ID, label: t('ai.other', language) }]
+}
+
 /** 交互阶段：待选择 → 已提交 */
 type InteractionPhase = 'selecting' | 'submitted'
 
@@ -88,8 +113,8 @@ function resolveStrategy(multiSelect: boolean, options: OptionItem[]): Selection
   return multiSelect ? createMultiStrategy(options) : createSingleStrategy(options)
 }
 
-/** 交互状态机 Hook */
-function useInteractionState(content: InteractiveContent, disabled?: boolean) {
+/** 交互状态机 Hook（options 为渲染层最终选项，含可能追加的「其他」） */
+function useInteractionState(content: InteractiveContent, options: OptionItem[], disabled?: boolean) {
   const hasExistingSelection = !!content.selectedIds?.length
   const [selected, setSelected] = useState<Set<string>>(new Set(content.selectedIds || []))
   const [phase, setPhase] = useState<InteractionPhase>(hasExistingSelection ? 'submitted' : 'selecting')
@@ -98,8 +123,8 @@ function useInteractionState(content: InteractiveContent, disabled?: boolean) {
   const [customRevealed, setCustomRevealed] = useState(false)
 
   const strategy = useMemo(
-    () => resolveStrategy(content.multiSelect ?? false, content.options),
-    [content.multiSelect, content.options],
+    () => resolveStrategy(content.multiSelect ?? false, options),
+    [content.multiSelect, options],
   )
 
   // 同步外部已选状态
@@ -119,7 +144,7 @@ function useInteractionState(content: InteractiveContent, disabled?: boolean) {
   const toggleOption = useCallback(
     (optionId: string, onSelect: (ids: string[], text?: string) => void) => {
       if (disabled || phase === 'submitted') return
-      const option = content.options.find((o) => o.id === optionId)
+      const option = options.find((o) => o.id === optionId)
       const isCustom = option ? detectCustomOption(option) : false
       const { next, revealCustom } = strategy.toggle(selected, optionId)
       setSelected(next)
@@ -134,7 +159,7 @@ function useInteractionState(content: InteractiveContent, disabled?: boolean) {
         }, 300)
       }
     },
-    [disabled, phase, content.options, strategy, selected],
+    [disabled, phase, options, strategy, selected],
   )
 
   const submitMulti = useCallback(
@@ -142,15 +167,17 @@ function useInteractionState(content: InteractiveContent, disabled?: boolean) {
       if (selected.size === 0 || phase === 'submitted') return
       const selectedArr = Array.from(selected)
       const hasCustom = selectedArr.some((id) => {
-        const opt = content.options.find((o) => o.id === id)
+        const opt = options.find((o) => o.id === id)
         return opt ? detectCustomOption(opt) : false
       })
-      const text = hasCustom && customText.trim() ? customText.trim() : undefined
+      const custom = hasCustom ? customText.trim() : ''
+      // 选了「其他」却没填内容：回传空回答会让模型收不到任何信息，直接拦截
+      if (hasCustom && !custom) return
       setPhase('submitted')
-      onSelect(selectedArr, text)
+      onSelect(selectedArr, custom || undefined)
       setExpanded(false)
     },
-    [selected, phase, content.options, customText],
+    [selected, phase, options, customText],
   )
 
   const submitCustom = useCallback(
@@ -163,12 +190,21 @@ function useInteractionState(content: InteractiveContent, disabled?: boolean) {
     [customText, phase, selected],
   )
 
+  // 选中「其他」却还没输入内容时不放行提交：否则会回传一条空回答，用户以为答过了、模型却什么都没收到
+  const canSubmit =
+    selected.size > 0 &&
+    (!Array.from(selected).some((id) => {
+      const opt = options.find((o) => o.id === id)
+      return opt ? detectCustomOption(opt) : false
+    }) || customText.trim().length > 0)
+
   return {
     selected,
     phase,
     expanded,
     customText,
     customRevealed,
+    canSubmit,
     setCustomText,
     setExpanded,
     toggleOption,
@@ -346,23 +382,27 @@ function CustomTextInput({
 /** 提交按钮 */
 function SubmitButton({
   count,
+  disabled,
   language,
   onSubmit,
   labelKey,
 }: {
   count: number
+  /** 显式禁用；缺省时按「未选中任何项」判断 */
+  disabled?: boolean
   language: Language
   onSubmit: () => void
   labelKey: 'ai.confirm' | 'ai.confirm2'
 }) {
+  const isDisabled = disabled ?? count === 0
   return (
     <div className="mt-2 flex justify-end relative z-10">
       <button
         onClick={onSubmit}
-        disabled={count === 0}
+        disabled={isDisabled}
         className={`
           flex items-center gap-1.5 px-3 py-1 text-[12px] font-medium rounded-md transition-all
-          ${count > 0 ? 'bg-accent text-accent-foreground hover:bg-accent-hover active:scale-95' : 'bg-surface/50 text-text-muted cursor-not-allowed'}
+          ${!isDisabled ? 'bg-accent text-accent-foreground hover:bg-accent-hover active:scale-95' : 'bg-surface/50 text-text-muted cursor-not-allowed'}
         `}
       >
         <span>{t(labelKey, language, { size: count })}</span>
@@ -405,7 +445,12 @@ export function InteractiveCard({ content, onSelect, disabled, obsolete }: Inter
 function OptionCard({ content, onSelect, disabled }: InteractiveCardProps) {
   const language = useStore((s) => s.language)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const state = useInteractionState(content, disabled)
+  // AI 给的选项未必覆盖用户心中所想：除选项已穷举外，一律补一个「其他」入口（见 buildRenderOptions）
+  const options = useMemo(
+    () => buildRenderOptions(content.options, content.allowCustom, language),
+    [content.options, content.allowCustom, language],
+  )
+  const state = useInteractionState(content, options, disabled)
 
   // 首次出现播放提示音
   useEffect(() => {
@@ -421,8 +466,8 @@ function OptionCard({ content, onSelect, disabled }: InteractiveCardProps) {
   const isDisabled = disabled || isSubmitted
 
   const selectedLabels = useMemo(
-    () => content.options.filter((o) => state.selected.has(o.id)).map((o) => o.label).join(', '),
-    [content.options, state.selected],
+    () => options.filter((o) => state.selected.has(o.id)).map((o) => o.label).join(', '),
+    [options, state.selected],
   )
 
   return (
@@ -444,7 +489,7 @@ function OptionCard({ content, onSelect, disabled }: InteractiveCardProps) {
           <div className="absolute left-[13.5px] top-0 bottom-2 w-[1.5px] bg-border/40 rounded-full" />
 
           <div className="relative z-10 mt-1 space-y-0.5">
-            {content.options.map((option, index) => (
+            {options.map((option, index) => (
               <OptionRow
                 key={option.id}
                 option={option}
@@ -471,6 +516,7 @@ function OptionCard({ content, onSelect, disabled }: InteractiveCardProps) {
           {content.multiSelect && !isSubmitted && !state.customRevealed && (
             <SubmitButton
               count={state.selected.size}
+              disabled={!state.canSubmit}
               language={language}
               onSubmit={() => state.submitMulti(onSelect)}
               labelKey="ai.confirm"
@@ -480,6 +526,7 @@ function OptionCard({ content, onSelect, disabled }: InteractiveCardProps) {
           {content.multiSelect && !isSubmitted && state.customRevealed && (
             <SubmitButton
               count={state.selected.size}
+              disabled={!state.canSubmit}
               language={language}
               onSubmit={() => state.submitMulti(onSelect)}
               labelKey="ai.confirm2"

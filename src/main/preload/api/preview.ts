@@ -9,6 +9,7 @@
  * - preview:network-collect   采集页面资源瀑布
  * - preview:content-probe     采集页面内容摘要（白屏交叉验证）
  * - preview:reload            按 guest 重载页面
+ * - preview:navigate          按 guest 导航到新地址
  * - preview:health-changed    健康状态推送（main → render）
  * - preview:auto-reload-watch   登记预览目录的自动刷新
  * - preview:auto-reload-unwatch 取消预览目录的自动刷新
@@ -72,6 +73,15 @@ export function createPreviewApi() {
      * loadURL() 在部分页面状态下会静默失效，需绕开标签层。
      */
     reloadGuest: (guestId: number) => invoke<PreviewIpcResponse>('preview:reload')(guestId),
+
+    /**
+     * 按 guest 导航到新地址
+     *
+     * 与 reloadGuest 同理：webview 标签自身的 loadURL() 在部分页面状态下会静默
+     * 失效，导航交回主进程对同一个 webContents 执行，避免「地址栏换了地址但页面没动」。
+     */
+    navigateGuest: (guestId: number, url: string) =>
+      invoke<PreviewIpcResponse<{ url: string }>>('preview:navigate')(guestId, url),
 
     /** 订阅健康状态推送 */
     onHealth: on<PreviewHealthSnapshot>(PREVIEW_HEALTH_CHANNEL),

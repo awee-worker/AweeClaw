@@ -44,6 +44,8 @@ import { verifyEditedFile } from '../coding-enhancements/postEditVerify'
 import { buildFailureReflection } from '../coding-enhancements/failureReflection'
 import { buildCommandCostHint } from '../coding-enhancements/commandCostGuard'
 import { recordToolQuality } from '../coding-enhancements/qualityMetrics'
+import { collectToolResultImages, canSendImagePixelsToModel } from '@intelligence/utils/toolResultImages'
+import { getEffectiveLLMConfig } from '@services/modelConfigHelper'
 
 // ===== 审批服务 =====
 
@@ -766,6 +768,9 @@ async function invokeToolInvocation(
 ): Promise<AgentToolExecutionResult> {
   const mainStore = useStore.getState()
   const { currentAssistantId, workspacePath } = context
+  // 工具截图先按原样送：本地直连可能是支持看图的 VLM，一律不送会让它失去视觉能力。
+  // 模型拒收图片时由主循环自动去图重试（见 canSendImagePixelsToModel / isVisualUnsupportedError）。
+  const canAttachImages = canSendImagePixelsToModel(getEffectiveLLMConfig())
   const identity = composeToolInvocationIdentity(toolCall, context)
   const startTime = Date.now()
 
@@ -926,6 +931,10 @@ async function invokeToolInvocation(
         // 一律被标成不可信来源，进而把当轮所有写入类操作都拖进确认流程。
         // 同时带上本次执行的基准目录：项目执行窗口里它未必等于 store.workspacePath，
         // 判定用错基准会把落在项目目录里的文件判成「外部内容」
+        // 工具产出的图片（如内置浏览器截图）：整理成模型看得懂的形态随结果送出。
+        // 属运行时态，只服务于「刚看到画面」的这几轮，不落盘（见 stripRuntimeOnlyMessageFields）。
+        const toolImages = callFailed || !canAttachImages ? undefined : await collectToolResultImages(richContent)
+
         store.addToolResult(
           toolCall.id,
           toolCall.name,
@@ -933,6 +942,7 @@ async function invokeToolInvocation(
           callFailed ? 'tool_error' : 'success',
           toolCall.arguments,
           workspacePath,
+          toolImages,
         )
       }
       if (!callFailed) {

@@ -24,6 +24,13 @@ import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
 import { resolveSceneToolsIntentFromMessages, resolveGitToolsIntentFromMessages } from '../decision/intentResolvers'
 import { resolveRelativeChangePath, isFileWriteToolResult } from '@intelligence/utils/fileMutationHelper'
+import {
+  isVisualUnsupportedError,
+  messagesContainImages,
+  stripImagesFromMessages,
+  markVisionUnsupported,
+  isVisionKnownUnsupported,
+} from '@intelligence/utils/toolResultImages'
 import { isCodeFile } from '@intelligence/toolkit/fileReadPolicies'
 import { composerService } from '@intelligence/runtime/composerEngine'
 import { agentHarness } from '../harness'
@@ -369,8 +376,12 @@ async function invokeModelCallWithRetry(
           }
         }
 
+        // 视觉兜底（1/2）：该模型此前已确认拒收图片，直接去图，不再每轮都先撞一次墙
+        const knownNoVision = isVisionKnownUnsupported(config)
+        const outboundMessages = knownNoVision ? stripImagesFromMessages(messages) : messages
+
         try {
-          const result = await invokeModelCall(config, messages, assistantId, threadStore, reqId, tools, {
+          const result = await invokeModelCall(config, outboundMessages, assistantId, threadStore, reqId, tools, {
             ...options,
             abortSignal,
           })
@@ -383,6 +394,28 @@ async function invokeModelCallWithRetry(
             if (isToolParseError) {
               logger.agent.warn('[Loop] Tool parse error, will be handled in loop:', result.error)
               return result
+            }
+
+            // 视觉兜底（2/2）：模型拒收图片输入（本地直连常见）时去掉图片重试一次，
+            // 让不支持看图的模型也能照常作答。成功后本模型记入缓存，后续轮次直接去图，
+            // 把「多一次请求」的代价限制在首次探测上（见 toolResultImages）。
+            if (
+              !knownNoVision
+              && isVisualUnsupportedError(result.error)
+              && messagesContainImages(messages)
+            ) {
+              markVisionUnsupported(config)
+              logger.agent.warn('[Loop] Model rejected image input, retrying without images:', result.error)
+              const retryResult = await invokeModelCall(
+                config,
+                stripImagesFromMessages(messages),
+                assistantId,
+                threadStore,
+                reqId,
+                tools,
+                { ...options, abortSignal },
+              )
+              return retryResult
             }
 
             // 非 tool parse 错误：直接返回 result，由主循环（第 611 行）基于 errorCode 做差异化 UI 提示

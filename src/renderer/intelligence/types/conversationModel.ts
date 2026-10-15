@@ -232,6 +232,25 @@ export interface AssistantMessage {
   _textFinalized?: boolean
 }
 
+/**
+ * 工具结果附带的图片
+ *
+ * 典型来源是内置浏览器截图（browser_take_screenshot）这类「工具产出图像」，
+ * 让模型在下一轮能直接看到画面而不只看一句文字说明。
+ *
+ * 这里是**送入模型上下文**的图片，与 ToolCall.richContent 里给界面展示的那份
+ * 相互独立：展示要原图清晰度，模型只要够看清即可，因此进入上下文前统一压缩。
+ * 属于运行时态，不落盘（见 stripRuntimeOnlyMessageFields）。
+ */
+export interface ToolResultImage {
+  /** base64 数据（不含 data: 前缀） */
+  data: string
+  /** IANA 媒体类型，如 image/jpeg */
+  mimeType: string
+  /** 图片来源说明，注入上下文时用于消歧 */
+  caption?: string
+}
+
 /** 工具结果消息 */
 export interface ToolResultMessage {
   id: string
@@ -243,6 +262,14 @@ export interface ToolResultMessage {
   type: ToolResultType
   rawParams?: Record<string, unknown>
   compactedAt?: number
+  /**
+   * 结果附带的图片（运行时态，不持久化）
+   *
+   * 上下文构建时作为紧随本结果的 user 多模态消息注入。之所以不内联进 tool 消息：
+   * OpenAI 的 tool role 只接受字符串，多模态内容会被序列化成纯文本（体积暴涨且
+   * 模型看不到画面）；user 多模态则是各 provider 一致支持的通道。
+   */
+  images?: ToolResultImage[]
   /**
    * 结果来源标签
    *

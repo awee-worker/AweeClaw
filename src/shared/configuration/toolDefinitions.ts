@@ -1248,15 +1248,19 @@ TIPS:
 - Use to gather requirements, preferences, or confirmations
 - Options are displayed as clickable cards
 - Supports single or multiple selection
-- The tool blocks until user makes a selection`,
+- The tool blocks until user makes a selection
+- An "Other" entry is appended automatically so the user can type an answer outside your options;
+  pass allow_other=false only when the options are genuinely exhaustive`,
         examples: [
             'ask_user question="What type of task?" options=[{id:"feature",label:"New Feature"},{id:"bugfix",label:"Bug Fix"}]',
             'ask_user question="Which files to modify?" options=[...] multi_select=true',
+            'ask_user question="Proceed with deployment?" options=[{id:"yes",label:"Yes"},{id:"no",label:"No"}] allow_other=false',
         ],
         criticalRules: [
             'Use to gather requirements, preferences, or confirmations',
             'Keep options concise and clear',
             'Provide descriptions for complex options',
+            'Do NOT add your own "Other"/"custom" option — the UI appends one; pass allow_other=false only when the options are truly exhaustive (e.g. a yes/no confirmation)',
         ],
         category: 'interaction',
         approvalType: 'none',
@@ -1287,6 +1291,7 @@ TIPS:
                 },
             },
             multi_select: { type: 'boolean', description: 'Allow selecting multiple options (default: false)', default: false },
+            allow_other: { type: 'boolean', description: 'Set false only when your options are exhaustive (e.g. a yes/no confirmation); otherwise the UI appends an "Other" entry that lets the user type an answer outside the options. Default: true', default: true },
         },
     },
 

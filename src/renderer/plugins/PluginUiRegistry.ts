@@ -428,7 +428,8 @@ class PluginUiRegistryImpl {
       blobUrl = await fetchAndRewriteBundle(bundleUrl)
 
       // dynamic import ESM 模块
-      const module = (await import(blobUrl)) as { default?: PluginUiModule }
+      // blobUrl 是运行时生成的 Blob URL，Vite 无法静态分析，需显式忽略
+      const module = (await import(/* @vite-ignore */ blobUrl)) as { default?: PluginUiModule }
       const uiModule = module.default
       if (!uiModule) {
         throw new Error(`Plugin ${pluginKey} ui.js has no default export`)

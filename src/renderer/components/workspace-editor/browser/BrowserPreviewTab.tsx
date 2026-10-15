@@ -104,12 +104,16 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
           ) : (
             <>
               {/*
-                key 用重建序号：刷新令牌推进时 React 重建 webview 元素，页面按 src
-                重新加载。刷新刻意不走 webview.reload()/loadURL()——那两个命令在本
-                环境实测不产生重载（同地址 loadURL 被当作同文档导航短路，reload 静默失效）。
+                key 由「会话 id + 重建序号」组成：
+                - 刷新令牌推进时序号变化，React 重建 webview 元素，页面按 src 重新加载。
+                  刷新刻意不走 webview.reload()/loadURL()——那两个命令在本环境实测不
+                  产生重载（同地址 loadURL 被当作同文档导航短路，reload 静默失效）。
+                - 编辑器主体在同一位置复用本组件，切换到另一个预览标签页时只有会话变了，
+                  webview 元素的 src 却是冻结的（避免与 loadURL 双重导航），不重建就会
+                  停在旧页面上——表现为地址栏换了地址、内容还是上一个页面。
               */}
               <BrowserWebView
-                key={controller.reloadNonce}
+                key={`${session.id}#${controller.reloadNonce}`}
                 session={session}
                 controller={controller}
               />

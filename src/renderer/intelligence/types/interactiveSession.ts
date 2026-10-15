@@ -31,6 +31,14 @@ export interface InteractiveContent {
   multiSelect?: boolean
   selectedIds?: string[]
   /**
+   * 是否允许自由作答
+   *
+   * 默认（缺省或 true）：渲染层在选项末尾补一个「其他」入口，点开后可在卡片内
+   * 输入选项之外的内容，避免 AI 列出的选项覆盖不到用户真正想要的答案。
+   * 仅当选项确实已穷举（如 是/否 这类确认）时，由 AI 传 allow_other=false 关闭。
+   */
+  allowCustom?: boolean
+  /**
    * 卡片形态
    *
    * - generic（默认缺省）：普通选项卡片（ask_user），点击即把选项文案回传给模型

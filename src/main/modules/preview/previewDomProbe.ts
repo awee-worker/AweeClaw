@@ -169,7 +169,16 @@ export function buildResolveProbe(filter: ElementFilter): string {
   var found = __aweeFind(${JSON.stringify(filter)});
   if (found.error) return JSON.stringify({ ok: false, error: found.error });
   var el = found.el;
-  try { el.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (e) {}
+  // 页面若设置 scroll-behavior: smooth，scrollIntoView 会走平滑动画，
+  // 紧接着读到的 rect 还停在滚动前的位置，点击就会落到元素外面。
+  // 用内联样式临时压掉平滑滚动，让元素立刻归位后再取坐标。
+  try {
+    var root = document.documentElement;
+    var prevBehavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = 'auto';
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    root.style.scrollBehavior = prevBehavior;
+  } catch (e) {}
   var rect = el.getBoundingClientRect();
   return JSON.stringify({
     ok: true,

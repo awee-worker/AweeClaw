@@ -229,6 +229,9 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
     }
     const handleNavigate = (event: Event) => {
       const detail = event as unknown as NavigateEvent
+      // 页面已经在这个地址上导航了，记账为「已加载」：会话随之更新后不会被增量
+      // 导航判定成新目标而重复 loadURL（AI 侧发起的导航走的也是这条事件）
+      if (detail.url) lastLoadedUrlRef.current = detail.url
       const sid = sessionIdRef.current
       if (sid && detail.url) {
         previewSessionService.navigate(sid, detail.url)
@@ -238,6 +241,7 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
     const handleNavigateInPage = (event: Event) => {
       const detail = event as unknown as NavigateEvent
       if (!detail.isMainFrame) return
+      if (detail.url) lastLoadedUrlRef.current = detail.url
       const sid = sessionIdRef.current
       if (sid && detail.url) {
         previewSessionService.navigate(sid, detail.url)
@@ -362,17 +366,48 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
     }
   }, [])
 
-  // session.url 变化 → 增量 loadURL（避免 key remount 重建 webview 进程）
+  /**
+   * session.url 变化 → 增量导航
+   *
+   * 导航与刷新走同一条主进程通道：webview 标签自身的 loadURL() 在部分页面状态下
+   * 会静默失效（同址被当作同文档导航短路、SPA 路由接管等），表现为「地址栏换了
+   * 地址但页面没动」。guest 已就绪时交给主进程对同一个 webContents 调原生
+   * loadURL()；未就绪（webview 刚挂载、上报还没到）时重建 webview 元素兜底。
+   */
   useEffect(() => {
     if (!webviewMounted || !session) return
     const webview = nodeRef.current
     if (!webview) return
-    if (session.url && session.url !== lastLoadedUrlRef.current) {
-      lastLoadedUrlRef.current = session.url
-      // catch 兜底：-3 ERR_ABORTED 等错误由 did-fail-load 事件处理，
-      // 避免未捕获的 Promise rejection 被 GlobalErrorHandler 弹窗
-      webview.loadURL(session.url).catch(() => {})
+    if (!session.url || session.url === lastLoadedUrlRef.current) return
+
+    lastLoadedUrlRef.current = session.url
+    const targetUrl = session.url
+
+    const fallbackToWebview = () => {
+      // guest 未就绪时走不了主进程通道，而 webview 标签自身的 loadURL() 在本环境会
+      // 静默失效（同址被当作同文档导航短路），调了也没有任何反馈。重建元素让 React
+      // 按 src 重新加载，是这条路上唯一可靠的兜底；src 取当前 session.url 即目标地址。
+      setReloadNonce((value) => value + 1)
     }
+
+    const guest = guestIdRef.current
+    if (guest === null) {
+      fallbackToWebview()
+      return
+    }
+
+    void api.preview
+      .navigateGuest(guest, targetUrl)
+      .then((response) => {
+        if (response && response.success === false) {
+          logger.system.warn('[PreviewNavigate] Guest navigate rejected:', response.error)
+          fallbackToWebview()
+        }
+      })
+      .catch((error) => {
+        logger.system.warn('[PreviewNavigate] Guest navigate failed, fall back to webview:', error)
+        fallbackToWebview()
+      })
   }, [session?.url, webviewMounted, session])
 
   /**

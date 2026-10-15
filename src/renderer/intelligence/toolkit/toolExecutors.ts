@@ -3732,6 +3732,8 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         const question = args.question as string
         const rawOptions = args.options as Array<{ id?: string; value?: string; label: string; description?: string }>
         const multiSelect = (args.multi_select as boolean) || false
+        // 选项是否已穷举：默认否，界面据此在选项末尾补一个「其他」入口供用户自由作答
+        const allowCustom = args.allow_other !== false
 
         const options = rawOptions.map((opt, idx) => ({
             id: opt.id || opt.value || `option-${idx}`,
@@ -3744,7 +3746,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             result: `Waiting for user to select from options. Question: "${question}"`,
             meta: {
                 waitingForUser: true,
-                interactive: { type: 'interactive' as const, question, options, multiSelect },
+                interactive: { type: 'interactive' as const, question, options, multiSelect, allowCustom },
             },
         }
     },

@@ -104,6 +104,30 @@ const aliases = {
    'x-data-spreadsheet': path.resolve(__dirname, './node_modules/x-data-spreadsheet/dist/xspreadsheet'),
 }
 
+/**
+ * 共享的 Rollup 警告过滤（主进程 / 搜索索引 worker / 渲染进程三处构建复用）
+ *
+ * 静音两类已知且不可消除的提示：
+ * 1. EVAL —— web-tree-sitter / onnxruntime-web 内部使用 eval，属第三方库实现，无法改动。
+ * 2. dynamic import will not move module into another chunk ——
+ *    模块同时被 static import 与 dynamic import 引用时，动态导入无法为它单独分包。
+ *    主进程是单入口单 bundle，本就不产生分包；渲染进程虽为多入口 + manualChunks，
+ *    但触发该提示的前提恰恰是「该模块已被静态导入」，即它本就在主 chunk 中，
+ *    动态导入只是保留了延迟求值的语义（多用于打断循环依赖，见 bootstrap/globalCleanup.ts），
+ *    并非性能分包诉求。真正按需分包的模块（monaco-editor / syntax-highlighter 等）
+ *    不会被静态导入，也就不会触发该提示。
+ *    把动态导入统一改成静态导入会改变求值时机，有引入循环依赖或 TDZ 报错的风险，收益为负。
+ */
+function shouldSilenceWarning(warning: { code?: string; id?: string; message?: string }): boolean {
+  if (warning.code === 'EVAL' && (warning.id?.includes('web-tree-sitter') || warning.id?.includes('onnxruntime-web'))) {
+    return true
+  }
+  if (warning.message?.includes('dynamic import will not move module into another chunk')) {
+    return true
+  }
+  return false
+}
+
 export default defineConfig({
   plugins: [
     // 构建前清理 dist 目录（跨平台，替代 rimraf dist）
@@ -162,7 +186,7 @@ export default defineConfig({
               // DatabaseSync 得到 undefined，报「DatabaseSync is not a constructor」。
               external: [...EXTERNAL_DEPS, /^node:/],
               onwarn(warning, warn) {
-                if (warning.code === 'EVAL' && (warning.id?.includes('web-tree-sitter') || warning.id?.includes('onnxruntime-web'))) return
+                if (shouldSilenceWarning(warning)) return
                 warn(warning)
               }
             }
@@ -186,7 +210,7 @@ export default defineConfig({
             rollupOptions: {
               external: ['electron', '@lancedb/lancedb', 'apache-arrow', 'web-tree-sitter', '@xenova/transformers', 'onnxruntime-node', 'onnxruntime-web'],
               onwarn(warning, warn) {
-                if (warning.code === 'EVAL' && (warning.id?.includes('web-tree-sitter') || warning.id?.includes('onnxruntime-web'))) return
+                if (shouldSilenceWarning(warning)) return
                 warn(warning)
               }
             }
@@ -233,11 +257,8 @@ export default defineConfig({
         execution: path.resolve(__dirname, 'execution.html'),
         'vrm-companion': path.resolve(__dirname, 'vrm-companion.html'),
       },
-      // 忽略 web-tree-sitter 的 eval 警告（这是库内部使用，无法避免）
       onwarn(warning, warn) {
-        if (warning.code === 'EVAL' && (warning.id?.includes('web-tree-sitter') || warning.id?.includes('onnxruntime-web'))) {
-          return
-        }
+        if (shouldSilenceWarning(warning)) return
         warn(warning)
       },
       output: {

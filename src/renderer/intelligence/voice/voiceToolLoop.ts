@@ -36,11 +36,22 @@ import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { truncateToolResult } from '@utils/partialJson'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { miniChatApprovalService, type AuthorizationMode } from './miniChatApprovalService'
+import {
+  collectToolResultImages,
+  canSendImagePixelsToModel,
+  buildToolResultImageMessage,
+  isVisualUnsupportedError,
+  messagesContainImages,
+  stripImagesFromMessages,
+  markVisionUnsupported,
+  isVisionKnownUnsupported,
+} from '@intelligence/utils/toolResultImages'
 import type {
   LLMConfig,
   LLMMessage,
   ToolDefinition,
   ToolExecutionContext,
+  ToolResultImage,
 } from '@intelligence/providerTypes'
 
 /** 默认最大工具调用迭代次数 */
@@ -117,6 +128,15 @@ export interface CollectedToolCall {
   id: string
   name: string
   arguments: Record<string, unknown>
+}
+
+/** 工具结果消息（可携带工具产出的图片，供下一轮作为多模态输入） */
+interface VoiceToolResultMessage {
+  role: 'tool'
+  content: string
+  tool_call_id: string
+  name: string
+  images?: ToolResultImage[]
 }
 
 export interface VoiceToolLoopOptions {
@@ -282,18 +302,68 @@ export interface CallLLMResult {
 }
 
 /**
- * 调用 LLM（带工具支持）
+ * 调用 LLM（带工具支持），并在模型拒收图片时自动去图重试一次
  *
- * 流式收集文本、推理内容和工具调用，返回完整结果
- *
+ * 语音链路与迷你聊天窗都会经过这里：本地直连可能是支持看图的 VLM，先按原样送像素；
+ * 一旦报错指向「不接受图片输入」，去掉图片重试一次，并把该模型记入缓存，后续轮次直接去图。
  * 导出供 useAvatarMiniChat 复用（迷你聊天窗需要自己控制工具循环，
- * 为每轮迭代创建独立的 assistant 消息，与主窗口体验一致）
+ * 为每轮迭代创建独立的 assistant 消息，与主窗口体验一致）。
  *
  * @param options.timeout 单次请求超时（ms），传 0 表示不限制（文字聊天场景）
  * @param options.abortSignal 中断信号，触发时调用 api.llm.abort() 通知主进程取消
  * @param options.onReasoningChunk 推理内容流式回调（思考模型的思考过程）
  */
 export function callLLMWithTools(
+  config: LLMConfig,
+  messages: LLMMessage[],
+  tools: ToolDefinition[],
+  systemPrompt: string,
+  requestId: string,
+  onTextChunk?: (text: string) => void,
+  options?: CallLLMOptions,
+): Promise<CallLLMResult> {
+  // 已确认不支持图片的模型直接去图，省掉注定失败的首发请求
+  const outboundMessages = isVisionKnownUnsupported(config)
+    ? stripImagesFromMessages(messages)
+    : messages
+
+  return callLLMWithToolsOnce(
+    config,
+    outboundMessages,
+    tools,
+    systemPrompt,
+    requestId,
+    onTextChunk,
+    options,
+  ).then((result) => {
+    if (
+      result.error
+      && !isVisionKnownUnsupported(config)
+      && isVisualUnsupportedError(result.error)
+      && messagesContainImages(messages)
+    ) {
+      markVisionUnsupported(config)
+      logger.agent.warn('[VoiceToolLoop] Model rejected image input, retrying without images:', result.error)
+      return callLLMWithToolsOnce(
+        config,
+        stripImagesFromMessages(messages),
+        tools,
+        systemPrompt,
+        `${requestId}_nv`,
+        onTextChunk,
+        options,
+      )
+    }
+    return result
+  })
+}
+
+/**
+ * 调用 LLM（带工具支持）——单次请求，不做视觉兜底
+ *
+ * 流式收集文本、推理内容和工具调用，返回完整结果
+ */
+function callLLMWithToolsOnce(
   config: LLMConfig,
   messages: LLMMessage[],
   tools: ToolDefinition[],
@@ -467,7 +537,8 @@ export async function executeVoiceToolCall(
   toolCall: CollectedToolCall,
   workspacePath: string | null,
   requestId: string,
-): Promise<{ role: 'tool'; content: string; tool_call_id: string; name: string }> {
+  canAttachImages = false,
+): Promise<VoiceToolResultMessage> {
   const context: ToolExecutionContext = {
     workspacePath,
     chatMode: 'agent',
@@ -500,7 +571,7 @@ export async function executeVoiceToolCall(
     }
   }
 
-  return executeToolCallInternal(toolCall, context)
+  return executeToolCallInternal(toolCall, context, canAttachImages)
 }
 
 /**
@@ -531,7 +602,8 @@ export async function executeMiniChatToolCall(
   workspacePath: string | null,
   requestId: string,
   authorizationMode?: AuthorizationMode,
-): Promise<{ role: 'tool'; content: string; tool_call_id: string; name: string }> {
+  canAttachImages = false,
+): Promise<VoiceToolResultMessage> {
   // 审批检查：与 AgentSubLoop.executeToolCall 逻辑一致
   // 需要事前审批的范围由授权方式决定（见 decideApprovalByMode）：
   // 手动审批模式涵盖创建/修改文件、危险命令与外部内容；
@@ -588,7 +660,7 @@ export async function executeMiniChatToolCall(
     skipMainApproval: false, // 走正常审批流程，与普通聊天窗口一致
   }
 
-  return executeToolCallInternal(toolCall, context)
+  return executeToolCallInternal(toolCall, context, canAttachImages)
 }
 
 /**
@@ -601,7 +673,8 @@ export async function executeMiniChatToolCall(
 async function executeToolCallInternal(
   toolCall: CollectedToolCall,
   context: ToolExecutionContext,
-): Promise<{ role: 'tool'; content: string; tool_call_id: string; name: string }> {
+  canAttachImages: boolean,
+): Promise<VoiceToolResultMessage> {
   try {
     const result = await toolManager.execute(toolCall.name, toolCall.arguments, context)
 
@@ -620,11 +693,13 @@ async function executeToolCallInternal(
       }
 
       logger.agent.info(`[VoiceToolLoop] Tool ${toolCall.name} executed successfully`)
+      const images = canAttachImages ? await collectToolResultImages(result.richContent) : undefined
       return {
         role: 'tool',
         content: output || '工具执行成功（无输出）',
         tool_call_id: toolCall.id,
         name: toolCall.name,
+        ...(images ? { images } : {}),
       }
     } else {
       const errorOutput = result.error || '工具执行失败'
@@ -678,6 +753,8 @@ export async function runVoiceToolLoop(options: VoiceToolLoopOptions): Promise<V
   await ensureVoiceToolsInitialized()
   // 每次执行刷新工具加载上下文（智能体可能已切换，场景/Git 工具按需暴露）
   refreshToolLoadingContextForMessages(messages)
+  // 工具截图先按原样送，模型拒收图片时由 callLLMWithTools 自动去图重试（见 canSendImagePixelsToModel）
+  const canAttachImages = canSendImagePixelsToModel(config)
 
 
   // 获取可用工具列表（与普通对话完全相同）
@@ -814,7 +891,7 @@ export async function runVoiceToolLoop(options: VoiceToolLoopOptions): Promise<V
 
     // 并行执行工具调用
     const toolPromises = result.toolCalls.map(tc =>
-      executeVoiceToolCall(tc, workspacePath, requestId),
+      executeVoiceToolCall(tc, workspacePath, requestId, canAttachImages),
     )
     const toolResults = await Promise.all(toolPromises)
 
@@ -842,9 +919,23 @@ export async function runVoiceToolLoop(options: VoiceToolLoopOptions): Promise<V
       }
     })
 
-    // 将工具结果添加到消息历史
+    // 将工具结果添加到消息历史（图片字段只用于随后的附图消息，不随 tool 消息下发）
+    const attachedImages: ToolResultImage[] = []
+    const attachedToolNames: string[] = []
     for (const toolResult of toolResults) {
-      messages.push(toolResult)
+      if (toolResult.images?.length) {
+        attachedImages.push(...toolResult.images)
+        attachedToolNames.push(toolResult.name)
+      }
+      messages.push({
+        role: 'tool',
+        content: toolResult.content,
+        tool_call_id: toolResult.tool_call_id,
+        name: toolResult.name,
+      })
+    }
+    if (attachedImages.length > 0) {
+      messages.push(buildToolResultImageMessage(attachedToolNames, attachedImages))
     }
 
     // 继续下一轮 LLM 调用（工具结果已反馈，LLM 将基于结果生成回复）

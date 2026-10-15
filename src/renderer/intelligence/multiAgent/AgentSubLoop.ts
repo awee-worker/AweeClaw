@@ -17,7 +17,17 @@ import {
   renderSubAgentResult,
   type SubAgentResult,
 } from './AgentIRChannel'
-import type { LLMConfig, LLMMessage, ToolDefinition, ToolExecutionContext, ToolExecutionResult } from '@intelligence/providerTypes'
+import {
+  collectToolResultImages,
+  canSendImagePixelsToModel,
+  buildToolResultImageMessage,
+  isVisualUnsupportedError,
+  messagesContainImages,
+  stripImagesFromMessages,
+  markVisionUnsupported,
+  isVisionKnownUnsupported,
+} from '@intelligence/utils/toolResultImages'
+import type { LLMConfig, LLMMessage, ToolDefinition, ToolExecutionContext, ToolExecutionResult, ToolResultImage } from '@intelligence/providerTypes'
 
 export interface SubLoopOptions {
   config: LLMConfig
@@ -125,7 +135,39 @@ function refreshToolLoadingContext(sceneToolsEnabled = false, gitToolsEnabled = 
   })
 }
 
+/**
+ * 调用 LLM（带工具支持），并在模型拒收图片时自动去图重试一次
+ *
+ * 与语音链路同策略：本地直连可能是支持看图的 VLM，先按原样送像素；报错指向
+ * 「不接受图片输入」时去掉图片重试一次，并把该模型记入缓存，后续轮次直接去图。
+ */
 function callLLMWithTools(
+  config: LLMConfig,
+  messages: LLMMessage[],
+  tools: ToolDefinition[],
+  requestId: string
+): Promise<LLMCallResult> {
+  const outboundMessages = isVisionKnownUnsupported(config)
+    ? stripImagesFromMessages(messages)
+    : messages
+
+  return callLLMWithToolsOnce(config, outboundMessages, tools, requestId).then((result) => {
+    if (
+      result.error
+      && !isVisionKnownUnsupported(config)
+      && isVisualUnsupportedError(result.error)
+      && messagesContainImages(messages)
+    ) {
+      markVisionUnsupported(config)
+      logger.agent.warn('[AgentSubLoop] Model rejected image input, retrying without images:', result.error)
+      return callLLMWithToolsOnce(config, stripImagesFromMessages(messages), tools, `${requestId}_nv`)
+    }
+    return result
+  })
+}
+
+/** 单次请求，不做视觉兜底（见上方 callLLMWithTools） */
+function callLLMWithToolsOnce(
   config: LLMConfig,
   messages: LLMMessage[],
   tools: ToolDefinition[],
@@ -306,8 +348,9 @@ function callLLMWithTools(
 async function executeToolCall(
   toolCall: CollectedToolCall,
   workspacePath: string | null,
-  requestId: string
-): Promise<{ role: string; content: string; name: string }> {
+  requestId: string,
+  canAttachImages: boolean,
+): Promise<{ role: string; content: string; name: string; images?: ToolResultImage[] }> {
   const context: ToolExecutionContext = {
     workspacePath,
     chatMode: 'agent',
@@ -408,10 +451,12 @@ async function executeToolCall(
     if (!callFailed) {
       const output = typeof result.result === 'string' ? result.result : JSON.stringify(result.result)
       logger.agent.info(`[AgentSubLoop] Tool ${toolCall.name} executed`)
+      const images = canAttachImages ? await collectToolResultImages(result.richContent) : undefined
       return {
         role: 'tool',
         content: clampToolOutput(output) || 'Tool executed successfully (no output)',
         name: toolCall.name,
+        ...(images ? { images } : {}),
       }
     } else {
       const errorOutput = result.error || 'Tool execution failed'
@@ -443,6 +488,9 @@ export async function runAgentSubLoop(options: SubLoopOptions): Promise<SubLoopR
     resolveSceneToolsIntent({ userMessage }).value,
     resolveGitToolsIntent({ userMessage }).value,
   )
+
+  // 工具截图先按原样送，模型拒收图片时由 callLLMWithTools 自动去图重试（见 canSendImagePixelsToModel）
+  const canAttachImages = canSendImagePixelsToModel(config)
 
   const agentTools = toolManager.getAllToolDefinitions()
 
@@ -531,7 +579,7 @@ export async function runAgentSubLoop(options: SubLoopOptions): Promise<SubLoopR
 
 
     const toolPromises = result.toolCalls.map(tc =>
-      executeToolCall(tc, workspacePath, requestId)
+      executeToolCall(tc, workspacePath, requestId, canAttachImages)
         .then(toolResult => ({
           tool_call_id: tc.id,
           ...toolResult,
@@ -539,13 +587,23 @@ export async function runAgentSubLoop(options: SubLoopOptions): Promise<SubLoopR
     )
     const toolResults = await Promise.all(toolPromises)
 
+    // 工具结果照常入历史；图片单独收拢成一条 user 多模态消息（tool role 只收字符串）
+    const attachedImages: ToolResultImage[] = []
+    const attachedToolNames: string[] = []
     for (const toolResult of toolResults) {
+      if (toolResult.images?.length) {
+        attachedImages.push(...toolResult.images)
+        attachedToolNames.push(toolResult.name)
+      }
       messages.push({
         role: 'tool' as const,
         content: toolResult.content,
         tool_call_id: toolResult.tool_call_id,
         name: toolResult.name,
       })
+    }
+    if (attachedImages.length > 0) {
+      messages.push(buildToolResultImageMessage(attachedToolNames, attachedImages))
     }
 
     if (abortSignal?.aborted) {

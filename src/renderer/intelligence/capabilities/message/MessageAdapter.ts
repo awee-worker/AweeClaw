@@ -3,10 +3,11 @@
  * 将内部消息格式转换为 LLM API 格式
  */
 
-import { ChatMessage, isUserMessage, isAssistantMessage, isToolResultMessage, ToolResultMessage } from '@intelligence/providerTypes'
+import { ChatMessage, isUserMessage, isAssistantMessage, isToolResultMessage, ToolResultMessage, ToolResultImage } from '@intelligence/providerTypes'
 import { UNTRUSTED_CONTENT_TAG, type ToolOrigin } from '@intelligence/types/trustTypes'
 import { logger } from '@shared/toolkit/LogEngine'
 import type { LLMMessage } from '@intelligence/providerTypes'
+import { buildToolResultImageMessage } from '@intelligence/utils/toolResultImages'
 
 /**
  * 解析助手消息的可见文本兜底值
@@ -42,6 +43,9 @@ function resolveAssistantVisibleText(msg: ChatMessage): string {
 
   return ''
 }
+
+/** 携带图片进入上下文的工具结果条数上限（见 buildLLMApiMessages 内的说明） */
+const MAX_IMAGE_TOOL_RESULTS = 3
 
 /** 包裹后追加的边界说明：明确外部内容只能当数据看 */
 const TRUST_BOUNDARY_NOTE =
@@ -101,6 +105,21 @@ export function buildLLMApiMessages(
     }
   }
 
+  /**
+   * 只有最近的若干条工具结果会带图片进入上下文
+   *
+   * 每轮请求都会从会话历史重新组装 payload，若不加限制，一次会话里截过的所有图
+   * 都会在后续每一轮里重发一遍，上下文很快被历史截图吃满。这里只保留最近几次，
+   * 更早的结果自动退化为纯文本。
+   */
+  const imageResultIds = new Set<string>()
+  for (const candidate of messages
+    .filter((m): m is ToolResultMessage =>
+      isToolResultMessage(m) && !m.compactedAt && !!m.images?.length)
+    .slice(-MAX_IMAGE_TOOL_RESULTS)) {
+    imageResultIds.add(candidate.id)
+  }
+
   for (const msg of messages) {
     if (isUserMessage(msg)) {
       // 验证用户消息内容
@@ -154,6 +173,28 @@ export function buildLLMApiMessages(
               name: toolResult.name,
             })
           }
+        }
+
+        // 同一轮的图片统一合并成一条 user 消息，附在全部工具结果之后。
+        //
+        // 一是结构：多个并行调用时逐个插入 user，会把 assistant.tool_calls 与它的
+        // tool 结果拆开、破坏配对；二是体积：多张图收敛成一条消息更省。
+        //
+        // 之所以用 user 消息承载而不是内联进 tool 消息：OpenAI 的 tool role 只接受
+        // 字符串，多模态内容会被 AI SDK 序列化成纯文本（base64 变文本，体积暴涨且
+        // 模型看不到画面）；user 消息的多模态是各 provider 一致支持的通道。
+        const attachedImages: ToolResultImage[] = []
+        const attachedToolNames: string[] = []
+        for (const tc of validToolCalls) {
+          const toolResult = toolResultMap.get(tc.id)
+          if (!toolResult || !isToolResultMessage(toolResult)) continue
+          const typedResult = toolResult as ToolResultMessage
+          if (!typedResult.images?.length || !imageResultIds.has(typedResult.id)) continue
+          attachedImages.push(...typedResult.images)
+          attachedToolNames.push(toolResult.name)
+        }
+        if (attachedImages.length > 0) {
+          result.push(buildToolResultImageMessage(attachedToolNames, attachedImages))
         }
       } else {
         // ⚠️ content 为空（或只有 reasoning）时，历史里会把整条助手消息丢掉，

@@ -213,6 +213,46 @@ export function registerPreviewHandlers(): void {
     })
 
     /**
+     * 按 guest 导航到新地址
+     *
+     * 导航与重载走同一条可靠路径：webview 标签自身的 loadURL() 在部分页面状态下
+     * 会静默失效（同址被当作同文档导航短路、SPA 路由接管等），表现为「地址栏换了
+     * 地址但页面没动」。这里对同一个 webContents 调原生 loadURL()，不经过标签层。
+     * 协议白名单与 webviewGuard 一致，只放行 http/https。
+     */
+    safeIpcHandle('preview:navigate', async (event, guestId: unknown, url: unknown) => {
+        const guest = resolveOwnedGuest(event, guestId)
+        if (!guest) {
+            return { success: false, error: 'Unknown preview guest' }
+        }
+        if (typeof url !== 'string' || !url.trim()) {
+            return { success: false, error: 'url is required' }
+        }
+
+        let parsed: URL
+        try {
+            parsed = new URL(url.trim())
+        } catch {
+            return { success: false, error: `Invalid URL: ${url}` }
+        }
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return { success: false, error: `Only http/https URLs are allowed, got: ${parsed.protocol}` }
+        }
+
+        try {
+            await guest.loadURL(parsed.toString())
+        } catch (error) {
+            // 重定向或新导航打断时页面可能已经加载完成，以最终地址为准判定
+            const finalUrl = guest.getURL()
+            if (!finalUrl.startsWith(parsed.origin)) {
+                return { success: false, error: (error as Error).message }
+            }
+        }
+
+        return { success: true, data: { url: guest.getURL() } }
+    })
+
+    /**
      * 登记预览目录的自动刷新
      *
      * 只对本地静态页面调用：dev server 自带 HMR，不需要这份监听。

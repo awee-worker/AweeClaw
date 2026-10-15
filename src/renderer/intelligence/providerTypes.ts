@@ -109,6 +109,7 @@ export type {
   UserMessage,
   AssistantMessage,
   ToolResultMessage,
+  ToolResultImage,
   CheckpointMessage,
   InterruptedToolMessage,
   ChatMessage,

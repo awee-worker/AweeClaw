@@ -503,6 +503,7 @@ function createGroupedAPI() {
       collectNetwork: (guestId: number) => raw.preview.collectNetwork(guestId),
       collectContent: (guestId: number) => raw.preview.collectContent(guestId),
       reloadGuest: (guestId: number) => raw.preview.reloadGuest(guestId),
+      navigateGuest: (guestId: number, url: string) => raw.preview.navigateGuest(guestId, url),
       onHealth: (callback: Parameters<typeof raw.preview.onHealth>[0]) =>
         raw.preview.onHealth(callback),
       watchAutoReload: (rootDir: string, url: string) =>

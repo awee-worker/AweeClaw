@@ -1799,6 +1799,16 @@ export interface ElectronAPI {
      * webview 标签的 reload() 在部分页面状态下会静默失效，重载改由主进程执行。
      */
     reloadGuest: (guestId: number) => Promise<{ success: boolean; error?: string }>
+    /**
+     * 按 guest 导航到新地址
+     *
+     * 与 reloadGuest 同理：webview 标签的 loadURL() 在部分页面状态下会静默失效，
+     * 导航交回主进程执行，避免「地址栏换了地址但页面没动」。
+     */
+    navigateGuest: (
+      guestId: number,
+      url: string,
+    ) => Promise<{ success: boolean; data?: { url: string }; error?: string }>
     /** 健康状态推送订阅 */
     onHealth: (
       callback: (snapshot: import('@protocols/previewProtocol').PreviewHealthSnapshot) => void,

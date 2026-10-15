@@ -124,7 +124,9 @@
       --loader-text: #1a1a2e;
       --loader-text-dim: #6b7280;
       --loader-surface: #f3f4f6;
-      --loader-logo-url: url('%BASE_URL%brand/logos/app-light.png');
+      /* 以 / 开头：交给 Vite 按 public 资源处理并重写为 BASE_URL 前缀路径，
+         避免被当作源码相对路径去磁盘解析（public/ 下的文件不在解析范围） */
+      --loader-logo-url: url('/brand/logos/app-light.png');
       --loader-glow-opacity: 0.08;
     }
 

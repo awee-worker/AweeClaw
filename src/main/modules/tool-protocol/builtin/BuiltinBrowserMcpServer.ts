@@ -50,6 +50,8 @@ const WAIT_DEFAULT_S = 10
 const WAIT_MAX_MS = 30_000
 /** 点击按下与抬起之间的间隔，保证 mousedown/mouseup 成对被页面接收 */
 const CLICK_PAUSE_MS = 30
+/** 截图前等待重绘的上限：后台页面的 requestAnimationFrame 可能不触发，避免截图卡死 */
+const REPAINT_TIMEOUT_MS = 500
 
 // ============ 工具返回值辅助 ============
 
@@ -73,6 +75,32 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * 等页面完成一次重绘
+ *
+ * 点击 / 输入到画面更新之间隔着一帧渲染，紧接着截图常常拿到交互前的旧帧，
+ * 截出来的内容与刚执行的动作对不上。在页面里等两帧 requestAnimationFrame
+ * 再交回控制权，成本可忽略。
+ *
+ * 页面在后台或被隐藏时 rAF 可能永不触发，因此用超时兜底：宁可截到当前帧，
+ * 也不能让截图工具一直挂住。
+ */
+async function waitForRepaint(guest: WebContents): Promise<void> {
+  try {
+    await Promise.race([
+      guest.executeJavaScript(
+        'new Promise(function (resolve) {' +
+          'requestAnimationFrame(function () {' +
+          'requestAnimationFrame(function () { resolve(null); }); }); })',
+        true,
+      ),
+      delay(REPAINT_TIMEOUT_MS),
+    ])
+  } catch {
+    // 页面尚未就绪或脚本被阻断时忽略，截图照常进行
+  }
+}
+
 // ============ 会话定位与页面探测辅助 ============
 
 function getGuest(guestId: number): WebContents | null {
@@ -85,10 +113,13 @@ function getGuest(guestId: number): WebContents | null {
  *
  * 命中返回 guest 与会话信息；未命中返回给模型的错误字符串。
  * session_id / url 都缺省时取最近使用的预览标签页。
+ *
+ * 找不到时不会立刻判定失败：open_preview 返回后，webview 还要走「挂载 →
+ * dom-ready → 上报 guest」的链路，AI 紧接着调用必然扑空。这里在限时窗口内
+ * 轮询等待，把「刚打开就调用」的时序竞争吸收成一次正常命中。
  */
-function resolveTarget(args: { session_id?: string; url?: string }):
-  | { guest: WebContents; sessionId: string; tabUrl: string }
-  | string {
+async function resolveTarget(args: { session_id?: string; url?: string }):
+  Promise<{ guest: WebContents; sessionId: string; tabUrl: string } | string> {
   const sessionId = typeof args.session_id === 'string' && args.session_id.trim()
     ? args.session_id.trim()
     : undefined
@@ -96,7 +127,7 @@ function resolveTarget(args: { session_id?: string; url?: string }):
     ? args.url.trim()
     : undefined
 
-  const resolved = previewHealthMonitor.resolveGuest({ sessionId, url: urlHint })
+  const resolved = await previewHealthMonitor.waitForGuest({ sessionId, url: urlHint })
   if (!resolved) {
     return 'No preview tab found. Open a page in the built-in browser first (open_preview), then retry.'
   }
@@ -244,7 +275,8 @@ function registerTabTools(server: McpServer): void {
       url: z.string().min(1).describe('URL to load (http/https only)'),
     },
     async (args) => {
-      const target = resolveTarget(args)
+      // url 在这里是导航目标而不是匹配条件：只按 session_id（缺省取最近标签页）定位
+      const target = await resolveTarget({ session_id: args.session_id })
       if (typeof target === 'string') return err(target)
 
       let parsed: URL
@@ -257,11 +289,15 @@ function registerTabTools(server: McpServer): void {
         return err(`Only http/https URLs are allowed, got: ${parsed.protocol}`)
       }
 
+      let timer: ReturnType<typeof setTimeout> | null = null
       try {
         await Promise.race([
           target.guest.loadURL(parsed.toString()),
-          delay(LOAD_TIMEOUT_MS).then(() => {
-            throw new Error(`Load timed out after ${LOAD_TIMEOUT_MS / 1000}s`)
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error(`Load timed out after ${LOAD_TIMEOUT_MS / 1000}s`)),
+              LOAD_TIMEOUT_MS,
+            )
           }),
         ])
       } catch (e) {
@@ -270,8 +306,11 @@ function registerTabTools(server: McpServer): void {
         if (!finalUrl.startsWith(parsed.origin)) {
           return err(`Navigation failed: ${(e as Error).message}`)
         }
+      } finally {
+        // loadURL 先完成时定时器必须清掉：否则它会在加载结束很久之后才 reject，
+        // 变成一个无人处理的 Promise rejection
+        if (timer) clearTimeout(timer)
       }
-
       return ok(text(`Navigated to ${target.guest.getURL()} (session ${target.sessionId}).`))
     },
   )
@@ -284,7 +323,7 @@ function registerTabTools(server: McpServer): void {
       session_id: z.string().optional().describe('Target preview session id (default: most recent tab)'),
     },
     async (args) => {
-      const target = resolveTarget(args)
+      const target = await resolveTarget(args)
       if (typeof target === 'string') return err(target)
 
       if (!target.guest.navigationHistory.canGoBack()) {
@@ -308,7 +347,7 @@ function registerReadTools(server: McpServer): void {
       url: z.string().optional().describe('Match tab by url substring instead'),
     },
     async (args) => {
-      const target = resolveTarget(args)
+      const target = await resolveTarget(args)
       if (typeof target === 'string') return err(target)
 
       const result = await runProbe<SnapshotResult>(target.guest, SNAPSHOT_PROBE)
@@ -320,23 +359,35 @@ function registerReadTools(server: McpServer): void {
   /** browser_take_screenshot：页面截图 */
   server.tool(
     'browser_take_screenshot',
-    'Take a screenshot of the preview tab and return it as an image.',
+    'Take a screenshot of the preview tab and return it as an image. A repaint is awaited first, so the frame reflects the interaction that just happened.',
     {
       session_id: z.string().optional().describe('Target preview session id (default: most recent tab)'),
       url: z.string().optional().describe('Match tab by url substring instead'),
+      type: z.enum(['png', 'jpeg']).default('png').describe('Image format (default png; jpeg is smaller)'),
     },
     async (args) => {
-      const target = resolveTarget(args)
+      const target = await resolveTarget(args)
       if (typeof target === 'string') return err(target)
 
+      // 交互后立即截图容易截到旧帧，先让页面把待渲染的画面刷出来
+      await waitForRepaint(target.guest)
+
       try {
-        const png = await target.guest.capturePage()
-        if (png.isEmpty()) {
-          return err('Screenshot is empty — the tab may be minimized or still loading.')
+        const shot = await target.guest.capturePage()
+        if (shot.isEmpty()) {
+          return err(
+            'Screenshot is empty: the preview tab is not rendering right now (it may be hidden, ' +
+              'minimized, or still loading). Bring the tab to the front and retry, or use ' +
+              'browser_snapshot when you only need the page structure.',
+          )
         }
+
+        const isJpeg = args.type === 'jpeg'
+        const buffer = isJpeg ? shot.toJPEG(80) : shot.toPNG()
+        const size = shot.getSize()
         return ok(
-          image(png.toPNG().toString('base64'), 'image/png'),
-          text(`Screenshot captured: ${png.getSize().width}x${png.getSize().height}`),
+          image(buffer.toString('base64'), isJpeg ? 'image/jpeg' : 'image/png'),
+          text(`Screenshot captured: ${size.width}x${size.height} (${args.type}).`),
         )
       } catch (e) {
         return err(`Screenshot failed: ${(e as Error).message}`)
@@ -362,7 +413,7 @@ function registerInteractionTools(server: McpServer): void {
       double_click: z.boolean().default(false).describe('Double click instead of single'),
     },
     async (args) => {
-      const target = resolveTarget(args)
+      const target = await resolveTarget(args)
       if (typeof target === 'string') return err(target)
 
       const filter = pickFilter(args)
@@ -373,13 +424,24 @@ function registerInteractionTools(server: McpServer): void {
       const resolved = await runProbe<ResolvedElement>(target.guest, buildResolveProbe(filter))
       if (!resolved.ok) return err(resolved.error)
 
-      const { x, y } = resolved.data
-      const clickCount = args.double_click ? 2 : 1
+      // 定位坐标是页面 CSS 像素，sendInputEvent 走的是 DIP：页面被缩放时两者不等，
+      // 不换算就会点到元素外面（工具栏的放大/缩小会改变 zoomFactor）
+      const zoom = target.guest.getZoomFactor() || 1
+      const x = Math.round(resolved.data.x * zoom)
+      const y = Math.round(resolved.data.y * zoom)
       const button = args.button
+
       target.guest.sendInputEvent({ type: 'mouseMove', x, y })
-      target.guest.sendInputEvent({ type: 'mouseDown', x, y, button, clickCount })
-      await delay(CLICK_PAUSE_MS)
-      target.guest.sendInputEvent({ type: 'mouseUp', x, y, button, clickCount })
+
+      // 双击按两次「完整单击」发出：Chromium 依 down/up 的 clickCount 递增识别
+      // dblclick，只发一次 clickCount=2 的按压不会触发页面上的双击处理
+      const clickCounts = args.double_click ? [1, 2] : [1]
+      for (const clickCount of clickCounts) {
+        target.guest.sendInputEvent({ type: 'mouseDown', x, y, button, clickCount })
+        await delay(CLICK_PAUSE_MS)
+        target.guest.sendInputEvent({ type: 'mouseUp', x, y, button, clickCount })
+        if (clickCounts.length > 1) await delay(CLICK_PAUSE_MS)
+      }
 
       const label = resolved.data.text ? ` "${resolved.data.text}"` : ''
       return ok(text(`Clicked <${resolved.data.tag}>${label} at (${x}, ${y}).`))
@@ -401,7 +463,7 @@ function registerInteractionTools(server: McpServer): void {
       clear: z.boolean().default(true).describe('Replace existing value (default) or append'),
     },
     async (args) => {
-      const target = resolveTarget(args)
+      const target = await resolveTarget(args)
       if (typeof target === 'string') return err(target)
 
       const filter = pickFilter({ index: args.index, text: args.text_target, selector: args.selector })
@@ -438,7 +500,7 @@ function registerInteractionTools(server: McpServer): void {
       timeout: z.number().min(1).max(30).default(WAIT_DEFAULT_S).describe(`Max seconds to wait for the text (default ${WAIT_DEFAULT_S})`),
     },
     async (args) => {
-      const target = resolveTarget(args)
+      const target = await resolveTarget(args)
       if (typeof target === 'string') return err(target)
 
       if (!args.text) {
@@ -477,7 +539,7 @@ function registerDiagnosticsTools(server: McpServer): void {
       level: z.enum(['warning', 'error']).optional().describe('Filter by level (default: all)'),
     },
     async (args) => {
-      const target = resolveTarget(args)
+      const target = await resolveTarget(args)
       if (typeof target === 'string') return err(target)
 
       const snapshot = previewHealthMonitor.getSnapshot(target.sessionId)
@@ -509,7 +571,7 @@ function registerDiagnosticsTools(server: McpServer): void {
       url: z.string().optional().describe('Match tab by url substring instead'),
     },
     async (args) => {
-      const target = resolveTarget(args)
+      const target = await resolveTarget(args)
       if (typeof target === 'string') return err(target)
 
       const entries = await previewHealthMonitor.collectNetwork(target.guest.id)
@@ -534,7 +596,7 @@ function registerDiagnosticsTools(server: McpServer): void {
       script: z.string().min(1).describe('JavaScript expression or async IIFE to evaluate'),
     },
     async (args) => {
-      const target = resolveTarget(args)
+      const target = await resolveTarget(args)
       if (typeof target === 'string') return err(target)
 
       // 包一层 async IIFE：表达式与 Promise 都能拿到结果，异常也收敛成 JSON

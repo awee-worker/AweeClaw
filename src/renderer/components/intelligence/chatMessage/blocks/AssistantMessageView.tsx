@@ -535,14 +535,24 @@ const AssistantMessageBody = React.memo(function AssistantMessageBody({
                 const selectedLabels = assistantInteractive.options
                   .filter((opt: any) => selectedIds.includes(opt.id))
                   .map((opt: any) => opt.label)
-                // 继续任务卡片：把未完成清单转成续做正文；普通选项卡片维持原语义
+                // 继续任务卡片：把未完成清单转成续做正文；普通选项卡片维持原语义。
+                // 卡片内「其他」的自由输入与已选标签一并回传，多选时不会只剩自定义文本。
                 const response = assistantInteractive.kind === 'continue_task'
                   ? (selectedIds.includes('skip')
                       ? CONTINUATION_DECLINE_MESSAGE
                       : buildContinuationPrompt(assistantInteractive.continuation?.remaining ?? []))
-                  : (customText || selectedLabels.join(', '))
+                  : [...selectedLabels, customText].filter(Boolean).join(', ')
                 window.dispatchEvent(new CustomEvent('chat-update-interactive', { detail: { messageId: message.id, selectedIds } }))
-                window.dispatchEvent(new CustomEvent('chat-send-message', { detail: { content: response, messageId: message.id } }))
+                // ask_user 的选择属于「对提问的作答」，不该像用户手打一条消息那样留在时间线上：
+                // 静默注入后由 Agent 侧自动附加「选项交互衔接」说明，模型照样知道在回答什么。
+                // 继续任务卡片的「继续/暂不」是显式指令，保持原有的可见用户消息。
+                window.dispatchEvent(new CustomEvent('chat-send-message', {
+                  detail: {
+                    content: response,
+                    messageId: message.id,
+                    silent: assistantInteractive.kind !== 'continue_task',
+                  },
+                }))
               }}
               disabled={!!assistantInteractive.selectedIds?.length}
               obsolete={interactiveObsolete}

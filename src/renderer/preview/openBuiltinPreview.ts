@@ -11,10 +11,15 @@
  */
 
 import { useStore } from '@store'
+import type { PreviewSession } from '@shared/protocols/previewProtocol'
 import { api } from '@renderer/adapters/electronBridge'
 import { previewSessionService } from './previewSessionManager'
 
 const HTTP_URL_PATTERN = /^https?:\/\//i
+
+/** 等待 webview 挂载并完成健康绑定的时长与轮询间隔 */
+const GUEST_READY_TIMEOUT_MS = 3000
+const GUEST_READY_POLL_MS = 100
 
 export interface OpenBuiltinPreviewInput {
     /** 直接打开的 http/https 地址（通常是本地开发服务，如 http://localhost:5173） */
@@ -44,6 +49,26 @@ function deriveTitle(value: string): string {
 }
 
 /**
+ * 等待预览会话的 webview 就绪
+ *
+ * 打开动作返回后，AI 往往立刻读取或操作页面；而 webview 要先挂载、页面 dom-ready
+ * 触发上报、主进程完成健康绑定，这中间的空档会让浏览器自动化工具定位不到标签页。
+ * 把等待收进「打开」这一步，打开完成即代表页面已经可被自动化。
+ *
+ * 就绪信号取会话上的健康快照：它是主进程完成绑定的直接结果，比单纯的 guest id
+ * 更晚一点、也更准确。超时不算失败——页面可能仍在加载，后续工具调用自带等待兜底。
+ */
+async function waitForSessionReady(sessionId: string): Promise<void> {
+    const deadline = Date.now() + GUEST_READY_TIMEOUT_MS
+    while (Date.now() < deadline) {
+        if (previewSessionService.getSession(sessionId)?.health) {
+            return
+        }
+        await new Promise((resolve) => setTimeout(resolve, GUEST_READY_POLL_MS))
+    }
+}
+
+/**
  * 在内置浏览器打开预览
  *
  * @param input url 与 path 二选一；同时给出时以 url 为准
@@ -61,7 +86,8 @@ export async function openBuiltinPreview(
             }
         }
         const title = input.title || deriveTitle(rawUrl)
-        activatePreview(rawUrl, title)
+        const session = activatePreview(rawUrl, title)
+        await waitForSessionReady(session.id)
         return { success: true, url: rawUrl, title }
     }
 
@@ -79,7 +105,8 @@ export async function openBuiltinPreview(
             }
         }
         const title = input.title || deriveTitle(rawPath)
-        activatePreview(resolved.url, title, resolved.rootDir)
+        const session = activatePreview(resolved.url, title, resolved.rootDir)
+        await waitForSessionReady(session.id)
         return { success: true, url: resolved.url, title, rootDir: resolved.rootDir }
     } catch (err) {
         return {
@@ -89,9 +116,9 @@ export async function openBuiltinPreview(
     }
 }
 
-/** 打开（或复用）预览标签页并激活 */
-function activatePreview(url: string, title: string, rootDir?: string): void {
-    previewSessionService.openUrl(url, {
+/** 打开（或复用）预览标签页并激活，返回对应会话（调用方据此等待页面就绪） */
+function activatePreview(url: string, title: string, rootDir?: string): PreviewSession {
+    const session = previewSessionService.openUrl(url, {
         title,
         source: 'manual',
         activate: true,
@@ -105,4 +132,6 @@ function activatePreview(url: string, title: string, rootDir?: string): void {
 
     // 预览要抢焦点，避免被右侧边栏挡住
     useStore.getState().setActiveSidePanel(null)
+
+    return session
 }
