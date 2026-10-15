@@ -29,6 +29,7 @@ import { StorageService } from '@shared/toolkit/StorageService'
 import { api } from '@renderer/adapters/electronBridge'
 import { t, type Language } from '@renderer/i18n'
 import { WakeWordSettings } from './WakeWordSettings'
+import { useSettingsSaveSlot } from '../SettingsSaveBar'
 import {
   VOICE_PROVIDERS,
   getVoiceProviderPreset,
@@ -210,6 +211,14 @@ export default function VoiceSettingsPanel({ language }: VoiceSettingsPanelProps
       console.error('[VoiceSettings] Reset failed:', err)
     }
   }, [])
+
+  // 向父级注册统一保存栏：底部浮动保存栏由 PreferencesDialog 统一渲染
+  useSettingsSaveSlot({
+    isDirty,
+    isSaving: saving,
+    onSave: handleSave,
+    onReset: handleReset,
+  })
 
   // 切换独立云端/自定义模式（不受服务商 cloudMode 控制）
   const handleCloudModeChange = useCallback(async (mode: VoiceCloudMode) => {
@@ -852,29 +861,6 @@ export default function VoiceSettingsPanel({ language }: VoiceSettingsPanelProps
 
         </>)}
 
-      {/* ============ 底部弹出保存栏（与全局保存栏样式一致） ============ */}
-      {isDirty && (
-        <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
-          <span className="text-xs text-text-muted ml-2 font-medium">
-            {t('settings.unsavedChanges', language)}
-          </span>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleReset}
-              className="px-4 py-2 rounded-lg text-text-secondary hover:bg-text-primary/[0.05] transition-colors text-sm"
-            >
-              {t('settings.backToApp', language)}
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="min-w-[140px] px-6 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-bold shadow-lg shadow-accent/20 transition-all duration-300 disabled:opacity-50"
-            >
-              {saving ? t('common.saving', language) : t('common.save', language)}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

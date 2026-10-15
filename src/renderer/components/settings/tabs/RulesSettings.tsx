@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { rulesService } from '@intelligence/runtime/ruleEngine'
-import { ActionButton } from '@components/ui'
+import { useSettingsSaveSlot } from '../SettingsSaveBar'
 import { FileText, RefreshCw, AlertCircle, Save, RotateCcw } from 'lucide-react'
 import { BRAND } from '@shared/brand'
 import { t, type Language } from '@renderer/i18n'
@@ -51,6 +51,14 @@ export function RulesSettings({ language }: RulesSettingsProps) {
     setRulesContent(rulesService.getDefaultRulesTemplate())
     setRulesModified(true)
   }
+
+  // 向父级注册统一保存栏：底部浮动保存栏由 PreferencesDialog 统一渲染
+  useSettingsSaveSlot({
+    isDirty: rulesModified,
+    isSaving: rulesSaving,
+    onSave: handleSaveRules,
+    onReset: loadRules,
+  })
 
   const supportedFiles = [
     { path: BRAND.paths.rules, desc: t('app.recommended', language as Language) },
@@ -145,18 +153,6 @@ export function RulesSettings({ language }: RulesSettingsProps) {
                     {t('app.saved', language as Language)}
                   </span>
                 )}
-                <ActionButton
-                  variant="primary"
-                  size="sm"
-                  onClick={handleSaveRules}
-                  disabled={!rulesModified || rulesSaving}
-                  className="text-xs gap-1.5"
-                >
-                  {rulesSaving
-                    ? t('app.saving', language as Language)
-                    : t('app.saverules', language as Language)
-                  }
-                </ActionButton>
               </div>
             </div>
           </>

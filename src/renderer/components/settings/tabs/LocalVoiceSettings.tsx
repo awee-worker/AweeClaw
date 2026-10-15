@@ -19,7 +19,7 @@
  * @module settings/tabs/LocalVoiceSettings
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Mic,
   Volume2,
@@ -45,6 +45,7 @@ import {
   resolveVoiceForModel,
   ZIPVOICE_MODEL_ID,
 } from '@shared/localVoiceVoices'
+import { useSettingsSaveSlot } from '../SettingsSaveBar'
 
 /** 引擎状态 */
 type EngineStatus = 'uninitialized' | 'loading' | 'ready' | 'error'
@@ -227,6 +228,13 @@ interface LocalVoiceSettingsProps {
 
 export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps) {
   const [config, setConfig] = useState<LocalVoiceConfig>(DEFAULT_CONFIG)
+
+  /** 已保存配置快照，用于底部统一保存栏的脏检测 */
+  const savedSnapshotRef = useRef<string>('')
+  const isDirty = useMemo(
+    () => savedSnapshotRef.current !== '' && JSON.stringify(config) !== savedSnapshotRef.current,
+    [config],
+  )
   const [status, setStatus] = useState<LocalVoiceStatus>(DEFAULT_STATUS)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -292,6 +300,7 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
           plain.tts = { ...plain.tts, modelName, defaultVoice: voice }
         }
         setConfig(plain)
+        savedSnapshotRef.current = JSON.stringify(plain)
       }
 
       // 加载状态
@@ -344,6 +353,7 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
         // 立即失效语音路由缓存，否则本次保存要等 TTL 到期才对聊天语音生效
         invalidateLocalVoiceRuntime()
         toast.success(t('provider.localVoice.saveSuccess', language))
+        savedSnapshotRef.current = JSON.stringify(config)
         // 重新加载状态
         const statusResult = await api.localVoice.getStatus()
         if (statusResult.success) {
@@ -366,12 +376,31 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
       if (result.success) {
         invalidateLocalVoiceRuntime()
         setConfig(toPlain(result.data) as LocalVoiceConfig)
+        savedSnapshotRef.current = JSON.stringify(toPlain(result.data))
         toast.success(t('provider.localVoice.resetSuccess', language))
       }
     } catch (err) {
       toast.error((err as Error).message)
     }
   }, [language])
+
+  /** 放弃未保存的改动，恢复到上次保存的配置 */
+  const handleDiscard = useCallback(() => {
+    if (!savedSnapshotRef.current) return
+    try {
+      setConfig(JSON.parse(savedSnapshotRef.current) as LocalVoiceConfig)
+    } catch {
+      /* 快照异常时保持当前配置不变 */
+    }
+  }, [])
+
+  // 向父级注册统一保存栏：底部浮动保存栏由 PreferencesDialog 统一渲染
+  useSettingsSaveSlot({
+    isDirty,
+    isSaving: saving,
+    onSave: handleSave,
+    onReset: handleDiscard,
+  })
 
   // 更新配置字段
   const updateConfig = useCallback((field: string, value: unknown) => {
@@ -1188,23 +1217,13 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
           </div>
 
 
-          {/* 保存按钮 */}
+          {/* 重置为默认配置 */}
           <div className="flex justify-end gap-3">
             <button
               className="px-4 py-2 text-text-primary bg-surface-hover rounded-md hover:bg-gray-200"
               onClick={handleReset}
             >
               {t('provider.localVoice.reset', language)}
-            </button>
-            <button
-              className="px-4 py-2 text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:opacity-50"
-              onClick={handleSave}
-              disabled={saving}
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin inline mr-1" />
-              ) : null}
-              {t('provider.localVoice.save', language)}
             </button>
           </div>
         </>

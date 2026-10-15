@@ -22,6 +22,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { PROVIDERS, getBuiltinProviderIds, type ApiProtocol, resolveOpenAICompatibilityProfile } from '@configuration/aiProviders'
 import { toast } from '@components/foundation/NotificationProvider'
 import { t, type Language } from '@renderer/i18n'
+import { useSettingsSaveSlot } from '../SettingsSaveBar'
 
 const BUILTIN_PROVIDER_IDS = getBuiltinProviderIds()
 
@@ -203,6 +204,15 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
     setConfig((prev) => ({ ...prev, [field]: value }))
   }, [])
 
+
+  // 向父级注册统一保存栏：底部浮动保存栏由 PreferencesDialog 统一渲染
+  useSettingsSaveSlot({
+    isDirty: isDirty && config.enabled,
+    isSaving: saving,
+    canSave: !!config.provider && !!config.model,
+    onSave: handleSave,
+    onReset: handleReset,
+  })
   if (loading) {
     return (
       <section className="rounded-2xl border border-border/50 bg-surface/20 p-5 backdrop-blur-xl shadow-sm">
@@ -212,7 +222,7 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
   }
 
   return (
-    <div className="space-y-6 relative">
+    <div className="space-y-6">
       {/* ============ 云端/自定义模式切换（独立容器，与语音设置一致） ============ */}
       <div className="rounded-xl border border-border/40 bg-surface/30 p-4">
         <div className="flex items-center justify-between gap-4">
@@ -405,29 +415,6 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
         </div>
       </section>
 
-      {/* ============ 底部弹出保存栏（与全局保存栏样式一致） ============ */}
-      {isDirty && config.enabled && (
-        <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
-          <span className="text-xs text-text-muted ml-2 font-medium">
-            {t('settings.unsavedChanges', language)}
-          </span>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleReset}
-              className="px-4 py-2 rounded-lg text-text-secondary hover:bg-text-primary/[0.05] transition-colors text-sm"
-            >
-              {t('settings.backToApp', language)}
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving || !config.provider || !config.model}
-              className="min-w-[140px] px-6 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-bold shadow-lg shadow-accent/20 transition-all duration-300 disabled:opacity-50"
-            >
-              {saving ? t('common.saving', language) : t('common.save', language)}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 })

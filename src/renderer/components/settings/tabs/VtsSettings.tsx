@@ -22,6 +22,7 @@ import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@shared/toolkit/LogEngine'
 import type { VtsConfig, VtsConnectionState, VtsStatus } from '@renderer/types/electronBridge'
 import { useFeatureGuard } from '@hooks/useFeatureGuard'
+import { useSettingsSaveSlot } from '../SettingsSaveBar'
 
 interface VtsSettingsProps {
   language: Language
@@ -315,6 +316,20 @@ export function VtsSettings({ language }: VtsSettingsProps) {
     }
   }, [draft, saved, refreshStatus])
 
+  /** 放弃草稿：恢复到已保存的配置 */
+  const handleDiscard = useCallback(() => {
+    if (saved) setDraft(saved)
+  }, [saved])
+
+  // 向父级注册统一保存栏：底部浮动保存栏由 PreferencesDialog 统一渲染
+  useSettingsSaveSlot({
+    isDirty: dirty,
+    isSaving: busy,
+    canSave: !busy,
+    onSave: handleSave,
+    onReset: handleDiscard,
+  })
+
   /** 总开关：即时生效 */
   const handleToggleEnabled = useCallback(
     async (next: boolean) => {
@@ -542,16 +557,6 @@ export function VtsSettings({ language }: VtsSettingsProps) {
             disabled={busy}
             onClick={() => void handleDisconnect()}
           />
-          {dirty ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void handleSave()}
-              className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {zh ? '保存并应用' : 'Save & apply'}
-            </button>
-          ) : null}
         </div>
 
         {issues.length ? (

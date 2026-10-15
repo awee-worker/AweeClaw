@@ -3,9 +3,10 @@ import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
-import { ActionButton, OverlayDialog } from '@components/ui'
+import { OverlayDialog } from '@components/ui'
 import { SettingsTab } from './preferencesTypes'
 import { useSettingsLocalState } from './useSettingsLocalState'
+import { SettingsSaveBar, SettingsSaveSlotContext, type SettingsSaveSlot } from './SettingsSaveBar'
 import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -182,6 +183,8 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
     // 目标设置项锚点：打开意图在挂载后即被清空，故先固化到本地 state 供滚动定位使用
     const [targetAnchor] = useState<string | null>(settingsIntent?.anchor ?? null)
     const scrollRegionRef = useRef<HTMLDivElement>(null)
+    // 当前设置页注册的保存槽位（子面板上报，未上报时回落到全局偏好状态）
+    const [tabSaveSlot, setTabSaveSlot] = useState<SettingsSaveSlot | null>(null)
 
     // 消费打开意图：挂载后立即清空，避免影响下次普通打开设置
     useEffect(() => {
@@ -585,6 +588,8 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                 )
                 return
             }
+            // 切换设置页前清空上一页注册的保存槽位，避免底部保存栏沿用旧页状态
+            setTabSaveSlot(null)
             dispatch({ type: 'SET_ACTIVE_TAB', tab: tabId as SettingsTab })
         },
         [canUseFeature, dispatch, language, promptUpgrade],
@@ -648,30 +653,32 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                     </div>
                     <div ref={scrollRegionRef} className="settings-scroll-region flex-1 overflow-y-auto px-8 py-6 custom-scrollbar pb-28">
                         <div className="settings-tab-panel space-y-6">
-                            <Suspense fallback={<SettingsTabFallback language={language as Language} />}>
-                                {renderActiveTab()}
-                            </Suspense>
+                            <SettingsSaveSlotContext.Provider value={setTabSaveSlot}>
+                                <Suspense fallback={<SettingsTabFallback language={language as Language} />}>
+                                    {renderActiveTab()}
+                                </Suspense>
+                            </SettingsSaveSlotContext.Provider>
                         </div>
                     </div>
-                    {isDirty && state.activeTab !== 'channel' && state.activeTab !== 'voice' && state.activeTab !== 'vision' && (
-                        <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
-                            <span className="text-xs text-text-muted ml-2 font-medium">
-                                {t('settings.unsavedChanges', language as Language)}
-                            </span>
-                            <div className="flex items-center gap-3">
-                                <ActionButton variant="ghost" onClick={handleClose} className="hover:bg-text-primary/[0.05] text-text-secondary rounded-lg">
-                                    {t('settings.backToApp', language as Language)}
-                                </ActionButton>
-                                <ActionButton
-                                    variant="primary"
-                                    onClick={handleSave}
-                                    className="min-w-[140px] shadow-lg transition-all duration-300 rounded-xl bg-accent hover:bg-accent-hover text-white shadow-accent/20"
-                                >
-                                    <span className="font-bold">{t('common.save', language as Language)}</span>
-                                </ActionButton>
-                            </div>
-                        </div>
-                    )}
+                    {(() => {
+                        const slot = tabSaveSlot
+                        const visible = slot
+                            ? slot.isDirty
+                            : isDirty && state.activeTab !== 'channel' && state.activeTab !== 'voice' && state.activeTab !== 'vision'
+                        if (!visible) return null
+                        return (
+                            <SettingsSaveBar
+                                hint={t('settings.unsavedChanges', language as Language)}
+                                saveLabel={t('common.save', language as Language)}
+                                savingLabel={t('common.saving', language as Language)}
+                                cancelLabel={t('settings.backToApp', language as Language)}
+                                isSaving={slot?.isSaving ?? false}
+                                canSave={slot ? slot.canSave !== false : true}
+                                onSave={() => { void (slot ? slot.onSave() : handleSave()) }}
+                                onCancel={slot ? slot.onReset : handleClose}
+                            />
+                        )
+                    })()}
                 </div>
             </div>
         </div>

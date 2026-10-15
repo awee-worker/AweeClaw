@@ -4,4 +4,5 @@
 
 export { default as PreferencesDialog } from './PreferencesDialog'
 export * from './preferencesTypes'
+export * from './SettingsSaveBar'
 export * from './tabs'
