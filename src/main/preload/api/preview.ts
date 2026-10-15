@@ -7,6 +7,7 @@
  * - preview:health-detach     解绑 guest（停止健康采集）
  * - preview:health-get        读取指定会话的健康快照
  * - preview:network-collect   采集页面资源瀑布
+ * - preview:content-probe     采集页面内容摘要（白屏交叉验证）
  * - preview:reload            按 guest 重载页面
  * - preview:health-changed    健康状态推送（main → render）
  * - preview:auto-reload-watch   登记预览目录的自动刷新
@@ -19,6 +20,7 @@ import {
   PREVIEW_HEALTH_CHANNEL,
   type DevToolsRect,
   type PreviewAutoReloadPayload,
+  type PreviewContentSummary,
   type PreviewHealthSnapshot,
   type PreviewNetworkEntry,
 } from '../../../shared/protocols/previewProtocol'
@@ -58,6 +60,10 @@ export function createPreviewApi() {
     /** 采集页面资源瀑布（排查加载问题时按需调用） */
     collectNetwork: (guestId: number) =>
       invoke<PreviewIpcResponse<PreviewNetworkEntry[]>>('preview:network-collect')(guestId),
+
+    /** 采集页面内容摘要（白屏判定的交叉验证，按需调用） */
+    collectContent: (guestId: number) =>
+      invoke<PreviewIpcResponse<PreviewContentSummary | null>>('preview:content-probe')(guestId),
 
     /**
      * 按 guest 重载页面

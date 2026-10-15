@@ -181,6 +181,21 @@ export function registerPreviewHandlers(): void {
     })
 
     /**
+     * 采集页面内容摘要（白屏判定的交叉验证，按需触发）
+     *
+     * 白屏来自像素采样，SPA 延迟渲染等场景可能误报；这里读 DOM 文本量
+     * 复核，两个信号都为空才可靠判定页面没有内容。
+     */
+    safeIpcHandle('preview:content-probe', async (event, guestId: unknown) => {
+        const guest = resolveOwnedGuest(event, guestId)
+        if (!guest) {
+            return { success: false, error: 'Unknown preview guest' }
+        }
+
+        return { success: true, data: await previewHealthMonitor.collectContentSummary(guest.id) }
+    })
+
+    /**
      * 按 guest 重载页面
      *
      * 重载交给主进程的 WebContents.reload()：webview 标签自身的 reload() 与

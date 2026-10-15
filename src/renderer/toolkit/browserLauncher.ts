@@ -22,6 +22,8 @@ export function openUrlInBrowser(url: string, mode?: BrowserMode): void {
     })
     useStore.getState().setActiveSidePanel(null)
   } else {
+    // 浏览器互斥：外部浏览器打开前先收掉内置预览标签页，避免同一内容两处展示
+    previewSessionService.closeAllSessions('external-browser-opened')
     api.file.openExternalUrl(url)
   }
 }

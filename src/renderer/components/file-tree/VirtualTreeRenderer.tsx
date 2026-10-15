@@ -114,6 +114,10 @@ export const VirtualFileTree = memo(function VirtualFileTree({
 
   // 焦点状态
   const [focusedPath, setFocusedPath] = useState<string | null>(null)
+  // Shift 多选锚点
+  const [selectionAnchorPath, setSelectionAnchorPath] = useState<string | null>(null)
+  // 多选状态
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set())
 
   // 定位高亮状态（闪烁动画）
   const [highlightPath, setHighlightPath] = useState<string | null>(null)
@@ -124,8 +128,8 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     y: number
     node: FlattenedNode
   } | null>(null)
-  const [clipboardItem, setClipboardItem] = useState<ExplorerClipboardItem | null>(
-    () => explorerClipboardService.getState().entry
+  const [clipboardItems, setClipboardItems] = useState<ExplorerClipboardItem[]>(
+    () => explorerClipboardService.getState().items
   )
 
   // 重命名状态
@@ -137,7 +141,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
 
   useEffect(() => {
     return explorerClipboardService.subscribe(state => {
-      setClipboardItem(state.entry)
+      setClipboardItems(state.items)
     })
   }, [])
 
@@ -460,10 +464,53 @@ export const VirtualFileTree = memo(function VirtualFileTree({
   }, [])
 
   // 点击节点
-  const handleNodeClick = useCallback(async (node: FlattenedNode) => {
-    setFocusedPath(node.item.path)
+  const handleNodeClick = useCallback(async (node: FlattenedNode, modifiers?: { shift?: boolean; meta?: boolean; ctrl?: boolean }) => {
+    const shiftKey = modifiers?.shift === true
+    const metaKey = modifiers?.meta === true || modifiers?.ctrl === true
+    const path = node.item.path
 
-    if (renamingPath === node.item.path) return
+    // Shift 多选：以「上次点击的节点」为锚点，选择到当前节点之间的连续区间
+    if (shiftKey) {
+      // 排除创建占位与加载占位（__creating__ / __loading__N）
+      const isRealNode = (n: FlattenedNode) =>
+        n.item.name !== '__creating__' && !/^__loading__\d+$/.test(n.item.name)
+      const anchorIndex = selectionAnchorPath
+        ? flattenedNodes.findIndex((n) => pathEquals(n.item.path, selectionAnchorPath))
+        : -1
+      const currentIndex = flattenedNodes.findIndex((n) => pathEquals(n.item.path, path))
+      if (anchorIndex !== -1 && currentIndex !== -1) {
+        const from = Math.min(anchorIndex, currentIndex)
+        const to = Math.max(anchorIndex, currentIndex)
+        const realInSlice = flattenedNodes.slice(from, to + 1).filter(isRealNode)
+        setSelectedPaths(new Set(realInSlice.map((n) => n.item.path)))
+      } else {
+        // 锚点不在当前已渲染节点里时，退化为单选当前节点
+        setSelectedPaths(new Set([path]))
+      }
+      setSelectionAnchorPath(path)
+      setFocusedPath(path)
+      return
+    }
+
+    // Cmd/Ctrl：在已有选择基础上切换当前节点（非连续多选）
+    if (metaKey) {
+      setSelectedPaths((prev) => {
+        const next = new Set(prev)
+        if (next.has(path)) next.delete(path)
+        else next.add(path)
+        return next
+      })
+      setSelectionAnchorPath(path)
+      setFocusedPath(path)
+      return
+    }
+
+    // 普通点击：清除多选高亮，恢复单节点焦点并正常打开/展开
+    setFocusedPath(path)
+    setSelectedPaths(new Set())
+    setSelectionAnchorPath(path)
+
+    if (renamingPath === path) return
 
     if (node.item.isDirectory) {
       toggleFolder(node.item.path)
@@ -500,33 +547,89 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     e.stopPropagation()
     if (node.item.name === '__creating__') return
     setFocusedPath(node.item.path)
+    // 若右键节点不在多选集合中，则重置为单点焦点；否则保留多选集合供批量操作
+    const path = node.item.path
+    if (!selectedPaths.has(path)) {
+      setSelectedPaths(new Set())
+      setSelectionAnchorPath(path)
+    }
     setContextMenu({ x: e.clientX, y: e.clientY, node })
-  }, [])
+  }, [selectedPaths])
 
   // 菜单操作
+  // 批量删除：多选时删除所有选中项（Shift/Ctrl 区间），单选时删除当前节点
   const handleDelete = useCallback(async (node: FlattenedNode) => {
+    // 收集要删除的路径：多选时取全部选中项，且排除正在被删除的「父包含子」重复项
+    // 若某项是另一选中项的父目录，删父即删子，故只保留不被其他选中项包含的「顶层」项
+    const selectedList = selectedPaths.size > 1
+      ? flattenedNodes
+          .filter((n) => selectedPaths.has(n.item.path))
+          .map((n) => n.item.path)
+      : [node.item.path]
+
+    // 去除「父目录已选则其子项冗余」的路径，避免先删子再删父失败
+    const topLevelPaths = selectedList.filter((p) =>
+      !selectedList.some((other) => other !== p && pathStartsWith(p, other))
+    )
+
+    const count = topLevelPaths.length
+    const confirmMessage = count > 1
+      ? t('contextMenu.confirmDeleteBatch', language as Language, { count })
+      : t('contextMenu.confirmDelete', language as Language, { name: node.item.name })
+
     const confirmed = await globalConfirm({
       title: t('contextMenu.delete', language as Language),
-      message: t('contextMenu.confirmDelete', language as Language, { name: node.item.name }),
-      confirmText: t('contextMenu.delete', language as Language),
+      message: confirmMessage,
+      confirmText: count > 1
+        ? (t('contextMenu.deleteItems', language as Language, { count }) || `删除 ${count} 项`)
+        : t('contextMenu.delete', language as Language),
       cancelText: t('cancel', language as Language),
       variant: 'danger',
     })
-    if (confirmed) {
-      await api.file.delete(node.item.path)
-      directoryCacheService.invalidate(getDirPath(node.item.path))
-      setChildrenCache((prev) => {
-        const next = new Map(prev)
-        next.delete(node.item.path)
-        return next
-      })
-      onRefresh({
-        affectedPaths: [getDirPath(node.item.path)],
-        deletedPaths: [node.item.path],
-        refreshRoot: pathEquals(getDirPath(node.item.path), workspacePath || ''),
-      })
+    if (!confirmed) return
+
+    const affectedParentPaths = new Set<string>()
+    const allDeletedPaths: string[] = []
+    let anySucceeded = false
+
+    for (const p of topLevelPaths) {
+      const success = await api.file.delete(p)
+      if (success) {
+        anySucceeded = true
+        allDeletedPaths.push(p)
+        affectedParentPaths.add(getDirPath(p))
+      }
     }
-  }, [language, onRefresh, workspacePath])
+
+    if (!anySucceeded) {
+      toast.error(t('contextMenu.deleteFailed', language as Language) || 'Delete failed')
+      return
+    }
+
+    // 使失效父目录缓存
+    affectedParentPaths.forEach((parentPath) => directoryCacheService.invalidate(parentPath))
+    setChildrenCache((prev) => {
+      const next = new Map(prev)
+      for (const p of allDeletedPaths) next.delete(p)
+      // 同时清除选中项中已失效的子目录缓存
+      for (const p of topLevelPaths) next.delete(p)
+      return next
+    })
+
+    // 清除多选选择
+    setSelectedPaths(new Set())
+
+    onRefresh({
+      affectedPaths: Array.from(affectedParentPaths),
+      deletedPaths: allDeletedPaths,
+      refreshRoot: Array.from(affectedParentPaths).some(
+        (parentPath) => pathEquals(parentPath, workspacePath || '')
+      ),
+    })
+    if (count > 1) {
+      toast.success(t('contextMenu.deletedItems', language as Language, { count }) || `已删除 ${count} 项`)
+    }
+  }, [language, onRefresh, workspacePath, flattenedNodes, selectedPaths])
 
   const handleRenameStart = useCallback((node: FlattenedNode) => {
     setRenamingPath(node.item.path)
@@ -563,23 +666,48 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     setRenamingPath(null)
   }, [renamingPath, renameValue, flattenedNodes, onRefresh, workspacePath])
 
-  // 全局快捷键处理 (F2 重命名)
+  // 复制节点：Shift 多选时复制选中项，否则只复制当前节点
   const handleCopyItem = useCallback((node: FlattenedNode) => {
-    explorerClipboardService.setItem({
-      path: node.item.path,
-      name: node.item.name,
-      isDirectory: node.item.isDirectory,
-      copiedAt: Date.now(),
-    })
-    toast.success(node.item.isDirectory
-      ? (t('file-tree.foldercopied', language as Language))
-      : (t('file-tree.filecopied', language as Language)))
+    const items: ExplorerClipboardItem[] = selectedPaths.has(node.item.path)
+      ? flattenedNodes
+          .filter((n) => selectedPaths.has(n.item.path))
+          .map((n) => ({
+            path: n.item.path,
+            name: n.item.name,
+            isDirectory: n.item.isDirectory,
+            copiedAt: Date.now(),
+          }))
+      : [{
+        path: node.item.path,
+        name: node.item.name,
+        isDirectory: node.item.isDirectory,
+        copiedAt: Date.now(),
+      }]
+
+    // 复制仅写入应用内剪贴板，本身没有失败分支；成功与否在粘贴时以结果反馈，这里不再弹提示
+    explorerClipboardService.setItems(items)
+  }, [flattenedNodes, selectedPaths])
+
+  // 把名称直接写入系统剪贴板（右键菜单「复制名称」/重命名编辑态共用）
+  const copyNameToClipboard = useCallback(async (name: string) => {
+    try {
+      await navigator.clipboard.writeText(name)
+      toast.success(t('file-tree.namecopied', language as Language) || 'Name copied')
+    } catch {
+      toast.error(t('file-tree.namecopiedfailed', language as Language) || 'Failed to copy name')
+    }
   }, [language])
 
+  // 复制节点名称（重命名编辑态 / 右键菜单「复制名称」）
+  const handleCopyName = useCallback((node: FlattenedNode) => {
+    void copyNameToClipboard(node.item.name)
+  }, [copyNameToClipboard])
+
   const getCopyDestinationPath = useCallback(async (targetDirectoryPath: string, item: ExplorerClipboardItem) => {
-    const nameParts = item.isDirectory ? null : item.name.match(/^(.*?)(\.[^.]*)?$/)
-    const baseName = item.isDirectory ? item.name : (nameParts?.[1] || item.name)
-    const extension = item.isDirectory ? '' : (nameParts?.[2] || '')
+    // 拆分文件名与扩展名（仅取最后一个点，隐藏文件如 .env 不产生空基名）
+    const dotIndex = item.isDirectory ? -1 : item.name.lastIndexOf('.')
+    const baseName = item.isDirectory || dotIndex <= 0 ? item.name : item.name.slice(0, dotIndex)
+    const extension = item.isDirectory ? '' : item.name.slice(dotIndex)
 
     let candidateName = `${baseName} - 副本${extension}`
     let candidatePath = joinPath(targetDirectoryPath, candidateName)
@@ -595,21 +723,31 @@ export const VirtualFileTree = memo(function VirtualFileTree({
   }, [])
 
   const handlePasteIntoDirectory = useCallback(async (targetDirectoryPath: string) => {
-    const item = explorerClipboardService.getState().entry
-    if (!item) return
+    const clip = explorerClipboardService.getState()
+    const items = clip.items.length > 0 ? clip.items : (clip.entry ? [clip.entry] : [])
+    if (items.length === 0) return
 
-    const normalizedSourcePath = normalizePath(item.path)
     const normalizedTargetDirectoryPath = normalizePath(targetDirectoryPath)
-    if (!normalizedSourcePath || !normalizedTargetDirectoryPath) return
+    if (!normalizedTargetDirectoryPath) return
 
-    if (item.isDirectory && normalizedTargetDirectoryPath.startsWith(`${normalizedSourcePath}/`)) {
-      toast.error(t('file-tree.cannotpasteafolderinside', language as Language))
-      return
+    const copyResults: Array<{ destinationPath: string; success: boolean; isDirectory: boolean }> = []
+    for (const item of items) {
+      const normalizedSourcePath = normalizePath(item.path)
+      if (!normalizedSourcePath) continue
+
+      // 目标目录不能是源目录自身，也不能位于源目录内部（否则 cp 递归自引用会失败）
+      if (item.isDirectory && pathStartsWith(normalizedTargetDirectoryPath, normalizedSourcePath)) {
+        toast.error(t('file-tree.cannotpasteafolderinside', language as Language))
+        continue
+      }
+
+      const destinationPath = await getCopyDestinationPath(targetDirectoryPath, item)
+      const success = await api.file.copy(item.path, destinationPath)
+      copyResults.push({ destinationPath, success, isDirectory: item.isDirectory })
     }
 
-    const destinationPath = await getCopyDestinationPath(targetDirectoryPath, item)
-    const success = await api.file.copy(item.path, destinationPath)
-    if (!success) {
+    const succeeded = copyResults.filter((r) => r.success)
+    if (succeeded.length === 0) {
       toast.error(t('file-tree.pastefailed', language as Language))
       return
     }
@@ -619,9 +757,18 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       affectedPaths: [targetDirectoryPath],
       refreshRoot: pathEquals(targetDirectoryPath, workspacePath || ''),
     })
-    toast.success(item.isDirectory
-      ? (t('file-tree.folderpasted', language as Language))
-      : (t('file-tree.filepasted', language as Language)))
+    const folderCount = succeeded.filter((r) => r.isDirectory).length
+    const fileCount = succeeded.length - folderCount
+    if (succeeded.length === 1) {
+      toast.success(succeeded[0].isDirectory
+        ? t('file-tree.folderpasted', language as Language)
+        : t('file-tree.filepasted', language as Language))
+    } else {
+      const parts: string[] = []
+      if (folderCount > 0) parts.push(t('file-tree.folderspasted', language as Language, { count: folderCount }))
+      if (fileCount > 0) parts.push(t('file-tree.filespasted', language as Language, { count: fileCount }))
+      toast.success(parts.join('、'))
+    }
   }, [getCopyDestinationPath, language, onRefresh, workspacePath])
 
   const handlePasteForNode = useCallback((node: FlattenedNode) => {
@@ -662,7 +809,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       return
     }
 
-    if (keybindingService.matches(e, 'explorer.paste') && clipboardItem) {
+    if (keybindingService.matches(e, 'explorer.paste') && clipboardItems.length > 0) {
       e.preventDefault()
       const node = focusedPath
         ? flattenedNodes.find(n => pathEquals(n.item.path, focusedPath))
@@ -673,8 +820,33 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       } else if (workspacePath) {
         void handlePasteIntoDirectory(workspacePath)
       }
+      return
     }
-  }, [clipboardItem, focusedPath, flattenedNodes, handleCopyItem, handlePasteForNode, handlePasteIntoDirectory, renamingPath, workspacePath, handleRenameStart])
+
+    // Shift + 点击方向键：扩展 Shift 多选（从当前焦点开始）
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!e.shiftKey) return
+      if (!focusedPath) return
+      e.preventDefault()
+      const currentIndex = flattenedNodes.findIndex(n => pathEquals(n.item.path, focusedPath))
+      if (currentIndex === -1) return
+      const step = e.key === 'ArrowDown' ? 1 : -1
+      const nextIndex = Math.min(Math.max(currentIndex + step, 0), flattenedNodes.length - 1)
+      const nextPath = flattenedNodes[nextIndex]?.item.path
+      if (!nextPath) return
+      // 若已有选择，则扩展；否则以当前焦点为起点创建 2 项选择
+      const from = Math.min(currentIndex, nextIndex)
+      const to = Math.max(currentIndex, nextIndex)
+      setSelectedPaths(new Set(flattenedNodes.slice(from, to + 1).map(n => n.item.path)))
+      setSelectionAnchorPath(focusedPath)
+      setFocusedPath(nextPath)
+      // 滚动到新焦点位置
+      if (containerRef.current) {
+        const top = nextIndex * ITEM_HEIGHT
+        containerRef.current.scrollTo({ top, behavior: 'smooth' })
+      }
+    }
+  }, [clipboardItems.length, focusedPath, flattenedNodes, handleCopyItem, handlePasteForNode, handlePasteIntoDirectory, renamingPath, workspacePath, handleRenameStart])
 
   const handleCopyPath = useCallback((node: FlattenedNode) => {
     navigator.clipboard.writeText(node.item.path)
@@ -1003,10 +1175,13 @@ export const VirtualFileTree = memo(function VirtualFileTree({
           : []),
         { id: 'sepTerminal', label: '', separator: true },
         { id: 'copy', label: t('contextMenu.copy', contextMenuLanguage), icon: Copy, shortcut: formatShortcut('Ctrl+C'), onClick: () => handleCopyItem(node) },
-        { id: 'paste', label: t('paste', contextMenuLanguage), icon: Clipboard, shortcut: formatShortcut('Ctrl+V'), disabled: !clipboardItem, onClick: () => handlePasteForNode(node) },
+        { id: 'copyName', label: t('contextMenu.copyName', contextMenuLanguage), icon: Copy, onClick: () => handleCopyName(node) },
+        { id: 'paste', label: t('paste', contextMenuLanguage), icon: Clipboard, shortcut: formatShortcut('Ctrl+V'), disabled: clipboardItems.length === 0, onClick: () => handlePasteForNode(node) },
         { id: 'sepClipboard', label: '', separator: true },
         { id: 'rename', label: t('contextMenu.rename', contextMenuLanguage), icon: Edit2, onClick: () => handleRenameStart(node) },
-        { id: 'delete', label: t('contextMenu.delete', contextMenuLanguage), icon: Trash2, danger: true, onClick: () => handleDelete(node) },
+        { id: 'delete', label: selectedPaths.size > 1
+          ? (t('contextMenu.deleteItems', contextMenuLanguage, { count: selectedPaths.size }) || `删除 ${selectedPaths.size} 项`)
+          : t('contextMenu.delete', contextMenuLanguage), icon: Trash2, danger: true, onClick: () => handleDelete(node) },
         { id: 'sep3', label: '', separator: true },
         { id: 'copyPath', label: t('contextMenu.copyPath', contextMenuLanguage), icon: Copy, onClick: () => handleCopyPath(node) },
         { id: 'copyRelPath', label: t('contextMenu.copyRelativePath', contextMenuLanguage), icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
@@ -1054,10 +1229,13 @@ export const VirtualFileTree = memo(function VirtualFileTree({
         : []),
       { id: 'sepTerminal', label: '', separator: true },
       { id: 'copy', label: t('contextMenu.copy', contextMenuLanguage), icon: Copy, shortcut: formatShortcut('Ctrl+C'), onClick: () => handleCopyItem(node) },
-      { id: 'paste', label: t('paste', contextMenuLanguage), icon: Clipboard, shortcut: formatShortcut('Ctrl+V'), disabled: !clipboardItem, onClick: () => handlePasteForNode(node) },
+      { id: 'copyName', label: t('contextMenu.copyName', contextMenuLanguage), icon: Copy, onClick: () => handleCopyName(node) },
+      { id: 'paste', label: t('paste', contextMenuLanguage), icon: Clipboard, shortcut: formatShortcut('Ctrl+V'), disabled: clipboardItems.length === 0, onClick: () => handlePasteForNode(node) },
       { id: 'sepClipboard', label: '', separator: true },
       { id: 'rename', label: t('contextMenu.rename', contextMenuLanguage), icon: Edit2, onClick: () => handleRenameStart(node) },
-      { id: 'delete', label: t('contextMenu.delete', contextMenuLanguage), icon: Trash2, danger: true, onClick: () => handleDelete(node) },
+      { id: 'delete', label: selectedPaths.size > 1
+        ? (t('contextMenu.deleteItems', contextMenuLanguage, { count: selectedPaths.size }) || `删除 ${selectedPaths.size} 项`)
+        : t('contextMenu.delete', contextMenuLanguage), icon: Trash2, danger: true, onClick: () => handleDelete(node) },
       { id: 'sep2', label: '', separator: true },
       { id: 'copyPath', label: t('contextMenu.copyPath', contextMenuLanguage), icon: Copy, onClick: () => handleCopyPath(node) },
       { id: 'copyRelPath', label: t('contextMenu.copyRelativePath', contextMenuLanguage), icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
@@ -1068,7 +1246,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     items.push({ id: 'toggleHidden', label: showWorkspaceSystemDir ? t('contextMenu.hideWorkspaceSystemDir', contextMenuLanguage) : t('contextMenu.showWorkspaceSystemDir', contextMenuLanguage), icon: showWorkspaceSystemDir ? EyeOff : Eye, onClick: () => setShowWorkspaceSystemDir(!showWorkspaceSystemDir) })
 
     return items
-  }, [activeScenarioId, clipboardItem, handleNewFile, handleNewFolder, handleOpenTerminalHere, handleCopyItem, handlePasteForNode, handleRenameStart, handleDelete, handleCopyPath, handleCopyRelativePath, handleRevealInExplorer, handleOpenInBrowser, handleImportIntoFolder, handleExportFromNode, handleShareItem, handleRunProject, handleConvertFile, hasRunnableProject, showWorkspaceSystemDir, setShowWorkspaceSystemDir, language])
+  }, [activeScenarioId, clipboardItems.length, selectedPaths, handleNewFile, handleNewFolder, handleOpenTerminalHere, handleCopyItem, handleCopyName, handlePasteForNode, handleRenameStart, handleDelete, handleCopyPath, handleCopyRelativePath, handleRevealInExplorer, handleOpenInBrowser, handleImportIntoFolder, handleExportFromNode, handleShareItem, handleRunProject, handleConvertFile, hasRunnableProject, showWorkspaceSystemDir, setShowWorkspaceSystemDir, language])
 
   // 渲染单个节点
   const renderNode = (node: FlattenedNode, index: number) => {
@@ -1156,7 +1334,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     return (
       <div
         key={item.path}
-        onClick={() => handleNodeClick(node)}
+        onClick={(e) => handleNodeClick(node, { shift: e.shiftKey, meta: e.metaKey, ctrl: e.ctrlKey })}
         onContextMenu={(e) => handleContextMenu(e, node)}
         draggable={!isRenaming}
         onDragStart={(e) => {
@@ -1215,7 +1393,9 @@ export const VirtualFileTree = memo(function VirtualFileTree({
         }}
         className={`
           group flex items-center gap-2 pr-2 cursor-pointer transition-colors duration-150 relative select-none rounded-md mx-2 my-[2px] min-w-max
-          ${isActive
+          ${selectedPaths.has(item.path)
+            ? 'bg-accent/15 text-accent font-medium'
+            : isActive
             ? 'bg-accent/15 text-accent font-medium'
             : isFocused
               ? 'bg-surface-hover/80 text-text-primary'
@@ -1266,6 +1446,9 @@ export const VirtualFileTree = memo(function VirtualFileTree({
           <TextField
             ref={renameInputRef}
             value={renameValue}
+            // 宽度随输入内容自适应，避免长名称被截断
+            // 深度缩进与图标占用空间由 min-w 与节点 flex-1 兜底；下限取 16 以容纳较长前缀
+            widthChars={Math.max(16, renameValue.length + 2)}
             onChange={(e) => setRenameValue(e.target.value)}
             onBlur={handleRenameSubmit}
             onKeyDown={(e) => {
@@ -1275,11 +1458,25 @@ export const VirtualFileTree = memo(function VirtualFileTree({
               if (e.key === 'Enter') {
                 e.preventDefault()
                 handleRenameSubmit()
+                return
               }
-              if (e.key === 'Escape') setRenamingPath(null)
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                setRenamingPath(null)
+                setRenameValue(item.name)
+                return
+              }
+              // Cmd/Ctrl+C：复制当前输入的名称文本，阻止事件冒泡到容器（容器快捷键会复制整个节点）
+              if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+                e.preventDefault()
+                e.stopPropagation()
+                void copyNameToClipboard(e.currentTarget.value)
+                return
+              }
             }}
             onClick={(e) => e.stopPropagation()}
-            className="flex-1 h-5 text-[13px] px-1 py-0"
+            onDragStart={(e) => e.preventDefault()}
+            className="flex-1 min-w-[9rem] h-5 text-[13px] px-1 py-0"
             autoFocus
           />
         ) : (

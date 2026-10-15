@@ -368,7 +368,32 @@ const PAGE_PREVIEW_GUIDE = `## Page Preview (MANDATORY for pages you build)
 - To show a page you built, call \`open_preview\` — it opens the page in AweeClaw's built-in browser (an in-app preview tab).
 - NEVER open a local HTML file with the system browser (\`open\` / \`start\` / \`xdg-open\`), and NEVER start a temporary static server (\`python3 -m http.server\`, \`npx serve\`) just to look at a static page: the built-in preview already serves the page over a loopback address, with relative CSS/JS/image references working.
 - Use \`open_preview path="<file or folder>"\` for a static page; use \`open_preview url="http://localhost:<port>"\` only when the project really needs a dev server (bundler, HMR, API routes).
+- BROWSER EXCLUSIVITY: never show the same page in both the built-in browser and the system browser. Once open_preview has opened the page, do NOT run \`open\` / \`start\` / \`xdg-open\` (including dev-server \`--open\` flags) for it. If the system browser genuinely becomes necessary, close the built-in preview tab first — one browser at a time.
 - Do not report a page as done before you have opened it for the user.`
+
+/**
+ * 内置浏览器自动化指引（仅当 builtin-browser MCP 已连接时注入）
+ *
+ * open_preview 只负责把页面展示出来；「读内容 / 交互」由内置浏览器自动化承担。
+ * 缺了这段，模型读不到渲染后的 DOM，就会退回外部浏览器或 read_url —— 后者对
+ * JS 渲染页拿不到内容，正是「打开了页面却看不到内容」的典型成因。
+ */
+const BROWSER_AUTOMATION_GUIDE = `## Built-in Browser Automation (PREFERRED for reading/operating pages)
+- \`open_preview\` only displays the page. To actually READ page content or INTERACT with it, use the \`mcp_builtin-browser__browser_*\` tools — they drive the built-in browser's preview tabs directly:
+  - \`browser_snapshot\` — structured snapshot: title, url, all visible interactive elements with stable [index] refs, and the page text. ALWAYS call this first before interacting.
+  - \`browser_click\` / \`browser_type\` — click / type by [index] from the snapshot (real input events; React/Vue handlers fire normally). \`browser_type\` supports submit=true to press Enter.
+  - \`browser_take_screenshot\` — returns the page as an image for visual inspection.
+  - \`browser_console_messages\` / \`browser_network_requests\` — live console errors and resource waterfall of the tab.
+  - \`browser_navigate\` / \`browser_back\` — load a new http/https URL in the tab, or go back.
+- When the user asks to open a webpage and see what is on it ("看看这个页面有什么内容"), or to verify a rendered page: \`open_preview\` (if not open yet) then \`browser_snapshot\`. Do NOT fall back to the system browser, and do NOT rely on \`read_url\` for JS-rendered pages (it returns no DOM content).
+- Browser exclusivity: do not open the same page with the system browser while the built-in preview tab shows it. Prefer the built-in browser; switch to the system browser only when the built-in one cannot fulfill the request, and close the built-in tab when you do.
+- Read-only tools (snapshot / screenshot / console / network / list_tabs) are auto-approved; click / type / navigate / back / evaluate require user confirmation.`
+
+/** builtin-browser MCP 服务器当前是否已连接（决定自动化指引是否注入提示词） */
+function isBuiltinBrowserAutomationConnected(): boolean {
+  const servers = useStore.getState().mcpServers || []
+  return servers.some((server) => server.id === 'builtin-browser' && server.status === 'connected')
+}
 
 
 function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' | 'executing', isChannel?: boolean, sceneToolsEnabled = false, userMessage?: string, gitToolsEnabled = false): string {
@@ -389,6 +414,8 @@ function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' 
   const { toolGuidelines } = getActiveScenarioIdentity()
   // 预览指引跟随工具可见性：工具不可用时不必占用提示词
   const previewGuide = allowedTools.includes('open_preview') ? PAGE_PREVIEW_GUIDE : null
+  // 浏览器自动化指引跟随 MCP 连接状态：未连接时不注入，避免指向不存在的工具
+  const browserAutomationGuide = isBuiltinBrowserAutomationConnected() ? BROWSER_AUTOMATION_GUIDE : null
 
   return `## Available Tools
 
@@ -398,7 +425,7 @@ ${FILE_EDIT_PRIORITY}
 
 ${GIT_TOOLS_ON_DEMAND}
 
-${previewGuide ? `${previewGuide}\n\n` : ''}${toolGuidelines}`
+${previewGuide ? `${previewGuide}\n\n` : ''}${browserAutomationGuide ? `${browserAutomationGuide}\n\n` : ''}${toolGuidelines}`
 
 }
 

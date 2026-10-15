@@ -70,12 +70,13 @@ import { guardWriteFile } from './fileWritePolicy'
 import { openBuiltinPreview } from '@renderer/preview/openBuiltinPreview'
 import { previewSessionService } from '@renderer/preview/previewSessionManager'
 import type {
+    PreviewContentSummary,
     PreviewHealthLevel,
     PreviewHealthSnapshot,
     PreviewNetworkEntry,
     PreviewSession,
 } from '@shared/protocols/previewProtocol'
-import { detectLocalPageOpenCommand } from './localPageOpenGuard'
+import { detectLocalPageOpenCommand, hasSystemBrowserOpenCommand } from './localPageOpenGuard'
 import { executeAddNode, executeAddEdge } from './graphToolExecutors'
 import {
     extractDocumentLocal,
@@ -119,6 +120,17 @@ function resolvePreviewSession(sessionId: string, urlHint: string): PreviewSessi
 
     // getState() 已按 updatedAt 降序排列，首个即最近活跃
     return sessions[0]
+}
+
+/**
+ * 内置浏览器自动化（mcp_builtin-browser）是否已连接
+ *
+ * 已连接时 open_preview 的返回文案引导模型用 browser_snapshot 读页面内容；
+ * 未连接时保持旧的 read_url / web_search 兜底提示，避免指向不存在的工具。
+ */
+function isBuiltinBrowserAutomationConnected(): boolean {
+    const servers = useStore.getState().mcpServers || []
+    return servers.some((server) => server.id === 'builtin-browser' && server.status === 'connected')
 }
 
 /** 把健康快照整理成可读报告 */
@@ -2641,6 +2653,19 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 resultText = `${resultText}${timeoutHint}`
             }
 
+            // ── 浏览器互斥收尾 ─────────────────────────────────────
+            // 命令包含会拉起系统浏览器的打开器（open / start / xdg-open /
+            // cmd /c start / dev server 的 --open）且执行成功，说明外部浏览器
+            // 已被拉起。此时同步关闭内置预览标签页，维持「内置 / 外部只开一个」。
+            // 能被安全改写的目标（本地页面 / http 地址）在上面的引导段已改走
+            // 内置浏览器并提前返回，不会走到这里。
+            if (commandResult.success && hasSystemBrowserOpenCommand(command)) {
+                const closed = previewSessionService.closeAllSessions('run_command-opened-external-browser')
+                if (closed > 0) {
+                    resultText = `${resultText}\n[浏览器互斥] 检测到命令拉起了系统浏览器，已同步关闭内置浏览器的 ${closed} 个预览标签页。`
+                }
+            }
+
             if (commandResult.finalStatus === 'interrupted' && !commandResult.sentinelMatched) {
                 resultText = displayOutput
                     ? `[Partial output captured before prompt recovery]\n${displayOutput}`
@@ -4407,9 +4432,13 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 return { success: false, result: '', error: preview.error || 'Failed to open preview' }
             }
 
+            const followUp = isBuiltinBrowserAutomationConnected()
+                ? '要查看页面内容或操作页面，优先调用 mcp_builtin-browser__browser_snapshot 获取真实渲染后的页面结构与文本（browser_click / browser_type 可交互）——不要退回外部浏览器，也不要用 read_url 兜底（JS 渲染页读不到内容）。浏览器互斥：内置浏览器已打开该页面，不要再执行 open / start 等命令用系统浏览器重复打开；确需改用系统浏览器时，先关闭内置预览标签页。'
+                : '静态页面无需另起服务；如需查看外部网页内容请使用 read_url 或 web_search。'
+
             return {
                 success: true,
-                result: `已在内置浏览器打开预览：${preview.url}（标签页「${preview.title || '预览'}」）。静态页面无需另起服务；如需查看外部网页内容请使用 read_url 或 web_search。`,
+                result: `已在内置浏览器打开预览：${preview.url}（标签页「${preview.title || '预览'}」）。${followUp}`,
                 meta: { path: resolvedPath || undefined, url: preview.url },
             }
         } catch (err) {
@@ -4462,9 +4491,28 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 network = collected.success ? collected.data || [] : []
             }
 
+            // 白屏像素判定可能被延迟渲染误伤：读一次 DOM 内容摘要做交叉验证
+            let contentSummary: PreviewContentSummary | null = null
+            if (health.blank && session.guestId) {
+                const probe = await api.preview.collectContent(session.guestId)
+                contentSummary = probe.success ? probe.data ?? null : null
+            }
+
+            let report = formatPreviewHealth(session, health, network)
+            if (health.blank) {
+                if (contentSummary && contentSummary.textLength > 0) {
+                    const headings = contentSummary.headings.length
+                        ? `，可见标题：${contentSummary.headings.join(' / ')}`
+                        : ''
+                    report += `\n\n内容探测：像素采样提示页面接近空白，但 DOM 实际有内容（正文 ${contentSummary.textLength} 字符、${contentSummary.elementCount} 个元素${headings}）——可能是 SPA 延迟渲染或采样过早，建议用 browser_snapshot 再确认。`
+                } else if (contentSummary) {
+                    report += '\n\n内容探测：DOM 内也没有文本内容，确认页面没有渲染出内容。'
+                }
+            }
+
             return {
                 success: true,
-                result: formatPreviewHealth(session, health, network),
+                result: report,
                 meta: {
                     sessionId: session.id,
                     url: session.url,

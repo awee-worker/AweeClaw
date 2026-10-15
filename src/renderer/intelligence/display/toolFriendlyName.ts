@@ -88,6 +88,14 @@ const MCP_TOOL_ACTION_MAP_ZH: Record<string, string> = {
     sql_query: '执行查询',
     execute_sql: '执行SQL',
     run_sql: '运行SQL',
+    // 内置浏览器自动化（mcp_builtin-browser）
+    browser_snapshot: '浏览器快照',
+    browser_take_screenshot: '页面截图',
+    browser_list_tabs: '列出预览标签页',
+    browser_wait_for: '等待页面内容',
+    browser_console_messages: '读取控制台',
+    browser_network_requests: '资源瀑布',
+    browser_back: '后退页面',
 }
 
 const MCP_TOOL_ACTION_MAP_EN: Record<string, string> = {
@@ -123,6 +131,14 @@ const MCP_TOOL_ACTION_MAP_EN: Record<string, string> = {
     scrape: 'Scraping content',
     sql_query: 'Running query',
     execute_sql: 'Executing SQL',
+    // 内置浏览器自动化（mcp_builtin-browser）
+    browser_snapshot: 'Browser snapshot',
+    browser_take_screenshot: 'Page screenshot',
+    browser_list_tabs: 'Listing preview tabs',
+    browser_wait_for: 'Waiting for page content',
+    browser_console_messages: 'Reading console',
+    browser_network_requests: 'Resource waterfall',
+    browser_back: 'Going back',
 }
 
 function guessMcpToolAction(toolName: string, language: Language): string | null {

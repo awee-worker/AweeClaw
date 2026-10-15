@@ -29,6 +29,16 @@ import {
     type PreviewLoadFailure,
     type PreviewNetworkEntry,
 } from '@shared/protocols/previewProtocol'
+import { CONTENT_SUMMARY_PROBE, type PreviewContentSummary } from './previewDomProbe'
+
+/** 可自动化的预览会话描述（浏览器自动化工具按此定位标签页） */
+export interface ResolvedPreviewGuest {
+    guestId: number
+    sessionId: string
+    url: string
+    title: string
+    updatedAt: number
+}
 
 /** 单会话保留的控制台记录上限（超出后丢弃最早的） */
 const MAX_CONSOLE_ENTRIES = 50
@@ -341,6 +351,78 @@ class PreviewHealthMonitor {
         } catch (err) {
             logger.system.warn('[PreviewHealth] Failed to collect resource timing:', err)
             return []
+        }
+    }
+
+    /**
+     * 列出全部可自动化的预览会话（浏览器自动化 browser_list_tabs 使用）
+     *
+     * 只包含仍在采集中的 guest：webview 卸载或标签页关闭后记录即被清理，
+     * 不会返回失效条目。按最近使用排序，消费方可直接取首个作为「当前标签页」。
+     */
+    listGuests(): ResolvedPreviewGuest[] {
+        return [...this.recordsByGuest.values()]
+            .filter((record) => !record.owner.isDestroyed())
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .map((record) => this.toResolvedGuest(record))
+            .filter((guest): guest is ResolvedPreviewGuest => guest !== null)
+    }
+
+    /**
+     * 按条件解析目标预览会话的 guest
+     *
+     * sessionId 精确匹配；url 为大小写不敏感的子串匹配；都不给时取最近使用的会话。
+     * 这是浏览器自动化工具进入页面的唯一入口：只有登记进健康监控的预览 guest
+     * 能被定位，主窗口等非 webview 渲染进程永远不在候选之列。
+     */
+    resolveGuest(filter: { sessionId?: string; url?: string } = {}): ResolvedPreviewGuest | null {
+        const records = [...this.recordsByGuest.values()]
+            .filter((record) => !record.owner.isDestroyed())
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+
+        if (filter.sessionId) {
+            const record = records.find((item) => item.sessionId === filter.sessionId)
+            return record ? this.toResolvedGuest(record) : null
+        }
+
+        if (filter.url) {
+            const hint = filter.url.toLowerCase()
+            const record = records.find((item) => item.url.toLowerCase().includes(hint))
+            return record ? this.toResolvedGuest(record) : null
+        }
+
+        return records.length > 0 ? this.toResolvedGuest(records[0]) : null
+    }
+
+    private toResolvedGuest(record: SessionRecord): ResolvedPreviewGuest | null {
+        const guest = webContents.fromId(record.guestId)
+        if (!guest || guest.isDestroyed()) return null
+        return {
+            guestId: record.guestId,
+            sessionId: record.sessionId,
+            url: record.url,
+            title: guest.getTitle(),
+            updatedAt: record.updatedAt,
+        }
+    }
+
+    /**
+     * 采集页面内容摘要（白屏确认用）
+     *
+     * 白屏判定基于像素采样，SPA 延迟渲染、字体未就绪等场景可能误报；
+     * 这里读一次 DOM 的真实文本量做交叉验证，两个信号都为空才可靠判定为空内容。
+     */
+    async collectContentSummary(guestId: number): Promise<PreviewContentSummary | null> {
+        const guest = webContents.fromId(guestId)
+        if (!guest || guest.isDestroyed()) return null
+
+        try {
+            const raw = await guest.executeJavaScript(CONTENT_SUMMARY_PROBE, true)
+            if (typeof raw !== 'string' || !raw) return null
+            return JSON.parse(raw) as PreviewContentSummary
+        } catch (err) {
+            logger.system.warn('[PreviewHealth] Failed to collect content summary:', err)
+            return null
         }
     }
 

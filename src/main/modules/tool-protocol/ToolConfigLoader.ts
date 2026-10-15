@@ -18,9 +18,25 @@ import type { McpConfig, McpServerConfig, McpBuiltinServerConfig, McpBuiltinId, 
  * 历史遗留的 type='builtin' 配置项由 loadConfig 中的迁移逻辑跳过，
  * 避免与插件化后的 computer-use 产生重复服务器。
  *
- * 新增纯内置进程内服务时仍可在此处追加。
+ * builtin-browser：驱动客户端内置浏览器（预览标签页）的自动化服务，
+ * 随应用自动注入并连接，用户可在配置中覆盖 disabled / autoApprove。
  */
-const BUILTIN_SERVER_DEFAULTS: McpBuiltinServerConfig[] = []
+const BUILTIN_SERVER_DEFAULTS: McpBuiltinServerConfig[] = [
+  {
+    type: 'builtin',
+    id: 'builtin-browser',
+    name: 'Built-in Browser',
+    builtin: 'browser',
+    presetId: 'builtin-browser',
+    autoApprove: [
+      'browser_list_tabs',
+      'browser_snapshot',
+      'browser_console_messages',
+      'browser_network_requests',
+      'browser_take_screenshot',
+    ],
+  },
+]
 
 /** 返回内置进程内 MCP 服务器的默认配置列表（副本，避免外部修改） */
 export function getBuiltinServerConfigs(): McpBuiltinServerConfig[] {

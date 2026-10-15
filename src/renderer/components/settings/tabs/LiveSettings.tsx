@@ -382,7 +382,8 @@ export function LiveSettings({ language }: LiveSettingsProps) {
   const twitchStatus = status?.platforms.find(item => item.platform === 'twitch')
 
   return (
-    <div className="space-y-4 p-1">
+    // 根节点撑满滚动区域高度，使底部操作栏始终贴住可视区底部（内容少时不悬浮在中上部）
+    <div className="flex min-h-full flex-col gap-4 p-1">
       {/* ============================================
        * 总开关 / 运行状态
        * ============================================ */}
@@ -702,7 +703,7 @@ export function LiveSettings({ language }: LiveSettingsProps) {
       {/* ============================================
        * 保存
        * ============================================ */}
-      <div className="sticky bottom-0 space-y-2 rounded-2xl border border-border/40 bg-surface/90 p-3 backdrop-blur">
+      <div className="mt-auto space-y-2 rounded-2xl border border-border/40 bg-surface/90 p-3 backdrop-blur">
         {issues.length > 0 ? (
           <ul className="space-y-0.5 text-xs text-amber-400/90">
             {issues.map(issue => (

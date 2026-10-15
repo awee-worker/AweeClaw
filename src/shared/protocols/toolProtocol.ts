@@ -9,8 +9,8 @@
 /** MCP 服务器类型 */
 export type McpServerType = 'local' | 'remote' | 'builtin' | 'plugin'
 
-/** 内置进程内 MCP 服务器标识（目前仅 computer-use） */
-export type McpBuiltinId = 'computer-use'
+/** 内置进程内 MCP 服务器标识 */
+export type McpBuiltinId = 'computer-use' | 'browser'
 
 /** OAuth 配置 */
 export interface McpOAuthConfig {

@@ -84,6 +84,27 @@ export interface PreviewNetworkEntry {
   status: number
 }
 
+/**
+ * 页面内容摘要（按需采集，不常驻）
+ *
+ * 白屏判定基于像素采样，SPA 延迟渲染等场景可能误报；这里读 DOM 的真实
+ * 文本量做交叉验证：像素判空 + 文本为空才可靠判定页面没有内容。
+ */
+export interface PreviewContentSummary {
+  /** 页面标题 */
+  title: string
+  /** 当前地址 */
+  url: string
+  /** 页面正文字符数 */
+  textLength: number
+  /** 正文开头采样 */
+  textSample: string
+  /** DOM 元素总数 */
+  elementCount: number
+  /** 可见标题（h1-h3）采样 */
+  headings: string[]
+}
+
 /** 健康状态推送频道（main → renderer） */
 export const PREVIEW_HEALTH_CHANNEL = 'preview:health-changed'
 

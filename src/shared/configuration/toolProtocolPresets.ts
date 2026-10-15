@@ -775,6 +775,38 @@ export const MCP_PRESETS: McpPreset[] = [
   // ===== 内置进程内 MCP（无外部依赖） =====
   {
     type: 'builtin',
+    id: 'builtin-browser',
+    name: 'Built-in Browser',
+    description: 'Built-in in-browser automation: drive the preview tabs of the app built-in browser (navigate, snapshot, click, type, screenshot, console, network). Runs in-process (no external dependency).',
+    descriptionZh: '内置浏览器自动化：操控客户端内置浏览器的预览标签页（导航、快照、点击、输入、截图、控制台、网络）。进程内运行，无外部依赖。',
+    category: 'productivity',
+    icon: 'AppWindow',
+    builtin: 'browser',
+    defaultAutoApprove: [
+      'browser_list_tabs',
+      'browser_snapshot',
+      'browser_console_messages',
+      'browser_network_requests',
+      'browser_take_screenshot',
+    ],
+    requiresConfig: false,
+    official: true,
+    tags: ['browser', 'automation', 'preview', 'builtin'],
+    usageExamples: [
+      'Open my page with open_preview, then take a browser_snapshot and tell me what you see',
+      'Click the "登录" button in the preview tab (use browser_snapshot index first)',
+      'Fill the search box in the preview and press Enter',
+      'Check console errors of the preview page',
+    ],
+    usageExamplesZh: [
+      '先用 open_preview 打开页面，然后做一次 browser_snapshot 告诉我页面里有什么',
+      '点击预览页面里的"登录"按钮（先用 browser_snapshot 拿到元素序号）',
+      '在预览页面的搜索框里填入关键词并回车',
+      '查看预览页面的控制台报错',
+    ],
+  },
+  {
+    type: 'builtin',
     id: 'computer-use',
     name: 'Computer Use',
     description: 'Built-in desktop automation: screenshot, OCR text click, mouse/keyboard control, window/process management, file I/O. Runs in-process (no external dependency).',

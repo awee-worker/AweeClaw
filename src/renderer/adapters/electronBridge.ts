@@ -501,6 +501,7 @@ function createGroupedAPI() {
       healthDetach: (guestId: number) => raw.preview.healthDetach(guestId),
       healthGet: (sessionId: string) => raw.preview.healthGet(sessionId),
       collectNetwork: (guestId: number) => raw.preview.collectNetwork(guestId),
+      collectContent: (guestId: number) => raw.preview.collectContent(guestId),
       reloadGuest: (guestId: number) => raw.preview.reloadGuest(guestId),
       onHealth: (callback: Parameters<typeof raw.preview.onHealth>[0]) =>
         raw.preview.onHealth(callback),

@@ -29,6 +29,8 @@ import { mcpManager } from './ToolProtocolManager'
 import { pythonManager } from '../python-runtime'
 import { nodeManager } from '../node-runtime'
 import { createComputerUseMcpServer } from './builtin/ComputerUseMcpServer'
+import { createBuiltinBrowserMcpServer } from './builtin/BuiltinBrowserMcpServer'
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type {
   McpServerConfig,
   McpLocalServerConfig,
@@ -416,12 +418,15 @@ export class McpClient extends EventEmitter {
    * 不拉起子进程，直接通过 InMemoryTransport 与主进程内的服务器通信
    */
   private async connectBuiltin(config: McpBuiltinServerConfig): Promise<void> {
-    if (config.builtin !== 'computer-use') {
-      throw new Error(`Unsupported builtin MCP server: ${config.builtin}`)
+    let created: { server: McpServer; clientTransport: InMemoryTransport }
+    if (config.builtin === 'computer-use') {
+      created = createComputerUseMcpServer()
+    } else if (config.builtin === 'browser') {
+      created = createBuiltinBrowserMcpServer()
+    } else {
+      throw new Error(`Unsupported builtin MCP server: ${config.builtin as string}`)
     }
-
-    // 创建进程内服务器，返回已配对的 InMemoryTransport
-    const { server, clientTransport } = createComputerUseMcpServer()
+    const { server, clientTransport } = created
 
     const client = new Client({
       name: BRAND.mcp.clientId,

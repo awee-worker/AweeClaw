@@ -1787,6 +1787,12 @@ export interface ElectronAPI {
       data?: import('@protocols/previewProtocol').PreviewNetworkEntry[]
       error?: string
     }>
+    /** 采集页面内容摘要（白屏判定的交叉验证，按需调用） */
+    collectContent: (guestId: number) => Promise<{
+      success: boolean
+      data?: import('@protocols/previewProtocol').PreviewContentSummary | null
+      error?: string
+    }>
     /**
      * 按 guest 重载页面
      *

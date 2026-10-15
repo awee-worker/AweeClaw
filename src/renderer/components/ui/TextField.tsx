@@ -2,6 +2,8 @@ import React, { InputHTMLAttributes, forwardRef, useState } from 'react'
 import { BRAND } from '@shared/brand'
 
 export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
+  /** 原生 input 的 size 属性（按字符数自适应宽度，重命名输入框按内容长度展开时使用） */
+  widthChars?: number
   leftIcon?: React.ReactNode
   rightIcon?: React.ReactNode
   error?: boolean
@@ -22,7 +24,7 @@ function borderState(error?: boolean, success?: boolean): string {
 const BASE_INPUT = 'flex w-full rounded-xl border px-3 py-1 text-text-primary shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)] transition-all duration-200 ease-out bg-surface/50 backdrop-blur-sm border-border hover:bg-surface hover:border-border-active focus:outline-none focus:bg-surface/80 focus:border-accent/40 focus:ring-4 focus:ring-accent/10 focus:shadow-[0_0_0_1px_rgba(var(--accent)/0.2)] disabled:cursor-not-allowed disabled:opacity-50'
 
 export const TextField = forwardRef<HTMLInputElement, InputProps>(
-  ({ className = '', leftIcon, rightIcon, error, success, floatingLabel, helperText, inputSize = 'md', ...rest }, ref) => {
+  ({ className = '', leftIcon, rightIcon, error, success, floatingLabel, helperText, inputSize = 'md', widthChars, ...rest }, ref) => {
     const [focused, setFocused] = useState(false)
     const [filled, setFilled] = useState(!!rest.defaultValue || !!rest.value)
     const elevated = focused || filled
@@ -52,6 +54,8 @@ export const TextField = forwardRef<HTMLInputElement, InputProps>(
           ) : (
             <input
               ref={ref}
+              size={widthChars}
+              style={widthChars !== undefined ? { width: `calc(${widthChars}ch + 2.5rem)` } : undefined}
               className={`${BASE_INPUT} ${DIM_MAP[inputSize]} placeholder:text-text-muted/85 ${stateBorder} ${padLeft} ${padRight} ${className}`}
               {...rest}
             />

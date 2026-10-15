@@ -274,13 +274,16 @@ export interface ExplorerClipboardItem {
 }
 
 interface ExplorerClipboardState {
+    /** 第一项（向后兼容旧代码） */
     entry: ExplorerClipboardItem | null
+    /** 完整条目集合（支持多选复制后批量粘贴） */
+    items: ExplorerClipboardItem[]
 }
 
 type ExplorerListener = (state: ExplorerClipboardState) => void
 
 class ExplorerClipboardService {
-    private state: ExplorerClipboardState = { entry: null }
+    private state: ExplorerClipboardState = { entry: null, items: [] }
     private listeners = new Set<ExplorerListener>()
 
     subscribe(listener: ExplorerListener): () => void {
@@ -294,13 +297,19 @@ class ExplorerClipboardService {
     }
 
     setItem(item: ExplorerClipboardItem | null): void {
-        this.state = { entry: item }
+        this.setItems(item ? [item] : [])
+    }
+
+    /** 批量设置（Shift 多选复制时使用）；空数组等价于 clear */
+    setItems(items: ExplorerClipboardItem[]): void {
+        const normalized = items.filter(Boolean)
+        this.state = { entry: normalized[0] ?? null, items: normalized }
         this.emit()
     }
 
     clear(): void {
-        if (!this.state.entry) return
-        this.state = { entry: null }
+        if (this.state.items.length === 0 && !this.state.entry) return
+        this.state = { entry: null, items: [] }
         this.emit()
     }
 

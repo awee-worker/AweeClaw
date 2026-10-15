@@ -329,6 +329,27 @@ export class PreviewSessionService {
     this.emit()
   }
 
+  /**
+   * 关闭全部内置浏览器预览标签页（浏览器互斥）
+   *
+   * 外部浏览器即将被打开时调用：同一份内容不应在内置与外部两处同时展示，
+   * 打开外部的一侧负责先收掉内置标签页。关闭走 openFiles 的标准移除通道，
+   * 与用户手点标签页 × 按钮等价。
+   *
+   * @returns 实际关闭的标签页数量（无预览标签页时返回 0）
+   */
+  closeAllSessions(reason?: string): number {
+    const paths = [...this.sessions.keys()].map((id) => buildPreviewDocumentPath(id))
+    if (!paths.length) return 0
+
+    useStore.getState().closeFiles(paths)
+    logger.system.info('[PreviewSession] closed all preview tabs (browser exclusivity)', {
+      count: paths.length,
+      reason: reason || 'external-browser-opened',
+    })
+    return paths.length
+  }
+
   /** 激活（或复用）标签页：统一 openPreview 的调用点 */
   private activateSession(session: PreviewSession, activate?: boolean): void {
     useStore.getState().openPreview(
