@@ -174,6 +174,78 @@ export function analyzeWriteIntent(originalContent: string, nextContent: string)
   }
 }
 
+/** edit_file 批量模式的一条编辑指令 */
+export interface LineEditOp {
+  action: 'replace' | 'insert' | 'delete'
+  start_line?: number
+  end_line?: number
+  after_line?: number
+  content?: string
+}
+
+/** diff 分段值里最后一个换行符是行分隔，不是内容本身，落成编辑指令前要剥掉 */
+function trimTrailingNewline(text: string): string {
+  return text.endsWith('\n') ? text.slice(0, -1) : text
+}
+
+/**
+ * 把「已有文件整写与目标内容的差异」翻译成 edit_file 的批量编辑指令。
+ *
+ * 用途：write_file 被局部修改守卫拦下时，后台据此把这次整写等价地改写成一组
+ * 定位编辑，交由 edit_file 执行，从而在不让前端看到失败的前提下完成同一次修改。
+ *
+ * 由于指令源自从原文件到目标内容的行级 diff，逐条应用后必然还原出目标内容，
+ * 因此这不是「猜测用户的意图」，而是同一结果的另一种等价执行方式。
+ */
+export function buildLineEditsFromDiff(originalContent: string, nextContent: string): LineEditOp[] {
+  const original = normalizeNewlines(originalContent)
+  const next = normalizeNewlines(nextContent)
+  if (original === next) return []
+
+  const parts = Diff.diffLines(original, next)
+  const edits: LineEditOp[] = []
+  // 光标指向原文件中「下一个尚未处理的 1-based 行号」
+  let cursor = 1
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]
+    if (!part.added && !part.removed) {
+      cursor += countLines(part.value)
+      continue
+    }
+
+    // 相邻的删除段与新增段属于同一处改动，合并成一个 hunk
+    let removedText = ''
+    let addedText = ''
+    while (i < parts.length && (parts[i].added || parts[i].removed)) {
+      if (parts[i].removed) removedText += parts[i].value
+      else addedText += parts[i].value
+      i++
+    }
+    i--
+
+    const removedCount = countLines(removedText)
+
+    if (removedCount === 0 && addedText) {
+      // 纯插入：after_line 取光标前一行，插在 cursor 之前
+      edits.push({ action: 'insert', after_line: cursor - 1, content: trimTrailingNewline(addedText) })
+    } else if (removedCount > 0 && !addedText) {
+      edits.push({ action: 'delete', start_line: cursor, end_line: cursor + removedCount - 1 })
+      cursor += removedCount
+    } else if (removedCount > 0 && addedText) {
+      edits.push({
+        action: 'replace',
+        start_line: cursor,
+        end_line: cursor + removedCount - 1,
+        content: trimTrailingNewline(addedText),
+      })
+      cursor += removedCount
+    }
+  }
+
+  return edits
+}
+
 /**
  * write_file 执行前的统一守卫。
  *
@@ -209,9 +281,8 @@ export function guardWriteFile(input: WriteGuardInput): WriteGuardDecision {
       allow: false,
       intent: analysis.intent,
       reason:
-        `${Math.round(analysis.changedRatio * 100)}% of the file's original lines would change, which is below the ` +
-        `${Math.round(analysis.changedRatio * 100)}% of the file content would change, which is below the ` +
-        `${Math.round(PARTIAL_CHANGE_RATIO_THRESHOLD * 100)}% threshold — the system treats it as a partial edit. ` +
+        `Only ${Math.round(analysis.changedRatio * 100)}% of the file's original lines would change, which is below the ` +
+        `${Math.round(PARTIAL_CHANGE_RATIO_THRESHOLD * 100)}% threshold — the system treats this as a partial edit. ` +
         `write_file is ONLY for creating new files or complete full-file replacement.\n\n` +
         `CORRECT PROCEDURE (do NOT retry write_file, for this file or any other partial change):\n` +
         `1. Call read_file(path="${input.path}") to get the current file content\n` +

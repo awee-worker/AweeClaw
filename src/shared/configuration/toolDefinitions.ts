@@ -356,16 +356,18 @@ ON FAILURE:
     write_file: {
         name: 'write_file',
         displayName: 'Write File',
-        description: `Write complete file content. Use it for CREATING NEW files ONLY, or for regenerating an existing file in full (most of its content changes).
+        description: `Create a NEW file, or regenerate an existing file IN FULL (most of its content changes). Do NOT use this tool to change part of a file that already exists — use edit_file for that.
 
-⚠️ INTENT IS AUTO-DETECTED on existing files: if your content changes less than ~35% of the original file, the call is classified as a PARTIAL EDIT and REJECTED. For a few-line change, do NOT rewrite the whole file — use edit_file, even though you *can* produce the full content.
-
-If you are MODIFYING an existing file, use edit_file instead:
+⚠️ This tool is the EXCEPTION, not the default. The moment you are about to change a file that already exists, reach for edit_file instead:
   1. First call read_file to get the current content
   2. Then use edit_file with old_string/new_string (string mode) OR start_line/end_line/content (line mode) OR edits array (batch mode)
 
+⚠️ INTENT IS AUTO-DETECTED on existing files: if your content changes less than ~35% of the original file, the call is classified as a PARTIAL EDIT and REJECTED. For a few-line change, do NOT rewrite the whole file — use edit_file, even though you *can* produce the full content.
+
 A rejected write_file wastes a full round trip, so choose edit_file up front for local changes.`,
         criticalRules: [
+            'DEFAULT for any change to an EXISTING file: use edit_file, NOT write_file.',
+            'NEVER use write_file to change part of an existing file — only a new file or an intentional full-file regeneration.',
             'Creating a NEW file: use write_file.',
             'Existing file + change under ~35% of its content: write_file is REJECTED as a partial edit — use edit_file instead.',
             'MODIFYING an EXISTING file locally: you MUST use edit_file, NOT write_file. First read_file, then edit_file.',
@@ -2598,6 +2600,11 @@ The tool returns the full skill content which you MUST follow as project-specifi
 export const FILE_EDIT_DECISION_GUIDE = `
 ## File Editing Decision Guide
 
+**0. DEFAULT RULE (read this first)**
+- For ANY change to a file that ALREADY EXISTS, the tool is \`edit_file\`. This is the default; \`write_file\` is the exception.
+- \`write_file\` may be used in exactly two situations: (a) the file does NOT exist yet (creating it), or (b) the whole file is intentionally regenerated and most of its content changes.
+- When in doubt, choose \`edit_file\`. A misplaced \`write_file\` on an existing file is rejected as a partial edit and wastes a round trip.
+
 **1. Pick the tool (MANDATORY)**
 - Creating a NEW file: use \`write_file\`.
 - Editing an EXISTING file: you MUST use \`edit_file\` — first read the file with \`read_file\` to get the current content, then apply changes with \`edit_file\` (string/line/batch mode).
@@ -2614,7 +2621,7 @@ export const FILE_EDIT_DECISION_GUIDE = `
 - Never send empty placeholder edits.
 - Prefer line or batch mode for large files.
 
-**4. If you used \`write_file\` on an existing file and the response asks you to switch to \`edit_file\`:**
+**4. If a \`write_file\` call is rejected (partial edit on an existing file):**
 - STOP using write_file for this file.
 - Read the current file content with \`read_file\`.
 - Use \`edit_file\` with the appropriate mode (string/line/batch) to make the change.

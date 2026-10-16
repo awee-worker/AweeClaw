@@ -66,7 +66,7 @@ import { skillService, type SkillItem } from '../runtime/skillRepository'
 import type { Language } from '@renderer/i18n'
 import type { ReplaceErrorCode } from '@utils/smartReplace'
 import { resolveAgentLanguage, pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
-import { guardWriteFile } from './fileWritePolicy'
+import { guardWriteFile, buildLineEditsFromDiff } from './fileWritePolicy'
 import { openBuiltinPreview } from '@renderer/preview/openBuiltinPreview'
 import { previewSessionService } from '@renderer/preview/previewSessionManager'
 import type {
@@ -1112,6 +1112,47 @@ async function guardedWriteFile(opts: {
     }
 }
 
+/**
+ * 局部修改被守卫拦下时的后台更正
+ *
+ * write_file / create_file_or_folder 试图对「已有文件」做局部修改时会被 fileWritePolicy
+ * 硬拒绝（引导模型改用 edit_file）。这里把这个拒绝在后台消化掉：把整写内容与原文件的
+ * 差异翻译成 edit_file 的批量编辑，交给 edit_file 执行同一处修改，从而不向前端暴露一次
+ * 「失败」，也省掉模型因误选工具而多走的一轮往返。
+ *
+ * 由于编辑指令源自「原文件 → 目标内容」的行级 diff，逐条应用后必然还原出目标内容，
+ * 与一次成功的整写等价，因此不是猜测意图，而是同一结果的另一种执行方式。
+ *
+ * 仅当守卫判定为「局部修改意图」时才触发；冲突、越界等真实错误照常返回失败。
+ * 更正成功时结果带 autoCorrected 标记，便于 UI 与日志区分。
+ */
+async function autoCorrectPartialWrite(
+    args: Record<string, unknown>,
+    ctx: ToolExecutionContext,
+    originalContent: string,
+    nextContent: string,
+): Promise<ToolExecutionResult | null> {
+    const edits = buildLineEditsFromDiff(originalContent, nextContent)
+    if (!edits.length) return null
+
+    const editResult = await rawToolExecutors.edit_file({ path: args.path, edits }, ctx)
+    if (!editResult.success) return null
+
+    logger.agent.info(
+        `[write-auto-correct] write_file local change auto-corrected into ${edits.length} edit_file op(s)`,
+        { path: args.path, edits: edits.length },
+    )
+
+    return {
+        ...editResult,
+        result: `${editResult.result}（已自动将整写意图后台更正为定位编辑，无需重试）`,
+        meta: {
+            ...(editResult.meta || {}),
+            autoCorrected: 'write_file->edit_file',
+        },
+    }
+}
+
 
 /**
  * 加载技能内容：返回技能正文、安装目录与目录清单
@@ -1274,6 +1315,99 @@ function resolveReadWindowBytes(maxChars: number): number {
     )
 }
 
+/** 后台纠正扫描的条目上限，避免在超大工作空间上拖慢一次读取 */
+const FALLBACK_SCAN_MAX_ENTRIES = 5000
+/** 后台纠正扫描跳过的重目录：命中概率低但遍历代价高 */
+const FALLBACK_SCAN_SKIP_DIRS = new Set([
+    'node_modules', '.git', '.history', 'dist', 'build', 'out', 'coverage',
+    '.next', '.nuxt', '.cache', '__pycache__', '.venv', 'venv', '.idea', '.vscode',
+])
+
+async function pathExistsQuiet(target: string): Promise<boolean> {
+    try {
+        return await api.file.exists(target)
+    } catch {
+        return false
+    }
+}
+
+/** 两个路径从尾部起相同的路径段数量，用于在多个同名候选里挑最贴近请求路径的一个 */
+function commonTrailingSegments(a: string, b: string): number {
+    const as = a.split('/')
+    const bs = b.split('/')
+    let i = 0
+    while (i < as.length && i < bs.length && as[as.length - 1 - i] === bs[bs.length - 1 - i]) i++
+    return i
+}
+
+/** 按文件名在工作空间内做有上限的递归扫描（跳过大目录），返回同名文件列表 */
+async function scanWorkspaceByBasename(root: string, targetBasenameLower: string): Promise<string[]> {
+    const matches: string[] = []
+    const queue: string[] = [root]
+    let visited = 0
+
+    while (queue.length > 0 && visited < FALLBACK_SCAN_MAX_ENTRIES && matches.length < 50) {
+        const dir = queue.shift()!
+        let entries: Awaited<ReturnType<typeof api.file.readDir>> = null
+        try {
+            entries = await api.file.readDir(dir)
+        } catch {
+            continue
+        }
+        if (!entries) continue
+
+        for (const entry of entries) {
+            visited++
+            if (visited >= FALLBACK_SCAN_MAX_ENTRIES) break
+            if (entry.isDirectory) {
+                if (FALLBACK_SCAN_SKIP_DIRS.has(entry.name)) continue
+                queue.push(entry.path)
+            } else if (entry.name.toLowerCase() === targetBasenameLower) {
+                matches.push(entry.path)
+            }
+        }
+    }
+
+    return matches
+}
+
+/**
+ * read_file 目标不存在时的后台路径纠正。
+ *
+ * 模型给出的路径常因「目录前缀不全 / 大小写不一致 / 文件名细微差异」而落空，
+ * 但文件往往就在工作空间里。这里在不打扰用户的前提下尝试还原真实路径：
+ *   1. 若修正路径本身已存在，直接采纳
+ *   2. 否则按 basename 在工作空间内做有上限的递归扫描
+ * 仅在候选唯一、或能从多个同名候选中选出最贴近请求路径的一个时才采纳，
+ * 避免把一次读取悄悄指向一个不相干的同名文件。
+ */
+async function resolveExistingFileFallback(
+    requestedAbsPath: string,
+    workspacePath: string | null,
+): Promise<string | null> {
+    if (await pathExistsQuiet(requestedAbsPath)) return requestedAbsPath
+    if (!workspacePath) return null
+
+    const basename = getFileName(requestedAbsPath).toLowerCase()
+    if (!basename) return null
+
+    const matches = await scanWorkspaceByBasename(workspacePath, basename)
+    if (matches.length === 0) return null
+    if (matches.length === 1) return matches[0]
+
+    const requested = normalizePath(requestedAbsPath).toLowerCase()
+    let best = matches[0]
+    let bestScore = -1
+    for (const candidate of matches) {
+        const score = commonTrailingSegments(normalizePath(candidate).toLowerCase(), requested)
+        if (score > bestScore) {
+            bestScore = score
+            best = candidate
+        }
+    }
+    return best
+}
+
 const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: ToolExecutionContext) => Promise<ToolExecutionResult>> = {
     async read_file(args, ctx) {
         const BINARY_EXT_SET = new Set([
@@ -1395,23 +1529,50 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             ? Math.max(1, Math.floor(resolution.args.start_line))
             : 1
 
-        const window = await api.file.readWindow(path, {
+        let window = await api.file.readWindow(path, {
             startLine,
             maxBytes: resolveReadWindowBytes(strategy.maxChars),
         })
+
+        // 目标不存在时后台消化：先尝试纠正真实路径（大小写 / 目录前缀 / 文件名差异），
+        // 命中则用纠正后的路径重读，避免向前端暴露一次「读取失败」。
+        let resolvedReadPath = path
+        let autoCorrectedFrom: string | null = null
         if (!window || window.content === null || window.content === undefined) {
-            return { success: false, result: '', error: `File not found: ${path}` }
+            const corrected = await resolveExistingFileFallback(path, ctx.workspacePath)
+            if (corrected && corrected !== path) {
+                const correctedWindow = await api.file.readWindow(corrected, {
+                    startLine,
+                    maxBytes: resolveReadWindowBytes(strategy.maxChars),
+                })
+                if (correctedWindow && correctedWindow.content !== null && correctedWindow.content !== undefined) {
+                    window = correctedWindow
+                    resolvedReadPath = corrected
+                    autoCorrectedFrom = path
+                    logger.agent.info(`[read_file] path auto-corrected: ${path} -> ${corrected}`)
+                }
+            }
+        }
+
+        // 仍找不到：以「成功 + 内联提示」返回，交由模型自行调整路径，
+        // 前端不显示为失败（与多文件读取分支的 [File not found] 行为保持一致）。
+        if (!window || window.content === null || window.content === undefined) {
+            return {
+                success: true,
+                result: `[File not found: ${path}]\nThe path does not exist in the workspace. Verify the path, or use search_files / list_directory to locate the file before reading.`,
+                meta: { filePath: path, notFound: true },
+            }
         }
 
         const content = window.content
 
-        fileCacheService.markFileAsRead(path, content)
+        fileCacheService.markFileAsRead(resolvedReadPath, content)
 
         // 内容过大时跳过 AST 摘要：避免大内容再次跨进程传输并阻塞主进程解析
         let graphContent = ''
         if (content.length <= AST_SUMMARY_MAX_CHARS) {
             try {
-                const nodes = await api.index.parseCallGraph(path, content)
+                const nodes = await api.index.parseCallGraph(resolvedReadPath, content)
                 if (nodes && nodes.length > 0) {
                     graphContent = '\n\n--- AST Call Graph Summary ---\n'
                     const defs = nodes.filter(n => n.type === 'definition')
@@ -1455,7 +1616,19 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 根据策略决定是否附加 AST 摘要
         const finalGraphContent = strategy.includeAstSummary ? graphContent : ''
 
-        return { success: true, result: displayContent + finalGraphContent, meta: { filePath: path } }
+        // 路径被后台纠正时，明确告知模型实际读取的文件，避免它继续按旧路径操作
+        const correctionNote = autoCorrectedFrom
+            ? `\n[Note: "${autoCorrectedFrom}" was not found; read the resolved path "${resolvedReadPath}" instead.]`
+            : ''
+
+        return {
+            success: true,
+            result: displayContent + finalGraphContent + correctionNote,
+            meta: {
+                filePath: resolvedReadPath,
+                ...(autoCorrectedFrom ? { autoCorrectedFrom } : {}),
+            },
+        }
     },
 
     async list_directory(args, ctx) {
@@ -2027,6 +2200,11 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             hasRecentRead: fileCacheService.hasValidCache(path),
         })
         if (!writeDecision.allow) {
+            // 局部修改意图：后台把这次整写等价改写成定位编辑，避免向前端暴露失败
+            if (writeDecision.intent === 'partial-update') {
+                const corrected = await autoCorrectPartialWrite(args, ctx, originalContent, content)
+                if (corrected) return corrected
+            }
             return {
                 success: false,
                 result: '',
@@ -2147,6 +2325,11 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 hasRecentRead: fileCacheService.hasValidCache(path),
             })
             if (!writeDecision.allow) {
+                // 与 write_file 一致：局部修改意图的后台更正，不向前端暴露失败
+                if (writeDecision.intent === 'partial-update') {
+                    const corrected = await autoCorrectPartialWrite(args, ctx, originalContent, content)
+                    if (corrected) return corrected
+                }
                 return {
                     success: false,
                     result: '',

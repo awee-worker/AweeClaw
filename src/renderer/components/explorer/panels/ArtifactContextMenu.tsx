@@ -127,7 +127,6 @@ export function ArtifactContextMenu({ path, position, onClose }: ArtifactContext
         toast.error(t('file-tree.pastefailed', language as Language))
       } else {
         notifyFilesChanged(dirPath)
-        toast.success(t('file-tree.filepasted', language as Language))
       }
     } catch {
       toast.error(t('file-tree.pastefailed', language as Language))
@@ -203,9 +202,8 @@ export function ArtifactContextMenu({ path, position, onClose }: ArtifactContext
   // ─── 操作：复制路径 / 相对路径 ─────────────────────────
   const handleCopyPath = useCallback(() => {
     navigator.clipboard.writeText(path)
-    toast.success(t('pathCopied', language as Language) || '路径已复制')
     onClose()
-  }, [path, language, onClose])
+  }, [path, onClose])
 
   const handleCopyRelativePath = useCallback(() => {
     if (!workspacePath) {
@@ -213,9 +211,8 @@ export function ArtifactContextMenu({ path, position, onClose }: ArtifactContext
       return
     }
     navigator.clipboard.writeText(resolveToRelative(path, workspacePath))
-    toast.success(t('pathCopied', language as Language) || '路径已复制')
     onClose()
-  }, [path, workspacePath, language, onClose])
+  }, [path, workspacePath, onClose])
 
   // ─── 操作：在文件夹中显示 ─────────────────────────────
   const handleReveal = useCallback(() => {

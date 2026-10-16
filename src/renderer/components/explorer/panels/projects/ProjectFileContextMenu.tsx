@@ -119,7 +119,6 @@ export function ProjectFileContextMenu({
       } else {
         directoryCacheService.invalidate(dirPath)
         onRefresh(dirPath)
-        toast.success(clip.isDirectory ? '文件夹已粘贴' : '文件已粘贴')
       }
     } catch {
       toast.error('粘贴失败')
@@ -190,18 +189,16 @@ export function ProjectFileContextMenu({
   // ─── 操作：复制路径 / 相对路径 ─────────────────────────
   const handleCopyPath = useCallback(() => {
     navigator.clipboard.writeText(item.path)
-    toast.success(t('pathCopied', language) || '路径已复制')
     onClose()
-  }, [item.path, language, onClose])
+  }, [item.path, onClose])
 
   const handleCopyRelativePath = useCallback(() => {
     if (projectRoot) {
       const rel = item.path.replace(projectRoot, '').replace(/^[\\/]/, '')
       navigator.clipboard.writeText(rel)
-      toast.success(t('pathCopied', language) || '路径已复制')
     }
     onClose()
-  }, [item.path, projectRoot, language, onClose])
+  }, [item.path, projectRoot, onClose])
 
   // ─── 操作：在文件夹中显示 ─────────────────────────────
   const handleReveal = useCallback(() => {

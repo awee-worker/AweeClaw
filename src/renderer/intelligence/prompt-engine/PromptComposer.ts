@@ -337,6 +337,7 @@ function getActiveScenarioIdentity() {
  * 独立于场景 toolGuidelines 强制注入，防止场景覆盖默认指南后核心规则丢失
  */
 const FILE_EDIT_PRIORITY = `## File Editing Priority (MANDATORY — NO EXCEPTIONS)
+- **DEFAULT RULE**: for ANY change to a file that ALREADY EXISTS, use \`edit_file\`. \`write_file\` is the exception, never the default — if you find yourself typing the whole file again just to change a few lines, stop and switch to \`edit_file\`.
 - **CREATE a new file** → use \`write_file\` (or \`create_file_or_folder\`).
 - **FULL-FILE REPLACEMENT** of an existing file (the whole content is regenerated and most of the file changes) → \`write_file\` is allowed.
 - **LOCAL / PARTIAL EDIT** of an existing file → you MUST use \`edit_file\`. Never rewrite the whole file to change a few lines.

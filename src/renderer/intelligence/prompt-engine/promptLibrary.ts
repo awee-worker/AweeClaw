@@ -378,6 +378,7 @@ DO NOT make parallel edits to the SAME file.
 
 ### Write vs Edit Selection (CRITICAL — DO NOT MIX UP)
 
+- DEFAULT: for ANY change to a file that ALREADY EXISTS, use \`edit_file\`. \`write_file\` is the exception, never the default.
 - Creating a NEW file: use \`write_file\`.
 - FULL-FILE REPLACEMENT of an existing file (whole content regenerated, most of the file changes): \`write_file\` is allowed.
 - MODIFYING an EXISTING file locally: you MUST use \`edit_file\` — never use write_file. Read the file with \`read_file\` first, then apply changes with \`edit_file\` (string/line/batch mode).

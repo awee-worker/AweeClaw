@@ -34,6 +34,7 @@ import { useInlineToast } from '@components/foundation/InlineNotification'
 import { useHasElevatedToastLayer } from '@components/foundation/toastLayerStore'
 import { BRAND } from '@shared/brand'
 import ImStatusFloating from './ImStatusFloating'
+import ServiceStatusPopover from './ServiceStatusPopover'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Volume2 } from 'lucide-react'
 import DockPopover from '../ui/DockPopover'
@@ -633,6 +634,9 @@ export default function AppTitleBar() {
               onNavigate={() => setMessagesOpen(false)}
             />
           </DockPopover>
+
+          {/* 后台服务状态：紧跟消息图标，仅在确有服务运行时显示 */}
+          <ServiceStatusPopover language={language as Language} />
 
           <div className="w-[1px] h-4 bg-border/50 mx-1"></div>
 

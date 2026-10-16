@@ -199,6 +199,20 @@ export class DevServerDiscoveryService {
     return this.state
   }
 
+  /**
+   * 强制重扫所有终端的输出缓冲
+   *
+   * scanExistingTerminalBuffers 用「已扫描」标记做增量扫描，只认新终端；终端在
+   * 被扫描之后才打印出服务地址时，增量路径补不回来。打开服务面板时用它清掉标记
+   * 再扫一遍，把当前真正在跑的本地服务补进候选表——URL 去重仍由 ingestedUrls 兜住，
+   * 不会因重复扫描而堆积。
+   */
+  rescanAllTerminalBuffers(): void {
+    this.initialize()
+    this.scannedTerminalIds.clear()
+    this.scanExistingTerminalBuffers()
+  }
+
   getCandidatesForWorkspace(workspaceRoot?: string | null): PreviewServerCandidate[] {
     return this.state.candidates.filter((candidate) => !workspaceRoot || candidate.workspaceRoot === workspaceRoot)
   }

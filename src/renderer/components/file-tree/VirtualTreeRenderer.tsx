@@ -757,18 +757,6 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       affectedPaths: [targetDirectoryPath],
       refreshRoot: pathEquals(targetDirectoryPath, workspacePath || ''),
     })
-    const folderCount = succeeded.filter((r) => r.isDirectory).length
-    const fileCount = succeeded.length - folderCount
-    if (succeeded.length === 1) {
-      toast.success(succeeded[0].isDirectory
-        ? t('file-tree.folderpasted', language as Language)
-        : t('file-tree.filepasted', language as Language))
-    } else {
-      const parts: string[] = []
-      if (folderCount > 0) parts.push(t('file-tree.folderspasted', language as Language, { count: folderCount }))
-      if (fileCount > 0) parts.push(t('file-tree.filespasted', language as Language, { count: fileCount }))
-      toast.success(parts.join('、'))
-    }
   }, [getCopyDestinationPath, language, onRefresh, workspacePath])
 
   const handlePasteForNode = useCallback((node: FlattenedNode) => {
@@ -850,16 +838,14 @@ export const VirtualFileTree = memo(function VirtualFileTree({
 
   const handleCopyPath = useCallback((node: FlattenedNode) => {
     navigator.clipboard.writeText(node.item.path)
-    toast.success(t('pathCopied', language) || 'Path copied')
-  }, [language])
+  }, [])
 
   const handleCopyRelativePath = useCallback((node: FlattenedNode) => {
     if (workspacePath) {
       const relativePath = node.item.path.replace(workspacePath, '').replace(/^[\\/]/, '')
       navigator.clipboard.writeText(relativePath)
-      toast.success(t('pathCopied', language) || 'Path copied')
     }
-  }, [workspacePath, language])
+  }, [workspacePath])
 
   const handleRevealInExplorer = useCallback((node: FlattenedNode) => {
     api.file.showInFolder(node.item.path)
