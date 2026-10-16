@@ -265,7 +265,11 @@ export default function Editor() {
   const externalSyncRafRef = useRef<number | null>(null)
   // 标记「正在把外部内容补丁进模型」：该窗口内的模型变更不是用户编辑，不回写 store、不标脏、不触发自动保存
   const applyingExternalEditRef = useRef(false)
+  // 「外部写入 → 自动滚动到底部」的判定签名：记住上次处理的文件路径与内容，
+  // 用于把「内容真的被外部改写」与「仅 isDirty / 保存状态变化」区分开，避免保存后视口跳到文末
+  const autoScrollSigRef = useRef<{ path: string; content: string } | null>(null)
   const setFileScrollPosition = useStore((state) => state.setFileScrollPosition)
+
 
   // Hooks
   const { registerProviders, setupDiagnostics, setupLinkNavigation, notifyFileOpened } = useLspIntegration()
@@ -675,15 +679,27 @@ export default function Editor() {
     }
   }, [activeFilePath])
 
-  // 文档类型文件流式预览时自动滚动到底部
+  // 文档类型文件被外部写入（AI 流式写入 / 磁盘重载）时自动滚动到底部
   useEffect(() => {
-    // 用户手动编辑（isDirty）时不滚动：提前返回，避免每次按键都做一次路径/扩展名判定
-    if (!editorRef.current || !activeFile || isPreviewDocument || activeFile.isDirty) return
-    if (!activeFile.content) return
-    // 仅对文档类型文件启用自动滚动
-    if (!isDocumentFile(activeFile.path)) return
+    const path = activeFile?.path
+    if (!editorRef.current || !activeFile || isPreviewDocument || !path) return
 
-    // 文件内容被外部更新（非用户手动编辑）时滚动到底部
+    const content = activeFile.content ?? ''
+    const prev = autoScrollSigRef.current
+    autoScrollSigRef.current = { path, content }
+
+    if (!content) return
+    // 仅对文档类型文件启用自动滚动
+    if (!isDocumentFile(path)) return
+    // 切换文件：滚动位置由 restoreViewState 负责，这里不插手
+    if (!prev || prev.path !== path) return
+    // 内容没有变化：这次重跑只是 isDirty（保存）/其它状态变更引起的，不能移动视口
+    if (prev.content === content) return
+    // 内容与用户最近一次本地输入一致：属于本机编辑（含保存后的自动保存回流），不打断阅读位置
+    if (lastLocalEditRef.current !== null && content === lastLocalEditRef.current) return
+    // 仍有未保存修改：用户正在手动编辑，不自动滚动
+    if (activeFile.isDirty) return
+
     const editor = editorRef.current
     const model = editor.getModel()
     if (!model) return
@@ -697,6 +713,7 @@ export default function Editor() {
       })
     }
   }, [activeFile?.content, activeFile?.path, activeFile?.isDirty, isPreviewDocument])
+
 
 
   const handleBeforeMount: BeforeMount = (monacoInstance) => {
