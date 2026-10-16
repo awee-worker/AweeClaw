@@ -4,20 +4,21 @@
  * 组合：
  * - usePreviewSessionSync：会话订阅 + 地址栏输入态 + 自动发现
  * - useWebviewController：webview 命令 + 派生状态 + 事件桥接
- * - BrowserToolbar：三段式工具栏
- * - BrowserWebView / BrowserEmptyState：内容区
+ * - BrowserToolbar：三段式工具栏（含设备模拟切换）
+ * - BrowserDeviceStage：内容区（桌面铺满 / 设备档位按设备视口居中缩放）
+ * - BrowserEmptyState：空状态
  * - BrowserStatusOverlay：loading / error 叠层
  *
  * 入口 WebPreviewTab.tsx 懒加载本组件，保持 WorkspaceEditor 引用路径不变。
  */
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import type { OpenFile } from '@store'
 import { api } from '@renderer/adapters/electronBridge'
 import { previewSessionService } from '@renderer/preview/previewSessionManager'
 import { usePreviewSessionSync } from './hooks/usePreviewSessionSync'
 import { useWebviewController } from './hooks/useWebviewController'
 import BrowserToolbar from './BrowserToolbar'
-import BrowserWebView from './BrowserWebView'
+import BrowserDeviceStage, { type DeviceFitMode } from './BrowserDeviceStage'
 import BrowserEmptyState from './BrowserEmptyState'
 import BrowserStatusOverlay from './BrowserStatusOverlay'
 import DockedDevToolsPanel from './DockedDevToolsPanel'
@@ -31,9 +32,24 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
     usePreviewSessionSync(file)
 
   const controller = useWebviewController(session)
-  // 取出稳定引用：重新检测的 useCallback 依赖它，不依赖每次渲染重建的 controller 对象
+  // 取出稳定引用：重新检测的 useCallback 依赖它，不依赖每次渲染重建 controller 对象
   const { reportHealth } = controller
 
+  // 设备档适配方式：纯视图偏好，只存活于当前标签页，不进会话协议
+  const [deviceFitMode, setDeviceFitMode] = useState<DeviceFitMode>('fit')
+  const toggleDeviceFit = useCallback(
+    () => setDeviceFitMode((mode) => (mode === 'fit' ? 'actual' : 'fit')),
+    [],
+  )
+
+  /** 切换当前标签页的设备模拟档位（走 service，UI 与 AI 工具共用同一状态源） */
+  const handleDeviceChange = useCallback(
+    (deviceId: string, width?: number, height?: number) => {
+      if (!session?.id) return
+      previewSessionService.setDevice(session.id, { deviceId, width, height })
+    },
+    [session?.id],
+  )
   const handleOpenExternal = () => {
     if (session?.url) {
       api.file.openExternalUrl(session.url)
@@ -95,6 +111,10 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
         onResetAddress={resetAddress}
         onOpenExternal={handleOpenExternal}
         onNewTab={openNewTab}
+        device={session}
+        onDeviceChange={handleDeviceChange}
+        deviceFitMode={deviceFitMode}
+        onToggleDeviceFit={toggleDeviceFit}
       />
 
       <div className="flex-1 min-h-0 min-w-0 flex overflow-hidden">
@@ -104,7 +124,7 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
           ) : (
             <>
               {/*
-                key 由「会话 id + 重建序号」组成：
+                webview 的 key 在 BrowserDeviceStage 内部按「会话 id + 重建序号」生成：
                 - 刷新令牌推进时序号变化，React 重建 webview 元素，页面按 src 重新加载。
                   刷新刻意不走 webview.reload()/loadURL()——那两个命令在本环境实测不
                   产生重载（同地址 loadURL 被当作同文档导航短路，reload 静默失效）。
@@ -112,10 +132,10 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
                   webview 元素的 src 却是冻结的（避免与 loadURL 双重导航），不重建就会
                   停在旧页面上——表现为地址栏换了地址、内容还是上一个页面。
               */}
-              <BrowserWebView
-                key={`${session.id}#${controller.reloadNonce}`}
+              <BrowserDeviceStage
                 session={session}
                 controller={controller}
+                fitMode={deviceFitMode}
               />
               <BrowserStatusOverlay session={session} />
             </>

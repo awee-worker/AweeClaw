@@ -12,13 +12,14 @@
 
 import * as path from 'node:path'
 import * as fs from 'node:fs'
-import { BrowserWindow, webContents } from 'electron'
+import { app, BrowserWindow, webContents } from 'electron'
 import type { IpcMainInvokeEvent, WebContents } from 'electron'
 import { safeIpcHandle } from '../core/ipcGuard'
 import { previewStaticServer } from '../../modules/preview/PreviewStaticServer'
 import { previewHealthMonitor } from '../../modules/preview/PreviewHealthMonitor'
 import { previewAutoReload } from '../../modules/preview/PreviewAutoReload'
 import { previewDevTools, type DevToolsRect } from '../../modules/preview/PreviewDevTools'
+import { PREVIEW_DEVICE_CHANNEL, type PreviewDeviceRequest } from '@shared/protocols/previewProtocol'
 
 /**
  * 校验 guest 确实由发起请求的窗口承载
@@ -253,6 +254,35 @@ export function registerPreviewHandlers(): void {
     })
 
     /**
+     * 应用设备模拟的 User-Agent
+     *
+     * 设备框尺寸由渲染进程用 CSS 约束（决定页面 viewport 宽度），主进程只负责让
+     * guest 的 UA 与设备一致：移动档换移动 UA，桌面档恢复默认 UA。UA 变化后必须
+     * 重载页面才会生效——只改 UA 不刷新，页面仍是旧 UA 渲染出的 DOM。
+     */
+    safeIpcHandle('preview:apply-device', async (event, guestId: unknown, ua: unknown) => {
+        const guest = resolveOwnedGuest(event, guestId)
+        if (!guest) {
+            return { success: false, error: 'Unknown preview guest' }
+        }
+
+        const nextUa = typeof ua === 'string' && ua.trim() ? ua.trim() : null
+        const target = nextUa || app.userAgentFallback
+        if (!target) {
+            return { success: false, error: 'No user agent available' }
+        }
+
+        const changed = guest.getUserAgent() !== target
+        guest.setUserAgent(target)
+        if (changed) {
+            guest.reload()
+        }
+
+        return { success: true, data: { ua: target, reloaded: changed } }
+    })
+
+
+    /**
      * 登记预览目录的自动刷新
      *
      * 只对本地静态页面调用：dev server 自带 HMR，不需要这份监听。
@@ -326,4 +356,23 @@ export function registerPreviewHandlers(): void {
         previewDevTools.close(guestId)
         return { success: true }
     })
+}
+
+/**
+ * 把设备模式切换意图广播给承载预览的渲染进程
+ *
+ * AI 工具运行在主进程，看不到渲染层的设备框与前端状态，只能把「切成哪个档位」
+ * 交给渲染进程，由它复用「手动切换」的同一条应用链路（更新会话 → 重排设备框 →
+ * 应用 UA），保证 UI 与工具两条入口最终落到同一份状态。
+ *
+ * @returns 是否送达（host 缺失或已销毁时为 false）
+ */
+export function requestPreviewDeviceChange(
+    guest: WebContents,
+    request: PreviewDeviceRequest,
+): boolean {
+    const host = guest.hostWebContents
+    if (!host || host.isDestroyed()) return false
+    host.send(PREVIEW_DEVICE_CHANNEL, request)
+    return true
 }

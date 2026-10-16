@@ -28,6 +28,8 @@ export interface OpenBuiltinPreviewInput {
     path?: string
     /** 标签页标题；缺省时按地址推导 */
     title?: string
+    /** 初始设备模拟档位 id（预设 id / 'desktop' / 'custom'）；缺省为桌面 */
+    device?: string
 }
 
 export interface OpenBuiltinPreviewResult {
@@ -36,8 +38,17 @@ export interface OpenBuiltinPreviewResult {
     url?: string
     /** 实际使用的标签页标题 */
     title?: string
+    /** 预览会话 id（供调用方继续操作该标签页，如设置设备档位） */
+    sessionId?: string
     /** 本地静态预览的根目录（供调用方登记自动刷新） */
     rootDir?: string
+    /**
+     * 页面是否已完成挂载与健康绑定（即 AI 的 browser_* 工具能否定位到它）
+     *
+     * false 只表示「在等待窗口内还没就绪」，不算打开失败：页面可能仍在加载。
+     * 调用方据此提示模型先确认页面再操作，而不是直接扑一个空。
+     */
+    ready?: boolean
     error?: string
 }
 
@@ -56,16 +67,26 @@ function deriveTitle(value: string): string {
  * 把等待收进「打开」这一步，打开完成即代表页面已经可被自动化。
  *
  * 就绪信号取会话上的健康快照：它是主进程完成绑定的直接结果，比单纯的 guest id
- * 更晚一点、也更准确。超时不算失败——页面可能仍在加载，后续工具调用自带等待兜底。
+ * 更晚一点、也更准确。超时不算失败（返回 false 由调用方决定怎么提示）——页面可能
+ * 仍在加载；浏览器自动化工具自身也带等待窗口兜底。
  */
-async function waitForSessionReady(sessionId: string): Promise<void> {
+async function waitForSessionReady(sessionId: string): Promise<boolean> {
     const deadline = Date.now() + GUEST_READY_TIMEOUT_MS
+    // 等待过半仍未就绪时，主动请求该标签页重报一次 guest：覆盖「上报早于监听
+    // 注册 / 绑定被中途解绑」的时序竞争，比一路等到超时更可能把它吸收成正常命中。
+    const nudgeAt = Date.now() + Math.floor(GUEST_READY_TIMEOUT_MS / 2)
+    let nudged = false
     while (Date.now() < deadline) {
         if (previewSessionService.getSession(sessionId)?.health) {
-            return
+            return true
+        }
+        if (!nudged && Date.now() >= nudgeAt) {
+            nudged = true
+            previewSessionService.requestGuestReport(sessionId)
         }
         await new Promise((resolve) => setTimeout(resolve, GUEST_READY_POLL_MS))
     }
+    return false
 }
 
 /**
@@ -86,9 +107,9 @@ export async function openBuiltinPreview(
             }
         }
         const title = input.title || deriveTitle(rawUrl)
-        const session = activatePreview(rawUrl, title)
-        await waitForSessionReady(session.id)
-        return { success: true, url: rawUrl, title }
+        const session = activatePreview(rawUrl, title, undefined, input.device)
+        const ready = await waitForSessionReady(session.id)
+        return { success: true, url: rawUrl, title, sessionId: session.id, ready }
     }
 
     const rawPath = (input.path || '').trim()
@@ -105,9 +126,9 @@ export async function openBuiltinPreview(
             }
         }
         const title = input.title || deriveTitle(rawPath)
-        const session = activatePreview(resolved.url, title, resolved.rootDir)
-        await waitForSessionReady(session.id)
-        return { success: true, url: resolved.url, title, rootDir: resolved.rootDir }
+        const session = activatePreview(resolved.url, title, resolved.rootDir, input.device)
+        const ready = await waitForSessionReady(session.id)
+        return { success: true, url: resolved.url, title, sessionId: session.id, rootDir: resolved.rootDir, ready }
     } catch (err) {
         return {
             success: false,
@@ -117,13 +138,18 @@ export async function openBuiltinPreview(
 }
 
 /** 打开（或复用）预览标签页并激活，返回对应会话（调用方据此等待页面就绪） */
-function activatePreview(url: string, title: string, rootDir?: string): PreviewSession {
+function activatePreview(url: string, title: string, rootDir?: string, device?: string): PreviewSession {
     const session = previewSessionService.openUrl(url, {
         title,
         source: 'manual',
         activate: true,
         previewRoot: rootDir,
     })
+
+    // 指定了设备档位：打开即应用，页面首次加载就按设备 viewport 渲染
+    if (device) {
+        previewSessionService.setDevice(session.id, { deviceId: device })
+    }
 
     // 本地静态页面：登记目录监听，页面文件改动后自动刷新
     if (rootDir) {

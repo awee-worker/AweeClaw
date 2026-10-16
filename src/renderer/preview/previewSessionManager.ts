@@ -1,5 +1,6 @@
 import { useStore } from '@store'
-import type { OpenPreviewMetadata, PreviewAutoReloadPayload, PreviewHealthSnapshot, PreviewServerCandidate, PreviewSession, PreviewSessionStatus } from '@shared/protocols/previewProtocol'
+import { DESKTOP_PROFILE, DEVICE_PRESETS } from '@shared/protocols/previewProtocol'
+import type { OpenPreviewMetadata, PreviewAutoReloadPayload, PreviewDeviceRequest, PreviewHealthSnapshot, PreviewServerCandidate, PreviewSession, PreviewSessionStatus } from '@shared/protocols/previewProtocol'
 import { buildPreviewDocumentPath, parsePreviewDocumentPath } from '@shared/protocols/previewProtocol'
 import { api } from '@renderer/adapters/electronBridge'
 import { devServerDiscoveryService } from './devServerLocator'
@@ -38,11 +39,15 @@ export class PreviewSessionService {
   private readonly listeners = new Set<PreviewSessionListener>()
   private readonly sessions = new Map<string, PreviewSession>()
   private readonly sessionByUrl = new Map<string, string>()
+  /** 预览标签页的 guest 重报回调（sessionId → report）：标签页挂载时登记，卸载时移除 */
+  private readonly guestReporters = new Map<string, () => boolean>()
   private state: PreviewSessionState = { sessions: [] }
   /** 健康推送订阅是否已建立（只需一次） */
   private healthBridgeAttached = false
   /** 自动刷新订阅是否已建立（只需一次） */
   private autoReloadBridgeAttached = false
+  /** 设备模式切换订阅是否已建立（只需一次） */
+  private deviceBridgeAttached = false
   /**
    * 订阅会话状态变化
    *
@@ -52,6 +57,7 @@ export class PreviewSessionService {
   subscribe(listener: PreviewSessionListener): () => void {
     this.ensureHealthBridge()
     this.ensureAutoReloadBridge()
+    this.ensureDeviceBridge()
     this.listeners.add(listener)
     listener(this.state)
     return () => this.listeners.delete(listener)
@@ -106,6 +112,7 @@ export class PreviewSessionService {
   ): PreviewSession {
     this.ensureHealthBridge()
     this.ensureAutoReloadBridge()
+    this.ensureDeviceBridge()
     if (!options.forceNew) {
       const existingSessionId = this.sessionByUrl.get(url)
       if (existingSessionId) {
@@ -431,6 +438,46 @@ export class PreviewSessionService {
   }
 
   /**
+   * 登记一个预览标签页的 guest 重报回调
+   *
+   * 主进程的浏览器自动化（browser_snapshot 等）靠「webview 主动上报 guest」建立
+   * 关联。上报挂在 webview 的 dom-ready 上，一旦这一步早于事件监听注册、或绑定
+   * 被中途解绑，主进程侧就没有该会话的记录，AI 会报「No preview tab found」。
+   *
+   * 这里把每个预览标签页的上报入口集中登记，打开预览的场景可在等待窗口内主动
+   * 触发一次重报，把这类时序竞争吸收成一次正常命中。
+   *
+   * @returns 注销函数（标签页卸载时调用）
+   */
+  registerGuestReporter(sessionId: string, report: () => boolean): () => void {
+    this.guestReporters.set(sessionId, report)
+    return () => {
+      if (this.guestReporters.get(sessionId) === report) {
+        this.guestReporters.delete(sessionId)
+      }
+    }
+  }
+
+  /**
+   * 请求预览标签页重新上报 guest
+   *
+   * @param sessionId 目标会话；缺省时对所有已登记的标签页触发
+   * @returns 是否至少有一个标签页完成了上报（webview 尚未就绪时其回调返回 false）
+   */
+  requestGuestReport(sessionId?: string): boolean {
+    let delivered = false
+    for (const [id, report] of this.guestReporters) {
+      if (sessionId && id !== sessionId) continue
+      try {
+        delivered = report() || delivered
+      } catch {
+        // 单个标签页上报失败不影响其余
+      }
+    }
+    return delivered
+  }
+
+  /**
    * 建立健康推送订阅（幂等）
    *
    * 主进程在采集到变化时按会话推送快照，订阅在服务首次被使用时建立。
@@ -481,6 +528,80 @@ export class PreviewSessionService {
       }
     })
   }
+
+  /**
+   * 设置会话的设备模拟档位
+   *
+   * 只改内存态（deviceId / deviceViewport）：设备框由渲染层据 session 重排，
+   * UA 由 webview controller 读到档位后调主进程应用。两者都随 session 变化自动跟进。
+   *
+   * @param options.deviceId 档位 id（'desktop' | 预设 id | 'custom'）
+   * @param options.width/height 实际视口尺寸；预设档位可传横竖屏后的宽高覆盖默认值
+   */
+  setDevice(
+    sessionId: string,
+    options: { deviceId: string; width?: number; height?: number },
+  ): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) {
+      return
+    }
+
+    const deviceId = options.deviceId?.trim() || DESKTOP_PROFILE.id
+    const isDesktop = deviceId === DESKTOP_PROFILE.id
+    const preset = DEVICE_PRESETS.find((item) => item.id === deviceId)
+
+    let viewport: { width: number; height: number } | undefined
+    if (!isDesktop) {
+      const fallbackWidth = preset?.width || 390
+      const fallbackHeight = preset?.height || 844
+      viewport = {
+        width: Math.max(200, Math.round(options.width || fallbackWidth)),
+        height: Math.max(200, Math.round(options.height || fallbackHeight)),
+      }
+    }
+
+    this.sessions.set(sessionId, {
+      ...session,
+      deviceId: isDesktop ? undefined : deviceId,
+      deviceViewport: viewport,
+      updatedAt: Date.now(),
+    })
+    this.rebuildState()
+    this.emit()
+  }
+
+  /**
+   * 建立设备模式切换订阅（幂等）
+   *
+   * AI 的 browser_set_device 工具在主进程发起，广播到这个信道；这里按广播的
+   * 会话与档位走 setDevice，与用户手点工具栏完全同一条路径。
+   */
+  private ensureDeviceBridge(): void {
+    if (this.deviceBridgeAttached) {
+      return
+    }
+
+    try {
+      api.preview.onDevice((request) => this.applyDeviceRequest(request))
+      this.deviceBridgeAttached = true
+    } catch {
+      // preload 未就绪（如单测环境）时忽略
+    }
+  }
+
+  /** 处理主进程推来的设备切换请求 */
+  private applyDeviceRequest(request: PreviewDeviceRequest): void {
+    if (!request?.sessionId || !request.deviceId) {
+      return
+    }
+    this.setDevice(request.sessionId, {
+      deviceId: request.deviceId,
+      width: request.width,
+      height: request.height,
+    })
+  }
+
 
   private rebuildState(): void {
     this.state = {

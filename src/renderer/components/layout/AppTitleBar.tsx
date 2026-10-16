@@ -579,6 +579,15 @@ export default function AppTitleBar() {
 
           <DockPopover
             placement="bottom"
+            // 角标交给 DockPopover 统一渲染：与服务图标同源，右上角定位一致，
+            // 不再在 bell 自身的 16px 容器里各自计算偏移（会导致两者上下错位）。
+            badge={
+              notificationCount > 0 && (!activeToast || shouldEject)
+                ? notificationCount > 9
+                  ? '9+'
+                  : notificationCount
+                : undefined
+            }
             icon={
               <div className="relative flex items-center justify-center">
                 <AnimatePresence mode="wait">
@@ -611,11 +620,6 @@ export default function AppTitleBar() {
                       className="relative flex items-center justify-center"
                     >
                       <Bell className={`w-4 h-4 ${notificationCount > 0 ? 'text-accent' : ''}`} />
-                      {notificationCount > 0 && (
-                        <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 flex items-center justify-center text-[9px] font-semibold bg-accent text-white rounded-full">
-                          {notificationCount > 9 ? '9+' : notificationCount}
-                        </span>
-                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>

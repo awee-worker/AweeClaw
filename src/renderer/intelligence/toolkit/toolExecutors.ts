@@ -4597,6 +4597,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         const url = typeof args.url === 'string' ? args.url.trim() : ''
         const rawPath = typeof args.path === 'string' ? args.path.trim() : ''
         const title = typeof args.title === 'string' ? args.title.trim() : ''
+        const device = typeof args.device === 'string' ? args.device.trim() : ''
 
         if (!url && !rawPath) {
             return { success: false, result: '', error: 'Provide either `url` or `path`' }
@@ -4610,7 +4611,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
 
             const preview = await openBuiltinPreview(
-                url ? { url, title } : { path: resolvedPath, title },
+                url
+                    ? { url, title, device: device || undefined }
+                    : { path: resolvedPath, title, device: device || undefined },
             )
 
             if (!preview.success) {
@@ -4621,10 +4624,17 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 ? '要查看页面内容或操作页面，优先调用 mcp_builtin-browser__browser_snapshot 获取真实渲染后的页面结构与文本（browser_click / browser_type 可交互）——不要退回外部浏览器，也不要用 read_url 兜底（JS 渲染页读不到内容）。浏览器互斥：内置浏览器已打开该页面，不要再执行 open / start 等命令用系统浏览器重复打开；确需改用系统浏览器时，先关闭内置预览标签页。'
                 : '静态页面无需另起服务；如需查看外部网页内容请使用 read_url 或 web_search。'
 
+            // 未就绪：页面还在挂载/加载，此时直接调用 browser_* 可能定位不到标签页。
+            // 明确告知模型「先确认再操作」，比让它撞一次 "No preview tab found" 更省一轮。
+            const notReadyHint = preview.ready === false
+                ? '注意：页面尚未完成挂载与健康绑定（可能仍在加载）。此时直接取浏览器快照可能定位不到标签页——稍等片刻再调用，或先用 inspect_preview 确认页面状态。'
+                : ''
+
+            const deviceHint = device ? `设备模拟：${device}。` : ''
             return {
                 success: true,
-                result: `已在内置浏览器打开预览：${preview.url}（标签页「${preview.title || '预览'}」）。${followUp}`,
-                meta: { path: resolvedPath || undefined, url: preview.url },
+                result: `已在内置浏览器打开预览：${preview.url}（标签页「${preview.title || '预览'}」）。${deviceHint}${notReadyHint}${followUp}`,
+                meta: { path: resolvedPath || undefined, url: preview.url, sessionId: preview.sessionId, device: device || undefined, ready: preview.ready },
             }
         } catch (err) {
             return {

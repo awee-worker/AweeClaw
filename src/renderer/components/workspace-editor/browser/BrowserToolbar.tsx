@@ -1,21 +1,24 @@
 /**
  * 内置浏览器工具栏（三段式布局）
  *
- * [后退][前进][刷新/停止] │ [地址栏] │ [检查元素][缩小][放大][外部打开][新建标签页]
+ * [后退][前进][刷新/停止] │ [地址栏] │ [检查元素][缩小][放大][设备模拟][外部打开][新建标签页]
  *
  * - 导航组：后退/前进按 canGoBack/canGoForward 禁用；刷新与停止按 isLoading 切换
  * - 地址栏：BrowserAddressBar（flex-1）
  * - 功能组：元素检查（DevTools toggle）、缩放（50%–300%，点击百分比重置）、
- *           外部打开（系统浏览器）、新建标签页（强制创建新会话）
+ *           设备模拟（移动 / 桌面档位切换）、外部打开（系统浏览器）、新建标签页
  */
-import { ArrowLeft, ArrowRight, RefreshCw, SquareDashedMousePointer, ZoomIn, ZoomOut, ExternalLink, Plus } from 'lucide-react'
-import type { PreviewHealthSnapshot } from '@shared/protocols/previewProtocol'
+import { ArrowLeft, ArrowRight, RefreshCw, SquareDashedMousePointer, ZoomIn, ZoomOut, ExternalLink, Plus, Expand, Shrink } from 'lucide-react'
+import type { PreviewHealthSnapshot, PreviewSession } from '@shared/protocols/previewProtocol'
+import { resolveDevice } from '@shared/protocols/previewProtocol'
 import { ActionButton } from '@components/ui'
 import { useStore } from '@store'
 import { t, type Language } from '@renderer/i18n'
 import type { WebviewController } from './hooks/useWebviewController'
+import type { DeviceFitMode } from './BrowserDeviceStage'
 import BrowserAddressBar from './BrowserAddressBar'
 import BrowserHealthIndicator from './BrowserHealthIndicator'
+import BrowserDeviceSelector from './BrowserDeviceSelector'
 
 interface BrowserToolbarProps {
   controller: WebviewController
@@ -31,6 +34,14 @@ interface BrowserToolbarProps {
   onOpenExternal: () => void
   /** 新建标签页（创建新会话） */
   onNewTab: () => void
+  /** 当前预览会话（提供设备模拟档位） */
+  device?: PreviewSession | null
+  /** 切换设备模拟档位 */
+  onDeviceChange?: (deviceId: string, width?: number, height?: number) => void
+  /** 设备档适配方式（仅设备档生效） */
+  deviceFitMode?: DeviceFitMode
+  /** 切换设备档适配方式：缩放适配 ↔ 实际大小 */
+  onToggleDeviceFit?: () => void
 }
 
 
@@ -44,9 +55,16 @@ export default function BrowserToolbar({
   onResetAddress,
   onOpenExternal,
   onNewTab,
+  device,
+  onDeviceChange,
+  deviceFitMode = 'fit',
+  onToggleDeviceFit,
 }: BrowserToolbarProps) {
   const language = useStore((state) => state.language) as Language
   const { canGoBack, canGoForward, isLoading, devtoolsOpen, zoomFactor } = controller
+
+  // 适配开关只对设备档有意义：桌面档本就是铺满可用空间
+  const inDeviceMode = device ? !resolveDevice(device).isDesktop : false
 
 
   const zoomPercent = Math.round(zoomFactor * 100)
@@ -151,6 +169,31 @@ export default function BrowserToolbar({
         >
           <ZoomIn className="w-4 h-4" />
         </ActionButton>
+
+        {/* 设备模拟：切换移动 / 桌面档位（手动入口，与 AI 工具共用同一状态源） */}
+        {onDeviceChange && (
+          <BrowserDeviceSelector session={device} onChange={onDeviceChange} />
+        )}
+
+        {/* 适配开关：设备档下在「缩放适配」与「实际大小（可滚动）」间切换 */}
+        {inDeviceMode && onToggleDeviceFit && (
+          <ActionButton
+            variant="ghost"
+            size="icon"
+            className={`h-8 w-8 ${deviceFitMode === 'actual' ? 'text-accent ring-2 ring-accent/30' : ''}`}
+            onClick={onToggleDeviceFit}
+            title={
+              deviceFitMode === 'actual'
+                ? t('editor.browser.fitWindowSwitch', language)
+                : t('editor.browser.actualSizeSwitch', language)
+            }
+            aria-label={t('editor.browser.deviceFit', language)}
+            aria-pressed={deviceFitMode === 'actual'}
+          >
+            {deviceFitMode === 'actual' ? <Expand className="w-4 h-4" /> : <Shrink className="w-4 h-4" />}
+          </ActionButton>
+        )}
+
 
         {/* 外部打开 */}
         <ActionButton

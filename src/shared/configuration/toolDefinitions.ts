@@ -1926,17 +1926,25 @@ Notes:
   the result immediately.
 - Calling it again with the same address reuses the existing preview tab instead of opening a new one.
 - Static pages need nothing else: do NOT start a server for them. Only use \`url\` when the project
-  genuinely requires a dev server (bundlers, HMR, API routes).`,
+  genuinely requires a dev server (bundlers, HMR, API routes).
+- Open it in mobile emulation by passing \`device\` (an iPhone/iPad/Android preset id, e.g.
+  "iphone-16"), or "custom" with width/height. Use "desktop" (or omit) for a normal desktop view.
+  You can also switch the device of an already-open tab later with \`browser_set_device\`.
+
+Device preset ids: iphone-se, iphone-14, iphone-14-pro-max, iphone-16, iphone-16-pro-max,
+  ipad-mini, ipad-pro, pixel-7, galaxy-s20, desktop, custom.`,
         examples: [
             'open_preview path="guoqing-website/index.html"',
             'open_preview path="my-site/"  ← opens the folder\'s index.html',
             'open_preview url="http://localhost:5173"  ← after `npm run dev`',
+            'open_preview path="my-site/index.html" device="iphone-16"  ← preview as a phone',
         ],
         criticalRules: [
             'Use this tool — not the system browser — whenever you show the user a page',
             'Do NOT run `open` / `start` / `xdg-open` on a local HTML file, and do NOT start a temporary static server for a static page',
             'Pass exactly one of `path` (local file/folder) or `url` (http/https address)',
             'Relative paths resolve against the workspace root; a folder resolves to its index.html',
+            'Pass `device` to preview in mobile emulation when the page should be checked on a phone',
         ],
         category: 'interaction',
         approvalType: 'none',
@@ -1955,6 +1963,11 @@ Notes:
             title: {
                 type: 'string',
                 description: 'Optional preview tab title; derived from the path/URL when omitted.',
+            },
+            device: {
+                type: 'string',
+                description:
+                    'Optional device emulation preset id (iphone-se | iphone-14 | iphone-14-pro-max | iphone-16 | iphone-16-pro-max | ipad-mini | ipad-pro | pixel-7 | galaxy-s20 | desktop | custom). Defaults to desktop. Pair "custom" with width/height in the browser_set_device tool.',
             },
         },
     },

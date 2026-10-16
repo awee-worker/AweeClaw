@@ -370,6 +370,7 @@ const PAGE_PREVIEW_GUIDE = `## Page Preview (MANDATORY for pages you build)
 - NEVER open a local HTML file with the system browser (\`open\` / \`start\` / \`xdg-open\`), and NEVER start a temporary static server (\`python3 -m http.server\`, \`npx serve\`) just to look at a static page: the built-in preview already serves the page over a loopback address, with relative CSS/JS/image references working.
 - Use \`open_preview path="<file or folder>"\` for a static page; use \`open_preview url="http://localhost:<port>"\` only when the project really needs a dev server (bundler, HMR, API routes).
 - BROWSER EXCLUSIVITY: never show the same page in both the built-in browser and the system browser. Once open_preview has opened the page, do NOT run \`open\` / \`start\` / \`xdg-open\` (including dev-server \`--open\` flags) for it. If the system browser genuinely becomes necessary, close the built-in preview tab first — one browser at a time.
+- To preview a page as it looks on a phone, pass \`device="iphone-16"\` (or another preset id) to \`open_preview\`, or switch later with \`browser_set_device\`.
 - Do not report a page as done before you have opened it for the user.`
 
 /**
@@ -386,9 +387,10 @@ const BROWSER_AUTOMATION_GUIDE = `## Built-in Browser Automation (PREFERRED for 
   - \`browser_take_screenshot\` — returns the page as an image for visual inspection.
   - \`browser_console_messages\` / \`browser_network_requests\` — live console errors and resource waterfall of the tab.
   - \`browser_navigate\` / \`browser_back\` — load a new http/https URL in the tab, or go back.
+  - \`browser_set_device\` — switch the tab into mobile emulation (or back to desktop) to check responsive layouts: pass a preset id (\`iphone-16\`, \`pixel-7\`, \`ipad-mini\`…), \`desktop\` to reset, or \`custom\` with width/height. The page re-renders at the device viewport width, so media queries fire correctly.
 - When the user asks to open a webpage and see what is on it ("看看这个页面有什么内容"), or to verify a rendered page: \`open_preview\` (if not open yet) then \`browser_snapshot\`. Do NOT fall back to the system browser, and do NOT rely on \`read_url\` for JS-rendered pages (it returns no DOM content).
 - Browser exclusivity: do not open the same page with the system browser while the built-in preview tab shows it. Prefer the built-in browser; switch to the system browser only when the built-in one cannot fulfill the request, and close the built-in tab when you do.
-- Read-only tools (snapshot / screenshot / console / network / list_tabs) are auto-approved; click / type / navigate / back / evaluate require user confirmation.`
+- Read-only tools (snapshot / screenshot / console / network / list_tabs) are auto-approved; click / type / navigate / back / evaluate / set_device require user confirmation.`
 
 /** builtin-browser MCP 服务器当前是否已连接（决定自动化指引是否注入提示词） */
 function isBuiltinBrowserAutomationConnected(): boolean {

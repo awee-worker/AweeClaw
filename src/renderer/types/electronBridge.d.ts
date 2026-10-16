@@ -1809,9 +1809,22 @@ export interface ElectronAPI {
       guestId: number,
       url: string,
     ) => Promise<{ success: boolean; data?: { url: string }; error?: string }>
+    /**
+     * 应用设备模拟的 User-Agent
+     *
+     * 传 null 恢复默认 UA（桌面档）。UA 变化时主进程会重载页面使其生效。
+     */
+    applyDevice: (
+      guestId: number,
+      ua: string | null,
+    ) => Promise<{ success: boolean; data?: { ua: string; reloaded: boolean }; error?: string }>
     /** 健康状态推送订阅 */
     onHealth: (
       callback: (snapshot: import('@protocols/previewProtocol').PreviewHealthSnapshot) => void,
+    ) => () => void
+    /** 设备模式切换请求订阅（AI 工具发起，main → render） */
+    onDevice: (
+      callback: (request: import('@protocols/previewProtocol').PreviewDeviceRequest) => void,
     ) => () => void
     /** 登记预览目录的自动刷新（本地静态页面专用） */
     watchAutoReload: (rootDir: string, url: string) => Promise<{ success: boolean; error?: string }>

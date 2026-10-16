@@ -101,4 +101,13 @@ describe('hasSystemBrowserOpenCommand', () => {
         expect(hasSystemBrowserOpenCommand('python3 -m http.server 8000')).toBe(false)
         expect(hasSystemBrowserOpenCommand('node -e "console.log(1)"')).toBe(false)
     })
+
+    it('打开器目标是目录 / 应用 / 非页面文件时不算拉起浏览器', () => {
+        // 这些命令不会打开浏览器（交给 Finder / 编辑器），不能因此关闭内置预览
+        expect(hasSystemBrowserOpenCommand('open .')).toBe(false)
+        expect(hasSystemBrowserOpenCommand('open ~/Downloads')).toBe(false)
+        expect(hasSystemBrowserOpenCommand('open README.md')).toBe(false)
+        expect(hasSystemBrowserOpenCommand('open -a "Visual Studio Code" src/index.ts')).toBe(false)
+        expect(hasSystemBrowserOpenCommand('open -R dist/bundle.js')).toBe(false)
+    })
 })

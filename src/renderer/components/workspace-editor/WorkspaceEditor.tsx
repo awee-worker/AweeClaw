@@ -51,7 +51,9 @@ const EditorContextMenu = safeLazy(() => import('./CodeEditorMenu'), { label: 'E
 const DefinitionQuickPick = safeLazy(() => import('./DefinitionQuickPick'), { label: 'DefinitionQuickPick', silent: true })
 const TabContextMenu = safeNamedLazy(() => import('./TabActionMenu'), 'TabContextMenu', { label: 'TabContextMenu', silent: true })
 const EditorWelcome = safeNamedLazy(() => import('./EditorLanding'), 'EditorWelcome', { label: 'EditorWelcome', silent: true })
-const BrowserPreviewTab = safeLazy(() => import('./WebPreviewTab'), { label: 'BrowserPreviewTab', silent: true })
+// 不静默：预览 Tab 的 chunk 加载失败会让页面区域整体空白（webview 根本没挂上），
+// 而 open_preview 仍会返回成功。保留一条可检索的日志，避免排查时无从下手。
+const BrowserPreviewTab = safeLazy(() => import('./WebPreviewTab'), { label: 'BrowserPreviewTab' })
 
 const PdfPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PdfPreview', { label: 'PdfPreview', silent: true })
 const DocxPreview = safeNamedLazy(() => import('./DocumentPreview'), 'DocxPreview', { label: 'DocxPreview', silent: true })
@@ -148,6 +150,7 @@ function computeMinimalTextDiff(
 // Hooks
 import { useEditorActions, useAICompletion, useEditorEvents, useComposerInlineDiff } from './hooks'
 import { getLanguage } from './utils/langIdMapper'
+import { selectMountedPreviewTabs } from './utils/mountedPreviewTabs'
 import { defineMonacoTheme } from './utils/editorTheme'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'
 import { isPptPreviewPath, extractSessionIdFromPptPreviewPath } from '@shared/protocols/pptPreviewProtocol'
@@ -157,6 +160,16 @@ import { isOoEditPath, OO_EDITABLE_EXTENSIONS } from '@shared/protocols/onlyOffi
 
 /** 打开普通文件 Tab 时自动接入 ONLYOFFICE 的扩展名（与手动「在线编辑」入口共用一份：doc/docx/ppt/pptx/xls/xlsx/csv） */
 const OO_AUTO_EXTENSIONS = new Set<string>(OO_EDITABLE_EXTENSIONS)
+
+/**
+ * 内置浏览器预览 Tab 常驻挂载的数量上限
+ *
+ * 常驻挂载是为了让 webview 在切 Tab 时不被销毁（销毁会解绑主进程的自动化记录，
+ * 且切回要整页重载）。但每个挂载的 Tab 都持有一个 webview，全量保活会在长会话里
+ * 堆积渲染进程。这里只保活「当前激活 + 最近使用」的这么多，其余留在标签栏，
+ * 切到前台时再挂载。
+ */
+const MAX_MOUNTED_PREVIEW_TABS = 6
 /** 本会话内已自动尝试过的文件路径 → 是否成功（避免反复自动启动；失败回退本地后可手动点「在线编辑」重试） */
 const ooAutoAttempted = new Map<string, boolean>()
 
@@ -328,6 +341,29 @@ export default function Editor() {
   /** 已打开的 ONLYOFFICE Tab：常驻挂载，切 Tab 只隐藏不卸载（避免 webview 反复重新加载） */
   const ooEditTabs = useStore(
     useShallow((state) => state.openFiles.filter((f) => f.kind === 'oo-edit' && Boolean(f.ooEdit))),
+  )
+
+  /**
+   * 已打开的内置浏览器预览 Tab：常驻挂载，切走只隐藏不卸载，但只保活最近使用的若干个
+   *
+   * 卸载预览 Tab 会连同 <webview> 一起销毁，主进程随即解绑该会话的健康采集与
+   * 自动化记录（PreviewHealthMonitor.detach）。此时标签页在 UI 上还开着，但
+   * AI 的 browser_* 工具已经定位不到它，只能报 "No preview tab found"；
+   * 切回来时页面还会整页重载。常驻挂载同时解决这两点。
+   *
+   * 但每个挂载的 Tab 都持有一个 webview（独立渲染进程），长会话里 AI 陆续打开
+   * 很多页面时全部保活会持续堆积内存。这里只保活「当前激活 + 最近使用」的
+   * MAX_MOUNTED_PREVIEW_TABS 个：超出上限的 Tab 仍留在标签栏，点击切到前台时
+   * 按最近使用重新进入保活集合，自然挂载。
+   */
+  const previewTabs = useStore(
+    useShallow((state) =>
+      selectMountedPreviewTabs(
+        state.openFiles.filter((f) => f.kind === 'preview' && Boolean(f.preview)),
+        state.activeFilePath,
+        MAX_MOUNTED_PREVIEW_TABS,
+      ),
+    ),
   )
 
   /** 启动 ONLYOFFICE 在线编辑会话：主进程上传本地文件 → 打开编辑 Tab（成功后关闭本地 file Tab，只保留 oo-edit Tab） */
@@ -983,6 +1019,25 @@ export default function Editor() {
           </div>
         ))}
 
+        {/* 内置浏览器预览 Tab 常驻挂载：切走只隐藏不卸载。
+            卸载会销毁 webview → 主进程解绑该会话 → AI 的 browser_* 工具定位不到
+            标签页（报 No preview tab found），切回还会整页重载。 */}
+        {previewTabs.map((tab) => (
+          <div
+            key={tab.path}
+            aria-hidden={tab.path !== activeFilePath}
+            className={
+              tab.path === activeFilePath
+                ? 'absolute inset-0 z-10 flex flex-col'
+                : 'absolute inset-0 z-0 invisible pointer-events-none'
+            }
+          >
+            <Suspense fallback={<CodeSkeleton lines={8} />}>
+              <BrowserPreviewTab file={tab} />
+            </Suspense>
+          </div>
+        ))}
+
         {isOoEditTab ? null : isPptPreviewTab && pptPreviewSessionId ? (
           <Suspense fallback={<CodeSkeleton lines={8} />}>
             <PptPreviewPanel sessionId={pptPreviewSessionId} />
@@ -1018,10 +1073,9 @@ export default function Editor() {
               closeFile(activeFile.path)
             }}
           />
-        ) : isPreviewDocument && activeFile ? (
-          <Suspense fallback={<CodeSkeleton lines={8} />}>
-            <BrowserPreviewTab file={activeFile} />
-          </Suspense>
+        ) : isPreviewDocument ? (
+          /* 预览 Tab 由上方常驻块渲染（切走只隐藏），此处不再渲染，避免重复挂载 webview */
+          null
         ) : activeFile && (
           <MonacoLifecycleBoundary>
             <>

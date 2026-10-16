@@ -14,10 +14,15 @@
  *    - file:// 形式的本地页面
  *    - 任意 http/https 地址（内置浏览器同样能渲染，优先走内置，
  *      避免「内置已开、外部又开一份」的重复展示）
- * 2. hasSystemBrowserOpenCommand —— 识别命令中是否包含会拉起系统浏览器的
- *    打开器（含复合命令里的分段，以及 vite/webpack 的 --open 开关）。
- *    这类命令无法安全改写（可能连带启动服务），由执行层在成功执行后
- *    同步关闭内置预览标签页，维持「内置 / 外部只开一个」的互斥。
+ * 2. hasSystemBrowserOpenCommand —— 识别命令中「确实会拉起系统浏览器」的打开器：
+ *    打开器（open / start / xdg-open）的目标是网页地址或本地页面文件，以及
+ *    vite/webpack 的 --open 开关。这类命令无法安全改写（可能连带启动服务），
+ *    由执行层在成功执行后同步关闭内置预览标签页，维持「内置 / 外部只开一个」
+ *    的互斥。
+ *
+ *    注意：打开器只是「打开了浏览器」的充分条件，不是必要条件——`open .` /
+ *    `open -a Cursor file.ts` 这类目标是目录或非页面文件，系统会交给 Finder /
+ *    编辑器而不是浏览器，因此不能算作「拉起了浏览器」（否则会误关内置预览）。
  *
  * 目录、文档、应用等目标一律不拦截。
  */
@@ -26,9 +31,6 @@ import { resolveToAbsolute } from '@shared/toolkit/pathHelper'
 
 /** 打开工具：macOS open / Linux xdg-open / Windows start（以及 explorer 的 URL 形式不处理） */
 const OPENER_PATTERN = /^(?:cmd(?:\.exe)?\s+\/c\s+)?(?:open|xdg-open|start)(?:\.exe)?\s+([\s\S]+)$/i
-
-/** 判定一个命令段是否以打开器开头（cmd /c start 的 Windows 前缀一并兼容） */
-const OPENER_SEGMENT_PATTERN = /^(?:cmd(?:\.exe)?\s+\/c\s+)?(?:open|xdg-open|start)(?:\.exe)?\s+\S/i
 
 /**
  * 复合命令分段：&& / || / ; / 换行 / 管道，以及「后台 & 后紧跟打开命令」的情况。
@@ -156,20 +158,33 @@ export function detectLocalPageOpenCommand(
 /**
  * 识别命令中是否包含会拉起系统浏览器的打开器
  *
- * 覆盖两类形态：
- * 1. 任意命令段以 open / xdg-open / start / cmd /c start 开头（复合命令已分段）
- * 2. dev server 的 --open 开关（vite --open、npm run dev -- --open 等）
+ * 打开器是否真的拉起浏览器，取决于它的目标：
+ * - 目标是网页地址（http/https）或本地页面文件（.html/.htm）→ 系统浏览器接管
+ * - 目标是目录、应用（-a bird）、文档等 → 交给 Finder / 编辑器 / 预览，不拉起浏览器
+ * 因此这里像 detectLocalPageOpenCommand 一样解析出真实目标再判定，而不是见到
+ * `open` 就认定「浏览器被拉起」——否则 `open .` / `open -a Cursor file.ts` 之类
+ * 的日常命令会误关内置预览标签页。
  *
- * 命中即视为「外部浏览器将被拉起」，由执行层在命令成功后同步关闭内置预览
- * 标签页，避免同一内容在内置与外部两处重复展示。
+ * 另外覆盖 dev server 的 --open 开关（vite --open、npm run dev -- --open 等）：
+ * 这类命令会自行拉起浏览器，同样构成互斥。
  */
 export function hasSystemBrowserOpenCommand(command: string): boolean {
     if (typeof command !== 'string') return false
 
     const segments = command.split(SEGMENT_SPLIT)
-    if (segments.some((seg) => OPENER_SEGMENT_PATTERN.test(seg.trim()))) {
-        return true
-    }
+    const opensBrowserPage = segments.some((raw) => {
+        const matched = raw.trim().match(OPENER_PATTERN)
+        if (!matched) return false
+
+        const target = extractTarget(matched[1])
+        if (!target) return false
+
+        // 打开网页地址：系统浏览器接管
+        if (HTTP_URL.test(target)) return true
+        // 打开本地页面文件：系统浏览器接管（file:// 已在上游识别，这里按扩展名兜底）
+        return LOCAL_PAGE_EXT.test(target.split(/[?#]/)[0])
+    })
+    if (opensBrowserPage) return true
 
     return DEV_SERVER_OPEN_FLAG.test(command)
 }

@@ -797,12 +797,14 @@ export const MCP_PRESETS: McpPreset[] = [
       'Click the "登录" button in the preview tab (use browser_snapshot index first)',
       'Fill the search box in the preview and press Enter',
       'Check console errors of the preview page',
+      'Switch the preview tab to iPhone 16 and check the mobile layout',
     ],
     usageExamplesZh: [
       '先用 open_preview 打开页面，然后做一次 browser_snapshot 告诉我页面里有什么',
       '点击预览页面里的"登录"按钮（先用 browser_snapshot 拿到元素序号）',
       '在预览页面的搜索框里填入关键词并回车',
       '查看预览页面的控制台报错',
+      '把预览标签页切到 iPhone 16，检查移动端布局',
     ],
   },
   {

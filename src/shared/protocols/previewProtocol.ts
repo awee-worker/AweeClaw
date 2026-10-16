@@ -155,6 +155,157 @@ export interface PreviewSession {
   guestId?: number
   /** 静态预览的根目录（运行时态；本地文件预览才有，供自动刷新登记用） */
   previewRoot?: string
+  /**
+   * 设备模拟档位 id（运行时态，不持久化）
+   *
+   * 缺省 / 'desktop' 表示桌面（不施加约束）；其余为 DEVICE_PRESETS 的档位 id，
+   * 或 'custom'（自定义尺寸）。驱动渲染层的设备框尺寸与主进程的 UA 应用。
+   */
+  deviceId?: string
+  /** 非桌面档的设备逻辑视口（已含横竖屏方向；运行时态） */
+  deviceViewport?: { width: number; height: number }
+}
+
+// ============ 设备模拟 ============
+
+/** 设备模拟档位 */
+export interface DeviceProfile {
+  /** 档位 id；预设为固定值，自定义为 'custom' */
+  id: string
+  /** 展示名 */
+  name: string
+  /** 逻辑视口宽（CSS px），决定页面 viewport 宽度与响应式断点 */
+  width: number
+  /** 逻辑视口高（CSS px） */
+  height: number
+  /** 设备像素比 */
+  deviceScaleFactor: number
+  /** 是否为触屏移动设备 */
+  mobile: boolean
+  /** 移动端 User-Agent；桌面档或无 UA 时缺省 */
+  ua?: string
+}
+
+/** 桌面档：不施加设备约束，webview 铺满可用空间 */
+export const DESKTOP_PROFILE: DeviceProfile = {
+  id: 'desktop',
+  name: 'Desktop',
+  width: 0,
+  height: 0,
+  deviceScaleFactor: 1,
+  mobile: false,
+}
+
+const IOS_PHONE_UA =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+const IOS_PAD_UA =
+  'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+const ANDROID_UA =
+  'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36'
+
+/** 内置设备预设（与主流浏览器 DevTools 档位对齐，尺寸为竖屏逻辑分辨率） */
+export const DEVICE_PRESETS: DeviceProfile[] = [
+  DESKTOP_PROFILE,
+  { id: 'iphone-se', name: 'iPhone SE', width: 375, height: 667, deviceScaleFactor: 2, mobile: true, ua: IOS_PHONE_UA },
+  { id: 'iphone-14', name: 'iPhone 14', width: 390, height: 844, deviceScaleFactor: 3, mobile: true, ua: IOS_PHONE_UA },
+  { id: 'iphone-14-pro-max', name: 'iPhone 14 Pro Max', width: 430, height: 932, deviceScaleFactor: 3, mobile: true, ua: IOS_PHONE_UA },
+  { id: 'iphone-16', name: 'iPhone 16', width: 393, height: 852, deviceScaleFactor: 3, mobile: true, ua: IOS_PHONE_UA },
+  { id: 'iphone-16-pro-max', name: 'iPhone 16 Pro Max', width: 440, height: 956, deviceScaleFactor: 3, mobile: true, ua: IOS_PHONE_UA },
+  { id: 'ipad-mini', name: 'iPad mini', width: 744, height: 1133, deviceScaleFactor: 2, mobile: true, ua: IOS_PAD_UA },
+  { id: 'ipad-pro', name: 'iPad Pro 11', width: 834, height: 1194, deviceScaleFactor: 2, mobile: true, ua: IOS_PAD_UA },
+  { id: 'pixel-7', name: 'Pixel 7', width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true, ua: ANDROID_UA },
+  { id: 'galaxy-s20', name: 'Galaxy S20', width: 360, height: 800, deviceScaleFactor: 3, mobile: true, ua: ANDROID_UA },
+]
+
+/** 解析后的设备视图（设备框渲染 + 主进程 UA 应用共用同一份口径） */
+export interface ResolvedDevice {
+  id: string
+  name: string
+  /** 桌面档：不施加任何约束 */
+  isDesktop: boolean
+  width: number
+  height: number
+  deviceScaleFactor: number
+  mobile: boolean
+  ua?: string
+}
+
+function desktopResolved(): ResolvedDevice {
+  return {
+    id: DESKTOP_PROFILE.id,
+    name: DESKTOP_PROFILE.name,
+    isDesktop: true,
+    width: 0,
+    height: 0,
+    deviceScaleFactor: 1,
+    mobile: false,
+  }
+}
+
+/**
+ * 由会话上的设备字段解析出实际生效的设备视图
+ *
+ * - deviceId 缺省 / 'desktop'：桌面
+ * - deviceId === 'custom'：用 deviceViewport 给定尺寸（无 UA，按移动端处理）
+ * - 其余：按预设档位解析，deviceViewport 可覆盖横竖屏后的实际宽高
+ */
+export function resolveDevice(source: {
+  deviceId?: string
+  deviceViewport?: { width: number; height: number }
+}): ResolvedDevice {
+  const id = source.deviceId?.trim()
+  if (!id || id === DESKTOP_PROFILE.id) {
+    return desktopResolved()
+  }
+
+  const viewport = source.deviceViewport
+
+  if (id === 'custom') {
+    return {
+      id,
+      name: 'Custom',
+      isDesktop: false,
+      width: Math.max(200, Math.round(viewport?.width || 390)),
+      height: Math.max(200, Math.round(viewport?.height || 844)),
+      deviceScaleFactor: 2,
+      mobile: true,
+    }
+  }
+
+  const preset = DEVICE_PRESETS.find((item) => item.id === id)
+  if (!preset) {
+    return desktopResolved()
+  }
+
+  return {
+    id: preset.id,
+    name: preset.name,
+    isDesktop: false,
+    width: Math.round(viewport?.width || preset.width),
+    height: Math.round(viewport?.height || preset.height),
+    deviceScaleFactor: preset.deviceScaleFactor,
+    mobile: preset.mobile,
+    ua: preset.ua,
+  }
+}
+
+/**
+ * 设备模式切换请求（main → renderer）
+ *
+ * AI 通过 browser_set_device 工具发起：主进程把意图广播给承载 webview 的渲染进程，
+ * 由渲染进程按「手动切换」的同一条路径应用（更新会话 → 重排设备框 → 应用 UA），
+ * 保证 UI 与工具两条入口最终落到同一份状态。
+ */
+export const PREVIEW_DEVICE_CHANNEL = 'preview:device-changed'
+
+export interface PreviewDeviceRequest {
+  /** 目标预览会话 id */
+  sessionId: string
+  /** 档位 id（'desktop' | 预设 id | 'custom'） */
+  deviceId: string
+  /** 自定义尺寸（deviceId === 'custom' 时使用） */
+  width?: number
+  height?: number
 }
 
 

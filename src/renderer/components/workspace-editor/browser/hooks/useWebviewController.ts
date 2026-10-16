@@ -17,7 +17,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStableCallback } from '@renderer/composables/usePerformance'
 import { api } from '@renderer/adapters/electronBridge'
 import { previewSessionService } from '@renderer/preview/previewSessionManager'
-import type { PreviewSession } from '@shared/protocols/previewProtocol'
+import {
+  resolveDevice,
+  type PreviewSession,
+  type ResolvedDevice,
+} from '@shared/protocols/previewProtocol'
 import { logger } from '@renderer/toolkit/LogEngine'
 
 /** 缩放范围与步长（与 Chrome DevTools 行为一致） */
@@ -133,6 +137,13 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
   const [dockUsable, setDockUsable] = useState(true)
   /** 命令回调里要读到最新的打开状态，state 在闭包里会滞后 */
   const devtoolsOpenRef = useRef(false)
+  /**
+   * 已应用到 guest 的设备 UA
+   *
+   * undefined 表示尚未应用过（guest 仍是默认 UA）；null 表示已确认恢复默认。
+   * 用它去重，避免同一设备每次重渲染都往主进程发 IPC 并触发整页重载。
+   */
+  const appliedDeviceUaRef = useRef<string | null | undefined>(undefined)
 
   /** 同步 webview 导航状态到本地 state + previewSessionService（内存态） */
   const syncNavState = useStableCallback((webview: HTMLWebViewElement) => {
@@ -611,6 +622,60 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
   const zoomIn = useStableCallback(() => applyZoom(zoomFactor + ZOOM_STEP))
   const zoomOut = useStableCallback(() => applyZoom(zoomFactor - ZOOM_STEP))
   const resetZoom = useStableCallback(() => applyZoom(1))
+
+  /**
+   * 应用设备模拟的 User-Agent
+   *
+   * 设备框尺寸由渲染层用 CSS 决定，这里只同步 UA：移动档换移动 UA，桌面档
+   * 恢复默认。主进程在 UA 变化时重载页面使其生效；同 UA 的档位切换（如两台
+   * iPhone）只改尺寸、不重载。
+   */
+  const applyDevice = useStableCallback((device: ResolvedDevice) => {
+    const guest = guestIdRef.current
+    if (guest === null) return
+
+    const ua = device.ua ?? null
+    if (appliedDeviceUaRef.current === ua) return
+
+    const previous = appliedDeviceUaRef.current
+    appliedDeviceUaRef.current = ua
+    // 桌面档且从未应用过自定义 UA：guest 本就是默认 UA，无需回传主进程
+    if (ua === null && previous === undefined) return
+
+    void api.preview.applyDevice(guest, ua).catch((error) => {
+      logger.system.warn('[PreviewDevice] apply user agent failed:', error)
+    })
+  })
+
+  /**
+   * 会话设备档位变化 → 应用到 guest
+   *
+   * 依赖 guestId：webview 首次 dom-ready 上报 guest 后才能真正执行。
+   */
+  useEffect(() => {
+    if (!webviewMounted) return
+    applyDevice(resolveDevice(session ?? {}))
+  }, [
+    session?.deviceId,
+    session?.deviceViewport?.width,
+    session?.deviceViewport?.height,
+    webviewMounted,
+    guestId,
+    applyDevice,
+  ])
+
+  /**
+   * 登记本标签页的 guest 重报入口
+   *
+   * 打开预览的场景（open_preview / 页面打开引导）在等待窗口内会主动请求一次
+   * 重报，兜底「上报早于事件监听注册 / 绑定被中途解绑」造成的自动化定位失败。
+   * registerHealth 是稳定引用，会话不变时不会重复登记。
+   */
+  useEffect(() => {
+    const sid = session?.id
+    if (!sid) return
+    return previewSessionService.registerGuestReporter(sid, registerHealth)
+  }, [session?.id, registerHealth])
 
   return {
     webviewRef,

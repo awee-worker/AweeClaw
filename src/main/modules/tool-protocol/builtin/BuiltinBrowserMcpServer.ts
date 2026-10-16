@@ -9,6 +9,7 @@
  * - 浏览：browser_list_tabs / browser_navigate / browser_back
  * - 感知：browser_snapshot / browser_take_screenshot
  * - 交互：browser_click / browser_type / browser_wait_for
+ * - 设备：browser_set_device
  * - 诊断：browser_console_messages / browser_network_requests / browser_evaluate
  *
  * 数据来源：
@@ -29,7 +30,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { z } from 'zod'
 import { logger } from '@shared/toolkit/LogEngine'
+import { DEVICE_PRESETS } from '@shared/protocols/previewProtocol'
 import { previewHealthMonitor } from '../../preview/PreviewHealthMonitor'
+import { requestPreviewDeviceChange } from '../../../bridge/system/preview'
 import {
   SNAPSHOT_PROBE,
   buildResolveProbe,
@@ -129,7 +132,11 @@ async function resolveTarget(args: { session_id?: string; url?: string }):
 
   const resolved = await previewHealthMonitor.waitForGuest({ sessionId, url: urlHint })
   if (!resolved) {
-    return 'No preview tab found. Open a page in the built-in browser first (open_preview), then retry.'
+    return (
+      'No preview tab found. The built-in browser has no registered preview page for this request. ' +
+      'Call open_preview first (or browser_list_tabs to see what is open) and make sure the preview ' +
+      'tab is the active editor tab, then retry.'
+    )
   }
 
   const guest = getGuest(resolved.guestId)
@@ -235,6 +242,7 @@ export function createBuiltinBrowserMcpServer(): {
   registerTabTools(server)
   registerReadTools(server)
   registerInteractionTools(server)
+  registerDeviceTool(server)
   registerDiagnosticsTools(server)
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
@@ -331,6 +339,70 @@ function registerTabTools(server: McpServer): void {
       }
       target.guest.goBack()
       return ok(text(`Navigated back to ${target.guest.getURL()}`))
+    },
+  )
+}
+
+// ============ 设备模拟 ============
+
+/** 可选设备档位清单（工具描述与错误提示共用，避免两处维护） */
+function describeDevicePresets(): string {
+  return DEVICE_PRESETS.map((preset) =>
+    preset.id === 'desktop' ? 'desktop' : `${preset.id} (${preset.name} ${preset.width}x${preset.height})`,
+  ).join(', ')
+}
+
+function registerDeviceTool(server: McpServer): void {
+  /**
+   * browser_set_device：切换预览标签页的设备模拟档位
+   *
+   * 主进程只负责把「切成哪个档位」广播给渲染进程（见 requestPreviewDeviceChange），
+   * 设备框重排与 UA 应用都在渲染层完成——与用户手点工具栏走同一条路径。
+   */
+  server.tool(
+    'browser_set_device',
+    'Switch a preview tab into mobile device emulation, or back to desktop. Use it to check responsive / mobile layouts. ' +
+      `Presets: ${describeDevicePresets()}. Use "desktop" to reset, or "custom" together with width/height for an arbitrary viewport.`,
+    {
+      session_id: z.string().optional().describe('Target preview session id (default: most recent tab)'),
+      url: z.string().optional().describe('Match tab by url substring instead'),
+      device: z.string().min(1).describe('Device preset id, "desktop", or "custom"'),
+      width: z.number().int().min(200).max(4000).optional().describe('Viewport width ("custom", or override a preset)'),
+      height: z.number().int().min(200).max(4000).optional().describe('Viewport height ("custom", or override a preset)'),
+    },
+    async (args) => {
+      const target = await resolveTarget(args)
+      if (typeof target === 'string') return err(target)
+
+      const device = args.device.trim().toLowerCase()
+      const preset = DEVICE_PRESETS.find((item) => item.id === device)
+      if (!preset && device !== 'custom') {
+        return err(`Unknown device "${args.device}". Valid: ${describeDevicePresets()}, custom.`)
+      }
+
+      const delivered = requestPreviewDeviceChange(target.guest, {
+        sessionId: target.sessionId,
+        deviceId: device,
+        width: args.width,
+        height: args.height,
+      })
+      if (!delivered) {
+        return err('Could not switch device: the preview tab host is unavailable.')
+      }
+
+      const label =
+        device === 'desktop'
+          ? 'desktop'
+          : device === 'custom'
+            ? `custom ${args.width || 390}x${args.height || 844}`
+            : `${preset?.name} ${args.width || preset?.width}x${args.height || preset?.height}`
+
+      return ok(
+        text(
+          `Switched preview tab (session ${target.sessionId}) to device mode: ${label}. ` +
+            `The page now renders at the device viewport width; use browser_snapshot / browser_take_screenshot to verify.`,
+        ),
+      )
     },
   )
 }

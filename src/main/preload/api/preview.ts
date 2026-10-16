@@ -10,7 +10,9 @@
  * - preview:content-probe     采集页面内容摘要（白屏交叉验证）
  * - preview:reload            按 guest 重载页面
  * - preview:navigate          按 guest 导航到新地址
+ * - preview:apply-device      应用设备模拟的 User-Agent
  * - preview:health-changed    健康状态推送（main → render）
+ * - preview:device-changed    设备模式切换请求推送（main → render）
  * - preview:auto-reload-watch   登记预览目录的自动刷新
  * - preview:auto-reload-unwatch 取消预览目录的自动刷新
  * - preview:auto-reload      目录变化触发的刷新通知（main → render）
@@ -18,10 +20,12 @@
 import { invoke, on } from '../ipcHelpers'
 import {
   PREVIEW_AUTO_RELOAD_CHANNEL,
+  PREVIEW_DEVICE_CHANNEL,
   PREVIEW_HEALTH_CHANNEL,
   type DevToolsRect,
   type PreviewAutoReloadPayload,
   type PreviewContentSummary,
+  type PreviewDeviceRequest,
   type PreviewHealthSnapshot,
   type PreviewNetworkEntry,
 } from '../../../shared/protocols/previewProtocol'
@@ -83,8 +87,22 @@ export function createPreviewApi() {
     navigateGuest: (guestId: number, url: string) =>
       invoke<PreviewIpcResponse<{ url: string }>>('preview:navigate')(guestId, url),
 
+    /**
+     * 应用设备模拟的 User-Agent
+     *
+     * 传 null 恢复默认 UA（桌面档）。UA 变化时主进程会重载页面使其生效。
+     */
+    applyDevice: (guestId: number, ua: string | null) =>
+      invoke<PreviewIpcResponse<{ ua: string; reloaded: boolean }>>('preview:apply-device')(
+        guestId,
+        ua,
+      ),
+
     /** 订阅健康状态推送 */
     onHealth: on<PreviewHealthSnapshot>(PREVIEW_HEALTH_CHANNEL),
+
+    /** 订阅设备模式切换请求（AI 工具发起，main → render） */
+    onDevice: on<PreviewDeviceRequest>(PREVIEW_DEVICE_CHANNEL),
 
     /** 登记预览目录的自动刷新（本地静态页面专用，dev server 自带 HMR） */
     watchAutoReload: (rootDir: string, url: string) =>

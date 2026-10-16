@@ -96,6 +96,7 @@ const MCP_TOOL_ACTION_MAP_ZH: Record<string, string> = {
     browser_console_messages: '读取控制台',
     browser_network_requests: '资源瀑布',
     browser_back: '后退页面',
+    browser_set_device: '切换设备模式',
 }
 
 const MCP_TOOL_ACTION_MAP_EN: Record<string, string> = {
@@ -139,6 +140,7 @@ const MCP_TOOL_ACTION_MAP_EN: Record<string, string> = {
     browser_console_messages: 'Reading console',
     browser_network_requests: 'Resource waterfall',
     browser_back: 'Going back',
+    browser_set_device: 'Switching device mode',
 }
 
 function guessMcpToolAction(toolName: string, language: Language): string | null {

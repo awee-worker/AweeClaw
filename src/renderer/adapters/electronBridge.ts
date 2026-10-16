@@ -504,8 +504,11 @@ function createGroupedAPI() {
       collectContent: (guestId: number) => raw.preview.collectContent(guestId),
       reloadGuest: (guestId: number) => raw.preview.reloadGuest(guestId),
       navigateGuest: (guestId: number, url: string) => raw.preview.navigateGuest(guestId, url),
+      applyDevice: (guestId: number, ua: string | null) => raw.preview.applyDevice(guestId, ua),
       onHealth: (callback: Parameters<typeof raw.preview.onHealth>[0]) =>
         raw.preview.onHealth(callback),
+      onDevice: (callback: Parameters<typeof raw.preview.onDevice>[0]) =>
+        raw.preview.onDevice(callback),
       watchAutoReload: (rootDir: string, url: string) =>
         raw.preview.watchAutoReload(rootDir, url),
       unwatchAutoReload: (rootDir: string, url: string) =>
