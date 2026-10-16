@@ -323,20 +323,33 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, isActiveTail, 
 }
 
 /**
- * 外壳只在「结构性输入」变化时重建
+ * 外壳的重渲染判定
  *
- * content 的具体内容由 ThinkingStreamText 与 ThinkingPreview 各自消费，外壳本身
- * 不依赖它的值。默认浅比较会把每次 flush 都判为变化，让整块外壳（含展开动画容器）
- * 随文本增长反复重建；这里只保留「有无内容」这个翻转 —— 它是占位态与正文之间的
- * 切换依据，内容本身逐帧增长不应重建外壳。
+ * 五个 prop 必须全部参与比较，其中 content 不能省。
+ *
+ * React.memo 的比较函数返回 true 时，React 会跳过该组件及其整棵子树的重渲染，
+ * 上一轮的子元素被原样复用 —— 子组件因此拿不到新的 props。思考文本正是由
+ * ThinkingStreamText 与 ThinkingPreview 通过 content 消费的，若比较时忽略
+ * content（例如只比「有无内容」），第一块内容落地后外壳就永远命中 bailout，
+ * 子组件的 content 停在首块不再增长，表现为思考过程只出几个字符后卡死，
+ * 直到 isStreaming 翻转才恢复。
+ *
+ * 比较全部 prop 之后，同一份内容不会重复渲染；父级因其它 part 变化而重渲染时，
+ * 本块仍能短路。流式期间每次内容推进都会真实重渲染，但真正写 DOM 的只有尾部
+ * 分块（见 ThinkingTextChunk / useStableTextChunks），代价与全文长度无关。
  */
-export const ThinkingBlockView = React.memo(
-  ThinkingBlockViewBase,
-  (prev, next) =>
+export function thinkingBlockPropsEqual(
+  prev: ThinkingBlockViewProps,
+  next: ThinkingBlockViewProps,
+): boolean {
+  return (
+    prev.content === next.content &&
     prev.startTime === next.startTime &&
     prev.isStreaming === next.isStreaming &&
     prev.isActiveTail === next.isActiveTail &&
-    prev.fontSize === next.fontSize &&
-    (prev.content.length > 0) === (next.content.length > 0),
-)
+    prev.fontSize === next.fontSize
+  )
+}
+
+export const ThinkingBlockView = React.memo(ThinkingBlockViewBase, thinkingBlockPropsEqual)
 ThinkingBlockView.displayName = 'ThinkingBlockView'
