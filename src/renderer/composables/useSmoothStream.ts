@@ -1,11 +1,25 @@
 import { useState, useEffect, useRef } from 'react'
 import type { ScenarioDomain } from '@configuration/defaultProfile'
 import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter'
-import { scheduleFrameTask, cancelFrameTask, type FrameTask } from '@intelligence/state/streamFrameScheduler'
+import { scheduleFrameTask, cancelFrameTask, FRAME_TICK_MS, type FrameTask } from '@intelligence/state/streamFrameScheduler'
 import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
 
-/** 流式期间每帧推进间隔（毫秒） */
-const STREAM_TICK_MS = 66
+/**
+ * 流式期间每帧推进间隔（毫秒）
+ *
+ * 必须与 StreamBuffer 的刷写间隔取同一个值：两者都登记到共享帧调度器，节拍不同
+ * 则相位持续漂移，同一份新内容会在相邻两帧各写一次 store、各触发一轮提交。
+ *
+ * 这里刻意不允许按内容长度放大节拍（原实现超 20000 字符时 ×1.5 → 99ms）：
+ * 66 与 99 互质，最小公倍数 198ms，也就是说每秒只有约 5 次机会落在同一帧上，
+ * 其余时间两个时间源各自独占一帧 —— 实测 frame.tasks / frame.runs 因此稳定在
+ * 1.04，与「流式期每秒 10 帧」的读数完全吻合（1000 / 99 ≈ 10）。
+ *
+ * 放大的原始理由是「文本越长，重写尾部文本节点的布局代价越高」。分块渲染之后
+ * 这个前提已不成立：尾部只解析最后一块，成本与全文长度无关。且推进速率按
+ * tickMs 同步换算（见 advance），节拍变小只是切得更细，每秒推进的字符量不变。
+ */
+export const STREAM_TICK_MS = FRAME_TICK_MS
 
 /** 收尾动画每帧推进间隔（毫秒） */
 const CATCH_UP_TICK_MS = 50
@@ -74,8 +88,10 @@ function resolveCharsPerSecond(
 /**
  * 按内容规模解析推进间隔
  *
- * 每次推进都会重写尾部文本节点，文本越长，浏览器的文本布局代价越高。
- * 因此按规模适度放宽间隔；速率随间隔同步换算，推进观感不随间隔变化。
+ * 只用于收尾补齐与场景策略版（useSmoothStreamImpl）：这两条路径走独立定时器或
+ * 场景配置，不参与共享帧调度器的合帧，因此按内容规模放宽间隔没有副作用。
+ *
+ * 流式主路径**不得**调用本函数 —— 它与缓冲刷写必须同节拍，见 STREAM_TICK_MS。
  */
 function resolveTickMs(baseTickMs: number, contentLength: number): number {
   if (contentLength > 60_000) return baseTickMs * 2
@@ -194,7 +210,9 @@ export function useSmoothStream(
   const streamTickRef = useRef<FrameTask | null>(null)
   if (streamTickRef.current === null) {
     streamTickRef.current = () => {
-      const tickMs = resolveTickMs(STREAM_TICK_MS, contentRef.current.length)
+      // 节拍恒为 STREAM_TICK_MS，不按内容长度调整：见该常量的说明（与缓冲刷写
+      // 同刻度才能合帧）。advance 会按同一 tickMs 换算步长，速率不受影响。
+      const tickMs = STREAM_TICK_MS
       const advanced = advance(
         contentRef.current,
         displayedLenRef.current,
@@ -241,7 +259,7 @@ export function useSmoothStream(
       // 有新积压就唤醒推进循环：循环追上内容后会自行停止，这里负责把它重新拉起
       const tick = streamTickRef.current
       if (tick && displayedLenRef.current < content.length) {
-        scheduleFrameTask(tick, resolveTickMs(STREAM_TICK_MS, content.length))
+        scheduleFrameTask(tick, STREAM_TICK_MS)
       }
       return
     }
@@ -288,7 +306,7 @@ export function useSmoothStream(
     if (tick && displayedLenRef.current < contentRef.current.length) {
       // 与流式缓冲刷写共用同一个帧循环：同一帧内的 store 写入与 state 推进
       // 会被 React 合并成一次提交，而不是相邻任务各提交一次
-      scheduleFrameTask(tick, resolveTickMs(STREAM_TICK_MS, contentRef.current.length))
+      scheduleFrameTask(tick, STREAM_TICK_MS)
     }
 
     return () => {

@@ -42,6 +42,18 @@ interface CpuSnapshot {
   total: number
 }
 
+/**
+ * Electron 主程序的可执行文件名。
+ *
+ * 用于把 Electron 自身的进程从工具子进程里剔除。只靠 `getAppMetrics()` 给的
+ * pid 集合不够：它并不覆盖全部 Electron 进程，内置浏览器的 webview guest 渲染
+ * 进程就不在其中，而它的可执行路径与主程序完全相同。该进程会被「按主进程后代
+ * 展开」的逻辑收成 `Tool`，实测 ws 超过 1GB、平均占用 33% —— 计入 toolCpu 后
+ * 既抬高了「工具消耗」，又把应用自身的占用压了下去，判读会直接指向错误的方向
+ * （得出「占用大头是工具子进程、界面很轻」的结论）。
+ */
+const SELF_EXE_BASENAME = path.basename(process.execPath)
+
 /** 进程类型白名单：这几类无论占用多低都要留下，否则会丢失结构信息 */
 const ALWAYS_KEEP_PROCESS_TYPES = new Set(['Browser', 'Tab', 'GPU'])
 
@@ -495,9 +507,11 @@ export class PerfTraceService {
   /**
    * 读取应用进程树里的工具子进程。
    *
-   * 只取 `process.pid` 的后代中不属于 Electron 的那些：Electron 自己的进程
-   * 已经由 getAppMetrics 覆盖（那些有真实的唤醒次数），重复记录只会让同一份
-   * 占用出现两次。
+   * 只取 `process.pid` 的后代中不属于 Electron 的那些，判定分两道：
+   * 1. pid 在 `getAppMetrics()` 返回的集合里 —— 覆盖绝大多数 Electron 进程，
+   *    它们有真实的唤醒次数，重复记录只会让同一份占用出现两次；
+   * 2. 可执行文件与主程序同名 —— 兜住第 1 道漏掉的那些（webview guest），
+   *    见 SELF_EXE_BASENAME。
    */
   private sampleToolProcesses(): void {
     // Windows 的 ps 没有这套字段，跳过即可：这是补充归因，缺它不影响其余采样
@@ -579,6 +593,10 @@ export class PerfTraceService {
 
       const row = rows.get(pid)
       if (!row) continue
+
+      // 与主程序同名的可执行文件即为 Electron 自身的进程（含 getAppMetrics
+      // 未覆盖的 webview guest），归入应用占用而不是工具子进程
+      if (path.basename(row.cmd) === SELF_EXE_BASENAME) continue
 
       const baseline = this.toolCpuBaseline.get(pid)
       let cpu = 0

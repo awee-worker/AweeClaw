@@ -358,6 +358,13 @@ const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000 // 5 分钟
 class ShellComposerClass {
   private cache = new Map<string, CacheEntry>()
   private ttlMs: number
+  /**
+   * 过期缓存清理定时器。
+   *
+   * 需要持有句柄：此前只调用 setInterval 而不保存返回值，窗口销毁或测试收尾时
+   * 无从清除，定时器连同它闭包持有的 cache 会一直留在内存里。
+   */
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(ttlMs = DEFAULT_CACHE_TTL_MS) {
     this.ttlMs = ttlMs
@@ -366,7 +373,8 @@ class ShellComposerClass {
   }
 
   private startCleanupTimer(): void {
-    setInterval(() => {
+    if (this.cleanupTimer !== null) return
+    this.cleanupTimer = setInterval(() => {
       this.cleanupExpiredEntries()
     }, 60000) // 每分钟清理一次
   }
@@ -384,6 +392,16 @@ class ShellComposerClass {
       logger.cache.debug(`[ShellComposer] Cleaned ${cleaned} expired cache entries`)
     }
   }
+
+  /** 停止清理定时器并清空缓存（窗口销毁 / 测试收尾时调用） */
+  dispose(): void {
+    if (this.cleanupTimer !== null) {
+      clearInterval(this.cleanupTimer)
+      this.cleanupTimer = null
+    }
+    this.cache.clear()
+  }
+
 
   getLayoutConfig(scenario: ScenarioPlugin): LayoutConfig {
     const cacheKey = `${scenario.id}:${scenario.ui.layout}`

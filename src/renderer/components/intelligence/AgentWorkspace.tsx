@@ -1,4 +1,4 @@
-import { memo, useState, useMemo, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
+import { memo, useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FolderOpen,
@@ -20,7 +20,6 @@ import {
   LayoutList,
   Activity,
   Package,
-  Building2,
   Pencil,
   RefreshCw,
 } from 'lucide-react'
@@ -30,10 +29,7 @@ import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { AgentAvatar } from './AgentAvatar'
 import { CatAvatar } from './CatAvatar'
-const TeamOffice = lazy(() => import('./TeamOffice').then(m => ({ default: m.TeamOffice })))
-import { TeamChatPanel } from './TeamChatPanel'
 import type { WorkspaceAgent, AgentToolCall, AgentWorkspaceSession } from '@store'
-import type { CollaborationPhase } from '@intelligence/multiAgent/TeamCollaborationProtocol'
 import { t, type Language } from '@renderer/i18n'
 
 function getFileIcon(fileName: string) {
@@ -66,7 +62,7 @@ const SESSION_LABEL: Record<string, string> = {
   failed: '团队协作失败',
 }
 
-type WorkspaceTab = 'office' | 'overview' | 'activity' | 'output'
+type WorkspaceTab = 'overview' | 'activity' | 'output'
 
 function ToolCallItem({ toolCall }: { toolCall: AgentToolCall }) {
   const [expanded, setExpanded] = useState(false)
@@ -871,7 +867,7 @@ function OutputTab({ agents, projectPath, onOpenFile }: {
 
 export const AgentWorkspace = memo(function AgentWorkspace() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('office')
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview')
   const [editingPlan, setEditingPlan] = useState(false)
   const { session, language, openFile, setActiveFile } = useStore(useShallow(s => ({
     session: s.activeWorkspaceSession,
@@ -916,7 +912,6 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
   const progressPct = totalCount > 0 ? ((completedCount + failedCount) / totalCount) * 100 : 0
 
   const TAB_CONFIG: Array<{ id: WorkspaceTab; icon: typeof LayoutList; label: string }> = [
-    { id: 'office', icon: Building2, label: '办公室' },
     { id: 'overview', icon: LayoutList, label: '概览' },
     { id: 'activity', icon: Activity, label: '活动' },
     { id: 'output', icon: Package, label: '产出' },
@@ -1072,51 +1067,6 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
           </div>
         ) : session.status === 'plan_review' ? (
           <div className="flex-1" />
-        ) : activeTab === 'office' ? (
-          <div className="flex-1 flex min-h-0">
-            {/* 3D场景 — 占70% */}
-            <div className="flex-[7] min-w-0 p-2">
-              <Suspense fallback={<div className="flex-1 flex items-center justify-center text-muted-foreground">Loading 3D scene...</div>}>
-              <TeamOffice
-                agents={session.agents}
-                onAgentClick={(agent) => setSelectedAgentId(selectedAgentId === agent.id ? null : agent.id)}
-                handoffFrom={session.agents.find(a => a.isMoving)?.id}
-                handoffTo={session.agents.find(a => a.isMoving)?.moveTarget}
-                collaborationPhase={(session.collaborationPhase || 'meeting') as CollaborationPhase}
-                teamChat={session.teamChat || []}
-              />
-              </Suspense>
-            </div>
-
-            {/* 右侧面板 — 占30%，聊天+智能体详情 */}
-            <div className="flex-[3] min-w-[240px] max-w-[360px] flex flex-col border-l border-border/40 bg-surface/20">
-              {/* 聊天面板 */}
-              <div className="flex-1 min-h-0">
-                <TeamChatPanel
-                  messages={session.teamChat || []}
-                  currentPhase={(session.collaborationPhase || 'meeting') as CollaborationPhase}
-                />
-              </div>
-
-              {/* 智能体详情 — 可折叠 */}
-              <AnimatePresence>
-                {selectedAgent && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="border-t border-border/40 overflow-y-auto max-h-[40%]"
-                  >
-                    <AgentDetailPanel
-                      agent={selectedAgent}
-                      projectPath={session.projectPath}
-                      onOpenFile={handleOpenFile}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
         ) : activeTab === 'overview' ? (
           <>
             <div className="flex-1 overflow-y-auto px-5 pb-5">

@@ -103,6 +103,7 @@ function evaluate(avgFrameMs: number, now: number): void {
     lowStreak = 0
     loweredAt = now
     el.dataset[ATTR_LOW] = '1'
+    notify()
     logger.system.debug(
       `[RenderBudget] 平均帧间隔 ${avgFrameMs.toFixed(1)}ms，装饰动效降级为静态`,
     )
@@ -116,6 +117,7 @@ function evaluate(avgFrameMs: number, now: number): void {
   if (goodStreak < GOOD_CONFIRM) return
   goodStreak = 0
   delete el.dataset[ATTR_LOW]
+  notify()
   logger.system.debug(
     `[RenderBudget] 平均帧间隔 ${avgFrameMs.toFixed(1)}ms，装饰动效还原`,
   )
@@ -189,17 +191,73 @@ function applyVisibility(): void {
   if (document.hidden) {
     el.dataset[ATTR_HIDDEN] = '1'
     stopProbe()
+    notify()
     return
   }
 
   delete el.dataset[ATTR_HIDDEN]
   // 回到前台时仍在执行，就接着评估；空闲状态不重新开采样
   if (busyDepth > 0) startProbe()
+  notify()
 }
 
 /* ------------------------------------------------------------------ */
 /* 对外接口                                                            */
 /* ------------------------------------------------------------------ */
+
+/**
+ * 收敛状态快照。
+ *
+ * 三个开关的语义见文件头：busy / hidden 描述运行环境，perfLow 描述机器本身的
+ * 渲染能力（与某一次任务无关，任务结束后仍保留）。
+ */
+export interface RenderBudgetState {
+  /** Agent 正在执行 */
+  busy: boolean
+  /** 并发执行的任务层数，大于 0 即为 busy */
+  busyDepth: number
+  /** 窗口不可见 */
+  hidden: boolean
+  /** 实测掉帧，装饰动效已降级 */
+  perfLow: boolean
+}
+
+/** 收敛状态订阅者集合 */
+const listeners = new Set<(state: RenderBudgetState) => void>()
+
+/**
+ * 广播一次状态变化。
+ *
+ * 开关值写在 `<html>` 的 data 属性上，样式层能直接感知，但组件读不到属性变化。
+ * 这里补一条订阅通道，让基于 JS 的动效（framer-motion）与样式层同步收敛。
+ */
+function notify(): void {
+  if (listeners.size === 0) return
+  const state = getRenderBudgetState()
+  for (const listener of listeners) {
+    try {
+      listener(state)
+    } catch {
+      // 单个订阅者出错不应影响其它订阅者，也不应污染开关状态
+    }
+  }
+}
+
+/**
+ * 订阅收敛状态。
+ *
+ * 订阅时立即回调一次当前状态，订阅方无需再单独读一次初值。
+ * 返回取消订阅函数。
+ */
+export function subscribeRenderBudget(
+  listener: (state: RenderBudgetState) => void,
+): () => void {
+  listeners.add(listener)
+  listener(getRenderBudgetState())
+  return () => {
+    listeners.delete(listener)
+  }
+}
 
 /**
  * 初始化全局开关。
@@ -219,6 +277,7 @@ export function initRenderBudget(): () => void {
 
   // 首次进入时窗口可能已经是隐藏的（例如后台启动），先落一次真实状态
   if (document.hidden) el.dataset[ATTR_HIDDEN] = '1'
+  notify()
 
   document.addEventListener('visibilitychange', applyVisibility)
   visibilityBound = true
@@ -244,6 +303,7 @@ function disposeRenderBudget(): void {
     delete el.dataset[ATTR_LOW]
     delete el.dataset[ATTR_HIDDEN]
   }
+  notify()
 }
 
 /**
@@ -257,6 +317,7 @@ export function enterAgentBusy(): void {
 
   const el = root()
   if (el) el.dataset[ATTR_BUSY] = '1'
+  notify()
   if (typeof document !== 'undefined' && !document.hidden) startProbe()
 }
 
@@ -276,6 +337,7 @@ export function exitAgentBusy(): void {
 
   const el = root()
   if (el) delete el.dataset[ATTR_BUSY]
+  notify()
 
   stopProbe()
   lowStreak = 0
@@ -283,12 +345,7 @@ export function exitAgentBusy(): void {
 }
 
 /** 当前是否处在动效收敛状态（排障用） */
-export function getRenderBudgetState(): {
-  busy: boolean
-  busyDepth: number
-  hidden: boolean
-  perfLow: boolean
-} {
+export function getRenderBudgetState(): RenderBudgetState {
   const el = root()
   return {
     busy: el?.dataset[ATTR_BUSY] === '1',

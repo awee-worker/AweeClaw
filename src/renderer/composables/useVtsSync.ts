@@ -19,7 +19,7 @@
  * 使用方式：在 AweeApp.tsx 顶层调用一次。
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { getMessageText } from '@intelligence/types/conversationModel'
 import { api } from '@renderer/adapters/electronBridge'
@@ -48,6 +48,14 @@ export function useVtsSync(): void {
   const triggeredRef = useRef(true)
   /** VTS 是否已启用（未启用时轮询到内容也不发 IPC） */
   const enabledRef = useRef(false)
+
+  /**
+   * VTS 是否已启用（state 形态）。
+   *
+   * 与 `enabledRef` 并存：ref 供回调快速读取，state 用于启停下面的文本轮询定时器 ——
+   * 未启用时定时器根本不启动，而不是启动了每 400ms 空跑一次早退。
+   */
+  const [vtsEnabled, setVtsEnabled] = useState(false)
   /** 上一次读取到的助手消息对象与文本：对象未变时直接复用文本，跳过序列化 */
   const lastReadMsgRef = useRef<MinimalMessage | null>(null)
   const lastReadTextRef = useRef<string | null>(null)
@@ -61,6 +69,7 @@ export function useVtsSync(): void {
       authenticated: boolean
     }): void => {
       enabledRef.current = status.enabled
+      setVtsEnabled(status.enabled)
       // 只有「已启用 + 已鉴权」才允许转发音频：
       // 未鉴权时转发只会让主进程白白 spawn 一次 ffmpeg（转完发现连不上，丢弃）
       setVtsAudioReady(status.enabled && status.authenticated)
@@ -94,6 +103,10 @@ export function useVtsSync(): void {
   // 回复文本轮询：打断 + 标签触发
   // --------------------------------------------
   useEffect(() => {
+    // VTS 未启用时不启动定时器 —— 由启用状态驱动轮询的生命周期。
+    // 未启用却仍挂着 400ms 定时器，等于让主窗口在一个完全无关的功能上持续被唤醒。
+    if (!vtsEnabled) return
+
     /**
      * 取当前会话最后一条 assistant 消息的纯文本。
      *
@@ -132,8 +145,6 @@ export function useVtsSync(): void {
     }
 
     const timer = window.setInterval(() => {
-      if (!enabledRef.current) return
-
       const text = readLastAssistantText()
       if (!text) return
 
@@ -182,5 +193,5 @@ export function useVtsSync(): void {
     }, POLL_INTERVAL_MS)
 
     return () => window.clearInterval(timer)
-  }, [])
+  }, [vtsEnabled])
 }

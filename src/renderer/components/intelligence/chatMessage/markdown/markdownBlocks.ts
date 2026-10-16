@@ -212,13 +212,19 @@ export class IncrementalBlockSplitter {
   /**
    * 传入当前全文，返回块级切分结果。
    *
-   * 返回数组的最后一个元素是尚未定稿的尾块，其余元素与本轮之前的结果逐字相同。
+   * `blocks` 是已提交块，`tail` 是尚未定稿的尾块（无内容时为空串）。
+   * `blocks` 的数组引用只在新增提交块时更换：引用不变即代表已提交块逐字未变，
+   * 调用方可以据此复用它们的渲染结果。
    */
-  update(content: string): string[] {
+  update(content: string): { blocks: string[]; tail: string } {
     if (!content.startsWith(this.lastContent)) {
       this.invalidate()
     }
     this.lastContent = content
+
+    // 本轮开始时的已提交块数量：本轮若新增块，返回前必须换掉数组引用，
+    // 否则调用方缓存的上一次结果（引用未变）不会重算，新块就渲染不出来。
+    const committedBefore = this.blocks.length
 
     const carriedPrev = this.prevLine
     // 只切出未提交的部分，已提交的行不必再进内存
@@ -311,14 +317,19 @@ export class IncrementalBlockSplitter {
       current.push(line)
     }
 
-    // 尾块每轮重新解析，因此只随返回值给出，不写进已提交列表
-    const tail = current.length > 0 ? current.join('\n') : ''
-    const result = this.blocks.slice()
-    if (tail.trim()) {
-      result.push(tail)
-    }
     // 循环结束仍未闭合的围栏，只能落在尾块里，随结果一并暴露给调用方
     this.tailFenceLanguage = fence ? fence.language : null
-    return result
+
+    // 已提交块发生增长时才更换数组引用。引用不变即代表已提交块与上一轮完全相同，
+    // 调用方据此复用它们的渲染结果，不必每个刷新周期把整篇重新 map 一遍。
+    if (this.blocks.length !== committedBefore) {
+      this.blocks = this.blocks.slice()
+    }
+
+    return {
+      blocks: this.blocks,
+      // 尾块每轮都要重新解析，因此单独返回，不写进已提交列表
+      tail: current.length > 0 ? current.join('\n') : '',
+    }
   }
 }

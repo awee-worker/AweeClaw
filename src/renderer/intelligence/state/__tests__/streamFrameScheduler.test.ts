@@ -100,6 +100,22 @@ describe('scheduleFrameTask', () => {
     expect(frameQueue).toHaveLength(0)
   })
 
+  it('同节拍的两个任务落在同一帧执行（合帧的前提）', async () => {
+    const order: string[] = []
+
+    // 缓冲刷写与插值推进都是 66ms 的周期任务，这里用同一节拍模拟两者。
+    // 到期时刻被量化到同一刻度，因此只排出一个帧回调；
+    // 若各自按「登记时刻 + delay」计价，相位差会永久保持，每帧只跑一个任务。
+    scheduleFrameTask(() => order.push('flush'), 20)
+    scheduleFrameTask(() => order.push('tick'), 20)
+    await wait(60)
+
+    expect(frameQueue).toHaveLength(1)
+
+    flushAnimationFrame()
+    expect(order).toEqual(['flush', 'tick'])
+  })
+
   it('重复登记推迟不了已排定的执行（周期任务不会被自己的登记延后）', async () => {
     const task = vi.fn()
 

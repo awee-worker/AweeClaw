@@ -20,7 +20,7 @@
  * 使用方式：在 AweeApp.tsx 顶层调用一次。
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useStore, useModeStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
@@ -60,6 +60,14 @@ export function useVrmCompanionSync(): void {
    * 挂载瞬间漏判一次只会少发一次「开始说话」，不影响正确性。
    */
   const companionVisibleRef = useRef(false)
+
+  /**
+   * 伴侣窗口是否可见（state 形态）。
+   *
+   * 与 `companionVisibleRef` 并存：ref 供事件回调里判断「刚被隐藏」，state 用于
+   * 启停下面的轮询定时器 —— 不可见时定时器根本不启动，而不是启动了每 400ms 空跑早退。
+   */
+  const [companionVisible, setCompanionVisible] = useState(false)
 
   /**
    * 上一次读取到的助手消息对象与文本。
@@ -197,7 +205,11 @@ export function useVrmCompanionSync(): void {
     void api.vrmCompanion
       .getState()
       .then((res) => {
-        if (res.success && res.data) companionVisibleRef.current = !!res.data.visible
+        if (res.success && res.data) {
+          const visible = !!res.data.visible
+          companionVisibleRef.current = visible
+          setCompanionVisible(visible)
+        }
       })
       .catch((err) => logger.system.debug('[VrmCompanionSync] Read state failed:', err))
 
@@ -210,11 +222,18 @@ export function useVrmCompanionSync(): void {
         void api.vrmCompanion.broadcastStopSpeak().catch(() => {})
       }
       companionVisibleRef.current = visible
+      setCompanionVisible(visible)
     })
     return off
   }, [])
 
   useEffect(() => {
+    // 伴侣窗口不可见时不启动定时器 —— 由可见性事件驱动轮询的生命周期。
+    // 这是「AI 执行期间 CPU 偏高」的一个常驻来源：伴侣压根没开时，主窗口仍在
+    // 每 400ms 被唤醒，读一次会话、把整段回复序列化后发出去。改为按需启停后，
+    // 不可见期间的空闲唤醒为零。
+    if (!companionVisible) return
+
     /**
      * 取当前会话最后一条 assistant 消息的纯文本。
      *
@@ -252,11 +271,6 @@ export function useVrmCompanionSync(): void {
     }
 
     const timer = window.setInterval(() => {
-      // 伴侣窗口没显示时直接早退：既不读会话也不发 IPC。
-      // 这是「AI 执行期间 CPU 偏高」的一个常驻来源 —— 伴侣压根没开时，
-      // 主窗口仍在每 400ms 读一次会话、把整段回复序列化后发给不存在的窗口。
-      if (!companionVisibleRef.current) return
-
       const text = readLastAssistantText()
       if (!text) return
 
@@ -304,5 +318,5 @@ export function useVrmCompanionSync(): void {
         void api.vrmCompanion.broadcastStopSpeak().catch(() => {})
       }
     }
-  }, [])
+  }, [companionVisible])
 }

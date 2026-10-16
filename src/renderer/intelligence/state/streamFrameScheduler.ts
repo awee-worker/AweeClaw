@@ -3,11 +3,15 @@
  *
  * ── 要解决的问题 ──
  *
- * 流式期间有三处互不相干的时间源：流式缓冲刷写（80ms）、平滑插值推进（66ms）、
+ * 流式期间有三处互不相干的时间源：流式缓冲刷写（66ms）、平滑插值推进（66ms）、
  * 吸底轮询（300ms）。相位不对齐时，同一份新内容会在相邻的几个任务里各自写一次
  * store、各自推一次 state。Zustand 的写入会立刻通知 useSyncExternalStore 的订阅者，
  * React 于是把它们算成多次提交 —— 一秒里叠出十几次提交，而用户看到的只是同一段
- * 文字在动。继续微调各自的间隔解决不了这个问题：只要时间源是三个，相位就一定会漂。
+ * 文字在动。
+ *
+ * 只把「间隔」调成一样并不够：两个周期任务各自以「上次执行完毕 + 间隔」续期，
+ * 相位差由首次登记时刻决定并永久保持，实测节拍统一后 frame.tasks / frame.runs
+ * 仍稳定在 1.04。因此到期时刻还要量化到同一个刻度上，见下方 epoch 与 alignDueAt。
  *
  * ── 做法 ──
  *
@@ -29,6 +33,16 @@ import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
 
 /** 帧任务的类型：无参、无返回值、同步执行 */
 export type FrameTask = () => void
+
+/**
+ * 流式期间各时间源的公共节拍（毫秒）。
+ *
+ * 缓冲刷写与插值推进都必须取这个值。放在调度器里而不是各自的模块中，是为了让
+ * 「两个源必须同节拍」这条约定只有一个真相源 —— 分散在两个文件里各写一个字面量，
+ * 改动时漏掉一处就会重新分裂成互质的两个节拍（66 与 99 的最小公倍数是 198ms，
+ * 每秒只有约 5 次机会落进同一帧），合帧会静默失效，且读数上看不出原因。
+ */
+export const FRAME_TICK_MS = 66
 
 /** 页面隐藏时的唤醒间隔（毫秒）：退化为定时器轮询 */
 const HIDDEN_WAKE_INTERVAL_MS = 16
@@ -66,6 +80,41 @@ function clearWakeup(): void {
     wakeTimer = null
   }
   wakeAt = null
+}
+
+/**
+ * 调度纪元。
+ *
+ * 周期任务的到期时刻统一量化到这个起点的整数倍刻度上。
+ *
+ * 不量化时，「同为 66ms」并不足以让两个周期任务同相：它们各自以
+ * 「上次执行完毕 + 66ms」续期，相位差等于两者首次登记的时间差，此后永久保持。
+ * 实测正是如此 —— 缓冲刷写与插值推进的节拍已同为 66ms，frame.tasks / frame.runs
+ * 仍稳定在 1.04（44 个采样秒里有 36 秒每帧只执行一个任务），同一份内容因此
+ * 在相邻两帧各写一次 store、各触发一轮提交。
+ *
+ * 量化后两者恒落在同一批刻度上，被同一个帧回调收走，交由 React 的自动批处理
+ * 合并成一次提交。取整方向向上，保证「不早于 delayMs 执行」的语义不变。
+ */
+const epoch = performance.now()
+
+/**
+ * 把目标时刻向上取整到 delayMs 的整数倍刻度。
+ *
+ * delayMs 为 0（立即执行）时不量化：这类任务没有周期语义，量化只会平白推迟它。
+ *
+ * 代价是最坏多等不到一个 delayMs。当前的周期任务只有 66ms（缓冲刷写 / 插值推进）
+ * 与 300ms（吸底轮询），两者都无所谓；给周期任务换更长的间隔前需要先确认这一点 ——
+ * 量化粒度就是 delayMs 本身，间隔越大，附加延迟越大。
+ *
+ * 按 delayMs 而不按统一帧栅格量化，是权衡后的选择：前者让同节拍的任务必然同相
+ * （这正是合帧需要的），同时不给短延迟任务引入额外等待；后者的代价是任何 delayMs
+ * 都要多等最多一个栅格。不同节拍的任务（如 300ms 吸底）因此不会与流式的两个源
+ * 合帧，这是可接受的 —— 它是低频轮询，帧任务耗时不足 1ms，独占一帧没有影响。
+ */
+function alignDueAt(targetAt: number, delayMs: number): number {
+  if (delayMs <= 0) return targetAt
+  return epoch + Math.ceil((targetAt - epoch) / delayMs) * delayMs
 }
 
 /**
@@ -178,7 +227,11 @@ function runFrame(): void {
  * @param delayMs 最早延迟，任务不会早于这个时间执行；默认下一帧
  */
 export function scheduleFrameTask(task: FrameTask, delayMs = 0): void {
-  const dueAt = performance.now() + (delayMs > 0 ? delayMs : 0)
+  const now = performance.now()
+
+  // 周期任务量化到刻度：同为 delayMs 的多个任务因此落在同一帧。非周期任务（0）
+  // 保持「立即」，量化对它没有意义。
+  const dueAt = delayMs > 0 ? alignDueAt(now + delayMs, delayMs) : now
   const scheduled = pending.get(task)
 
   // 已有更早的登记：保留它，避免周期任务被自己的重复登记推迟

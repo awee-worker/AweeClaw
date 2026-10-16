@@ -114,6 +114,11 @@ const StreamingFenceBlock = React.memo(function StreamingFenceBlock({
 StreamingFenceBlock.displayName = 'StreamingFenceBlock'
 
 function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, isActiveTail, preserveLineBreaks }: MarkdownContentViewProps) {
+  // 组件体只在 memo 未命中时执行，因此这一项等于正文渲染单元的真实重渲染次数。
+  // 与 ToolCallGroup 的 toolGroup.renders 成对，用于判断流式推进的成本落在
+  // 正文侧还是工具卡侧。
+  perfTrace.bump(PERF_TRACE_COUNTERS.markdownViews)
+
   const content = typeof rawContent === 'string' ? rawContent : String(rawContent ?? '')
   const language = useStore(s => s.language)
 
@@ -306,7 +311,7 @@ function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, i
    * 会让开销随文本长度线性上升。切分后已完成的前缀块内容稳定，交给
    * MarkdownBlock 的 memo 短路，只有末尾块真正参与解析。
    */
-  const { blocks, tailFence } = useMemo(() => {
+  const { committedBlocks, tailBlock, tailFence } = useMemo(() => {
     const splitter = splitterRef.current as IncrementalBlockSplitter
     const tracking = perfTrace.isEnabled()
     const startedAt = tracking ? performance.now() : 0
@@ -319,8 +324,26 @@ function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, i
       perfTrace.bump(PERF_TRACE_COUNTERS.splitReusedBlocks, splitter.reused)
     }
 
-    return { blocks: result, tailFence: splitter.tailFence }
+    return {
+      committedBlocks: result.blocks,
+      tailBlock: result.tail.trim() ? result.tail : '',
+      tailFence: splitter.tailFence,
+    }
   }, [smoothContent])
+
+  /**
+   * 已提交块的渲染结果缓存
+   *
+   * 已提交块的内容在下一个块提交之前不会改变，分块器也因此保持数组引用稳定。
+   * 缓存后每个刷新周期只重建尾块这一个元素；若每轮都重新 map 全部块，React 的
+   * 协调范围会随回复长度线性增长，长回复下这份开销会持续压在渲染主线程上。
+   */
+  const committedNodes = useMemo(
+    () => committedBlocks.map((block, index) => (
+      <MarkdownBlock key={index} content={block} components={markdownComponents} />
+    )),
+    [committedBlocks, markdownComponents],
+  )
 
   if (!contentWithoutAlert && !systemAlert) {
     return null
@@ -336,22 +359,27 @@ function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, i
           suggestion={systemAlert.suggestion}
         />
       )}
-      {blocks.length > 0 && (
+      {(committedNodes.length > 0 || tailBlock) && (
         <div
           style={{ fontSize: `${fontSize}px` }}
           className="text-text-primary/90 leading-relaxed tracking-wide overflow-hidden"
         >
-          {blocks.map((block, index) =>
-            isStreaming && tailFence && index === blocks.length - 1 ? (
+          {committedNodes}
+          {tailBlock && (
+            isStreaming && tailFence ? (
               <StreamingFenceBlock
-                key={index}
-                block={block}
+                key={committedBlocks.length}
+                block={tailBlock}
                 language={tailFence.language}
                 fontSize={fontSize}
               />
             ) : (
-              <MarkdownBlock key={index} content={block} components={markdownComponents} />
-            ),
+              <MarkdownBlock
+                key={committedBlocks.length}
+                content={tailBlock}
+                components={markdownComponents}
+              />
+            )
           )}
         </div>
       )}

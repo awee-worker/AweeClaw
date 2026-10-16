@@ -26,6 +26,16 @@
  * 独占的耗时」：探针是嵌套的，内层量到的时间已被外层包含。要看的是它们的
  * 比值与走势，不是相加。
  *
+ * ── 读累计值时的两个陷阱 ──
+ *
+ * 1. 同一帧内提交多次时，每一笔都从同一个帧起点起算，后一笔天然包含前一笔，
+ *    该作用域的累计值因此是逐笔递增之和，而不是各次提交耗时之和。
+ * 2. 各作用域的触发笔数不同：外层消息列表被 memo 短路时根本不重新渲染，layout
+ *    effect 也就不执行，而内层内容在流式期间每次变化都要触发。因此跨作用域比较
+ *    累计值（例如拿 assistant-content 去比 messages）得到的倍数，不能读作「重复
+ *    渲染了几遍」—— 实测中两者恰好互为 2 倍，正是笔数差所致，不是同一次提交
+ *    被记了两遍。
+ *
  * ── 为什么可以留在生产代码里 ──
  *
  * 回调里只做几次整数累加，而 perfTrace.bump 在未开启追踪时一次布尔判断即返回。
@@ -85,7 +95,9 @@ export function CommitProbe({ scope, children }: CommitProbeProps) {
    * 直接跳过：那些提交与流式帧成本无关，混进来只会抬高读数。
    */
   useLayoutEffect(() => {
-    if (HAS_PROFILER_CALLBACK) return
+    // 本 effect 没有依赖数组，每次渲染都会执行。采集未开启时连帧窗口起点都不必取，
+    // 否则这条常量开销会搭在每一次提交上。
+    if (HAS_PROFILER_CALLBACK || !perfTrace.isEnabled()) return
 
     const start = perfTrace.currentFrameWindowStart()
     if (start === null) return

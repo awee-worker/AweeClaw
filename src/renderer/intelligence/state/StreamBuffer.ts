@@ -12,7 +12,12 @@
  * 落在同一个动画帧里，使一次用户可见的内容更新只对应一次 React 提交。
  */
 
-import { scheduleFrameTask, cancelFrameTask, type FrameTask } from './streamFrameScheduler'
+import {
+    scheduleFrameTask,
+    cancelFrameTask,
+    FRAME_TICK_MS,
+    type FrameTask,
+} from './streamFrameScheduler'
 
 type FlushCallback = (messageId: string, content: string, threadId?: string) => void
 
@@ -40,7 +45,19 @@ class StreamThrottleBuffer {
     private pendingReasoning: Map<string, PendingReasoning> = new Map()
     private flushCallback: FlushCallback | null = null
     private reasoningFlushCallback: ReasoningFlushCallback | null = null
-    private readonly flushIntervalMs = 80
+    /**
+     * 刷写节拍（毫秒）
+     *
+     * 取调度器的公共节拍（FRAME_TICK_MS），与平滑插值推进同源。两者都登记到共享
+     * 帧调度器，节拍不同则相位持续漂移，同一份新内容会在相邻两帧各写一次 store，
+     * 各触发一轮 React 提交。
+     *
+     * 这里曾经各写一个字面量，结果是插值侧按内容长度放大到 99ms 时刷写仍是 66ms，
+     * 两个互质的节拍每秒只有约 5 次机会落进同一帧 —— 实测 frame.tasks / frame.runs
+     * 稳定在 1.04，而流式期每秒恰好 10 帧（1000 / 99 ≈ 10）。共用一个常量后，
+     * 散落的字面量不再有分叉的余地。
+     */
+    private readonly flushIntervalMs = FRAME_TICK_MS
 
     /**
      * 帧任务引用

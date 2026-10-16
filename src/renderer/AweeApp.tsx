@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
+import { MotionConfig } from 'framer-motion'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge, usePluginUpdateChecker, useFloatingAvatarSync, useVrmCompanionSync, usePptPreviewIpc, useVtsSync } from '@hooks'
@@ -28,7 +29,7 @@ import { FullScreenLoading } from './components/ui/ProgressIndicator'
 import { startupMetrics } from '@shared/toolkit/bootMetrics'
 import { PluginHostBridge } from '@renderer/plugins/PluginHostBridge'
 import { TodoHubCollector } from '@components/todo-hub/TodoHubCollector'
-import { initRenderBudget } from './services/renderBudget'
+import { initRenderBudget, subscribeRenderBudget } from './services/renderBudget'
 
 startupMetrics.mark('app-module-loaded')
 
@@ -404,16 +405,39 @@ function AppContent() {
   )
 }
 
+/**
+ * 收敛标记 → MotionConfig 的 reducedMotion 取值。
+ *
+ * busy / hidden / perfLow 任一成立即强制降级：framer-motion 会跳过 transform 与
+ * layout 动画（合成层更新的大头），保留 opacity / 颜色类动画（成本很低，且是「还在跑」
+ * 的直接视觉反馈）——口径与 globals.css 中 CSS 动画的收敛保持一致。
+ * 常态则用 'user' 跟随系统「减少动态效果」偏好，与样式层的媒体查询同步。
+ */
+function useReduceMotion(): boolean {
+  const [converge, setConverge] = useState(false)
+
+  useEffect(
+    () => subscribeRenderBudget((state) => setConverge(state.busy || state.hidden || state.perfLow)),
+    [],
+  )
+
+  return converge
+}
+
 export default function App() {
+  const reduceMotion = useReduceMotion()
+
   return (
-    <ToastProvider>
-      <ToastInitializer />
-      <MonitoringToastSubscriber />
-      <GlobalErrorHandler>
-        <ThemeManager>
-          <AppContent />
-        </ThemeManager>
-      </GlobalErrorHandler>
-    </ToastProvider>
+    <MotionConfig reducedMotion={reduceMotion ? 'always' : 'user'}>
+      <ToastProvider>
+        <ToastInitializer />
+        <MonitoringToastSubscriber />
+        <GlobalErrorHandler>
+          <ThemeManager>
+            <AppContent />
+          </ThemeManager>
+        </GlobalErrorHandler>
+      </ToastProvider>
+    </MotionConfig>
   )
 }

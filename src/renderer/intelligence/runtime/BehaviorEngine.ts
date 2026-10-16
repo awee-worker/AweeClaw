@@ -64,6 +64,13 @@ export class BehaviorEngine {
   private lastActivityTime: number = Date.now()
   private isRunning: boolean = false
   private tickInterval: number = 1000  // 1秒检查一次
+  /**
+   * 巡检定时器句柄
+   *
+   * 必须持有：此前只调用 setInterval 而不保存返回值，stop() 无从清除，
+   * 引擎「停止」之后定时器仍在每秒唤醒一次，直到窗口关闭。
+   */
+  private timer: ReturnType<typeof setInterval> | null = null
   private ruleStoreKey: string = 'aweeclaw:behavior_rules'
   private activityKey: string = 'aweeclaw:last_activity_time'
 
@@ -82,7 +89,7 @@ export class BehaviorEngine {
     this.loadState()
     this.isRunning = true
     
-    setInterval(() => this.tick(), this.tickInterval)
+    this.timer = setInterval(() => this.tick(), this.tickInterval)
     logger.agent.info('[BehaviorEngine] Started')
   }
 
@@ -90,6 +97,10 @@ export class BehaviorEngine {
    * 停止行为引擎
    */
   stop(): void {
+    if (this.timer !== null) {
+      clearInterval(this.timer)
+      this.timer = null
+    }
     this.isRunning = false
     this.saveState()
     logger.agent.info('[BehaviorEngine] Stopped')

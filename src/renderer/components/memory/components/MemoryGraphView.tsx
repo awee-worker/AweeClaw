@@ -86,6 +86,22 @@ export function MemoryGraphView() {
   useEffect(() => {
     if (nodes.length === 0) return
 
+    /** 定型判定阈值（平均每节点动能，对应平均速度约 0.01 px/帧，肉眼不可辨） */
+    const SETTLE_ENERGY = 1e-4
+    /** 定型后的兜底重绘间隔（毫秒）：只用于跟上容器尺寸变化，不再逐帧推进 */
+    const SETTLED_FRAME_MS = 500
+
+    let settled = false
+    let settleTimer = 0
+
+    /** 平均每节点动能：带阻尼的受力模拟能量单调衰减，可用于判断是否已定型 */
+    const meanEnergy = (): number => {
+      if (nodes.length === 0) return 0
+      let total = 0
+      for (const node of nodes) total += node.vx * node.vx + node.vy * node.vy
+      return total / nodes.length
+    }
+
     const simulate = () => {
       const REPULSION = 8000
       const ATTRACTION = 0.005
@@ -304,15 +320,31 @@ export function MemoryGraphView() {
 
       // 模拟下一步
       simulate()
-      animationRef.current = requestAnimationFrame(render)
+
+      // 布局定型后不再逐帧推进：位置已经不再变化，继续按帧重跑一遍 O(N²) 的斥力
+      // 计算与整幅 canvas 重绘，画面不会有任何差别 —— 这一段此前在面板打开期间
+      // 永不停歇。悬停 / 缩放 / 平移 / 数据变化都会重建本 effect，循环随之重启。
+      // 拖拽不产生 state 变化，因此直接以拖拽标记保持满帧，避免节点跟不上指针。
+      const energy = meanEnergy()
+      if (!settled && energy < SETTLE_ENERGY) settled = true
+      // 迟滞：恢复阈值取进入阈值的十倍，避免在边界附近来回抖动
+      else if (settled && energy > SETTLE_ENERGY * 10) settled = false
+
+      if (settled && !isDraggingRef.current) {
+        settleTimer = window.setTimeout(render, SETTLED_FRAME_MS)
+      } else {
+        animationRef.current = requestAnimationFrame(render)
+      }
     }
 
     render()
 
     return () => {
+      settled = false
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current)
       }
+      window.clearTimeout(settleTimer)
     }
   }, [nodes, edges, hoveredNode, selectedNode, zoom, offset])
 

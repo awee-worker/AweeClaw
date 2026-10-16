@@ -30,6 +30,11 @@ const SPLIT_SAMPLES = [
   '单段无空行',
 ]
 
+/** 把分块结果摊平成与全文分块一致的形式：已提交块 + 非空尾块 */
+function flatten(result: { blocks: string[]; tail: string }): string[] {
+  return result.tail.trim() ? [...result.blocks, result.tail] : [...result.blocks]
+}
+
 describe('IncrementalBlockSplitter', () => {
   it('逐字符推入时结果与全文分块完全一致', () => {
     for (const sample of SPLIT_SAMPLES) {
@@ -37,7 +42,7 @@ describe('IncrementalBlockSplitter', () => {
 
       for (let i = 1; i <= sample.length; i++) {
         const prefix = sample.slice(0, i)
-        expect(splitter.update(prefix), `sample=${JSON.stringify(sample)} i=${i}`).toEqual(
+        expect(flatten(splitter.update(prefix)), `sample=${JSON.stringify(sample)} i=${i}`).toEqual(
           splitMarkdownBlocks(prefix),
         )
       }
@@ -51,7 +56,7 @@ describe('IncrementalBlockSplitter', () => {
       const splitter = new IncrementalBlockSplitter()
       for (let i = 0; i < sample.length; i += chunkSize) {
         const prefix = sample.slice(0, Math.min(sample.length, i + chunkSize))
-        expect(splitter.update(prefix)).toEqual(splitMarkdownBlocks(prefix))
+        expect(flatten(splitter.update(prefix))).toEqual(splitMarkdownBlocks(prefix))
       }
     }
   })
@@ -71,7 +76,7 @@ describe('IncrementalBlockSplitter', () => {
 
     for (const chunk of chunks) {
       text += chunk
-      const current = splitter.update(text)
+      const current = flatten(splitter.update(text))
 
       // 既与全文分块一致，也保证前缀块未被改写（记忆化复用的前提）
       expect(current).toEqual(splitMarkdownBlocks(text))
@@ -81,19 +86,35 @@ describe('IncrementalBlockSplitter', () => {
     }
   })
 
+  it('已提交块数组的引用只在新块提交时更换', () => {
+    const splitter = new IncrementalBlockSplitter()
+
+    // 单段文本持续增长：没有任何块提交，引用必须全程不变
+    const firstRef = splitter.update('第一段还在继续').blocks
+    expect(splitter.update('第一段还在继续写').blocks).toBe(firstRef)
+
+    // 出现空行、前缀块被提交：必须换引用，否则渲染侧按引用缓存的已提交块不会重算
+    const committedRef = splitter.update('第一段还在继续写\n\n').blocks
+    expect(committedRef).not.toBe(firstRef)
+    expect(committedRef).toHaveLength(1)
+
+    // 之后只增长尾块，没有新的提交，引用保持稳定
+    expect(splitter.update('第一段还在继续写\n\n第二段').blocks).toBe(committedRef)
+  })
+
   it('内容被改写（非只追加）时退化为全量重扫', () => {
     const splitter = new IncrementalBlockSplitter()
     splitter.update('第一段\n\n第二段')
 
     // 长度回退且前缀不同：必须识别为改写，而不能把旧块带过来
-    expect(splitter.update('完全不同的内容')).toEqual(splitMarkdownBlocks('完全不同的内容'))
-    expect(splitter.update('')).toEqual([])
+    expect(flatten(splitter.update('完全不同的内容'))).toEqual(splitMarkdownBlocks('完全不同的内容'))
+    expect(flatten(splitter.update(''))).toEqual([])
   })
 
   it('空内容不产生块', () => {
     const splitter = new IncrementalBlockSplitter()
-    expect(splitter.update('')).toEqual([])
-    expect(splitter.update('\n\n')).toEqual([])
+    expect(flatten(splitter.update(''))).toEqual([])
+    expect(flatten(splitter.update('\n\n'))).toEqual([])
   })
 })
 

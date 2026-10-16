@@ -416,6 +416,21 @@ export const PERF_TRACE_COUNTERS = {
    */
   highlightMs: 'highlight.ms',
   highlightCalls: 'highlight.calls',
+  /**
+   * 正文渲染单元的重新渲染次数（Markdown 视图组件体实际执行次数）。
+   *
+   * 与 toolGroupRenders 成对设计，回答的是同一个问题：流式期间文本持续改写
+   * parts，工具卡的数据本身没有变化 —— 那么两类渲染单元各自的重新渲染次数，
+   * 就决定了「削减哪一侧更有效」。
+   *
+   * 组件体在 memo 命中时不会执行，因此本项计的是**真实重渲染**，而不是被渲染
+   * 的单元数（两者之差即 memo 拦下的部分）。
+   *
+   * 这里刻意不记耗时：帧窗口计价对同级多实例会叠加 —— 同一帧内每个实例都从
+   * 同一个帧起点起算，累加值等于「实例数 × 帧窗口耗时」，实测比值恰好等于实例
+   * 数（4.66 / 3.43），无法归因。次数没有这个歧义。
+   */
+  markdownViews: 'markdown.views',
   /** 流式插值推进帧数（每帧都会重渲染一次尾部块） */
   smoothTicks: 'stream.ticks',
   /** 落在未闭合围栏内、走纯文本渲染而未做 Markdown 解析的尾块帧数 */
@@ -450,7 +465,6 @@ export const PERF_TRACE_COUNTERS = {
   reactMessageItemCommitMs: 'react.messageItemCommitMs',
   /** 单条助手消息内容子树的累计提交耗时 */
   reactAssistantCommitMs: 'react.assistantCommitMs',
-
   /**
    * 工具组与工具卡片的重渲染次数。
    *

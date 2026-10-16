@@ -11,7 +11,7 @@
 import { useMemo, useState } from 'react'
 import {
   ListTodo, Plus, Check, Trash2, CalendarDays, Loader2, Sparkles,
-  CheckCircle2, RotateCcw, ExternalLink, Inbox, X,
+  CheckCircle2, RotateCcw, ExternalLink, Inbox, CheckCheck, X,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useTodoHubStore, type HubTodoItem } from './todoHubStore'
@@ -32,7 +32,7 @@ const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
 export function TodoHubView() {
   const language = useStore((s) => s.language)
   const zh = language === 'zh'
-  const { items, add, remove, complete, restore, clearDone } = useTodoHubStore()
+  const { items, add, remove, complete, completeAll, restore, clearDone } = useTodoHubStore()
 
   const [title, setTitle] = useState('')
   const [priority, setPriority] = useState<'high' | 'medium' | 'low'>('medium')
@@ -41,6 +41,8 @@ export function TodoHubView() {
 
   const pendingCount = items.filter((i) => i.status !== 'done').length
   const doneCount = items.filter((i) => i.status === 'done').length
+  // 「全部完成」只针对可手动完成的条目；AI 执行中的项仍在进行，不参与批量完成
+  const completableCount = items.filter((i) => i.status === 'pending').length
   const executingCount = items.filter((i) => i.status === 'executing').length
 
   const filtered = useMemo(() => {
@@ -98,21 +100,33 @@ export function TodoHubView() {
             {zh ? `${executingCount} 项 AI 执行中` : `${executingCount} running`}
           </span>
         )}
-        {doneCount > 0 && (
+        <div className="ml-auto flex items-center gap-3">
+          {completableCount > 0 && (
+            <button
+              onClick={completeAll}
+              title={zh ? '把全部待办标为完成' : 'Mark all todos as done'}
+              className="inline-flex items-center gap-1 text-[12px] text-text-muted hover:text-green-500 transition-colors"
+            >
+              <CheckCheck className="w-3.5 h-3.5" />
+              {zh ? '全部完成' : 'Complete all'}
+            </button>
+          )}
+          {doneCount > 0 && (
+            <button
+              onClick={clearDone}
+              className="text-[12px] text-text-muted hover:text-text-primary transition-colors"
+            >
+              {zh ? '清除已完成' : 'Clear done'}
+            </button>
+          )}
           <button
-            onClick={clearDone}
-            className="ml-auto text-[12px] text-text-muted hover:text-text-primary transition-colors"
+            onClick={handleClose}
+            title={zh ? '关闭' : 'Close'}
+            className="p-1.5 -mr-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
           >
-            {zh ? '清除已完成' : 'Clear done'}
+            <X className="w-4 h-4" />
           </button>
-        )}
-        <button
-          onClick={handleClose}
-          title={zh ? '关闭' : 'Close'}
-          className={`${doneCount > 0 ? '' : 'ml-auto'} p-1.5 -mr-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors`}
-        >
-          <X className="w-4 h-4" />
-        </button>
+        </div>
       </div>
 
       {/* 新增 */}

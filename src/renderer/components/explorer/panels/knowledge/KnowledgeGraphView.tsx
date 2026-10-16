@@ -408,19 +408,58 @@ export function KnowledgeGraphView({
   useEffect(() => {
     if (entities.length === 0) return
 
+    /** 定型判定阈值（平均每节点动能，对应平均速度约 0.01 px/帧，肉眼不可辨） */
+    const SETTLE_ENERGY = 1e-4
+    /** 定型后的兜底重绘间隔（毫秒）：只用于跟上容器尺寸变化，不再逐帧推进 */
+    const SETTLED_FRAME_MS = 500
+
     let running = true
-    const loop = () => {
+    let settled = false
+    let settleTimer = 0
+
+    /** 平均每节点动能：力导向布局带阻尼，能量单调衰减，可用于判断是否已定型 */
+    const meanEnergy = (): number => {
+      const nodes = nodesRef.current
+      if (nodes.length === 0) return 0
+      let total = 0
+      for (const node of nodes) total += node.vx * node.vx + node.vy * node.vy
+      return total / nodes.length
+    }
+
+    /**
+     * 单步推进。
+     *
+     * 布局定型后不再逐帧推进：位置已经不再变化，继续按帧重跑一遍 O(N²) 的斥力
+     * 计算与整幅 canvas 重绘，画面不会有任何差别 —— 这一段此前在面板打开期间
+     * 永不停歇。悬停 / 缩放 / 平移 / 数据变化都会重建本 effect，循环随之重启。
+     *
+     * 拖拽期间强制保持满帧：拖拽直接改坐标、模拟又会跳过被拖节点，动能读数接近
+     * 于零，不额外判定就会在拖动过程中降到兜底频率，节点跟不上指针。
+     */
+    const loop = (): void => {
       if (!running) return
       simulate()
       draw()
-      animFrameRef.current = requestAnimationFrame(loop)
+
+      const energy = meanEnergy()
+      if (!settled && energy < SETTLE_ENERGY) settled = true
+      // 迟滞：恢复阈值取进入阈值的十倍，避免在边界附近来回抖动
+      else if (settled && energy > SETTLE_ENERGY * 10) settled = false
+
+      if (settled && dragNode === null) {
+        settleTimer = window.setTimeout(loop, SETTLED_FRAME_MS)
+      } else {
+        animFrameRef.current = requestAnimationFrame(loop)
+      }
     }
+
     loop()
     return () => {
       running = false
       cancelAnimationFrame(animFrameRef.current)
+      window.clearTimeout(settleTimer)
     }
-  }, [simulate, draw, entities.length])
+  }, [simulate, draw, entities.length, dragNode])
 
   const getNodeAt = useCallback(
     (clientX: number, clientY: number): GraphNode | null => {

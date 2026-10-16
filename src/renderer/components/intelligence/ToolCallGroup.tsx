@@ -316,9 +316,13 @@ function ToolCallGroup({
   )
 
   return (
+    // contain 只做布局与绘制的范围隔离，不设 willChange：
+    // willChange 是「即将发生动画」的提示，浏览器会据此为元素永久保留一张合成层，
+    // 而本组内只有卡片入场时一次性播放的 tool-card-appear（0.15s 内结束）。
+    // 长期保留提示只会让一次会话里出现的每个工具组各占一层，合成器每帧都要过一遍。
     <div
       className="my-2 space-y-2"
-      style={{ contain: 'layout style paint', willChange: 'transform' }}
+      style={{ contain: 'layout style paint' }}
     >
       {groups.map((group) => {
         const hasApproval = groupHasApproval(group)

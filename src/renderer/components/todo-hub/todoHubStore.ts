@@ -86,6 +86,14 @@ interface TodoHubState {
   complete: (id: string) => void
   /** 撤销完成 */
   restore: (id: string) => void
+
+  /**
+   * 一键完成全部待办。
+   *
+   * 正在 AI 执行（executing）的条目不处理：那一轮尚未结束，强行标记完成
+   * 会在该轮收尾时被重新写回，反而让状态前后矛盾。
+   */
+  completeAll: () => void
   /** 按去重键移除（来源消失时同步清理，如会话被删除） */
   removeByDedupe: (dedupeKey: string) => void
   /** 清理全部已完成项（同样记为删除） */
@@ -139,6 +147,15 @@ export const useTodoHubStore = create<TodoHubState>()(
             i.id === id ? { ...i, status: 'pending', completedAt: undefined } : i,
           ),
         })),
+      completeAll: () =>
+        set((s) => {
+          const now = Date.now()
+          return {
+            items: s.items.map((i) =>
+              i.status === 'pending' ? { ...i, status: 'done', completedAt: now } : i,
+            ),
+          }
+        }),
       removeByDedupe: (dedupeKey) =>
         set((s) => ({
           items: s.items.filter((i) => i.dedupeKey !== dedupeKey),

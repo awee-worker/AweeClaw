@@ -36,6 +36,82 @@ const ThinkingTextChunk = React.memo(function ThinkingTextChunk({ text }: { text
 ThinkingTextChunk.displayName = 'ThinkingTextChunk'
 
 /**
+ * 流式思考文本
+ *
+ * 插值推进按 66ms 节拍产出新内容，而它是组件内部状态 —— 外层就算被 memo 包着
+ * 也拦不住自己发起的这轮更新。因此把这段逻辑从思考块主体里挪出来：推进只重渲染
+ * 这一个单元，外层的外壳、展开动画与滚动逻辑都不参与。
+ *
+ * 跟随滚动同样不放在外层：内容推进通过 onAdvance 上报，外层就不必把插值结果
+ * 写进 effect 依赖，也就不会每帧重跑一次滚动副作用。
+ */
+const ThinkingStreamText = React.memo(function ThinkingStreamText({
+  content,
+  isStreaming,
+  isActiveTail,
+  fontSize,
+  onAdvance,
+}: {
+  content: string
+  isStreaming: boolean
+  isActiveTail?: boolean
+  fontSize: number
+  onAdvance?: () => void
+}) {
+  // 本块已不是时间线尾部（后面出现了新内容）时立即补全：此时再慢速推进，
+  // 就会与下方已经渲染出的正文 / 工具卡形成时间差，观感是会话内容上下跳动。
+  const { displayedContent } = useSmoothStream(content, isStreaming, 1.5, {
+    immediate: isActiveTail === false,
+  })
+
+  // 插值器每帧产出一个新的完整字符串，若整段作为单个文本节点渲染，
+  // 每帧都要重新布局已输出的全部思考内容；分块后每帧只重写尾部一块。
+  const textChunks = useStableTextChunks(displayedContent)
+
+  // 内容真正推进后通知外层跟随滚动。回调保持稳定，本 effect 只随内容变化触发。
+  useEffect(() => {
+    onAdvance?.()
+  }, [displayedContent, onAdvance])
+
+  return (
+    <div
+      style={{ fontSize: `${fontSize - 1}px` }}
+      className={`text-text-muted/80 leading-relaxed whitespace-pre-wrap font-sans ${isStreaming ? 'animate-block-reveal' : ''}`}
+    >
+      {textChunks.map((chunk, index) => (
+        <ThinkingTextChunk key={index} text={chunk} />
+      ))}
+      {isStreaming && <span className="stream-caret" aria-hidden="true" />}
+    </div>
+  )
+})
+ThinkingStreamText.displayName = 'ThinkingStreamText'
+
+/**
+ * 折叠时的首行预览
+ *
+ * 单独成元：它的输入是 content，而 content 逐帧增长。留在外壳里会让外壳跟着重建，
+ * 因此把这份依赖收进独立单元，且只在折叠状态下才挂载。
+ */
+const ThinkingPreview = React.memo(function ThinkingPreview({ content }: { content: string }) {
+  const firstLine = useMemo(() => {
+    if (!content) return ''
+    // 只扫描开头一段：折叠预览只需要首行，没必要遍历整段思考文本
+    const head = content.slice(0, 400)
+    const line = head.split('\n').find(l => l.trim().length > 0) || ''
+    return line.length > 60 ? line.slice(0, 60) + '...' : line
+  }, [content])
+
+  if (!firstLine) return null
+  return (
+    <span className="text-[11px] text-text-muted/50 truncate max-w-[60%] ml-1">
+      {firstLine}
+    </span>
+  )
+})
+ThinkingPreview.displayName = 'ThinkingPreview'
+
+/**
  * 跟随滚动的最小间隔（毫秒）
  *
  * 读取 scrollHeight 会让浏览器完成一次同步布局。思考文本按 66ms 的插值节拍推进，
@@ -91,19 +167,22 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, isActiveTail, 
     return () => clearInterval(timer)
   }, [startTime, isStreaming])
 
-  // 本块已不是时间线尾部（后面出现了新内容）时立即补全：此时再慢速推进，
-  // 就会与下方已经渲染出的正文 / 工具卡形成时间差，观感是会话内容上下跳动。
-  const { displayedContent: fluidContent } = useSmoothStream(content, isStreaming, 1.5, {
-    immediate: isActiveTail === false,
-  })
-
   /**
-   * 分块渲染插值结果
+   * 跟随滚动
    *
-   * 插值器每帧产出一个新的完整字符串，若整段作为单个文本节点渲染，
-   * 每帧都要重新布局已输出的全部思考内容；分块后每帧只重写尾部一块。
+   * 内容推进由下方的 ThinkingStreamText 回调触发。读 scrollHeight 会强制一次
+   * 同步布局，而插值器按 66ms 推进，逐帧跟随就是逐帧强制布局；跟随滚动的精度
+   * 需求远低于帧率，因此按时间节流，观感无差别。
    */
-  const textChunks = useStableTextChunks(fluidContent)
+  const handleStreamAdvance = useCallback(() => {
+    if (userScrolledUpRef.current) return
+    if (performance.now() - lastAutoScrollAtRef.current < AUTO_SCROLL_MIN_INTERVAL_MS) return
+    lastAutoScrollAtRef.current = performance.now()
+    const el = scrollRef.current
+    if (el) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [])
 
   /** 滚动阴影检测 + 用户手动滚动检测
    *
@@ -148,23 +227,6 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, isActiveTail, 
     return () => el.removeEventListener('scroll', handleScroll)
   }, [isExpanded, isStreaming])
 
-  /** 流式时自动滚动到底部（尊重用户手动滚动） */
-  useEffect(() => {
-    if (!isStreaming || !isExpanded || !scrollRef.current) return
-    if (userScrolledUpRef.current) return
-    // 读 scrollHeight 会强制一次同步布局。插值器按 66ms 推进，逐帧跟随就是逐帧
-    // 强制布局；而跟随滚动的精度需求远低于帧率，按时间节流即可，观感无差别。
-    if (performance.now() - lastAutoScrollAtRef.current < AUTO_SCROLL_MIN_INTERVAL_MS) return
-
-    const raf = requestAnimationFrame(() => {
-      const el = scrollRef.current
-      if (el && !userScrolledUpRef.current) {
-        el.scrollTop = el.scrollHeight
-        lastAutoScrollAtRef.current = performance.now()
-      }
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [fluidContent, isStreaming, isExpanded])
 
   /** 展开动画完成后滚动到底部（motion.div 展开需要 0.25s） */
   useEffect(() => {
@@ -194,14 +256,6 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, isActiveTail, 
     ? (lastElapsed.current > 0 ? t('thought.for', language, { sec: lastElapsed.current }) : t('thought.done', language))
     : t('thinking.for', language, { sec: elapsed })
 
-  const previewText = useMemo(() => {
-    if (!content || content.length === 0) return ''
-    // 只扫描开头一段：折叠预览只需要首行，没必要遍历整段思考文本
-    const head = content.slice(0, 400)
-    const firstLine = head.split('\n').find(l => l.trim().length > 0) || ''
-    return firstLine.length > 60 ? firstLine.slice(0, 60) + '...' : firstLine
-  }, [content])
-
   return (
     <div className="my-2.5 group/think overflow-hidden">
       <button
@@ -221,11 +275,7 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, isActiveTail, 
         <span className={`text-[12px] ${isStreaming ? 'text-accent/80 font-medium' : ''}`}>
           {durationText}
         </span>
-        {!isExpanded && previewText && (
-          <span className="text-[11px] text-text-muted/50 truncate max-w-[60%] ml-1">
-            {previewText}
-          </span>
-        )}
+        {!isExpanded && <ThinkingPreview content={content} />}
         {!isExpanded && isStreaming && (
           <span className="w-1.5 h-1.5 rounded-full bg-accent/50 animate-breathe ml-0.5" />
         )}
@@ -249,15 +299,13 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, isActiveTail, 
                     className="max-h-[300px] overflow-y-auto scrollbar-none pl-5 pr-3 py-3"
                   >
                     {content ? (
-                      <div
-                        style={{ fontSize: `${fontSize - 1}px` }}
-                        className={`text-text-muted/80 leading-relaxed whitespace-pre-wrap font-sans ${isStreaming ? 'animate-block-reveal' : ''}`}
-                      >
-                        {textChunks.map((chunk, index) => (
-                          <ThinkingTextChunk key={index} text={chunk} />
-                        ))}
-                        {isStreaming && <span className="stream-caret" aria-hidden="true" />}
-                      </div>
+                      <ThinkingStreamText
+                        content={content}
+                        isStreaming={isStreaming}
+                        isActiveTail={isActiveTail}
+                        fontSize={fontSize}
+                        onAdvance={handleStreamAdvance}
+                      />
                     ) : (
                       <div className="flex items-center gap-2 text-text-muted/80 italic text-xs py-1">
                         <span className="animate-pulse">{t('ai.analyzing', language as Language)}</span>
@@ -274,5 +322,21 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, isActiveTail, 
   )
 }
 
-export const ThinkingBlockView = React.memo(ThinkingBlockViewBase)
+/**
+ * 外壳只在「结构性输入」变化时重建
+ *
+ * content 的具体内容由 ThinkingStreamText 与 ThinkingPreview 各自消费，外壳本身
+ * 不依赖它的值。默认浅比较会把每次 flush 都判为变化，让整块外壳（含展开动画容器）
+ * 随文本增长反复重建；这里只保留「有无内容」这个翻转 —— 它是占位态与正文之间的
+ * 切换依据，内容本身逐帧增长不应重建外壳。
+ */
+export const ThinkingBlockView = React.memo(
+  ThinkingBlockViewBase,
+  (prev, next) =>
+    prev.startTime === next.startTime &&
+    prev.isStreaming === next.isStreaming &&
+    prev.isActiveTail === next.isActiveTail &&
+    prev.fontSize === next.fontSize &&
+    (prev.content.length > 0) === (next.content.length > 0),
+)
 ThinkingBlockView.displayName = 'ThinkingBlockView'
