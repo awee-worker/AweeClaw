@@ -836,7 +836,6 @@ export default function Editor() {
         const model = editorRef.current.getModel()
         const versionId = model?.getAlternativeVersionId()
         markFileSaved(activeFile.path, versionId)
-        toast.success(t('editor.filesaved', language as Language), getFileName(activeFile.path))
       } else {
         toast.error(t('editor.savefailed', language as Language), t('editor.couldnotwritetofile', language as Language))
       }

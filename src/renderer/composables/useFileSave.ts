@@ -165,7 +165,6 @@ export function useFileSave() {
       commitSavedFiles([
         { path: filePath, versionId: outcome.versionId, wasDeleted: outcome.wasDeleted },
       ])
-      toast.success(t('app.filesaved', language as Language), getFileName(filePath))
       return true
     },
     [language],
