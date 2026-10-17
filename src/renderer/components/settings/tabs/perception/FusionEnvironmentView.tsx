@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * 多模态融合环境视图（阶段9 s9-06 新增）
  *
@@ -13,7 +14,7 @@
  * 用户在 PerceptionSettingsPanel 中点击「融合感知」按钮打开。
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Layers,
   RefreshCw,
@@ -152,7 +153,6 @@ export function FusionEnvironmentView({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
-  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   /** 加载环境上下文 */
   const loadContext = useCallback(async () => {
@@ -187,24 +187,16 @@ export function FusionEnvironmentView({
 
   /** 自动刷新定时器 */
   useEffect(() => {
-    if (!isOpen || !autoRefresh) {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current)
-        refreshTimerRef.current = null
-      }
-      return
-    }
+    if (!isOpen || !autoRefresh) return
 
-    refreshTimerRef.current = setInterval(() => {
-      void loadContext()
-    }, AUTO_REFRESH_INTERVAL_MS)
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-fusion-env-poll',
+      intervalMs: AUTO_REFRESH_INTERVAL_MS,
+      visibility: 'visible-only',
+      handler: () => void loadContext(),
+    })
 
-    return () => {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current)
-        refreshTimerRef.current = null
-      }
-    }
+    return stopTicker
   }, [isOpen, autoRefresh, loadContext])
 
   /** 注意力分数颜色 */

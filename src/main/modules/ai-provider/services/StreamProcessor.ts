@@ -10,7 +10,7 @@
 
 import { streamText } from 'ai'
 import type { StreamTextResult } from 'ai'
-import { BrowserWindow } from 'electron'
+import { webContents } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import { ErrorCode } from '@shared/toolkit/errorCatalog'
 import { createModel } from '../modelRegistry'
@@ -25,6 +25,7 @@ import type { LLMConfig, LLMMessage, ToolDefinition } from '@protocols'
 import { ThinkingStrategyFactory, type ThinkingStrategy } from '../strategies/ReasoningStrategy'
 import { PseudoToolDetector, normalizeToolCallArguments, repairToolCallInput } from './PseudoToolDetector'
 import { StreamEventDispatcher } from './StreamEventDispatcher'
+import { streamSubscriptions } from './StreamSubscriptions'
 import {
   CONNECTION_PROBE_FAILURE_THRESHOLD,
   CONNECTION_PROBE_INTERVAL_MS,
@@ -285,8 +286,8 @@ export class StreamingService {
   private readonly silenceGuard = new StreamSilenceGuard()
   private readonly dispatcher: StreamEventDispatcher
 
-  constructor(private readonly window: BrowserWindow) {
-    this.dispatcher = new StreamEventDispatcher(window)
+  constructor(private readonly subscriptions = streamSubscriptions) {
+    this.dispatcher = new StreamEventDispatcher(subscriptions)
   }
 
   /** 流式生成文本 */
@@ -325,7 +326,7 @@ export class StreamingService {
     })
 
     try {
-      const model = createModel(config, this.buildModelCallbacks())
+      const model = createModel(config, this.buildModelCallbacks(requestId))
 
       logger.llm.info('[StreamProcessor] 模型已创建', {
         provider: config.provider,
@@ -466,20 +467,29 @@ export class StreamingService {
   }
 
   /** 构建模型回调（token 刷新与认证失败） */
-  private buildModelCallbacks() {
+  /**
+   * 构建模型回调（token 刷新与认证失败）
+   *
+   * 这两个事件不属于 requestId 动态频道，但收件人应当是「正在看这次请求的人」，
+   * 因此同样走订阅表而不是固定回发某一窗口 —— 多窗口观察同一路流时，
+   * 任一窗口都该拿到刷新后的 token，否则它对后续请求会用旧凭证。
+   */
+  private buildModelCallbacks(requestId: string) {
+    const notify = (channel: string, payload: unknown): void => {
+      for (const id of this.subscriptions.subscribersOf(requestId)) {
+        const wc = webContents.fromId(id)
+        if (wc && !wc.isDestroyed()) wc.send(channel, payload)
+      }
+    }
     return {
       onTokenRefreshed: (newAccessToken: string, newRefreshToken?: string) => {
-        if (!this.window.isDestroyed()) {
-          this.window.webContents.send('cloud:tokenRefreshed', {
-            accessToken: newAccessToken,
-            refreshToken: newRefreshToken,
-          })
-        }
+        notify('cloud:tokenRefreshed', {
+          accessToken: newAccessToken,
+          refreshToken: newRefreshToken,
+        })
       },
       onAuthFailed: () => {
-        if (!this.window.isDestroyed()) {
-          this.window.webContents.send('cloud:authFailed', {})
-        }
+        notify('cloud:authFailed', {})
       },
     }
   }
@@ -562,7 +572,7 @@ export class StreamingService {
       const next = await this.silenceGuard.next(iterator, requestId, phase, probeTarget)
       if (next.done) break
       const part = next.value
-      if (this.window.isDestroyed()) {
+      if (!this.subscriptions.hasLiveSubscriber(requestId)) {
         windowDestroyed = true
         break
       }
@@ -587,9 +597,7 @@ export class StreamingService {
           onFinish: () => { sawFinish = true },
         })
       } catch (error) {
-        if (!this.window.isDestroyed()) {
-          logger.llm.warn('[StreamProcessor] 处理流式分片出错:', error)
-        }
+        logger.llm.warn('[StreamProcessor] 处理流式分片出错:', error)
         // 不再静默吞掉分片异常：记录为首个流错误，使最终结果如实上报失败。
         // 否则异常被吞后，只要此前已产出部分文本，就会按"正常完成"上报 done，
         // 前端会误判任务正常结束（表现为"AI 无提示自行中断"）。

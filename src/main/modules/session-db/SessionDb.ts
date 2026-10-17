@@ -678,27 +678,83 @@ export class SessionDb {
     })
   }
 
-  /** 批量保存线程消息（事务，先清空再写入） */
+  /**
+   * 保存线程消息（增量）
+   *
+   * ── 为什么不能全量重写 ──
+   *
+   * 旧实现是「事务内先 DELETE 该线程全部消息，再逐条 INSERT」。单次写入量与
+   * 会话总消息数成正比，与本次实际变化无关；而调用方是 5 秒一次的自动保存，
+   * 于是同一个没有变化的线程也会被整条重写一遍。实测在 300 秒的会话里，
+   * 主进程事件循环出现 15 次以上 100~200ms 的阻塞，且随会话变长而恶化 ——
+   * 这些写入是同步 SQLite 调用，期间所有 IPC 与定时器都被挡在后面。
+   *
+   * 这里按 seq 对齐做增量：内容相同的行跳过，变化的行 UPDATE，新增的行 INSERT，
+   * 消息变少时清掉尾部。写入量回到与本次变化成正比，未变化的会话直接返回。
+   */
   batchUpsertThreadMessages(threadId: string, messages: any[]): void {
+    // 读出已有行的内容，用于逐行比对。只取 seq 与 content：
+    // role 与 created_at 必然随 content 一起变化，不必单独比较。
+    const existingRows = this.db.prepare(
+      'SELECT seq, content FROM thread_message WHERE thread_id = ?'
+    ).all(threadId) as { seq: number; content: string }[]
+
+    const previousContent = new Map<number, string>()
+    let previousMaxSeq = -1
+    for (const row of existingRows) {
+      previousContent.set(row.seq, row.content)
+      if (row.seq > previousMaxSeq) previousMaxSeq = row.seq
+    }
+
+    // 下标即 seq，与写入时的取值保持一致
+    const serialized = messages.map((msg) => JSON.stringify(msg))
+
+    // 快捷路径：行数一致且逐行内容相同，说明自动保存撞上了一次无变化的快照。
+    // 直接返回，连事务都不开。
+    if (serialized.length === previousContent.size) {
+      let identical = true
+      for (let i = 0; i < serialized.length; i++) {
+        if (previousContent.get(i) !== serialized[i]) {
+          identical = false
+          break
+        }
+      }
+      if (identical) return
+    }
+
     const tx = this.db.prepare('BEGIN TRANSACTION')
     try {
       tx.run()
-      // 先删除该线程的旧消息
-      this.db.prepare('DELETE FROM thread_message WHERE thread_id = ?').run(threadId)
 
-      // 批量插入新消息
-      const stmt = this.db.prepare(
+      const insertStmt = this.db.prepare(
         'INSERT INTO thread_message (thread_id, seq, role, content, created_at) VALUES (?, ?, ?, ?, ?)'
       )
+      const updateStmt = this.db.prepare(
+        'UPDATE thread_message SET role = ?, content = ?, created_at = ? WHERE thread_id = ? AND seq = ?'
+      )
+
       for (let i = 0; i < messages.length; i++) {
+        const content = serialized[i]
+        const previous = previousContent.get(i)
+        if (previous === content) continue
+
         const msg = messages[i]
-        stmt.run(
-          threadId,
-          i,
-          msg.role ?? '',
-          JSON.stringify(msg),
-          msg.createdAt ?? Date.now(),
-        )
+        const role = msg.role ?? ''
+        const createdAt = msg.createdAt ?? Date.now()
+
+        if (previous === undefined) {
+          insertStmt.run(threadId, i, role, content, createdAt)
+        } else {
+          updateStmt.run(role, content, createdAt, threadId, i)
+        }
+      }
+
+      // 消息变少（删除轮次、回退到检查点）时清掉尾部。
+      // seq 连续且从 0 开始，因此 >= messages.length 的行必然已无对应消息。
+      if (previousMaxSeq >= messages.length) {
+        this.db.prepare(
+          'DELETE FROM thread_message WHERE thread_id = ? AND seq >= ?'
+        ).run(threadId, messages.length)
       }
 
       this.db.prepare('COMMIT').run()

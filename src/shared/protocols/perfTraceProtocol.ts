@@ -477,6 +477,19 @@ export const PERF_TRACE_COUNTERS = {
    */
   toolGroupRenders: 'toolGroup.renders',
   toolCardRenders: 'toolCard.renders',
+  /**
+   * 工具组被一次性重渲染穿透时，逐项归因是哪个 prop 引起的。
+   *
+   * 只记「哪一项不相等」，不记数值：要回答的问题是「memo 被谁穿透」，
+   * 而同一个 prop 反复不等只说明它不稳定，重复计数没有额外信息。
+   * 五项之间是**或**的关系，同一次穿透可能命中多项，因此这些数字之和
+   * 会大于 toolGroupRenders。
+   */
+  toolGroupDiffToolCalls: 'toolGroup.diff.toolCalls',
+  toolGroupDiffPendingId: 'toolGroup.diff.pendingToolId',
+  toolGroupDiffPendingIds: 'toolGroup.diff.pendingToolIds',
+  toolGroupDiffOnOpenDiff: 'toolGroup.diff.onOpenDiff',
+  toolGroupDiffMessageId: 'toolGroup.diff.messageId',
 
   /**
    * 帧调度器的实际运行帧数与执行的任务数。

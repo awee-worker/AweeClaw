@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * IoT 性能指标面板 — 阶段8 s8-08
  *
@@ -15,7 +16,7 @@
  * @module settings/tabs/iot/PerformancePanel
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Activity,
   AlertCircle,
@@ -127,8 +128,6 @@ export function PerformancePanel({ language, refreshKey }: PerformancePanelProps
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null)
-
   /** 拉取指标 */
   const fetchMetrics = useCallback(async () => {
     setLoading(true)
@@ -170,24 +169,16 @@ export function PerformancePanel({ language, refreshKey }: PerformancePanelProps
 
   /** 自动刷新定时器 */
   useEffect(() => {
-    if (!autoRefresh) {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current)
-        refreshTimerRef.current = null
-      }
-      return
-    }
+    if (!autoRefresh) return
 
-    refreshTimerRef.current = setInterval(() => {
-      fetchMetrics()
-    }, AUTO_REFRESH_INTERVAL_MS)
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-iot-perf-poll',
+      intervalMs: AUTO_REFRESH_INTERVAL_MS,
+      visibility: 'visible-only',
+      handler: () => fetchMetrics(),
+    })
 
-    return () => {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current)
-        refreshTimerRef.current = null
-      }
-    }
+    return stopTicker
   }, [autoRefresh, fetchMetrics])
 
   return (

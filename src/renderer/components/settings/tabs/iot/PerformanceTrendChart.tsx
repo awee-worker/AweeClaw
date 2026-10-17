@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * 性能趋势图组件（阶段9 s9-08）
  *
@@ -14,7 +15,7 @@
  * @module settings/tabs/iot/PerformanceTrendChart
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { RefreshCw, LineChart } from 'lucide-react'
 import { MetricsChart, type MetricSample } from '../monitoring/MetricsChart'
 import { type Language } from '@renderer/i18n'
@@ -63,7 +64,6 @@ export function PerformanceTrendChart({ language }: PerformanceTrendChartProps) 
   const [samples, setSamples] = useState<HistorySample[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   /** 拉取历史趋势数据 */
   const fetchHistory = useCallback(async (selectedRange: TrendRange) => {
@@ -98,16 +98,13 @@ export function PerformanceTrendChart({ language }: PerformanceTrendChartProps) 
 
   // 自动刷新定时器
   useEffect(() => {
-    refreshTimerRef.current = setInterval(() => {
-      void fetchHistory(range)
-    }, AUTO_REFRESH_INTERVAL_MS)
-
-    return () => {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current)
-        refreshTimerRef.current = null
-      }
-    }
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-iot-perf-trend-poll',
+      intervalMs: AUTO_REFRESH_INTERVAL_MS,
+      visibility: 'visible-only',
+      handler: () => void fetchHistory(range),
+    })
+    return stopTicker
   }, [range, fetchHistory])
 
   // 将历史采样转换为各指标的 MetricSample 数组

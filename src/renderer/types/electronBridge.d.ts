@@ -370,22 +370,8 @@ export type WorkspaceOpenResult =
   | { invalid: true }
   | null
 
-export interface RemoteShellEntry {
-  name: string
-  path: string
-  isDirectory: boolean
-  size: number
-  modifyTime?: number
-}
-
-export interface RemoteShellServer {
-  host: string
-  port?: number
-  username?: string
-  password?: string
-  privateKeyPath?: string
-  remotePath?: string
-}
+// 远程连接相关契约与主进程共用，定义在 @protocols/ipcContract，此处仅转发
+export type { RemoteShellEntry, RemoteShellServer } from '@protocols/ipcContract'
 
 export interface RemoteShellUploadResult {
   canceled: boolean
@@ -397,13 +383,8 @@ export interface RemoteShellDownloadResult {
   localPath?: string
 }
 
-export interface EmbeddingConfigInput {
-  provider?: 'jina' | 'voyage' | 'openai' | 'cohere' | 'huggingface' | 'ollama' | 'custom'
-  apiKey?: string
-  model?: string
-  baseUrl?: string
-  dimensions?: number
-}
+// 嵌入模型配置与主进程共用，定义在 @protocols/ipcContract，此处仅转发
+export type { EmbeddingConfigInput } from '@protocols/ipcContract'
 
 // ============================================
 // Updater 类型
@@ -1943,6 +1924,66 @@ export interface ElectronAPI {
     code?: string
   }>
   abortMessage: (requestId?: string) => void
+  /** 列出当前正在跑、可被订阅的流 */
+  listActiveStreams: () => Promise<{
+    streams: Array<{
+      requestId: string
+      owner: number
+      label?: string
+      startedAt: number
+      updatedAt: number
+      textLength: number
+    }>
+  }>
+  /** 订阅一路流，成功后已产出内容会立即回放 */
+  subscribeStream: (requestId: string) => Promise<{
+    ok: boolean
+    reason?: string
+    snapshot?: {
+      text: string
+      reasoning: string
+      toolCalls: Array<{ id: string; name: string; arguments?: unknown }>
+      truncated: boolean
+      updatedAt: number
+    }
+  }>
+  /** 解除订阅（不中止流） */
+  unsubscribeStream: (requestId: string) => Promise<{ ok: boolean }>
+
+  /** Agent 编排：主进程持有循环与会话状态，窗口只订阅进度 */
+  agent: {
+    start: (params: {
+      sessionId: string
+      config: LLMConfig
+      messages: unknown[]
+      tools?: unknown[]
+      systemPrompt?: string
+      label?: string
+      maxTurns?: number
+    }) => Promise<{ ok: boolean; reason?: string }>
+    abort: (sessionId: string) => Promise<{ ok: boolean }>
+    list: () => Promise<{
+      sessions: Array<{
+        sessionId: string
+        status: string
+        label?: string
+        turnCount: number
+        startedAt: number
+        updatedAt: number
+        error?: string
+      }>
+    }>
+    get: (sessionId: string) => Promise<{ ok: boolean; reason?: string; state?: unknown }>
+    subscribe: (sessionId: string) => Promise<{ ok: boolean }>
+    unsubscribe: (sessionId: string) => Promise<{ ok: boolean }>
+    remove: (sessionId: string) => Promise<{ ok: boolean; reason?: string }>
+    submitToolResult: (
+      toolRequestId: string,
+      outcome: { ok: boolean; content?: string; error?: string },
+    ) => Promise<{ ok: boolean }>
+    onEvent: (sessionId: string, callback: (event: unknown) => void) => () => void
+    onToolCall: (sessionId: string, callback: (payload: unknown) => void) => () => void
+  }
   onLLMStream: (requestId: string, callback: (chunk: LLMStreamChunk) => void) => () => void
   onLLMToolCall: (callback: (toolCall: LLMToolCall) => void) => () => void
   onLLMError: (requestId: string, callback: (error: LLMError) => void) => () => void

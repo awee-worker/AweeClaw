@@ -19,6 +19,17 @@ export function createAiApi() {
     // 传入 requestId 仅中止对应请求；不传则由主进程兜底中止该窗口全部请求
     abortMessage: (requestId?: string) => send('llm:abort')(requestId),
 
+    // ── 流订阅：多个窗口观察同一路流 ──
+    /** 列出当前正在跑、可被订阅的流 */
+    listActiveStreams: () =>
+      invoke('llm:listActiveStreams')() as Promise<{ streams: unknown[] }>,
+    /** 订阅一路流，成功后已产出内容会立即回放 */
+    subscribeStream: (requestId: string) =>
+      invoke('llm:subscribe')(requestId) as Promise<{ ok: boolean; reason?: string }>,
+    /** 解除订阅（不中止流） */
+    unsubscribeStream: (requestId: string) =>
+      invoke('llm:unsubscribe')(requestId) as Promise<{ ok: boolean }>,
+
     // ── 结构化输出 ──
     analyzeCode: (params: unknown) => invoke('llm:analyzeCode')(params),
     analyzeCodeStream: (params: unknown) => invoke('llm:analyzeCodeStream')(params),

@@ -357,7 +357,10 @@ export class PptPreviewManager {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
-        backgroundThrottling: false,
+        // 保持默认节流（true）：幻灯片数据由主进程按 IPC 推送（push-slide），
+        // 渲染层没有自驱循环，只有 CSS 过渡。窗口隐藏后无需满速运行，
+        // 节流不会影响推送到达与下一次显示时的渲染。
+        backgroundThrottling: true,
       },
     })
 

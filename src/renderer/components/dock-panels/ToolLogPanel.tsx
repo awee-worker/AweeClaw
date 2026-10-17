@@ -3,7 +3,7 @@
  * 包含日志列表和统计视图
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Trash2,
   Download,
@@ -19,9 +19,16 @@ import {
 } from 'lucide-react'
 import { ActionButton } from '../ui'
 import { JsonHighlight } from '@utils/jsonHighlight'
-import { useStore } from '@store'
+import { transientLogStore } from '@store/transientLogStore'
+import {
+  groupByTool,
+  computeStats,
+  deriveInsights,
+  type ToolStats,
+  type PerformanceInsight,
+  type ToolCallLogEntry,
+} from '@store/slices/logSlice'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
-import { useShallow } from 'zustand/react/shallow'
 import { t, type Language } from '@renderer/i18n'
 
 interface ToolCallLogContentProps {
@@ -30,8 +37,31 @@ interface ToolCallLogContentProps {
 
 type ViewMode = 'logs' | 'stats'
 
+/** 统计与洞察：与 logSlice.getToolStats 相同规则，基于 transient 快照计算 */
+function computeStatsFromLogs(logs: ToolCallLogEntry[], threadId?: string): ToolStats[] {
+  const filtered = threadId ? logs.filter((l) => l.threadId === threadId) : logs
+  const responseLogs = filtered.filter((l) => l.type === 'response')
+  const stats: ToolStats[] = []
+  for (const [name, entries] of groupByTool(responseLogs)) {
+    stats.push(computeStats(name, entries))
+  }
+  return stats.sort((a, b) => b.totalCalls - a.totalCalls)
+}
+
+/** 洞察：与 logSlice.getPerformanceInsights 相同规则 */
+function computeInsightsFromStats(stats: ToolStats[]): PerformanceInsight[] {
+  const insights: PerformanceInsight[] = []
+  for (const stat of stats) {
+    insights.push(...deriveInsights(stat))
+  }
+  return insights
+}
+
 export default function ToolCallLogContent({ language = 'zh' }: ToolCallLogContentProps) {
-  const { toolCallLogs: logs, clearToolCallLogs, getToolStats, getPerformanceInsights } = useStore(useShallow(s => ({ toolCallLogs: s.toolCallLogs, clearToolCallLogs: s.clearToolCallLogs, getToolStats: s.getToolStats, getPerformanceInsights: s.getPerformanceInsights })))
+  // 高频写入已迁 transientLogStore：面板挂载时拉取快照并订阅增量，避免主 store 高频 set
+  const [logs, setLogs] = useState(() => transientLogStore.getLogs())
+  useEffect(() => transientLogStore.subscribe(setLogs), [])
+  const clearToolCallLogs = transientLogStore.clear.bind(transientLogStore)
   const currentThreadId = useAgentStore(state => state.currentThreadId)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState<'all' | 'request' | 'response'>('all')
@@ -42,8 +72,9 @@ export default function ToolCallLogContent({ language = 'zh' }: ToolCallLogConte
     () => currentThreadId ? logs.filter(log => log.threadId === currentThreadId) : [],
     [currentThreadId, logs]
   )
-  const stats = useMemo(() => getToolStats(currentThreadId || undefined), [currentThreadId, getToolStats, logs])
-  const insights = useMemo(() => getPerformanceInsights(currentThreadId || undefined), [currentThreadId, getPerformanceInsights, logs])
+  // 统计/洞察基于 transient 快照按原 logSlice 相同规则本地重算
+  const stats = useMemo(() => computeStatsFromLogs(logs, currentThreadId ?? undefined), [currentThreadId, logs])
+  const insights = useMemo(() => computeInsightsFromStats(stats), [stats])
 
   const toggleExpand = (id: string) => {
     const newExpanded = new Set(expandedIds)

@@ -80,6 +80,8 @@ export interface PerformanceInsight {
 /** 切片接口 */
 export interface LogSlice {
   toolCallLogs: ToolCallLogEntry[]
+  /** 高频写入已迁 transientLogStore，此处仅保留低频条数摘要（transient 通道节流刷新） */
+  toolLogCount: number
   addToolCallLog: (entry: Omit<ToolCallLogEntry, 'id' | 'timestamp'>) => void
   clearToolCallLogs: (threadId?: string) => void
   getToolStats: (threadId?: string) => ToolStats[]
@@ -95,8 +97,8 @@ function generateLogId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-/** 按工具名分组 */
-function groupByTool(logs: ToolCallLogEntry[]): Map<string, ToolCallLogEntry[]> {
+/** 按工具分组（导出供 transient 通道复用） */
+export function groupByTool(logs: ToolCallLogEntry[]): Map<string, ToolCallLogEntry[]> {
   const groups = new Map<string, ToolCallLogEntry[]>()
   for (const log of logs) {
     const list = groups.get(log.toolName)
@@ -106,8 +108,8 @@ function groupByTool(logs: ToolCallLogEntry[]): Map<string, ToolCallLogEntry[]> 
   return groups
 }
 
-/** 计算单个工具的统计 */
-function computeStats(toolName: string, entries: ToolCallLogEntry[]): ToolStats {
+/** 计算单个工具的统计（导出供 transient 通道复用） */
+export function computeStats(toolName: string, entries: ToolCallLogEntry[]): ToolStats {
   const successEntries = entries.filter((e) => e.success !== false)
   const durations = entries.filter((e) => e.duration != null).map((e) => e.duration as number)
   const totalDuration = durations.reduce((sum, d) => sum + d, 0)
@@ -125,8 +127,8 @@ function computeStats(toolName: string, entries: ToolCallLogEntry[]): ToolStats 
   }
 }
 
-/** 根据统计生成洞察 */
-function deriveInsights(stat: ToolStats): PerformanceInsight[] {
+/** 根据统计生成洞察（导出供 transient 通道复用） */
+export function deriveInsights(stat: ToolStats): PerformanceInsight[] {
   const insights: PerformanceInsight[] = []
 
   if (stat.avgDuration > SLOW_TOOL_THRESHOLD_MS && stat.totalCalls >= SLOW_TOOL_MIN_CALLS) {
@@ -174,7 +176,7 @@ function deriveInsights(stat: ToolStats): PerformanceInsight[] {
 
 export const createLogSlice: StateCreator<LogSlice> = (set, get) => ({
   toolCallLogs: [],
-
+  toolLogCount: 0,
   addToolCallLog: (entry) =>
     set((state) => {
       const newEntry: ToolCallLogEntry = {

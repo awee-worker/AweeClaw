@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Electron / Chromium V8 JIT 必需，缺失会导致启动即崩溃 -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <!-- Electron 需要分配可写可执行内存（JIT / 汇编），hardened runtime 下必须显式放行 -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- 允许传递 DYLD 环境变量（部分原生模块加载需要） -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+</dict>
+</plist>

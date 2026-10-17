@@ -18,7 +18,7 @@
  * @module proactive/ProactiveIpc
  */
 
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import { proactiveStore } from './ProactiveStore'
 import { proactiveDecisionEngine } from './ProactiveDecisionEngine'
@@ -287,12 +287,7 @@ export function registerProactiveIpc(): void {
     async (_, config: { model: string; apiKey?: string; baseUrl?: string; temperature?: number }) => {
       try {
         const { LLMService } = await import('../ai-provider/AIProviderService')
-        const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed())
-        if (!win) {
-          throw new Error('无可用的 BrowserWindow，无法初始化 LLMService')
-        }
-
-        const llmService = new LLMService(win)
+        const llmService = new LLMService()
         const { proactiveDecisionLlm } = await import('./ProactiveDecisionLlm')
         proactiveDecisionLlm.initialize(llmService, config)
 

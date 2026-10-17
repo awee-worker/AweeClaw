@@ -141,8 +141,9 @@ export class PerceptionStore {
         fs.mkdirSync(this.dbPath, { recursive: true })
       }
 
-      const lancedb = await import('@lancedb/lancedb')
-      this.db = (await lancedb.connect(this.dbPath)) as unknown as LanceDbConnection
+      // native 模块已迁 lancedb.worker 子进程，主进程仅持代理对象
+      const { lancedbProxy } = await import('@main/storage/lancedbProxy')
+      this.db = await lancedbProxy.connect(this.dbPath)
       this.initialized = true
 
       logger.perception?.info(`[PerceptionStore] 数据库初始化成功: ${this.dbPath}`)

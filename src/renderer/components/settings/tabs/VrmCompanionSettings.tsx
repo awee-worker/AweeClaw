@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * VrmCompanionSettings — 桌面伴侣（VRM 3D 角色悬浮窗）设置面板
  *
@@ -189,18 +190,23 @@ export function VrmCompanionSettings({ language }: VrmCompanionSettingsProps) {
    * 避免出现「面板显示关闭、实际已穿透」这类状态漂移。
    */
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      void api.vrmCompanion
-        .getState()
-        .then((res) => {
-          if (res.success && res.data) {
-            setVisible(res.data.visible)
-            setClickThrough(res.data.clickThrough)
-          }
-        })
-        .catch(() => {})
-    }, 2500)
-    return () => window.clearInterval(timer)
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-vrm-companion-poll',
+      intervalMs: 2500,
+      visibility: 'visible-only',
+      handler: () => {
+        void api.vrmCompanion
+          .getState()
+          .then((res) => {
+            if (res.success && res.data) {
+              setVisible(res.data.visible)
+              setClickThrough(res.data.clickThrough)
+            }
+          })
+          .catch(() => {})
+      },
+    })
+    return stopTicker
   }, [])
 
   // --------------------------------------------

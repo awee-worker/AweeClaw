@@ -34,7 +34,7 @@ import { useRoleLibraryStore } from '@renderer/modes/roleLibraryStore'
 import { toast } from '@components/foundation/NotificationProvider'
 import { api } from '../../adapters/electronBridge'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
-import { approvalService } from '@intelligence/engine'
+import { approvalService } from '@intelligence/engine/toolOrchestrator'
 import {
     getPendingHumanApproval,
     getPlanPendingToolApprovals,

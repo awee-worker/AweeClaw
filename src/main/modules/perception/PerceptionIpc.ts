@@ -11,7 +11,7 @@
  * @module perception/PerceptionIpc
  */
 
-import { ipcMain, systemPreferences, BrowserWindow } from 'electron'
+import { ipcMain, systemPreferences } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import { PerceptionStore } from './PerceptionStore'
 import { PerceptionFusionService } from './PerceptionFusionService'
@@ -484,12 +484,7 @@ export function registerPerceptionIpc(): void {
     async (_, config: { model: string; apiKey?: string; baseUrl?: string; temperature?: number }) => {
       try {
         const { LLMService } = await import('../ai-provider/AIProviderService')
-        const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed())
-        if (!win) {
-          throw new Error('无可用的 BrowserWindow，无法初始化 LLMService')
-        }
-
-        const llmService = new LLMService(win)
+        const llmService = new LLMService()
         const predictor = BehaviorPredictor.getInstance()
         predictor.initLlmExtractor(llmService, config)
 

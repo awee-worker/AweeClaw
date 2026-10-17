@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { ChevronDown, ChevronUp, FileCheck2 } from 'lucide-react'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
-import { Agent } from '@intelligence/engine'
+import { withLoadedAgent } from '@intelligence/engine/agentAccessor'
 import { useThreadMessenger } from '@hooks/useAgent'
 import { isAssistantMessage } from '@intelligence/types/conversationModel'
 import { tasksApi, getApiErrorMessage } from '@renderer/adapters/taskProjectApi'
@@ -106,22 +106,17 @@ export function ExecutionContent({ threadId, projectId }: ExecutionContentProps)
   }, [abortThread, threadId])
 
   // ─── 工具批准/拒绝 ─────────────────────────────────────
+  // 审批动作只在引擎已加载时才有对象可批，未加载说明本窗口尚未发起过执行
   const handleApprove = useCallback(() => {
     const requestId = streamState.requestId
-    if (pendingApprovals.length > 1) {
-      Agent.approveAll()
-    } else {
-      Agent.approve(requestId)
-    }
+    const approveAll = pendingApprovals.length > 1
+    withLoadedAgent((agent) => (approveAll ? agent.approveAll() : agent.approve(requestId)))
   }, [streamState.requestId, pendingApprovals.length])
 
   const handleReject = useCallback(() => {
     const requestId = streamState.requestId
-    if (pendingApprovals.length > 1) {
-      Agent.rejectAll()
-    } else {
-      Agent.reject(requestId)
-    }
+    const rejectAll = pendingApprovals.length > 1
+    withLoadedAgent((agent) => (rejectAll ? agent.rejectAll() : agent.reject(requestId)))
   }, [streamState.requestId, pendingApprovals.length])
 
   const pendingToolIds = useMemo(

@@ -218,6 +218,110 @@ export default defineConfig({
         }
       },
       {
+        // 文档解析子进程（utilityProcess）：exceljs/mammoth/pdf-parse/officeparser/word-extractor
+        // 的重计算在该进程执行，主进程通过 docParserProxy 派发，崩溃时内联回退
+        entry: 'src/main/guard/docParser.worker.ts',
+        vite: {
+          resolve: { alias: aliases },
+          build: {
+            outDir: 'dist/main',
+            lib: {
+              entry: 'src/main/guard/docParser.worker.ts',
+              formats: ['cjs'],
+              fileName: () => 'docparser.worker.js'
+            },
+            commonjsOptions: {
+              ignoreDynamicRequires: true
+            },
+            rollupOptions: {
+              external: ['electron', 'exceljs', 'mammoth', 'pdf-parse', 'officeparser', 'word-extractor', 'xlsx', /^node:/],
+              onwarn(warning, warn) {
+                if (shouldSilenceWarning(warning)) return
+                warn(warning)
+              }
+            }
+          }
+        }
+      },
+      {
+        // 本地嵌入推理子进程（utilityProcess）：@xenova/transformers 模型加载与推理
+        // 在该进程执行，主进程通过 embedderProxy 派发，空闲自动退出释放模型内存
+        entry: 'src/main/modules/perception/embedder.worker.ts',
+        vite: {
+          resolve: { alias: aliases },
+          build: {
+            outDir: 'dist/main',
+            lib: {
+              entry: 'src/main/modules/perception/embedder.worker.ts',
+              formats: ['cjs'],
+              fileName: () => 'embedder.worker.js'
+            },
+            commonjsOptions: {
+              ignoreDynamicRequires: true
+            },
+            rollupOptions: {
+              external: ['electron', '@xenova/transformers', 'onnxruntime-node', 'onnxruntime-web', /^node:/],
+              onwarn(warning, warn) {
+                if (shouldSilenceWarning(warning)) return
+                warn(warning)
+              }
+            }
+          }
+        }
+      },
+      {
+        // LanceDB 子进程（utilityProcess）：@lancedb/lancedb native 模块加载
+        // 与执行在该进程完成，主进程通过 lancedbProxy 派发，崩溃时内联回退
+        entry: 'src/main/storage/lancedb.worker.ts',
+        vite: {
+          resolve: { alias: aliases },
+          build: {
+            outDir: 'dist/main',
+            lib: {
+              entry: 'src/main/storage/lancedb.worker.ts',
+              formats: ['cjs'],
+              fileName: () => 'lancedb.worker.js'
+            },
+            commonjsOptions: {
+              ignoreDynamicRequires: true
+            },
+            rollupOptions: {
+              external: ['electron', '@lancedb/lancedb', 'apache-arrow', /^node:/],
+              onwarn(warning, warn) {
+                if (shouldSilenceWarning(warning)) return
+                warn(warning)
+              }
+            }
+          }
+        }
+      },
+      {
+        // 邮件子进程（utilityProcess）：imapflow / mailparser 的加载与执行
+        // 在该进程完成（含 IDLE 常驻连接），主进程通过 mailProxy 派发
+        entry: 'src/main/storage/mail.worker.ts',
+        vite: {
+          resolve: { alias: aliases },
+          build: {
+            outDir: 'dist/main',
+            lib: {
+              entry: 'src/main/storage/mail.worker.ts',
+              formats: ['cjs'],
+              fileName: () => 'mail.worker.js'
+            },
+            commonjsOptions: {
+              ignoreDynamicRequires: true
+            },
+            rollupOptions: {
+              external: ['electron', 'imapflow', 'mailparser', 'nodemailer', /^node:/],
+              onwarn(warning, warn) {
+                if (shouldSilenceWarning(warning)) return
+                warn(warning)
+              }
+            }
+          }
+        }
+      },
+      {
         entry: 'src/main/preloadBridge.ts',
         onstart(options) { options.reload() },
         vite: {
@@ -263,17 +367,37 @@ export default defineConfig({
       },
       output: {
         manualChunks(id) {
-          // Monaco Editor
-          if (id.includes('monaco-editor') || id.includes('@monaco-editor/react')) {
-            return 'monaco-editor'
+          // @rollup/plugin-commonjs 的共享 interop helper 虚拟模块。
+          // 若不单独分包，Rollup 会把它塞进第一个使用它的 chunk（agent），导致
+          // react-vendor 为取 helper 而静态导入 agent，形成 react-vendor ↔ agent
+          // 循环依赖，入口按 DFS 求值时 agent 子树内的 chunk 会在 react-vendor
+          // 完成前执行，顶层 React 调用（forwardRef/memo/模块绑定）全部崩溃。
+          // 独立分包后 cjs-helpers 是"叶子"chunk（无任何依赖），react-vendor
+          // 只从叶子取 helper，不再进入循环，从根上消除问题。
+          if (id.includes('commonjsHelpers')) {
+            return 'cjs-helpers'
           }
-          // React 核心
-          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+          // React 核心 + 状态管理 + 图标 + @monaco-editor/react
+          // 注意：zustand / lucide-react / @monaco-editor/react 必须与 react 同 chunk。
+          // 曾单独拆出 ui-core：react-vendor 需要从 agent chunk 导入 Rollup 的
+          // interopDefault helper，而 agent 又反向导入 react-vendor（拿 React），
+          // 形成 chunk 循环依赖，浏览器按 DFS 求值时 ui-core 在 react-vendor 完成前
+          // 先执行，lucide-react 顶层 React.forwardRef 拿到 undefined React，启动崩溃。
+          // 同理 @monaco-editor/react 顶层调用 React.memo，且被 app-core 静态引用
+          // （位于 agent 子树内，同样在 react-vendor 完成前求值），也并入 react-vendor。
+          // 合并后这些模块与 React 初始化同 chunk 顺序执行，不再跨 chunk。
+          if (
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/zustand') ||
+            id.includes('node_modules/lucide-react') ||
+            id.includes('@monaco-editor/react')
+          ) {
             return 'react-vendor'
           }
-          // 状态管理 + 图标
-          if (id.includes('node_modules/zustand') || id.includes('node_modules/lucide-react')) {
-            return 'ui-core'
+          // Monaco Editor 核心（无顶层 React 调用，可独立分包）
+          if (id.includes('node_modules/monaco-editor')) {
+            return 'monaco-editor'
           }
           // 终端
           if (id.includes('@xterm/')) {
@@ -291,9 +415,49 @@ export default defineConfig({
           if (id.includes('framer-motion')) {
             return 'animation'
           }
-          // Agent 模块
-          if (id.includes('/renderer/intelligence/')) {
-            return 'agent'
+          // ===== Vite 运行时 helper（叶子 chunk，必须独立） =====
+          //
+          // __vitePreload 由 Vite 注入，用于给动态 import 的 chunk 预加载依赖。
+          // 若并入引擎层，每个懒加载 chunk 都会为取它而静态依赖整套引擎。
+          if (id.includes('vite/preload-helper') || id.includes('\0vite/')) {
+            return 'vite-helper'
+          }
+          // ===== 引擎核心层 =====
+          //
+          // 曾按依赖层级拆成 boot-core / shared-core / app-core / mode-core /
+          // scene-tools / agent 六个 chunk，但实测这六层之间互相静态引用，
+          // 构成稠密循环（shared-core ↔ app-core ↔ agent ↔ mode-core ↔
+          // scene-tools ↔ boot-core）。ESM 对跨 chunk 循环按 DFS 求值时，
+          // 后求值的 chunk 顶层一旦读取前一个 chunk 尚未初始化的绑定，
+          // 立即抛 "Cannot access 'x' before initialization"（TDZ）。
+          // 且入口经 shared-core → app-core → … 早已静态加载整套引擎，
+          // 分层并未带来入口瘦身收益，只会让构建产物在启动期随机崩溃。
+          //
+          // 合并为单一 engine-core 后，chunk 内模块按 Rollup 依赖序执行，
+          // 不再有跨 chunk 循环，启动期安全。
+          if (
+            // agent：智能体子系统
+            id.includes('/renderer/intelligence/') ||
+            // scene-tools：场景工具桥接与状态预热
+            id.includes('/renderer/components/scene-tools/') ||
+            // shared：共享基础层
+            id.includes('/src/shared/') ||
+            // app-core：状态 / 适配器 / 配置 / 设置 / 基础 UI 组件
+            id.includes('/renderer/state/') ||
+            id.includes('/renderer/adapters/') ||
+            id.includes('/renderer/config/') ||
+            id.includes('/renderer/settings/') ||
+            id.includes('/renderer/components/foundation/') ||
+            // mode-core：场景 / 工作模式状态
+            id.includes('/renderer/modes/') ||
+            // boot-core：入口自举依赖（日志、常量、可信路径登记、
+            // 共享依赖注入器等，此前单独分出去避免入口拖引擎，现已并入引擎层）
+            /\/src\/shared\/(toolkit\/LogEngine|toolkit\/bootMetrics|appConstants)\.ts$/.test(id) ||
+            /\/renderer\/intelligence\/toolkit\/trustedPathRegistry\.ts$/.test(id) ||
+            id.includes('/renderer/intelligence/diagnostics/') ||
+            /\/scenario-system\/core\/SharedDependencyProvider\.ts$/.test(id)
+          ) {
+            return 'engine-core'
           }
           if (id.includes('/renderer/components/explorer/')) {
             return 'sidebar'

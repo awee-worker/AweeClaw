@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * VmcSettings — VMC 协议设置面板
  *
@@ -90,10 +91,13 @@ export function VmcSettings({ language }: VmcSettingsProps) {
 
   // 定时刷新状态
   useEffect(() => {
-    const timer = setInterval(() => {
-      void refresh()
-    }, 2000)
-    return () => clearInterval(timer)
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-vmc-poll',
+      intervalMs: 2000,
+      visibility: 'visible-only',
+      handler: () => void refresh(),
+    })
+    return stopTicker
   }, [refresh])
 
   // 更新配置

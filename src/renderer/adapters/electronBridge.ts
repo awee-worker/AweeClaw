@@ -612,6 +612,10 @@ function createGroupedAPI() {
       compactContext: (params: Parameters<typeof raw.compactContext>[0]) => raw.compactContext(params),
       // 传 requestId 时仅中止该请求；不传时兜底中止本窗口所有请求
       abort: (requestId?: string) => raw.abortMessage(requestId),
+      // 流订阅：让本窗口接上另一窗口正在跑的流，而非重发请求
+      listActiveStreams: () => raw.listActiveStreams(),
+      subscribeStream: (requestId: string) => raw.subscribeStream(requestId),
+      unsubscribeStream: (requestId: string) => raw.unsubscribeStream(requestId),
       // LLM 事件订阅（使用动态 IPC 频道实现请求隔离）
       onStream: (requestId: string, callback: (data: {
         type: string
@@ -638,6 +642,7 @@ function createGroupedAPI() {
         raw.onCloudTokenRefreshed(callback),
       onCloudAuthFailed: (callback: () => void) =>
         raw.onCloudAuthFailed(callback),
+
       // Structured Output
       analyzeCode: (params: Parameters<typeof raw.analyzeCode>[0]) => raw.analyzeCode(params),
       analyzeCodeStream: (params: Parameters<typeof raw.analyzeCodeStream>[0]) => raw.analyzeCodeStream(params),
@@ -649,6 +654,25 @@ function createGroupedAPI() {
       embedText: (params: Parameters<typeof raw.embedText>[0]) => raw.embedText(params),
       embedMany: (params: Parameters<typeof raw.embedMany>[0]) => raw.embedMany(params),
       findSimilar: (params: Parameters<typeof raw.findSimilar>[0]) => raw.findSimilar(params),
+    },
+
+    // Agent 编排（主进程持有循环与会话状态，窗口只订阅进度）
+    agent: {
+      start: (params: Parameters<typeof raw.agent.start>[0]) => raw.agent.start(params),
+      abort: (sessionId: string) => raw.agent.abort(sessionId),
+      list: () => raw.agent.list(),
+      get: (sessionId: string) => raw.agent.get(sessionId),
+      subscribe: (sessionId: string) => raw.agent.subscribe(sessionId),
+      unsubscribe: (sessionId: string) => raw.agent.unsubscribe(sessionId),
+      remove: (sessionId: string) => raw.agent.remove(sessionId),
+      submitToolResult: (
+        toolRequestId: string,
+        outcome: { ok: boolean; content?: string; error?: string },
+      ) => raw.agent.submitToolResult(toolRequestId, outcome),
+      onEvent: (sessionId: string, callback: (event: unknown) => void) =>
+        raw.agent.onEvent(sessionId, callback),
+      onToolCall: (sessionId: string, callback: (payload: unknown) => void) =>
+        raw.agent.onToolCall(sessionId, callback),
     },
 
     // 终端

@@ -26,6 +26,7 @@ import { collectUntrustedSignal, rememberUntrustedSignal } from '../runtime/untr
 import type { UntrustedContextSignal, UntrustedSourceSummary } from '@intelligence/types/trustTypes'
 import { dispatchCompanionState } from '@/renderer/components/vrm-companion/companionStateDispatcher'
 import { useStore } from '@store'
+import { transientLogStore } from '@store/transientLogStore'
 import { EventBus } from './EventDispatcher'
 import { truncateToolResult } from '@utils/partialJson'
 import { t } from '@renderer/i18n'
@@ -772,7 +773,6 @@ async function invokeToolInvocation(
   store: import('../state/IntelligenceStore').ThreadBoundStore,
   abortSignal?: AbortSignal
 ): Promise<AgentToolExecutionResult> {
-  const mainStore = useStore.getState()
   const { currentAssistantId, workspacePath } = context
   // 工具截图先按原样送：本地直连可能是支持看图的 VLM，一律不送会让它失去视觉能力。
   // 模型拒收图片时由主循环自动去图重试（见 canSendImagePixelsToModel / isVisualUnsupportedError）。
@@ -812,7 +812,7 @@ async function invokeToolInvocation(
   }
   publishToolLifecycleEvent({ type: 'tool:running', id: toolCall.id, ...identity })
 
-  mainStore.addToolCallLog({
+  transientLogStore.add({
     threadId: context.threadId ?? undefined,
     type: 'request',
     toolName: toolCall.name,
@@ -893,7 +893,7 @@ async function invokeToolInvocation(
         logger.agent.info(`[Tools] Truncated ${toolCall.name} result: ${rawContent.length} -> ${content.length} chars`)
       }
 
-      mainStore.addToolCallLog({
+      transientLogStore.add({
         threadId: context.threadId ?? undefined,
         type: 'response',
         toolName: toolCall.name,
@@ -1035,7 +1035,7 @@ async function invokeToolInvocation(
       const errorMsg = error instanceof Error ? error.message : String(error)
       logger.agent.error(`[Tools] Error in ${toolCall.name}:`, errorMsg)
 
-      mainStore.addToolCallLog({
+      transientLogStore.add({
         threadId: context.threadId ?? undefined,
         type: 'response',
         toolName: toolCall.name,
@@ -1097,7 +1097,7 @@ async function invokeToolInvocation(
     })
     store.clearToolStreamingPreview(toolCall.id)
     publishToolLifecycleEvent({ type: 'tool:error', id: toolCall.id, error: fallback, ...identity })
-    mainStore.addToolCallLog({
+    transientLogStore.add({
       threadId: context.threadId ?? undefined,
       type: 'response',
       toolName: toolCall.name,

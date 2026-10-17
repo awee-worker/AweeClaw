@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * 进程管理面板
  * 列出系统进程，支持搜索、终止
@@ -51,8 +52,13 @@ export function ProcessManagerPanel({ language }: ProcessManagerPanelProps) {
   useEffect(() => {
     void loadProcesses()
     // 每 10 秒自动刷新
-    const timer = setInterval(() => void loadProcesses(), 10_000)
-    return () => clearInterval(timer)
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-process-manager-poll',
+      intervalMs: 10_000,
+      visibility: 'visible-only',
+      handler: () => void loadProcesses(),
+    })
+    return stopTicker
   }, [loadProcesses])
 
   const filteredAndSorted = useMemo(() => {

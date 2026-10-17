@@ -204,8 +204,11 @@ class ConnectionManager {
     }
 
     try {
-      const lancedb = await import('@lancedb/lancedb')
-      this.db = (await lancedb.connect(this.indexPath)) as unknown as LanceDbConnection
+      // native 模块已迁 lancedb.worker 子进程，主进程仅持代理对象
+      const { lancedbProxy } = await import('@main/storage/lancedbProxy')
+      // 各 Store 内声明的本地接口（如 execute 返回具体记录类型）与代理构建器
+      // 结构同形，此处统一 cast，避免逐文件放宽本地类型
+      this.db = (await lancedbProxy.connect(this.indexPath)) as unknown as LanceDbConnection
       return true
     } catch (e) {
       logger.index.error('[VectorStore] 初始化 LanceDB 失败:', e)

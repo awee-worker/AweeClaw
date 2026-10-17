@@ -130,13 +130,8 @@ export interface LLMSendMessageParams {
 
 // =================== Embedding / Indexing ===================
 
-export interface EmbeddingConfigInput {
-  provider?: 'jina' | 'voyage' | 'openai' | 'cohere' | 'huggingface' | 'ollama' | 'custom'
-  apiKey?: string
-  model?: string
-  baseUrl?: string
-  dimensions?: number
-}
+// 嵌入模型配置与渲染层共用，定义在 @protocols/ipcContract，此处仅转发
+export type { EmbeddingConfigInput } from '@protocols/ipcContract'
 
 export interface IndexStatusData {
   mode: 'structural' | 'semantic'
@@ -169,19 +164,5 @@ export interface EmbeddingProvider {
 
 // =================== Remote Shell ===================
 
-export interface RemoteShellEntry {
-  name: string
-  path: string
-  isDirectory: boolean
-  size: number
-  modifyTime?: number
-}
-
-export interface RemoteShellServer {
-  host: string
-  port?: number
-  username?: string
-  password?: string
-  privateKeyPath?: string
-  remotePath?: string
-}
+// 远程连接相关契约与渲染层共用，定义在 @protocols/ipcContract，此处仅转发
+export type { RemoteShellEntry, RemoteShellServer } from '@protocols/ipcContract'

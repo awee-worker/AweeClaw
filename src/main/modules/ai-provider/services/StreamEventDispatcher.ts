@@ -6,9 +6,10 @@
  * - 即时通道：错误、完成、工具调用开始/可用等关键事件立即发送
  */
 
-import { BrowserWindow } from 'electron'
+import { webContents } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import type { StreamEvent, TokenUsage } from '../providerTypes'
+import { streamSubscriptions, SYSTEM_SUBSCRIBER } from './StreamSubscriptions'
 
 /** 需要立即发送的事件类型 */
 const IMMEDIATE_EVENT_TYPES = new Set(['error', 'done', 'tool-call-start', 'tool-call-available'])
@@ -68,11 +69,19 @@ export class StreamEventDispatcher {
   private readonly eventBuffer = new Map<string, BufferedEvents>()
   private readonly flushTimers = new Map<string, NodeJS.Timeout>()
 
-  constructor(private readonly window: BrowserWindow) {}
+  constructor(private readonly subscriptions = streamSubscriptions) {}
 
-  /** 发送事件（根据类型自动选择批量或即时） */
+  /**
+   * 发送事件（根据类型自动选择批量或即时）
+   *
+   * 先记账再判断投递：没人看的时候也要把内容累积进快照，
+   * 否则后接入的窗口只能从半截开始看。
+   */
   dispatch(requestId: string, event: StreamEvent): void {
-    if (this.window.isDestroyed()) return
+    this.subscriptions.appendSnapshot(requestId, event)
+
+    // 只有主进程订阅者时无需投递，也不必攒批次 —— 快照已经留住了内容
+    if (!this.subscriptions.hasWindowSubscriber(requestId)) return
 
     if (IMMEDIATE_EVENT_TYPES.has(event.type)) {
       this.flushBuffered(requestId)
@@ -139,13 +148,8 @@ export class StreamEventDispatcher {
     const buffered = this.eventBuffer.get(requestId)
     if (!buffered || buffered.events.length === 0) return
 
-    if (this.window.isDestroyed()) {
-      this.eventBuffer.delete(requestId)
-      return
-    }
-
     try {
-      this.window.webContents.send('llm:stream:' + requestId, {
+      this.deliver(requestId, 'llm:stream:' + requestId, {
         type: 'batch',
         events: buffered.events.map((e) => this.serialize(e)),
       })
@@ -158,14 +162,14 @@ export class StreamEventDispatcher {
 
   /** 立即发送单个事件 */
   private sendImmediate(requestId: string, event: StreamEvent): void {
-    if (this.window.isDestroyed()) return
+    if (!this.subscriptions.hasWindowSubscriber(requestId)) return
 
     try {
       const channel = 'llm:stream:' + requestId
 
       switch (event.type) {
         case 'tool-call-start':
-          this.window.webContents.send(channel, {
+          this.deliver(requestId, channel, {
             type: 'tool_call_start',
             id: event.id,
             name: event.name,
@@ -173,7 +177,7 @@ export class StreamEventDispatcher {
           break
 
         case 'tool-call-available':
-          this.window.webContents.send(channel, {
+          this.deliver(requestId, channel, {
             type: 'tool_call_available',
             id: event.id,
             name: event.name,
@@ -182,7 +186,7 @@ export class StreamEventDispatcher {
           break
 
         case 'error':
-          this.window.webContents.send('llm:error:' + requestId, {
+          this.deliver(requestId, 'llm:error:' + requestId, {
             message: event.error.message,
             code: event.error.code,
             retryable: event.error.retryable,
@@ -205,11 +209,42 @@ export class StreamEventDispatcher {
 
     logger.llm.info('[StreamEventDispatcher] 发送完成事件', { requestId })
 
-    this.window.webContents.send('llm:done:' + requestId, {
+    this.deliver(requestId, 'llm:done:' + requestId, {
       reasoning: event.reasoning,
       usage: event.usage ? this.serializeUsage(event.usage) : undefined,
       metadata: event.metadata,
     })
+  }
+
+  /**
+   * 按订阅关系投递事件。
+   *
+   * 一次请求可能同时被多个窗口观察，逐个投递；过程中发现已销毁的窗口
+   * 顺手摘除，避免订阅表随着窗口开关持续膨胀。没有任何订阅者时直接丢弃 ——
+   * 此时上游仍在产出，但已无人接收，继续堆积只会占用内存。
+   */
+  private deliver(requestId: string, channel: string, payload: unknown): void {
+    const targets = this.subscriptions.subscribersOf(requestId)
+    if (targets.length === 0) {
+      logger.llm.warn('[StreamEventDispatcher] 无订阅者，事件丢弃', { requestId, channel })
+      return
+    }
+
+    for (const id of targets) {
+      // 主进程订阅只用于自身观察，没有可投递的 webContents
+      if (id === SYSTEM_SUBSCRIBER) continue
+
+      const wc = webContents.fromId(id)
+      if (!wc || wc.isDestroyed()) {
+        this.subscriptions.removeSubscriber(requestId, id)
+        continue
+      }
+      try {
+        wc.send(channel, payload)
+      } catch (error) {
+        logger.llm.error('[StreamEventDispatcher] 投递失败:', error)
+      }
+    }
   }
 
   /** 序列化 Usage 对象 */

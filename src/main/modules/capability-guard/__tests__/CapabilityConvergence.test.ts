@@ -88,6 +88,15 @@ vi.mock('@shared/toolkit/LogEngine', () => {
   }
 })
 
+// 加密层桩：本测试关注「收敛只关不删」语义，与加密算法无关，
+// 因此把 safeStorageUtil 桩成恒等函数，使断言可直接比对明文
+vi.mock('@main/guard/safeStorageUtil', () => ({
+  encryptString: (v: string) => v,
+  decryptString: (v: string) => v,
+  isEncrypted: () => false,
+  isSafeStorageAvailable: () => true,
+}))
+
 import { convergeCapabilities, getLastConvergeReport } from '../CapabilityConvergence'
 
 // ─── 测试夹具 ────────────────────────────────────────────

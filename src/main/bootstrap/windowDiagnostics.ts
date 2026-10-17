@@ -6,6 +6,7 @@
  */
 import { app, BrowserWindow } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
+import { registerGpuDiagnostics } from './gpuDiagnostics'
 
 /** 渲染进程已知的良性警告，转发时过滤避免日志噪音 */
 const BENIGN_RENDERER_ERRORS = [
@@ -48,6 +49,9 @@ function registerChildProcessDiagnostics(): void {
 /** 为指定窗口注册诊断事件监听 */
 export function registerWindowDiagnostics(win: BrowserWindow): void {
   registerChildProcessDiagnostics()
+  // GPU 渲染路径是应用级状态，与子进程诊断一样只注册一次（内部幂等）。
+  // 首次建窗时 app 已 ready，此时查询才是有效值。
+  registerGpuDiagnostics()
 
   // 渲染进程卡死：执行期出现长同步任务时主线程被占满，窗口表现为白屏/无响应。
   // 此前只记录崩溃事件，卡死没有任何留痕，白屏反馈无法定位到具体窗口与时机。

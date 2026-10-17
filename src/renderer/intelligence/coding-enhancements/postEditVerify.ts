@@ -16,6 +16,7 @@
  */
 
 import { logger } from '@toolkit/LogEngine'
+import type { LintError } from '@intelligence/types/serviceContracts'
 import { lintService } from '@intelligence/runtime/codeAnalysisService'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { getCodingEnhancements } from '../capabilities/sceneMode/SceneModeDescriptor'
@@ -57,7 +58,7 @@ function hasVerifyExtension(path: string): boolean {
 }
 
 /** 诊断结果 → 附加到工具结果的文本（面向模型，英文，紧凑单段） */
-function formatVerification(filePath: string, errors: Array<{ severity: string; message: string; startLine: number }>): string {
+function formatVerification(filePath: string, errors: LintError[]): string {
   if (errors.length === 0) {
     return `\n\n[Verification] ${filePath}: no lint issues.`
   }
@@ -68,7 +69,8 @@ function formatVerification(filePath: string, errors: Array<{ severity: string; 
     : `${warningCount} warning${warningCount > 1 ? 's' : ''} (no errors).`
   const details = errors
     .slice(0, 10)
-    .map((e) => `[${e.severity}] ${e.message} (Line ${e.startLine})`)
+    // 部分语言服务不一定返回行号，缺失时用 ? 占位而不是渲染成 "Line undefined"
+    .map((e) => `[${e.severity}] ${e.message} (Line ${e.startLine ?? '?'})`)
     .join('\n')
   return `\n\n[Verification] ${filePath}: ${summary}\n${details}`
 }

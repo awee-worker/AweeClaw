@@ -1,7 +1,7 @@
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
 import { useModeStore } from '@/renderer/modes/workModeStore'
-import { Agent } from '../engine/IntelligenceCore'
+import { getAgent } from '../engine/agentAccessor'
 import { resolveAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { useAgentStore, type HandoffSessionResult } from '../state/IntelligenceStore'
 
@@ -79,7 +79,8 @@ async function continueAutoHandoff(result: HandoffSessionResult): Promise<void> 
   const agentConfig = resolveAgentConfig()
   const language = (appState.language || 'zh') as 'zh' | 'en'
 
-  await Agent.send(
+  const agent = await getAgent()
+  await agent.send(
     buildAutoResumeMessage(result, language),
     {
       ...appState.llmConfig,

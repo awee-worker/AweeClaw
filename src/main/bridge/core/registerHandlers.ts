@@ -30,6 +30,11 @@ import { registerResourcesHandlers } from '../window/assetManager'
 
 // ── ai ───────────────────────────────────────────────────
 import { registerLLMHandlers, cleanupLLMService, cleanupAllLLMServices } from '../ai/modelGateway'
+import {
+  registerAgentOrchestratorIpc,
+  cleanupAgentSessions,
+  cleanupAllAgentSessions,
+} from '../../modules/agent-orchestrator'
 import { registerHealthCheckHandlers } from '../ai/providerMonitor'
 import { registerAgentHandlers } from '../ai/agent'
 import { registerSkillsHandlers } from '../ai/skillRegistry'
@@ -215,6 +220,9 @@ export function registerAllHandlers(context: IPCContext) {
   // LLM
   registerOnce('llm', () => registerLLMHandlers(getMainWindow))
 
+  // Agent 编排（主进程持有循环与会话状态，窗口只订阅进度）
+  registerOnce('agentOrchestrator', () => registerAgentOrchestratorIpc())
+
   // 索引 - 传入 workspaceMetaStore 以读取保存的 embedding 配置
   registerOnce('indexing', () => registerIndexingHandlers(getMainWindow, workspaceMetaStore))
 
@@ -386,6 +394,7 @@ export function cleanupAllHandlers() {
   cleanupTerminals()
   cleanupSecureFileWatcher()
   cleanupMcpHandlers()
+  cleanupAllAgentSessions()
   cleanupAllLLMServices()
   cleanupAuditHandlers()
   // 内置预览静态服务随应用退出关闭（不 await：退出流程不该被端口回收拖住）
@@ -400,5 +409,5 @@ export function cleanupAllHandlers() {
   logger.ipc.info('[IPC] All handlers cleaned up')
 }
 
-export { cleanupLLMService }
+export { cleanupLLMService, cleanupAgentSessions }
 

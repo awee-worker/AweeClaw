@@ -20,7 +20,8 @@ import {
   selectPendingChanges,
   selectMessageCheckpoints,
 } from '@intelligence/state/IntelligenceStore'
-import { Agent } from '@intelligence/engine'
+// Agent 单例改为惰性访问：静态导入会把整条引擎链路拉进首屏 chunk
+import { getAgent, withLoadedAgent } from '@intelligence/engine/agentAccessor'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import {
   MessageContent,
@@ -178,7 +179,8 @@ export function useAgentCommands() {
       contextLimit: agentConfig.maxContextTokens,
     }
 
-    await Agent.send(content, enhancedConfig, params.workspacePath, params.chatMode, {
+    const agent = await getAgent()
+    await agent.send(content, enhancedConfig, params.workspacePath, params.chatMode, {
       openFiles: params.openFiles.map((file) => file.path),
       activeFile: params.activeFilePath || undefined,
       customInstructions: params.aiInstructions,
@@ -189,22 +191,26 @@ export function useAgentCommands() {
     })
   }, [])
 
-  const abort = useCallback((threadId?: string) => Agent.abort(threadId), [])
+  // 中止 / 审批都是「引擎没跑起来就无事可做」的动作，引擎未加载时直接跳过，
+  // 不为一次点击去加载整套引擎
+  const abort = useCallback((threadId?: string) => {
+    withLoadedAgent((agent) => agent.abort(threadId))
+  }, [])
 
   const pendingApprovalRequestId = useMemo(() => {
     return streamState.phase === 'tool_pending' ? streamState.requestId : undefined
   }, [streamState.phase, streamState.requestId])
 
   const approveCurrentTool = useCallback(() => {
-    Agent.approve(pendingApprovalRequestId)
+    withLoadedAgent((agent) => agent.approve(pendingApprovalRequestId))
   }, [pendingApprovalRequestId])
 
   const rejectCurrentTool = useCallback(() => {
-    Agent.reject(pendingApprovalRequestId)
+    withLoadedAgent((agent) => agent.reject(pendingApprovalRequestId))
   }, [pendingApprovalRequestId])
 
-  const approveAllTools = useCallback(() => Agent.approveAll(), [])
-  const rejectAllTools = useCallback(() => Agent.rejectAll(), [])
+  const approveAllTools = useCallback(() => withLoadedAgent((agent) => agent.approveAll()), [])
+  const rejectAllTools = useCallback(() => withLoadedAgent((agent) => agent.rejectAll()), [])
 
   return {
     sendMessage,
@@ -439,7 +445,8 @@ export function useThreadMessenger() {
         contextLimit: agentConfig.maxContextTokens,
       }
 
-      await Agent.send(
+      const agent = await getAgent()
+      await agent.send(
         content,
         enhancedConfig,
         params.workspacePath,
@@ -459,7 +466,7 @@ export function useThreadMessenger() {
 
   /** 中止指定线程的执行（不影响主聊天线程） */
   const abortThread = useCallback((threadId: string): void => {
-    Agent.abort(threadId)
+    withLoadedAgent((agent) => agent.abort(threadId))
   }, [])
 
   /** 查询指定线程是否正在流式输出 */

@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * 摄像头隐私控制主视图
  *
@@ -164,9 +165,6 @@ export function CameraPrivacyControl({
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
-  // 自动刷新定时器
-  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
   // ============================================================
   // 初始化加载
   // ============================================================
@@ -311,16 +309,16 @@ export function CameraPrivacyControl({
   /** 自动刷新状态（每 5s） */
   useEffect(() => {
     if (!isOpen || !pluginRecord?.mcpServerId) return
-    refreshTimerRef.current = setInterval(() => {
-      loadStatus()
-      loadEvents()
-    }, 5000)
-    return () => {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current)
-        refreshTimerRef.current = null
-      }
-    }
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-camera-privacy-poll',
+      intervalMs: 5000,
+      visibility: 'visible-only',
+      handler: () => {
+        loadStatus()
+        loadEvents()
+      },
+    })
+    return stopTicker
   }, [isOpen, pluginRecord, loadStatus, loadEvents])
 
   // ============================================================

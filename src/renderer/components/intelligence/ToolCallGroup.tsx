@@ -453,4 +453,80 @@ function ToolCallGroup({
   )
 }
 
-export default memo(ToolCallGroup)
+/**
+ * 工具调用数组的等价判定
+ *
+ * 默认浅比较按引用判定数组，对这里过严：上游虽有身份回收，但回收只在「元素
+ * 逐个相同」时生效，组内一旦新增一个工具，该组数组就必然换引用 —— 而组内其余
+ * 卡片的数据并没有变，整组重算的代价与变化量不成比例。这里退一步做逐元素
+ * 比较，把「数组是新引用、元素未变」还原成等价。
+ *
+ * 只比较引用不比较内容：ToolCall 由 store 持有，内容变化必然伴随对象重建，
+ * 引用不等即可判定为变化。
+ */
+function toolCallsEqual(prev: ToolCall[], next: ToolCall[]): boolean {
+  if (prev === next) return true
+  if (prev.length !== next.length) return false
+  for (let i = 0; i < next.length; i++) {
+    if (prev[i] !== next[i]) return false
+  }
+  return true
+}
+
+/** 待批准 id 列表的等价判定（数组可能是每轮新建的 map 结果） */
+function idListEqual(prev?: string[], next?: string[]): boolean {
+  if (prev === next) return true
+  if (!prev || !next) return false
+  if (prev.length !== next.length) return false
+  for (let i = 0; i < next.length; i++) {
+    if (prev[i] !== next[i]) return false
+  }
+  return true
+}
+
+/**
+ * ToolCallGroup 的 props 等价判定
+ *
+ * ── 为什么要脱离默认浅比较 ──
+ *
+ * 流式期间每次提交都会重算上层分组，若 memo 被穿透，则每一次提交都要重渲染
+ * 全部历史工具组 —— 而这些组的数据根本没有变化。此时仅看 renders 总数无法
+ * 区分「数组身份不稳」还是「回调身份不稳」，逐个改代码试错代价太高。
+ *
+ * 因此这里做两件事：一是把可以按语义判等的字段（数组、id 列表）放宽到逐元素
+ * 比较；二是在不等时按字段分别计数，一次采样即可定位到底是谁在穿透。
+ * 归因只在采集开启时执行，正常使用不产生任何计量开销。
+ */
+function areToolGroupPropsEqual(prev: ToolCallGroupProps, next: ToolCallGroupProps): boolean {
+  const toolsEqual = toolCallsEqual(prev.toolCalls, next.toolCalls)
+  const pendingIdEqual = prev.pendingToolId === next.pendingToolId
+  const pendingIdsEqual = idListEqual(prev.pendingToolIds, next.pendingToolIds)
+  const openDiffEqual = prev.onOpenDiff === next.onOpenDiff
+  const messageIdEqual = prev.messageId === next.messageId
+  // 批准回调的身份决定卡片是否渲染批准按钮，属于可见行为，不能为省渲染而放过
+  const approvalEqual =
+    prev.onApproveTool === next.onApproveTool && prev.onRejectTool === next.onRejectTool
+
+  if (
+    toolsEqual &&
+    pendingIdEqual &&
+    pendingIdsEqual &&
+    openDiffEqual &&
+    messageIdEqual &&
+    approvalEqual
+  ) {
+    return true
+  }
+
+  if (perfTrace.isEnabled()) {
+    if (!toolsEqual) perfTrace.bump(PERF_TRACE_COUNTERS.toolGroupDiffToolCalls)
+    if (!pendingIdEqual) perfTrace.bump(PERF_TRACE_COUNTERS.toolGroupDiffPendingId)
+    if (!pendingIdsEqual) perfTrace.bump(PERF_TRACE_COUNTERS.toolGroupDiffPendingIds)
+    if (!openDiffEqual) perfTrace.bump(PERF_TRACE_COUNTERS.toolGroupDiffOnOpenDiff)
+    if (!messageIdEqual) perfTrace.bump(PERF_TRACE_COUNTERS.toolGroupDiffMessageId)
+  }
+
+  return false
+}
+
+export default memo(ToolCallGroup, areToolGroupPropsEqual)

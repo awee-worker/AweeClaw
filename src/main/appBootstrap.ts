@@ -36,7 +36,7 @@ import {
 } from './bootstrap/windowManager'
 import { requestRendererShutdown } from './bootstrap/shutdownCoordinator'
 import { performGlobalCleanup, performFastCleanup, withTimeout } from './bootstrap/globalCleanup'
-import { initializeModules } from './bootstrap/moduleInitializer'
+import { initializeModules, runDeferredInit } from './bootstrap/moduleInitializer'
 import { FloatingAvatarManager } from './modules/floating-avatar/FloatingAvatarManager'
 import { startScriptTempCleanup } from './modules/temp/scriptTempCleanup'
 
@@ -149,6 +149,16 @@ process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) =>
 // ==========================================
 
 app.whenReady().then(async () => {
+  // 0. 旧版 safeStorage 密文一次性迁移（enc:v1: → enc:v2:）。
+  //    必须在任何模块读盘（electron-store get / SQLite 查询）之前执行，
+  //    避免内存缓存与磁盘上的新密文不一致
+  try {
+    const { migrateJsonSecrets } = await import('./guard/secretMigration')
+    migrateJsonSecrets(app.getPath('userData'))
+  } catch (err) {
+    logger.system.error('[Main] Legacy secret migration failed:', err)
+  }
+
   // 1. 注册 local-preview 协议处理器
   registerLocalPreviewHandler()
 
@@ -176,7 +186,7 @@ app.whenReady().then(async () => {
   // 6. 创建窗口（此时不加载页面内容，等模块初始化完成后再加载）
   const firstWin = createWindow(false, true)
 
-  // 7. 初始化模块（等待完成，确保所有 IPC handler 就绪后再加载页面）
+  // 7. 初始化首屏必需模块（等待完成，确保核心 IPC handler 就绪后再加载页面）
   try {
     await initializeModules(firstWin)
   } catch (err) {
@@ -186,7 +196,14 @@ app.whenReady().then(async () => {
   // 8. 模块就绪，加载页面内容
   loadWindowContent(firstWin, false)
 
-  // 9. 启动内联脚本临时目录兜底清理（启动清空 + 周期清理）
+  // 9. 页面已加载，延迟初始化后台服务（网络长连接 / 调度器 / 默认关闭的能力）。
+  //    不 await：这些模块的 IPC 只在用户打开对应功能时才被调用，
+  //    晚于首屏启动渲染层感知不到差别。
+  runDeferredInit(firstWin).catch((err) => {
+    logger.system.error('[Main] Deferred init failed:', err)
+  })
+
+  // 10. 启动内联脚本临时目录兜底清理（启动清空 + 周期清理）
   startScriptTempCleanup()
 })
 

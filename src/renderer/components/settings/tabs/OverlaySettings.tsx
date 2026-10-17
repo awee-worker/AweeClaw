@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * OverlaySettings — 字幕 / 弹幕悬浮层设置面板
  *
@@ -149,10 +150,13 @@ export function OverlaySettings({ language }: OverlaySettingsProps) {
   useEffect(() => {
     void refresh()
     // 连接数 / 端口属于运行时状态，需要轮询才准确
-    const timer = setInterval(() => {
-      void refresh()
-    }, 2000)
-    return () => clearInterval(timer)
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-overlay-poll',
+      intervalMs: 2000,
+      visibility: 'visible-only',
+      handler: () => void refresh(),
+    })
+    return stopTicker
   }, [refresh])
 
   /** 更新配置（主进程按需启停服务与窗口） */

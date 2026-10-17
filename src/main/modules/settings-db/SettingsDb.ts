@@ -15,6 +15,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import { encryptString, decryptString } from '../../guard/safeStorageUtil'
+import { decryptLegacyV1, migrateV1Value } from '../../guard/secretMigration'
 
 // ============================================
 // 类型定义
@@ -203,6 +204,9 @@ export class SettingsDb {
       this.db.exec('PRAGMA busy_timeout=5000')
 
       this.createTables()
+
+      // 旧版 safeStorage 密文（enc:v1:）→ AES-256-GCM（enc:v2:）一次性迁移
+      this.migrateLegacySecrets()
 
       logger.settings.info(`[SettingsDb] Initialized at ${this.dbPath}`)
     } catch (err) {
@@ -401,6 +405,66 @@ export class SettingsDb {
     const existingVersion = this.db.prepare("SELECT value FROM schema_version WHERE key = 'version'").get() as any
     if (!existingVersion) {
       this.db.prepare("INSERT INTO schema_version (key, value) VALUES ('version', '2')").run()
+    }
+  }
+
+  /**
+   * 旧版 safeStorage 密文（enc:v1:）一次性迁移为 AES-256-GCM（enc:v2:）。
+   * 仅升级后的首次初始化触发：解密成功即写回 v2，失败保留原值由读取端兜底。
+   */
+  private migrateLegacySecrets(): void {
+    if (!this.db) return
+    try {
+      /** 单列整值迁移：SELECT 所有 v1 行，解密后重加密写回 */
+      const migrateColumn = (table: string, column: string, idColumn: string): number => {
+        const rows = this.db
+          .prepare(`SELECT ${idColumn} AS id, ${column} AS val FROM ${table} WHERE ${column} LIKE 'enc:v1:%'`)
+          .all() as { id: unknown; val: string }[]
+        let n = 0
+        for (const row of rows) {
+          const plain = decryptLegacyV1(row.val)
+          if (plain === null) continue
+          const v2 = encryptString(plain)
+          if (!v2.startsWith('enc:v2:')) continue
+          this.db
+            .prepare(`UPDATE ${table} SET ${column} = ?, updated_at = ? WHERE ${idColumn} = ?`)
+            .run(v2, Date.now(), row.id)
+          n++
+        }
+        return n
+      }
+
+      let total = 0
+      total += migrateColumn('provider_config', 'api_key', 'provider_id')
+      total += migrateColumn('vision_model_config', 'api_key', 'id')
+      total += migrateColumn('voice_model_config', 'stt_api_key', 'id')
+      total += migrateColumn('voice_model_config', 'tts_api_key', 'id')
+      total += migrateColumn('voice_model_config', 'realtime_api_key', 'id')
+
+      // channel_account.credentials 为加密 JSON 串，需解析后逐值迁移
+      const credRows = this.db
+        .prepare("SELECT account_id AS id, credentials AS val FROM channel_account WHERE credentials LIKE '%enc:v1:%'")
+        .all() as { id: string; val: string }[]
+      for (const row of credRows) {
+        try {
+          const next = migrateV1Value(JSON.parse(row.val))
+          const out = JSON.stringify(next)
+          if (out !== row.val) {
+            this.db
+              .prepare('UPDATE channel_account SET credentials = ?, updated_at = ? WHERE account_id = ?')
+              .run(out, Date.now(), row.id)
+            total++
+          }
+        } catch (err) {
+          logger.settings.warn('[SettingsDb] 迁移 channel_account.credentials 失败，保留原值:', err)
+        }
+      }
+
+      if (total > 0) {
+        logger.settings.info(`[SettingsDb] 已迁移 ${total} 个旧版加密字段到 enc:v2:`)
+      }
+    } catch (err) {
+      logger.settings.error('[SettingsDb] 旧版凭据迁移失败:', err)
     }
   }
 

@@ -368,6 +368,58 @@ function normalizeArch(rawArch) {
 }
 
 /**
+ * 对 macOS 构建产物执行 ad-hoc 签名（仅当未配置 Developer ID 证书时生效）
+ *
+ * 背景：当 mac.identity 为 null 且本机没有 Developer ID 证书时，
+ * electron-builder 会完全跳过代码签名，产物只有 Mach-O 自带的 linker ad-hoc
+ * 签名，整个 .app 包体没有 CodeResources 密封（codesign --verify 失败）。
+ * 用户通过浏览器下载安装包后会被打上 com.apple.quarantine 隔离属性，
+ * Gatekeeper 对无有效签名的 App 直接拦截，并误报 "已损坏，无法打开"。
+ *
+ * 此步骤在 afterPack 清理完成后，对整个 .app 执行 ad-hoc 签名
+ * （codesign --force --deep --sign -），生成完整的 CodeResources 密封，
+ * 使 codesign --verify 通过，消除 "已损坏" 误报。
+ *
+ * 注意：
+ * - ad-hoc 签名不等同于 Apple Developer ID 签名，quarantine 后 macOS 仍可能
+ *   提示 "无法验证开发者"，用户可通过右键 → 打开 绕过；
+ * - 若本机存在 Developer ID 证书（正式签名路径），本函数会跳过，
+ *   由 electron-builder 在 afterPack 之后用正式证书签名并公证；
+ * - 正式对外发布建议使用 Developer ID + 公证（notarization）。
+ *
+ * @param {string} appOutDir - electron-builder 的 appOutDir（.app 所在目录）
+ * @param {string} appName - App 名称（如 AweeClaw）
+ */
+async function adhocSignMacApp(appOutDir, appName) {
+  // 检测本机是否存在 Developer ID Application 证书：
+  // 有 → 走正式签名，跳过 ad-hoc（避免重复签名，交给 electron-builder 统一处理）
+  try {
+    const { execSync } = require('child_process')
+    const identities = execSync('security find-identity -v -p codesigning', { encoding: 'utf8' })
+    if (/Developer ID Application/.test(identities)) {
+      console.log('[afterPack] ⏭️ Developer ID certificate found, skipping ad-hoc signing (official signing will apply)')
+      return
+    }
+  } catch {
+    // security 命令异常时继续走 ad-hoc 兜底
+  }
+
+  const appBundle = path.join(appOutDir, `${appName}.app`)
+  if (!fs.existsSync(appBundle)) {
+    console.warn(`[afterPack] ⚠️ App bundle not found for ad-hoc signing: ${appBundle}`)
+    return
+  }
+  console.log(`[afterPack] 🔏 Ad-hoc signing ${appName}.app ...`)
+  try {
+    const { execSync } = require('child_process')
+    execSync(`codesign --force --deep --sign - "${appBundle}"`, { stdio: 'inherit' })
+    console.log(`[afterPack] ✅ Ad-hoc signing completed: ${appName}.app`)
+  } catch (err) {
+    console.warn(`[afterPack] ⚠️ Ad-hoc signing failed: ${err.message}`)
+  }
+}
+
+/**
  * 判断当前构建的目标平台和架构
  * @returns {{platform: string, arch: string}}
  */
@@ -436,5 +488,12 @@ module.exports = async function afterPack(context) {
     console.log(`[afterPack] Total cleaned for ${platform}: removed ${removedMB}MB`)
   } else {
     console.log(`[afterPack] No cleanup needed for ${platform}`)
+  }
+
+  // macOS：清理完成后对整个 .app 执行 ad-hoc 签名（未配置 Developer ID 证书时）
+  // 必须在清理之后签名，确保 CodeResources 密封与最终文件内容一致
+  if (platform === 'mac') {
+    const appName = context.packager.appInfo.productFilename || 'AweeClaw'
+    await adhocSignMacApp(appOutDir, appName)
   }
 }

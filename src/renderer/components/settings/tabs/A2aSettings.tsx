@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * A2aSettings — A2A（Agent2Agent）协议设置面板
  *
@@ -13,7 +14,7 @@
  * 6. **试跑闭环**：配置完能当场发一句话验证链路，不必回聊天窗口试。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   Copy,
@@ -256,8 +257,6 @@ export function A2aSettings({ language }: A2aSettingsProps) {
   const [inboundDraft, setInboundDraft] = useState<A2aInboundConfig | null>(null)
   const [revealInboundToken, setRevealInboundToken] = useState(false)
 
-  const pollRef = useRef<number | null>(null)
-
   // --------------------------------------------
   // 加载
   // --------------------------------------------
@@ -305,11 +304,16 @@ export function A2aSettings({ language }: A2aSettingsProps) {
     })
 
     // 轮询兜底：入站请求计数只在主进程内存里变化，没有推送事件
-    pollRef.current = window.setInterval(() => void refreshServers(), 5000)
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-a2a-poll',
+      intervalMs: 5000,
+      visibility: 'visible-only',
+      handler: () => void refreshServers(),
+    })
 
     return () => {
       off()
-      if (pollRef.current !== null) window.clearInterval(pollRef.current)
+      stopTicker()
     }
   }, [loadConfig, refreshServers])
 

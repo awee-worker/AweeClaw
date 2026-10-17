@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * LiveSettings — 直播互动接入设置面板（B站 / YouTube / Twitch）
  *
@@ -250,8 +251,13 @@ export function LiveSettings({ language }: LiveSettingsProps) {
   useEffect(() => {
     void loadConfig()
     void refreshStatus()
-    const timer = setInterval(() => void refreshStatus(), 2000)
-    return () => clearInterval(timer)
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-live-poll',
+      intervalMs: 2000,
+      visibility: 'visible-only',
+      handler: () => void refreshStatus(),
+    })
+    return stopTicker
   }, [loadConfig, refreshStatus])
 
   // --------------------------------------------

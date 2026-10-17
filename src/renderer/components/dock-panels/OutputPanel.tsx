@@ -1,10 +1,11 @@
 /**
  * 输出面板（Output Panel）
  */
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import type React from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
+import { transientLogStore } from '@store/transientLogStore'
 import {
   CheckCircle2, XCircle, AlertCircle, Info,
   FileCode, Terminal,
@@ -24,8 +25,10 @@ interface LogItem {
 
 const OutputPanel: React.FC = () => {
   const { language } = useStore(useShallow(s => ({ language: s.language })))
-  const toolCallLogs = useStore(s => s.toolCallLogs)
   const diagnostics = useDiagnosticsStore(s => s.diagnostics)
+  // 工具调用日志高频写入已迁 transientLogStore，面板挂载时才拉取并订阅
+  const [toolCallLogs, setToolCallLogs] = useState(() => transientLogStore.getLogs())
+  useEffect(() => transientLogStore.subscribe(setToolCallLogs), [])
 
   const logs: LogItem[] = useMemo(() => {
     const items: LogItem[] = []

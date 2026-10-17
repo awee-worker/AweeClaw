@@ -37,7 +37,7 @@ import {
   restoreWorkspaceAgentStore,
 } from './workspaceLoader'
 import { initializeHarness } from '@intelligence/harness'
-import { setupAgentRuntime } from '@intelligence/engine'
+import { setupAgentRuntime } from '@intelligence/engine/runtimeInitializer'
 
 export interface InitResult {
   success: boolean

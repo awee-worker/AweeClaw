@@ -126,7 +126,11 @@ export class MailCenterManager {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
-        backgroundThrottling: false,
+        // 保持默认节流（true）：窗口关闭走 hide()、保留 warm renderer，但渲染层
+        // 全程没有 rAF 或定时轮询，后台满速运行没有任何收益，只会让隐藏后的窗口
+        // 继续占用调度配额。可见时表现不受影响；新邮件由主进程 IMAP 收到后经
+        // sendToWindow 主动推送，不依赖渲染层定时器，因此节流不会延迟消息到达。
+        backgroundThrottling: true,
       },
     })
 

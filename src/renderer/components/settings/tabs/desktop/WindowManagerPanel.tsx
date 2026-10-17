@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * 窗口控制面板
  * 列出系统所有可见窗口，支持聚焦、最小化、最大化、还原、关闭、置顶
@@ -69,8 +70,13 @@ export function WindowManagerPanel({ language }: WindowManagerPanelProps) {
 
   useEffect(() => {
     void loadWindows()
-    const timer = setInterval(() => void loadWindows(), 15_000)
-    return () => clearInterval(timer)
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-window-manager-poll',
+      intervalMs: 15_000,
+      visibility: 'visible-only',
+      handler: () => void loadWindows(),
+    })
+    return stopTicker
   }, [loadWindows])
 
   const filtered = useMemo(() => {

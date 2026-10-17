@@ -18,6 +18,7 @@
 
 import { logger } from '@shared/toolkit/LogEngine'
 import { securityManager, OperationType } from './securityPolicyEngine'
+import { docParserProxy } from './docParserProxy'
 
 /** 大文件阈值（5MB） */
 const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024
@@ -82,17 +83,13 @@ function logExtractionFailure(
 export async function extractPdfText(filePath: string): Promise<string | null> {
   if (!filePath || !isPathSafe(filePath)) return null
 
-  try {
-    const pdfParse = await import('pdf-parse')
-    const fs = await import('fs')
-    const dataBuffer = await fs.promises.readFile(filePath)
-    const data = await (pdfParse as any).default(dataBuffer)
-    logExtractionSuccess(filePath)
-    return data.text
-  } catch (err) {
-    logExtractionFailure(filePath, 'pdf', err)
+  const text = await docParserProxy.extractText('pdf', filePath)
+  if (text === null) {
+    logExtractionFailure(filePath, 'pdf', new Error('parse failed'))
     return null
   }
+  logExtractionSuccess(filePath)
+  return text
 }
 
 /* ------------------------------------------------------------------ */
@@ -108,15 +105,13 @@ export async function extractPdfText(filePath: string): Promise<string | null> {
 export async function extractDocxText(filePath: string): Promise<string | null> {
   if (!filePath || !isPathSafe(filePath)) return null
 
-  try {
-    const mammoth = await import('mammoth')
-    const result = await mammoth.extractRawText({ path: filePath })
-    logExtractionSuccess(filePath)
-    return result.value
-  } catch (err) {
-    logExtractionFailure(filePath, 'docx', err)
+  const text = await docParserProxy.extractText('docx', filePath)
+  if (text === null) {
+    logExtractionFailure(filePath, 'docx', new Error('parse failed'))
     return null
   }
+  logExtractionSuccess(filePath)
+  return text
 }
 
 /* ------------------------------------------------------------------ */
@@ -132,17 +127,13 @@ export async function extractDocxText(filePath: string): Promise<string | null> 
 export async function extractDocText(filePath: string): Promise<string | null> {
   if (!filePath || !isPathSafe(filePath)) return null
 
-  try {
-    const WordExtractor = (await import('word-extractor')).default
-    const extractor = new WordExtractor()
-    const extracted = await extractor.extract(filePath)
-    const text = extracted.getBody()
-    logExtractionSuccess(filePath)
-    return text
-  } catch (err) {
-    logExtractionFailure(filePath, 'doc', err)
+  const text = await docParserProxy.extractText('doc', filePath)
+  if (text === null) {
+    logExtractionFailure(filePath, 'doc', new Error('parse failed'))
     return null
   }
+  logExtractionSuccess(filePath)
+  return text
 }
 
 /* ------------------------------------------------------------------ */
@@ -160,23 +151,13 @@ export async function extractDocText(filePath: string): Promise<string | null> {
 export async function extractXlsxText(filePath: string): Promise<string | null> {
   if (!filePath || !isPathSafe(filePath)) return null
 
-  try {
-    const XLSX = await import('xlsx')
-    const workbook = XLSX.readFile(filePath)
-    const lines: string[] = []
-
-    for (const sheetName of workbook.SheetNames) {
-      const sheet = workbook.Sheets[sheetName]
-      const csv = XLSX.utils.sheet_to_csv(sheet)
-      lines.push(`## Sheet: ${sheetName}\n${csv}`)
-    }
-
-    logExtractionSuccess(filePath)
-    return lines.join('\n\n')
-  } catch (err) {
-    logExtractionFailure(filePath, 'xlsx', err)
+  const text = await docParserProxy.extractText('xlsx', filePath)
+  if (text === null) {
+    logExtractionFailure(filePath, 'xlsx', new Error('parse failed'))
     return null
   }
+  logExtractionSuccess(filePath)
+  return text
 }
 
 /* ------------------------------------------------------------------ */
@@ -192,16 +173,13 @@ export async function extractXlsxText(filePath: string): Promise<string | null> 
 export async function extractPptText(filePath: string): Promise<string | null> {
   if (!filePath || !isPathSafe(filePath)) return null
 
-  try {
-    const officeParser = (await import('officeparser')).default
-    const text = await officeParser.parseOffice(filePath)
-    const result = typeof text === 'string' ? text : (text as any)?.toText?.() || String(text)
-    logExtractionSuccess(filePath)
-    return result
-  } catch (err) {
-    logExtractionFailure(filePath, 'ppt', err)
+  const text = await docParserProxy.extractText('ppt', filePath)
+  if (text === null) {
+    logExtractionFailure(filePath, 'ppt', new Error('parse failed'))
     return null
   }
+  logExtractionSuccess(filePath)
+  return text
 }
 
 /* ------------------------------------------------------------------ */

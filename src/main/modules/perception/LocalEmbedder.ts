@@ -23,7 +23,7 @@
 
 import { logger } from '@shared/toolkit/LogEngine'
 import { getEmbedderCacheDir } from '../modelPaths'
-import { configureTransformersEnv, resolveModelHost, type TransformersEnv } from '../transformersEnv'
+import { resolveModelHost } from '../transformersEnv'
 import {
   EMBEDDER_META_FILES,
   EMBEDDER_WEIGHT_FILES,
@@ -33,30 +33,11 @@ import {
   removeModelCache,
   resolveModelDir,
 } from '../modelCache'
+import { embedderProxy } from './embedderProxy'
 
 // ============================================================
-// 类型定义（避免直接 import transformers 的类型，保持轻量）
+// 类型定义
 // ============================================================
-
-interface PipelineSingleton {
-  pipeline: (
-    task: string,
-    model: string,
-    options?: {
-      quantized?: boolean
-      progress_callback?: (info: unknown) => void
-      cache_dir?: string
-    },
-  ) => Promise<unknown>
-  env: TransformersEnv
-}
-
-interface EmbedderPipeline {
-  (texts: string[], options?: { pooling?: 'mean' | 'max' | 'cls'; normalize?: boolean }): Promise<{
-    data: Float32Array | number[][]
-    dims: number[]
-  }>
-}
 
 /** 模型下载/加载进度（首次加载需下载约 22MB 权重） */
 export interface EmbedderProgress {
@@ -186,11 +167,11 @@ class LRUCache<K, V> {
 export class LocalEmbedder {
   private static instance: LocalEmbedder | null = null
 
-  /** 已加载的 pipeline */
-  private pipeline: EmbedderPipeline | null = null
+  /** 最近一次模型加载是否成功（推理在子进程，主进程不持有 pipeline） */
+  private loadOk = false
 
   /** 加载中 Promise（防止并发加载） */
-  private loadingPromise: Promise<EmbedderPipeline> | null = null
+  private loadingPromise: Promise<void> | null = null
 
   /** 累计加载失败次数（用于指数退避） */
   private loadFailures = 0
@@ -218,6 +199,28 @@ export class LocalEmbedder {
 
   private constructor(modelName: string = DEFAULT_MODEL) {
     this.modelName = modelName
+    // 子进程模型下载进度转发给本单例的订阅者（含进度日志节流）
+    embedderProxy.onProgress((p) => this.handleProgressEvent(p))
+  }
+
+  /** 子进程进度事件统一入口（结构化对象，与旧 progress_callback 行为一致） */
+  private handleProgressEvent(p: { file: string; loaded: number; total: number; progress: number }): void {
+    this.currentProgress = p
+    this.notifyProgress(p)
+
+    const now = Date.now()
+    if (p.progress >= 1 || now - this.lastProgressLogAt >= PROGRESS_LOG_INTERVAL_MS) {
+      this.lastProgressLogAt = now
+      const detail =
+        p.total > 0
+          ? `${(p.progress * 100).toFixed(0)}%（${formatBytes(p.loaded)}/${formatBytes(p.total)}）`
+          : formatBytes(p.loaded)
+      logger.perception?.info(
+        p.progress >= 1
+          ? `[LocalEmbedder] 下载完成: ${p.file}`
+          : `[LocalEmbedder] 下载中: ${p.file} ${detail}`,
+      )
+    }
   }
 
   /** 获取单例 */
@@ -228,9 +231,9 @@ export class LocalEmbedder {
     return LocalEmbedder.instance
   }
 
-  /** 是否已加载 */
+  /** 是否已加载（以最近一次子进程连通性探测为准） */
   isLoaded(): boolean {
-    return this.pipeline !== null
+    return this.loadOk
   }
 
   /** 获取嵌入维度 */
@@ -269,10 +272,14 @@ export class LocalEmbedder {
    * 首次调用会从 npm 缓存或远程下载模型（约 22MB）。
    * 后续调用直接返回已加载的 pipeline。
    */
-  async load(): Promise<EmbedderPipeline> {
-    // 已加载
-    if (this.pipeline) return this.pipeline
-
+  /**
+   * 加载模型（懒加载）
+   *
+   * 模型加载与推理已下沉到 embedder.worker 子进程（embedderProxy 派发，
+   * 子进程不可用时内联回退到主进程动态 import，行为与旧实现一致）。
+   * 首次调用会触发模型下载（约 22MB），后续调用复用已加载的 pipeline。
+   */
+  async load(): Promise<void> {
     // 加载中（并发请求合并）
     if (this.loadingPromise) return this.loadingPromise
 
@@ -286,15 +293,14 @@ export class LocalEmbedder {
 
     this.loadingPromise = this.doLoad()
     try {
-      this.pipeline = await this.loadingPromise
-      return this.pipeline
+      await this.loadingPromise
     } finally {
       this.loadingPromise = null
     }
   }
 
-  /** 实际加载逻辑 */
-  private async doLoad(): Promise<EmbedderPipeline> {
+  /** 实际加载逻辑（探测子进程可用性，用一次空批嵌入触发模型加载） */
+  private async doLoad(): Promise<void> {
     const cacheDir = this.getCacheDir()
 
     // 下载中断会把错误页或截断内容写成正式文件，这类残留无法靠重试自愈，
@@ -306,122 +312,33 @@ export class LocalEmbedder {
         `[LocalEmbedder] 加载模型: ${this.modelName}（缓存目录: ${cacheDir}）`,
       )
 
-      // 动态 import transformers（避免启动时加载）
-      const transformers = (await import('@xenova/transformers')) as unknown as PipelineSingleton
-
-      // transformers 默认直连 huggingface.co，国内网络下必然 fetch failed；
-      // 统一改走镜像站点后再下载，否则这个模型永远加载不出来。
-      const modelHost = configureTransformersEnv(transformers.env, cacheDir)
-      logger.perception?.info(`[LocalEmbedder] 模型站点: ${modelHost}`)
-
-      // 创建 feature-extraction pipeline
-      const extractor = (await transformers.pipeline(
-        'feature-extraction',
-        this.modelName,
-        {
-          quantized: true, // 使用量化模型减小体积
-          cache_dir: cacheDir, // 显式指定缓存目录，避免默认写入不可写位置
-          progress_callback: (info: unknown) => this.handleProgress(info),
-        },
-      )) as unknown as EmbedderPipeline
+      embedderProxy.configure(cacheDir, this.modelName)
+      // 空批触发子进程加载模型并校验连通性（不产生实际推理）
+      await embedderProxy.embed([])
 
       logger.perception?.info(`[LocalEmbedder] 模型加载成功: ${this.modelName}`)
+      this.loadOk = true
       this.loadFailures = 0
       this.loadFailedAt = 0
       this.warnedKeys.clear()
-      return extractor
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       this.loadFailures += 1
       this.loadFailedAt = Date.now()
       const nextRetrySec = Math.ceil(this.getRetryDelayMs() / 1000)
-      // 网络类失败补上站点信息：只看到 "fetch failed" 时无从判断是镜像不可用还是本机断网
       const hint = NETWORK_ERROR_PATTERN.test(msg)
         ? `；模型站点 ${resolveModelHost()} 不可访问，请检查网络或代理（可用环境变量 HF_ENDPOINT 更换站点）`
         : ''
-      // 加载失败属根因级错误：首次带堆栈，后续按退避节奏记录，不随采集频率放大
       const summary = `[LocalEmbedder] 模型加载失败（第 ${this.loadFailures} 次，${nextRetrySec}s 后重试，缓存目录: ${cacheDir}）: ${msg}${hint}`
       if (this.loadFailures === 1) {
         logger.perception?.error(summary, e)
       } else {
         logger.perception?.error(summary)
       }
-      // 失败常由本轮写入的半成品引起：清掉后下次退避重试才有机会成功
       this.discardInvalidCache('加载失败后')
       throw e
     } finally {
       this.currentProgress = null
-    }
-  }
-
-  /**
-   * 剔除不合格的磁盘缓存
-   *
-   * 只在"目录存在但必需文件缺失或体积不达标"时删除：网络故障导致的缓存若本身完整，
-   * 不受影响，避免把完好模型误删造成重复下载。
-   */
-  private discardInvalidCache(stage: string): void {
-    try {
-      const cacheDir = this.getCacheDir()
-      const { removed, invalidFiles } = discardInvalidModelCache(
-        cacheDir,
-        this.modelName,
-        WEIGHT_FILES,
-        META_FILES,
-      )
-      if (invalidFiles.length === 0) return
-
-      logger.perception?.warn(
-        `[LocalEmbedder] ${stage}发现不完整缓存（异常: ${invalidFiles.join(', ')}），` +
-          `${removed ? '已清理，下次加载将重新下载' : '清理失败，需要手动删除'}: ${resolveModelDir(cacheDir, this.modelName)}`,
-      )
-    } catch (e) {
-      logger.perception?.warn('[LocalEmbedder] 检查磁盘缓存异常:', e)
-    }
-  }
-
-  /** 处理 transformers.js 的上报（下载进度 / 单个文件完成） */
-  private handleProgress(info: unknown): void {
-    try {
-      const data = info as Record<string, unknown>
-      const status = data.status as string | undefined
-      if (status !== 'progress' && status !== 'done') return
-
-      const file = (data.file as string) ?? 'unknown'
-      const loaded = status === 'progress' ? ((data.loaded as number) ?? 0) : 0
-      const total = status === 'progress' ? ((data.total as number) ?? 0) : 0
-      const progress = status === 'done' ? 1 : total > 0 ? loaded / total : 0
-
-      this.currentProgress = { file, loaded, total, progress }
-      this.notifyProgress(this.currentProgress)
-
-      // 权重下载持续数秒到数十秒，回调频率很高，按秒节流记录
-      const now = Date.now()
-      if (status === 'done' || now - this.lastProgressLogAt >= PROGRESS_LOG_INTERVAL_MS) {
-        this.lastProgressLogAt = now
-        const detail =
-          total > 0
-            ? `${(progress * 100).toFixed(0)}%（${formatBytes(loaded)}/${formatBytes(total)}）`
-            : formatBytes(loaded)
-        logger.perception?.info(
-          status === 'done'
-            ? `[LocalEmbedder] 下载完成: ${file}`
-            : `[LocalEmbedder] 下载中: ${file} ${detail}`,
-        )
-      }
-    } catch (e) {
-      logger.perception?.warn('[LocalEmbedder] 进度回调处理异常:', e)
-    }
-  }
-
-  /** 通知所有进度订阅者（单个订阅者异常不影响其他订阅者） */
-  private notifyProgress(progress: EmbedderProgress): void {
-    for (const cb of this.progressCallbacks) {
-      try {
-        cb(progress)
-      } catch (e) {
-        logger.perception?.warn('[LocalEmbedder] 进度订阅回调异常:', e)
-      }
     }
   }
 
@@ -435,15 +352,14 @@ export class LocalEmbedder {
     const trimmed = this.truncate(text.trim())
     if (!trimmed) return []
 
-    // 命中缓存
     const cached = this.cache.get(trimmed)
     if (cached) return cached
 
     try {
-      const extractor = await this.load()
-      const output = await extractor([trimmed], { pooling: 'mean', normalize: true })
-      const vec = this.toFloatArray(output.data)
-      this.cache.set(trimmed, vec)
+      await this.load()
+      const vecs = await embedderProxy.embed([trimmed])
+      const vec = vecs[0] ?? []
+      if (vec.length > 0) this.cache.set(trimmed, vec)
       return vec
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -475,25 +391,20 @@ export class LocalEmbedder {
       }
     }
 
-    // 分批处理
+    // 分批派发给子进程
     for (let i = 0; i < pending.length; i += BATCH_MAX_SIZE) {
       const batch = pending.slice(i, i + BATCH_MAX_SIZE)
       try {
-        const extractor = await this.load()
-        const batchTexts = batch.map((b) => b.text)
-        const output = await extractor(batchTexts, { pooling: 'mean', normalize: true })
-
-        // output.data 可能是 Float32Array（一维）或 number[][]（二维）
-        const vecs = this.batchToFloatArrays(output.data, batchTexts.length)
+        await this.load()
+        const vecs = await embedderProxy.embed(batch.map((b) => b.text))
         for (let j = 0; j < batch.length; j++) {
           const vec = vecs[j] ?? []
           results[batch[j].index] = vec
-          this.cache.set(batch[j].text, vec)
+          if (vec.length > 0) this.cache.set(batch[j].text, vec)
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         this.warnOnce('embedBatch', `[LocalEmbedder] embedBatch 批次失败: ${msg}`)
-        // 失败的批次保持空数组
       }
     }
 
@@ -530,13 +441,14 @@ export class LocalEmbedder {
    * 清理磁盘模型缓存
    *
    * 用于修复下载中断留下的半成品：删除后下次 embed 会重新下载完整权重。
-   * 同时重置加载状态，避免内存中继续持有失效的 pipeline。
    */
   async clearDiskCache(): Promise<void> {
     const cacheDir = this.getCacheDir()
     const modelDir = resolveModelDir(cacheDir, this.modelName)
 
     this.reset()
+    // 同步重置子进程中的模型状态，避免其继续持有已删除的缓存
+    void embedderProxy.resetWorker()
 
     let removed = false
     try {
@@ -555,7 +467,7 @@ export class LocalEmbedder {
 
   /** 重置状态（清空失败退避与进度，立即允许重新加载） */
   reset(): void {
-    this.pipeline = null
+    this.loadOk = false
     this.loadingPromise = null
     this.loadFailures = 0
     this.loadFailedAt = 0
@@ -599,41 +511,47 @@ export class LocalEmbedder {
     logger.perception?.warn(message)
   }
 
-  /** 截断文本（按字符数，避免 OOM） */
+
   private truncate(text: string): string {
     if (text.length <= TEXT_MAX_LENGTH) return text
     return text.slice(0, TEXT_MAX_LENGTH)
   }
 
-  /** 将输出转换为 number[] */
-  private toFloatArray(data: Float32Array | number[][]): number[] {
-    if (Array.isArray(data)) {
-      // 二维数组取第一个
-      return data[0] ? Array.from(data[0] as number[]) : []
+  /** 通知所有进度订阅者（单个订阅者异常不影响其他订阅者） */
+  private notifyProgress(progress: EmbedderProgress): void {
+    for (const cb of this.progressCallbacks) {
+      try {
+        cb(progress)
+      } catch (e) {
+        logger.perception?.warn('[LocalEmbedder] 进度订阅回调异常:', e)
+      }
     }
-    // Float32Array 一维
-    return Array.from(data)
   }
 
-  /** 批量输出转换为 number[][] */
-  private batchToFloatArrays(
-    data: Float32Array | number[][],
-    batchSize: number,
-  ): number[][] {
-    if (Array.isArray(data)) {
-      // 二维数组
-      return data.map((row) => (Array.isArray(row) ? Array.from(row) : []))
+  /**
+   * 剔除不合格的磁盘缓存
+   *
+   * 只在"目录存在但必需文件缺失或体积不达标"时删除：网络故障导致的缓存若本身完整，
+   * 不受影响，避免把完好模型误删造成重复下载。
+   */
+  private discardInvalidCache(stage: string): void {
+    try {
+      const cacheDir = this.getCacheDir()
+      const { removed, invalidFiles } = discardInvalidModelCache(
+        cacheDir,
+        this.modelName,
+        WEIGHT_FILES,
+        META_FILES,
+      )
+      if (invalidFiles.length === 0) return
+
+      logger.perception?.warn(
+        `[LocalEmbedder] ${stage}发现不完整缓存（异常: ${invalidFiles.join(', ')}），` +
+          `${removed ? '已清理，下次加载将重新下载' : '清理失败，需要手动删除'}: ${resolveModelDir(cacheDir, this.modelName)}`,
+      )
+    } catch (e) {
+      logger.perception?.warn('[LocalEmbedder] 检查磁盘缓存异常:', e)
     }
-    // 一维 Float32Array，按维度切分
-    const totalLen = data.length
-    const dim = totalLen / batchSize
-    const result: number[][] = []
-    for (let i = 0; i < batchSize; i++) {
-      const start = i * dim
-      const end = start + dim
-      result.push(Array.from(data.slice(start, end)))
-    }
-    return result
   }
 }
 

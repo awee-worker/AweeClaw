@@ -104,13 +104,11 @@ async function parseEpub(filePath: string): Promise<DocumentStructure> {
  */
 async function parsePdf(filePath: string): Promise<DocumentStructure> {
   try {
-    // 动态导入 pdf-parse
-    const pdfParse = await import('pdf-parse')
-    const dataBuffer = fs.readFileSync(filePath)
-    const data = await (pdfParse as any).default(dataBuffer)
-
-    // PDF 没有明确的章节结构，按页或按段落切分
-    const text = data.text || ''
+    // 解析在子进程执行（docParserProxy 内联回退兜底），避免阻塞主进程
+    const { docParserProxy } = await import('@guard/docParserProxy')
+    const rawText = await docParserProxy.extractText('pdf', filePath)
+    const text = rawText || ''
+    const data = { text, info: undefined as any }
     const chapters: Chapter[] = []
 
     // 尝试按常见的章节标记切分

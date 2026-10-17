@@ -20,6 +20,7 @@ import {
   shutdownWindowController,
   type ShutdownWindowPresentation,
 } from '../modules/lifecycle/GracefulShutdownController'
+import { companionModeController } from '../modules/lifecycle/CompanionModeController'
 import { getThemeBackgroundColor, getShutdownFallbackPresentation, normalizeRgbColor } from './themeColors'
 import { registerWindowDiagnostics } from './windowDiagnostics'
 import { requestRendererShutdown, type ShutdownReason } from './shutdownCoordinator'
@@ -77,11 +78,18 @@ export function setHideOnCloseEnabled(enabled: boolean): void {
   hideOnCloseEnabled = enabled
 }
 
-/** IPC 模块句柄，用于 closed 时清理 LLM 服务 */
-let ipcModule: { cleanupLLMService: (webContentsId: number) => void } | null = null
+/** 窗口关闭时需要回调的 IPC 清理入口 */
+interface WindowCleanupHooks {
+  /** 中止该窗口发起的流、摘除其流订阅 */
+  cleanupLLMService: (webContentsId: number) => void
+  /** 摘除该窗口的编排会话观察关系（会话本身继续运行） */
+  cleanupAgentSessions: (webContentsId: number) => void
+}
+
+let ipcModule: WindowCleanupHooks | null = null
 
 /** 注入 IPC 模块 */
-export function setIpcModuleForWindow(module: { cleanupLLMService: (id: number) => void } | null): void {
+export function setIpcModuleForWindow(module: WindowCleanupHooks | null): void {
   ipcModule = module
 }
 
@@ -449,6 +457,8 @@ function registerWindowLifecycle(win: BrowserWindow): void {
     if (hideOnCloseEnabled) {
       event.preventDefault()
       win.hide()
+      // 主窗口不可见 → 进入伴生低功耗档（暂停感知采集 / 系统监控等后台采样）
+      companionModeController.enter()
       logger.system.info(`[Window] ${windowId} hidden on close (hide-on-close enabled)`)
       return
     }
@@ -459,6 +469,12 @@ function registerWindowLifecycle(win: BrowserWindow): void {
     void handleWindowCloseFlow(win, windowId)
   })
 
+  // 主窗口重新可见 → 退出伴生低功耗档（恢复感知采集 / 系统监控采样）。
+  // show 可能来自多条路径（Dock activate / 二次启动 / 托盘），挂在事件上才不会漏。
+  win.on('show', () => {
+    if (isPrimaryWindow(win.id)) companionModeController.exit()
+  })
+
   win.on('closed', () => {
     if (cachedWebContentsId) {
       void cleanupFileWatcher(`window-${cachedWebContentsId}`)
@@ -467,6 +483,12 @@ function registerWindowLifecycle(win: BrowserWindow): void {
     if (cachedWebContentsId && ipcModule) {
       try {
         ipcModule.cleanupLLMService(cachedWebContentsId)
+      } catch {
+        /* ignore */
+      }
+      try {
+        // 编排会话不随窗口关闭而终止，这里只摘除它的观察关系
+        ipcModule.cleanupAgentSessions(cachedWebContentsId)
       } catch {
         /* ignore */
       }

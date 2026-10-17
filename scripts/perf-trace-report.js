@@ -101,6 +101,27 @@ function latestIn(dir) {
   return path.join(dir, files[files.length - 1])
 }
 
+/**
+ * 跨候选目录取全局最新的一份。
+ *
+ * 不能「遇到第一个非空目录就返回」：tmp-diag 里通常堆着历次历史文件，
+ * 而新一次采集可能落在应用数据目录。只看第一个命中的目录，会安静地拿到
+ * 几天前的旧数据并据此下结论 —— 这比「找不到文件」更危险，因为报告看起来
+ * 完全正常，只是分析的根本不是刚跑的这一次。
+ *
+ * 按文件名比较而非 mtime：文件名是 cpu-YYYYMMDD-HHMMSS，天然按采集时间排序，
+ * 且不受文件被复制 / 同步后 mtime 变化的影响。
+ */
+function newestAcross(dirs) {
+  let best = null
+  for (const dir of dirs) {
+    const file = latestIn(dir)
+    if (!file) continue
+    if (!best || path.basename(file) > path.basename(best)) best = file
+  }
+  return best
+}
+
 function resolveInput() {
   const arg = positional[0]
   if (arg) {
@@ -117,14 +138,12 @@ function resolveInput() {
     return target
   }
 
-  // 无参数：先看当前目录，再遍历候选目录
+  // 无参数：先看当前目录，再跨所有候选目录取全局最新
   const cwdHit = latestIn(process.cwd())
   if (cwdHit) return cwdHit
 
-  for (const dir of candidateDirs()) {
-    const found = latestIn(dir)
-    if (found) return found
-  }
+  const found = newestAcross(candidateDirs())
+  if (found) return found
 
   fail(
     [
@@ -464,41 +483,86 @@ function judge(stats) {
   /* 5. 提交耗时与长任务的对比：开销落在 JS 还是浏览器样式布局 */
   // 帧窗口内的提交耗时优先：它从帧回调起算到任务结束（含紧随的微任务排空），
   // 覆盖 React 的同步提交，与「这一帧花了多少」同一口径。缺失时退回 Profiler 读数。
+  //
+  // 两套 API 的口径不同，不能混着读：longTasks 只统计单次超过 50ms 的任务，
+  // 而 LoAF 统计的是被标记为长动画帧的「帧」，一帧里可能包含多个短任务。
+  // 只看 covered 会把「分散在大量 50ms 以下任务里的脚本时间」整个漏掉，
+  // 从而得出「剩余时间都在样式布局」的错误结论 —— 而实际情况可能是
+  // 大量未归因的 JS。因此必须同时给出 LoAF 脚本段作为上界对照。
   const totalCommit = c('frame.commitMs') || c('react.commitMs')
   const totalTask = c('frame.taskMs')
   const longTaskMs = stats.longTasks.totalMs
+  const loafScriptMs = stats.loaf.taskMs
   if (longTaskMs > 0 && (totalCommit > 0 || totalTask > 0)) {
     const covered = (totalCommit + totalTask) / longTaskMs
+    // 判定「有未归因脚本」的参照物应该是我们自己的脚本耗时，不是长任务总时长：
+    // LoAF 脚本段包含所有脚本执行，而我们埋点只覆盖帧任务与 React 提交。
+    // 两者相差一个量级时，差额就是没有埋点的 JS —— 这部分最容易被
+    // 「剩余时间都在样式布局」的结论掩盖掉。
+    const ourScriptMs = totalCommit + totalTask
+    const unattributedJs =
+      loafScriptMs > ourScriptMs * 1.5 && loafScriptMs > longTaskMs * 0.5
+        ? loafScriptMs - ourScriptMs
+        : 0
+
     items.push({
-      level: 'verdict',
+      level: unattributedJs > 0 ? 'hint' : 'verdict',
       title:
-        covered < 0.3
-          ? '长任务里我们自己的 JS 占比很低'
-          : '长任务主要花在我们自己的 JS 上',
+        unattributedJs > 0
+          ? '存在大量未归因的脚本时间'
+          : covered < 0.3
+            ? '长任务里我们自己的 JS 占比很低'
+            : '长任务主要花在我们自己的 JS 上',
       detail:
-        `长任务累计 ${round(longTaskMs)}ms；其中帧任务 ${round(totalTask)}ms、帧内提交 ${round(totalCommit)}ms，` +
-        `合计占比 ${(covered * 100).toFixed(1)}%。`,
+        `长任务(>50ms) 累计 ${round(longTaskMs)}ms；其中帧任务 ${round(totalTask)}ms、帧内提交 ${round(totalCommit)}ms，` +
+        `合计占长任务 ${(covered * 100).toFixed(1)}%。` +
+        (unattributedJs > 0
+          ? ` 但长动画帧脚本段合计 ${round(loafScriptMs)}ms，比上述两项之和多出约 ${round(unattributedJs)}ms。` +
+            '两套 API 口径不同（LoAF 按帧统计，长任务按单次任务统计），差额说明脚本时间分散在大量 50ms 以下的任务里。'
+          : ''),
       next:
-        covered < 0.3
-          ? '剩余时间在样式计算、布局、绘制与合成上。继续减少 React 提交次数不会改善占用，应削减每次变更影响的节点规模或简化 CSS。'
-          : '削任务与削重渲染是有效方向，优先处理每次提交都重建的那部分子树。',
+        unattributedJs > 0
+          ? '这段脚本既不在 React 提交里、也不在帧调度器任务里，属于未埋点区域。用 DevTools Performance 录一段复现过程，看主线程火焰图落在哪些函数上，别再猜是样式还是注释性优化。'
+          : covered < 0.3
+            ? '剩余时间在样式计算、布局、绘制与合成上。继续减少 React 提交次数不会改善占用，应削减每次变更影响的节点规模或简化 CSS。'
+            : '削任务与削重渲染是有效方向，优先处理每次提交都重建的那部分子树。',
     })
   }
 
   /* 6. 帧调度器是否真的合了帧 */
+  // 合帧率不能单独读：流式数据一片一片到达，片间隔大于一帧时每帧自然只有
+  // 一个任务，perFrame 趋近 1 是到达速率的必然结果，不是调度器失效。
+  // 判定它是否值得关注，先看帧任务总共花了多少时间。
   const frameRuns = c('frame.runs')
   const frameTasks = c('frame.tasks')
   if (frameRuns > 0) {
     const perFrame = frameTasks / frameRuns
-    items.push({
-      level: perFrame > 1.2 ? 'verdict' : 'hint',
-      title: `帧调度器平均每帧执行 ${perFrame.toFixed(2)} 个任务`,
-      detail: `运行 ${frameRuns} 帧，执行任务 ${frameTasks} 个。比值趋近 1 说明各时间源没有合到同一帧。`,
-      next:
-        perFrame > 1.2
-          ? '缓冲刷写与插值推进已合帧，一次用户可见更新对应一次提交。'
-          : '合帧未生效，检查是否有任务在帧循环之外自行定时。',
-    })
+    const spanMs = ticks.length > 0 ? (ticks[ticks.length - 1].t - ticks[0].t) || 1 : 1
+    const frameShare = spanMs > 0 ? totalTask / spanMs : 0
+
+    // 帧任务占比可忽略时，合帧与否都不影响观感，不应占用排查精力
+    if (frameShare < 0.01) {
+      items.push({
+        level: 'info',
+        title: `帧调度器开销可忽略（平均每帧 ${perFrame.toFixed(2)} 个任务）`,
+        detail:
+          `运行 ${frameRuns} 帧、执行 ${frameTasks} 个任务，任务总计仅 ${round(totalTask)}ms，` +
+          `占会话时长 ${(frameShare * 100).toFixed(2)}%。`,
+        next: '这一项不是瓶颈，合帧率无需优化。',
+      })
+    } else {
+      items.push({
+        level: perFrame > 1.2 ? 'verdict' : 'hint',
+        title: `帧调度器平均每帧执行 ${perFrame.toFixed(2)} 个任务`,
+        detail:
+          `运行 ${frameRuns} 帧、执行任务 ${frameTasks} 个，任务总计 ${round(totalTask)}ms，` +
+          `占会话时长 ${(frameShare * 100).toFixed(2)}%。`,
+        next:
+          perFrame > 1.2
+            ? '缓冲刷写与插值推进已合帧，一次用户可见更新对应一次提交。'
+            : '比值趋近 1 但任务总耗时占比不低，说明每帧都有实际工作而非空转，重点看单个任务本身的成本。',
+      })
+    }
   }
 
   /* 7. Markdown 块体积：是否在无边界增长 */
@@ -567,16 +631,29 @@ function judge(stats) {
         '不能读成「这些帧里没有脚本执行」。'
     }
 
+    // 归因覆盖率：byScript 只统计被 LoAF 标记出 attributable 的脚本。
+    // 覆盖率低时，指向「看脚本归因排行」是无效建议 —— 排行里不会有答案，
+    // 只会让人误以为「没有热点」，把排查带到错误的方向。
+    const attributedMs = [...loaf.byScript.values()].reduce((sum, i) => sum + i.totalMs, 0)
+    const coverage = loaf.taskMs > 0 ? attributedMs / loaf.taskMs : 0
+    if (scriptKeys > 0 && coverage < 0.1) {
+      detail +=
+        ` 脚本归因仅覆盖 ${round(attributedMs)}ms（占脚本段 ${(coverage * 100).toFixed(1)}%），` +
+        '大面积未归因属于浏览器能力限制，不代表没有热点。'
+    }
+
     items.push({
       level: 'hint',
       title: '长动画帧构成',
       detail,
       next:
-        loaf.renderMs > 0 && loaf.taskMs > 0 && loaf.renderMs > loaf.taskMs * 1.5
-          ? '渲染段明显高于脚本段，瓶颈在 DOM 变更量与样式计算复杂度 —— 削减每次变更影响的节点规模，比改 JS 更有效。'
-          : loaf.taskMs > 0 && loaf.renderMs > 0 && loaf.taskMs > loaf.renderMs * 1.5
-            ? '脚本段明显高于渲染段，时间花在我们自己的 JS 上，优先看上方脚本归因排行。'
-            : '两个分段量级接近，说明时间同时分布在自己的 JS 与样式布局上，需结合脚本归因与容器排行分别处理。',
+        coverage < 0.1 && loaf.taskMs > 0
+          ? '脚本段已经明确存在，但聚合归因覆盖不足，靠本报告无法定位到函数。用 DevTools Performance 录一段复现过程看火焰图。'
+          : loaf.renderMs > 0 && loaf.taskMs > 0 && loaf.renderMs > loaf.taskMs * 1.5
+            ? '渲染段明显高于脚本段，瓶颈在 DOM 变更量与样式计算复杂度 —— 削减每次变更影响的节点规模，比改 JS 更有效。'
+            : loaf.taskMs > 0 && loaf.renderMs > 0 && loaf.taskMs > loaf.renderMs * 1.5
+              ? '脚本段明显高于渲染段，时间花在我们自己的 JS 上，优先看上方脚本归因排行。'
+              : '两个分段量级接近，说明时间同时分布在自己的 JS 与样式布局上，需结合脚本归因与容器排行分别处理。',
     })
   }
 

@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * 系统监控主视图
  *
@@ -97,8 +98,6 @@ export function SystemMonitorView({
   const [error, setError] = useState<string | null>(null)
   const [isRunning, setIsRunning] = useState(false)
 
-  // 自动刷新定时器
-  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null)
   // 异常事件订阅取消函数
   const unsubscribeAnomaliesRef = useRef<(() => void) | null>(null)
 
@@ -217,16 +216,18 @@ export function SystemMonitorView({
     void subscribeAnomalyEvents()
 
     // 自动刷新：每 30s 拉取最新指标 + 异常列表
-    refreshTimerRef.current = setInterval(() => {
-      void loadLatestMetrics()
-      void loadAnomalies()
-    }, 30_000)
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-system-monitor-poll',
+      intervalMs: 30_000,
+      visibility: 'visible-only',
+      handler: () => {
+        void loadLatestMetrics()
+        void loadAnomalies()
+      },
+    })
 
     return () => {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current)
-        refreshTimerRef.current = null
-      }
+      stopTicker()
       if (unsubscribeAnomaliesRef.current) {
         unsubscribeAnomaliesRef.current()
         unsubscribeAnomaliesRef.current = null

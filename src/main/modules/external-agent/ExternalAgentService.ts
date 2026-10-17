@@ -16,9 +16,9 @@
 import { spawn, type ChildProcess } from 'child_process'
 import * as readline from 'readline'
 import * as crypto from 'crypto'
-import { safeStorage } from 'electron'
 import Store from 'electron-store'
 import { logger } from '@shared/toolkit/LogEngine'
+import { decryptString, encryptString } from '../../guard/safeStorageUtil'
 import {
   DEFAULT_EXTERNAL_AGENT_CONFIG,
   EXTERNAL_AGENT_DEFS,
@@ -43,31 +43,14 @@ const configStore = new Store({ name: 'external-agent-config' })
 const recentStore = new Store({ name: 'external-agent-recent' })
 const RECENT_MAX = 10
 
-/** 加密前缀（仅该前缀的值视为已加密；真实 API Key 通常以 sk- 等开头，不会冲突） */
-const ENC_PREFIX = 'enc:v1:'
-
-/** 加密一个 API Key（不可用时原样返回，保持向后兼容） */
+/** 加密一个 API Key（AES-256-GCM，密钥不可用时降级为明文保持向后兼容） */
 function encryptApiKey(value: string): string {
-  if (!value) return value
-  try {
-    if (safeStorage.isEncryptionAvailable()) {
-      return ENC_PREFIX + safeStorage.encryptString(value).toString('base64')
-    }
-  } catch {
-    /* 加密失败降级为明文（旧行为） */
-  }
-  return value
+  return encryptString(value)
 }
 
-/** 解密一个 API Key（无前缀 = 旧版明文，原样返回；解密失败也原样返回） */
+/** 解密一个 API Key（无前缀 = 旧版明文，原样返回；旧版 enc:v1: 密文无法解密返回空） */
 function decryptApiKey(value: string): string {
-  if (!value.startsWith(ENC_PREFIX)) return value
-  try {
-    return safeStorage.decryptString(Buffer.from(value.slice(ENC_PREFIX.length), 'base64'))
-  } catch {
-    logger.agent?.warn('[ExternalAgent] api key decrypt failed, falling back to raw value')
-    return value
-  }
+  return decryptString(value)
 }
 
 /** 读取配置（与默认值合并，兼容旧版本缺字段；apiKeys 自动解密） */

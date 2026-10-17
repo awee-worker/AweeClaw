@@ -1,7 +1,7 @@
 import { PenTool, BookOpen, Users, FileText, Sparkles, Lightbulb } from 'lucide-react'
 import { logger } from '@shared/toolkit/LogEngine'
 import { useStore } from '@store'
-import { Agent } from '@intelligence/engine'
+import { Agent } from '@intelligence/engine/IntelligenceCore'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { t, type Language } from '@renderer/i18n'
 

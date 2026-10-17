@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * VtsSettings — VTS（VTube Studio）联动设置面板
  *
@@ -15,7 +16,7 @@
  *    口型链路同时消费，面板顶部明确提示。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Activity, Eye, EyeOff, Link2, Link2Off, Play, RefreshCw, Square, Unplug } from 'lucide-react'
 import type { Language } from '@renderer/i18n'
 import { api } from '@renderer/adapters/electronBridge'
@@ -210,9 +211,6 @@ export function VtsSettings({ language }: VtsSettingsProps) {
     [saved, draft],
   )
 
-  /** 轮询定时器引用（卸载时必须清掉） */
-  const pollRef = useRef<number | null>(null)
-
   // --------------------------------------------
   // 初始化 / 状态订阅 + 轮询
   // --------------------------------------------
@@ -256,14 +254,16 @@ export function VtsSettings({ language }: VtsSettingsProps) {
     })
 
     // 轮询：口型值与帧统计只在主进程内存里变化，没有推送事件
-    pollRef.current = window.setInterval(() => void refreshStatus(), 800)
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-vts-poll',
+      intervalMs: 800,
+      visibility: 'visible-only',
+      handler: () => void refreshStatus(),
+    })
 
     return () => {
       off()
-      if (pollRef.current !== null) {
-        window.clearInterval(pollRef.current)
-        pollRef.current = null
-      }
+      stopTicker()
     }
   }, [loadConfig, refreshStatus])
 

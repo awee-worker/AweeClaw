@@ -1,14 +1,17 @@
 /**
  * 后台模块初始化编排
  *
- * 在窗口创建后、内容加载前，按依赖顺序初始化所有主进程模块：
+ * 在窗口创建后、内容加载前，初始化首屏必需的主进程模块（IPC handler、
+ * 持久化恢复）；纯后台服务拆分到 runDeferredInit，由 appBootstrap 在
+ * 页面内容加载完成后触发，不再阻塞首屏：
  *
  * 1. 核心服务：IPC / Security / LSP / Window IPC / Updater
  * 2. 系统级：powerMonitor（系统唤醒通知渲染端）
  * 3. 持久化：SettingsDb / ModuleDataStore / AgentRouter
  * 4. 生命周期：SessionLifecycleManager / CronScheduler
- * 5. 后台异步：ChannelService / Python / PluginRegistry / DesktopControlPlugin
+ * 5. 首屏必需：ChannelService / Python / 各核心 IPC 注册
  * 6. 菜单与语言同步
+ * 7.（延迟）后台服务：见 runDeferredInit
  *
  * 关键模块同步等待完成（确保 IPC handler 就绪后再加载页面），
  * 次要模块异步初始化不阻塞启动。
@@ -31,6 +34,7 @@ import {
 } from './windowManager'
 import { setIpcModuleForWindow } from './windowManager'
 import { setIpcModule as setIpcModuleForCleanup } from './globalCleanup'
+import { resolveInitOrder, type ModuleManifest } from './moduleManifest'
 import { initHostServices } from '../modules/plugin-sdk/hostServices'
 import { registerPerceptionIpc } from '../modules/perception/PerceptionIpc'
 import { registerPerceptionFusionIpc } from '../modules/perception/PerceptionFusionIpc'
@@ -184,123 +188,14 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   await startCronScheduler()
 
   // ==========================================
-  // 6. 后台异步初始化（不阻塞启动）
+  // 6. 首屏必需模块（同步等待，确保页面加载时核心 IPC 就绪）
   //
-  // 每个模块通过 safeInit 独立隔离异常：单个模块初始化失败只记录日志，
-  // 不会中断后续模块。历史故障：某模块内 `require('./Xxx')` 打包后抛
-  // MODULE_NOT_FOUND 并冒泡中断本函数，导致其后所有模块的 IPC 均未注册
-  // （表现为设置页「加载配置失败 / No handler registered」）。
+  // 顺序由模块清单里的 dependsOn 声明推导，不再依赖这里的手写次序。
+  // 每个模块独立隔离异常：单个模块初始化失败只记录日志，不会中断后续模块。
+  // 历史故障：某模块内 `require('./Xxx')` 打包后抛 MODULE_NOT_FOUND 并冒泡，
+  // 导致其后所有模块的 IPC 均未注册（表现为设置页「加载配置失败 / No handler registered」）。
   // ==========================================
-  await safeInit('ChannelService', initChannelService)
-  await safeInit('PythonRuntime', initPythonRuntime)
-  await safeInit('NodeRuntime', initNodeRuntime)
-  await safeInit('DesktopControlPlugin', initDesktopControlPlugin)
-  // 初始化 Host 服务桥（供外部插件访问 native 能力 + MCP SDK）
-  await safeInit('HostServicesBridge', initHostServicesBridge)
-  // 注册感知层 IPC 处理器（暴露 PerceptionStore 给渲染进程）
-  await safeInit('PerceptionIpc', initPerceptionIpc)
-  // 注册监控层 IPC 处理器（暴露 MonitoringService 给渲染进程）
-  await safeInit('MonitoringIpc', initMonitoringIpc)
-  // 注册会话效果 IPC 处理器（暴露 EffectMetricsService 给渲染进程）
-  await safeInit('EffectMetricsIpc', initEffectMetricsIpc)
-  // 注册因果推理 IPC 处理器（暴露 CausalReasoningService 给渲染进程）
-  await safeInit('CausalReasoningIpc', initCausalReasoningIpc)
-  // 注册 IoT Bridge IPC 处理器（暴露 IoTBridge 给渲染进程）
-  await safeInit('IoTIpc', () => initIoTIpc(firstWin))
-  // 注册 SensorFusion IPC 处理器（暴露 SensorFusionService 给渲染进程）
-  await safeInit('SensorFusionIpc', () => initSensorFusionIpc(firstWin))
-  // 注册主动式助手 IPC 处理器（暴露 ProactiveStore 给渲染进程，阶段10 s10-02）
-  await safeInit('ProactiveIpc', initProactiveIpc)
-  // 初始化悬浮头像模块（语音唤醒 + 系统级悬浮头像 + 托盘，不阻塞启动）
-  await safeInit('FloatingAvatarModule', () => initFloatingAvatarModule(firstWin))
-  // 初始化 PPT 预览模块（窗口懒创建，仅预注册 IPC，不阻塞启动）
-  await safeInit('PptPreviewModule', initPptPreviewModule)
-  // 初始化项目执行窗口模块（单例创建 + IPC 注册，不阻塞启动）
-  await safeInit('ProjectExecutionModule', initProjectExecutionModule)
-  // 初始化 ONLYOFFICE 在线编辑模块（IPC 注册 + 会话管理，不阻塞启动）
-  await safeInit('OoEditModule', initOoEditModule)
-  // 注册视频转码 IPC 处理器（用 ffmpeg-static 转码不支持的视频编码，如 H.265 → H.264）
-  // 注册邮件收件 IPC 处理器（IMAP 账户 / 同步 / 邮件读取）
-  await safeInit('MailIpc', registerMailIpc)
-  // 注册邮件中心窗口 IPC（懒创建窗口，不阻塞启动）
-  // 同时按配置应用定时自动整理任务（CronScheduler 已在其之前启动并恢复任务）
-  await safeInit('MailCenter', () => {
-    void mailCenterManager
-    mailDigestScheduler.applyConfig()
-    // 启动 IDLE 实时收信（异步建连，不阻塞启动）
-    imapIdleManager.startAll()
-  })
-  await safeInit('MailIpc', registerMailIpc)
-  // 初始化设备联动模块（WebSocket 长连接 + RPC 处理器 + 事件桥接）
-  // 不阻塞启动：WebSocket 连接在 renderer 推送 token 后才发起
-  await safeInit('DeviceLinkModule', initDeviceLinkModule)
-  // 初始化 VRM 桌面伴侣模块（独立悬浮窗口 + 模型资源协议 + 好感度系统）
-  // 资源协议（vrm-asset://）已在 appBootstrap 的 ready 前注册
-  await safeInit('VrmCompanion', initVrmCompanion)
-  // 初始化字幕/弹幕悬浮层模块（HTTP+WS 供 OBS 使用 + 应用内透明窗口）
-  await safeInit('OverlayModule', initOverlayModule)
-  // 初始化直播互动模块（B站/YouTube/Twitch 弹幕 → 悬浮层 + 渲染层）
-  // 默认全关：适配器只在配置 enabled 后才真正建连
-  await safeInit('LiveModule', initLiveModule)
-  // 初始化 VTS（VTube Studio）联动模块（口型同步 + 表情/热键触发）
-  // 默认全关：只在配置 enabled 后才连接本机 VTS
-  await safeInit('VtsModule', initVtsModule)
-  // 初始化 A2A（Agent2Agent）协议模块（出站工具调用 + 入站 A2A server）
-  // 默认全关：出站不发请求；入站不监听端口
-  await safeInit('A2aModule', initA2aModule)
-  // 初始化对外 API 网关（OpenAI 兼容 + MCP + 托管 A2A）
-  // ⚠️ 必须紧跟 A2A 之后：网关要订阅 A2A 的入站变化并接管监听权
-  // 默认全关：不监听端口
-  await safeInit('OpenApiModule', initOpenApiModule)
-  // 初始化防休眠模块（Agent 长任务期间阻止系统睡眠，任务结束自动恢复）
-  // 唯一「默认开启」的新增能力：空闲时不 spawn 任何进程，只在任务持有时才起守护
-  await safeInit('PowerGuardModule', initPowerGuardModule)
-  // 初始化代码解释器沙箱（run_command 的可选隔离执行层）
-  // 默认策略 off：此时 run_command 完全走宿主终端路径，行为与改造前一致。
-  // 刻意不在启动时探测后端（docker 探测要 spawn 进程），改为首次执行时惰性探测。
-  await safeInit('SandboxModule', initSandboxModule)
-  // 初始化性能追踪模块（进程级 CPU 归因 + 渲染层采样，统一落盘成 JSONL）
-  // 默认不自动开启：常驻采集对绝大多数会话都是无谓开销，需要时由渲染层显式启动
-  await safeInit('PerfTrace', initPerfTraceModule)
-
-  // 初始化群组记忆模块（P1-3 群聊长期记忆）
-  // 默认关闭：需要在设置中显式开启
-  await safeInit('GroupMemory', () => {
-    GroupMemoryManager.getInstance().init()
-    registerGroupMemoryIpcHandlers()
-  })
-
-  // 初始化本地语音引擎模块（P1-5 离线 ASR/TTS）
-  // 默认关闭：需要在设置中显式开启
-  await safeInit('LocalVoice', initializeLocalVoiceModule)
-
-  // 初始化角色卡模块（P2-2 酒馆角色卡导入导出）
-  // 支持酒馆角色卡 V2/V3 格式解析和导出
-  await safeInit('CharacterCard', initializeCharacterCardModule)
-
-  // 初始化表情包模块（P2-2 表情包管理）
-  // 支持全局表情包和角色卡资产中的表情包
-  await safeInit('Emotion', initializeEmotionModule)
-
-  // 初始化有声书模块（P1-7 长文播报）
-  // 默认关闭：需要在设置中显式开启
-  await safeInit('Audiobook', async () => {
-    const { registerAudiobookIpcHandlers } = await import('../modules/audiobook/AudiobookIpc')
-    registerAudiobookIpcHandlers()
-  })
-
-  // 初始化双向 VMC 协议模块（P1-8 双向 VMC）
-  // 默认关闭：需要在设置中显式开启
-  await safeInit('Vmc', async () => {
-    const { initVmcModule } = await import('../modules/vmc')
-    initVmcModule()
-  })
-
-  // 初始化套餐能力一致性收敛（降级后自动关闭无权限的客户端能力）
-  // ⚠️ 必须排在 live / vts / vmc / a2a / openapi / iot / perception / proactive 之后：
-  // 收敛要读它们的配置，模块没起来时读到的都是默认值。
-  // 仅在渲染层拿到后端权威授权快照后才会真正执行（见 capability-guard/index.ts）。
-  await safeInit('CapabilityGuard', initCapabilityGuardModule)
+  await runModulePhase(bootModules(firstWin))
 
   // ==========================================
   // 7. 应用菜单与语言同步
@@ -308,24 +203,187 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   initLanguageSync()
 }
 
+/**
+ * 首屏必需模块清单。
+ *
+ * 声明顺序即无依赖情况下的执行顺序；有先后约束的模块通过 dependsOn 表达，
+ * 由编排器排序并在出现循环依赖时报警。
+ */
+function bootModules(firstWin: BrowserWindow): ModuleManifest[] {
+  return [
+    { id: 'ChannelService', phase: 'boot', init: initChannelService },
+    { id: 'PythonRuntime', phase: 'boot', init: initPythonRuntime },
+    { id: 'NodeRuntime', phase: 'boot', init: initNodeRuntime },
+    { id: 'DesktopControlPlugin', phase: 'boot', init: initDesktopControlPlugin },
+    // Host 服务桥：供外部插件访问 native 能力 + MCP SDK
+    { id: 'HostServicesBridge', phase: 'boot', init: initHostServicesBridge },
+    // 感知层 IPC（暴露 PerceptionStore 给渲染进程）
+    { id: 'PerceptionIpc', phase: 'boot', init: initPerceptionIpc },
+    // 监控层 IPC（暴露 MonitoringService 给渲染进程）
+    { id: 'MonitoringIpc', phase: 'boot', init: initMonitoringIpc },
+    // 会话效果 IPC（暴露 EffectMetricsService 给渲染进程）
+    { id: 'EffectMetricsIpc', phase: 'boot', init: initEffectMetricsIpc },
+    // 因果推理 IPC（暴露 CausalReasoningService 给渲染进程）
+    { id: 'CausalReasoningIpc', phase: 'boot', init: initCausalReasoningIpc },
+    // IoT Bridge IPC（暴露 IoTBridge 给渲染进程）
+    { id: 'IoTIpc', phase: 'boot', init: () => initIoTIpc(firstWin) },
+    // SensorFusion IPC（暴露 SensorFusionService 给渲染进程）
+    { id: 'SensorFusionIpc', phase: 'boot', init: () => initSensorFusionIpc(firstWin) },
+    // 主动式助手 IPC（暴露 ProactiveStore 给渲染进程）
+    { id: 'ProactiveIpc', phase: 'boot', init: initProactiveIpc },
+    // PPT 预览：窗口懒创建，仅预注册 IPC
+    { id: 'PptPreviewModule', phase: 'boot', init: initPptPreviewModule },
+    // 项目执行窗口：单例创建 + IPC 注册
+    { id: 'ProjectExecutionModule', phase: 'boot', init: initProjectExecutionModule },
+    // ONLYOFFICE 在线编辑：IPC 注册 + 会话管理
+    { id: 'OoEditModule', phase: 'boot', init: initOoEditModule },
+    // 邮件收件 IPC（IMAP 账户 / 同步 / 邮件读取）
+    { id: 'MailIpc', phase: 'boot', init: registerMailIpc },
+  ]
+}
+
+/**
+ * 延迟初始化的后台服务（首屏之后执行，不阻塞页面加载）。
+ *
+ * 这里的模块要么是纯后台服务（网络长连接 / 调度器 / 默认关闭的能力），
+ * 要么其 IPC 只在用户打开对应面板时才会被调用——延迟到页面加载后
+ * 启动，渲染层感知不到差别，首屏却不用再等它们排队。
+ *
+ * 与 initializeModules 相同的异常隔离语义：单个失败只记日志。
+ * 顺序约束（迁移自原串行清单，不可打乱）：
+ * - OpenApiModule 必须紧跟 A2aModule 之后（网关订阅 A2A 入站变化并接管监听权）
+ * - CapabilityGuard 必须排在 live / vts / vmc / a2a / openapi / perception /
+ *   proactive 之后（收敛要读它们的配置）
+ */
+export async function runDeferredInit(firstWin: BrowserWindow): Promise<void> {
+  await runModulePhase(deferredModules(firstWin))
+}
+
+/**
+ * 延迟初始化模块清单。
+ *
+ * 这里的模块要么是纯后台服务（网络长连接 / 调度器 / 默认关闭的能力），
+ * 要么其 IPC 只在用户打开对应面板时才会被调用 —— 延迟到页面加载后启动，
+ * 渲染层感知不到差别，首屏却不用再等它们排队。
+ *
+ * 原本靠注释维护的两条硬约束，现在是可校验的依赖声明：
+ * - OpenApiModule 依赖 A2aModule（网关要订阅 A2A 的入站变化并接管监听权）
+ * - CapabilityGuard 依赖全部会产出配置的业务模块（收敛要读它们初始化后的配置）
+ */
+function deferredModules(firstWin: BrowserWindow): ModuleManifest[] {
+  return [
+    // 悬浮头像：语音唤醒 + 系统级悬浮头像 + 托盘
+    { id: 'FloatingAvatarModule', phase: 'deferred', init: () => initFloatingAvatarModule(firstWin) },
+    // 邮件中心窗口 IPC（懒创建）+ 定时自动整理 + IDLE 实时收信
+    {
+      id: 'MailCenter',
+      phase: 'deferred',
+      init: () => {
+        void mailCenterManager
+        mailDigestScheduler.applyConfig()
+        // 异步建连，不阻塞启动
+        imapIdleManager.startAll()
+      },
+    },
+    // 设备联动：WebSocket 长连接 + RPC 处理器 + 事件桥接
+    { id: 'DeviceLinkModule', phase: 'deferred', init: initDeviceLinkModule },
+    // VRM 桌面伴侣：独立悬浮窗口 + 模型资源协议 + 好感度系统
+    { id: 'VrmCompanion', phase: 'deferred', init: initVrmCompanion },
+    // 字幕 / 弹幕悬浮层（HTTP+WS 供 OBS 使用 + 应用内透明窗口）
+    { id: 'OverlayModule', phase: 'deferred', init: initOverlayModule },
+    // 直播互动（默认全关：适配器只在配置 enabled 后才真正建连）
+    { id: 'LiveModule', phase: 'deferred', init: initLiveModule },
+    // VTS 联动（默认全关：只在配置 enabled 后才连接本机 VTS）
+    { id: 'VtsModule', phase: 'deferred', init: initVtsModule },
+    // A2A 协议（默认全关：出站不发请求，入站不监听端口）
+    { id: 'A2aModule', phase: 'deferred', init: initA2aModule },
+    // 对外 API 网关：必须晚于 A2A，否则订阅不到入站变化
+    { id: 'OpenApiModule', phase: 'deferred', dependsOn: ['A2aModule'], init: initOpenApiModule },
+    // 防休眠（默认开启，但空闲时不 spawn 任何进程）
+    { id: 'PowerGuardModule', phase: 'deferred', init: initPowerGuardModule },
+    // 代码解释器沙箱（默认 off：走宿主终端路径，后端探测改为首次使用时惰性进行）
+    { id: 'SandboxModule', phase: 'deferred', init: initSandboxModule },
+    // 性能追踪（默认不自动开启：常驻采集对多数会话都是无谓开销）
+    { id: 'PerfTrace', phase: 'deferred', init: initPerfTraceModule },
+    // 群组记忆（默认关闭，需在设置中显式开启）
+    {
+      id: 'GroupMemory',
+      phase: 'deferred',
+      init: () => {
+        GroupMemoryManager.getInstance().init()
+        registerGroupMemoryIpcHandlers()
+      },
+    },
+    // 本地语音引擎（默认关闭）
+    { id: 'LocalVoice', phase: 'deferred', init: initializeLocalVoiceModule },
+    // 角色卡导入导出
+    { id: 'CharacterCard', phase: 'deferred', init: initializeCharacterCardModule },
+    // 表情包管理
+    { id: 'Emotion', phase: 'deferred', init: initializeEmotionModule },
+    // 有声书（默认关闭）
+    {
+      id: 'Audiobook',
+      phase: 'deferred',
+      init: async () => {
+        const { registerAudiobookIpcHandlers } = await import('../modules/audiobook/AudiobookIpc')
+        registerAudiobookIpcHandlers()
+      },
+    },
+    // 双向 VMC 协议（默认关闭）
+    {
+      id: 'Vmc',
+      phase: 'deferred',
+      init: async () => {
+        const { initVmcModule } = await import('../modules/vmc')
+        initVmcModule()
+      },
+    },
+    // 套餐能力收敛：必须晚于所有会产出配置的业务模块，
+    // 否则读到的是默认值，降级后关不掉无权限的能力。
+    // 仅在渲染层拿到后端权威授权快照后才会真正执行。
+    {
+      id: 'CapabilityGuard',
+      phase: 'deferred',
+      dependsOn: [
+        'LiveModule',
+        'VtsModule',
+        'Vmc',
+        'A2aModule',
+        'OpenApiModule',
+        'IoTIpc',
+        'PerceptionIpc',
+        'ProactiveIpc',
+      ],
+      init: initCapabilityGuardModule,
+    },
+  ]
+}
+
+/**
+ * 按依赖顺序执行某一阶段的全部模块。
+ *
+ * 异常隔离语义与原先的 safeInit 一致：单个模块失败只记录日志，后续模块照常执行。
+ * 排序问题（循环依赖 / 引用了不存在的模块）只报错不阻断 —— 一个配置疏漏
+ * 不该让应用完全起不来，按声明顺序尽力执行即可。
+ */
+async function runModulePhase(modules: ModuleManifest[]): Promise<void> {
+  const { order, problems } = resolveInitOrder(modules, modules[0]?.phase ?? 'boot')
+  for (const problem of problems) {
+    logger.system.error(`[Main] Module manifest problem: ${problem}`)
+  }
+
+  for (const mod of order) {
+    try {
+      await mod.init()
+    } catch (err) {
+      logger.system.error(`[Main] Module init failed: ${mod.id}`, errMsg(err))
+    }
+  }
+}
+
 // ==========================================
 // 子初始化函数
 // ==========================================
-
-/**
- * 安全执行单个模块初始化
- *
- * 异常隔离：任一模块初始化失败仅记录日志，不阻断后续模块。
- * 历史故障：模块内 `require('./Xxx')` 在打包后抛 MODULE_NOT_FOUND 并冒泡，
- * 使本函数后续所有模块的 IPC 都未注册（设置页报「No handler registered」）。
- */
-async function safeInit(label: string, init: () => unknown | Promise<unknown>): Promise<void> {
-  try {
-    await init()
-  } catch (err) {
-    logger.system.error(`[Main] Module init failed: ${label}`, errMsg(err))
-  }
-}
 
 /** powerMonitor：系统从睡眠唤醒后通知渲染端刷新 token */
 function initPowerMonitor(): void {

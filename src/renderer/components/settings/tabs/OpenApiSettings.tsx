@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * OpenApiSettings — 对外 API 网关设置面板（P0-5）
  *
@@ -176,14 +177,19 @@ export function OpenApiSettings({ language }: OpenApiSettingsProps) {
       const off = api.openapi.onChanged((payload) => {
         if (payload?.status) setStatus(payload.status)
       })
-      const timer = setInterval(() => {
-        void api.openapi.getStatus().then((res) => {
-          if (res.success && res.data) setStatus(res.data)
-        })
-      }, 5000)
+      const stopTicker = tickerScheduler.register({
+        id: 'settings-openapi-poll',
+        intervalMs: 5000,
+        visibility: 'visible-only',
+        handler: () => {
+          void api.openapi.getStatus().then((res) => {
+            if (res.success && res.data) setStatus(res.data)
+          })
+        },
+      })
       return () => {
         off?.()
-        clearInterval(timer)
+        stopTicker()
       }
     } catch (err) {
       logger.system.warn('[OpenApiSettings] subscribe failed:', err)

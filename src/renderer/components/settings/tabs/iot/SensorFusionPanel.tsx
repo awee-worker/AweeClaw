@@ -1,3 +1,4 @@
+import { tickerScheduler } from '@renderer/services/tickerScheduler'
 /**
  * 传感器数据融合面板
  *
@@ -163,10 +164,13 @@ export function SensorFusionPanel({ language, refreshKey }: SensorFusionPanelPro
 
   /** 自动每 5 秒刷新状态 */
   useEffect(() => {
-    const timer = setInterval(() => {
-      void loadStatus()
-    }, 5000)
-    return () => clearInterval(timer)
+    const stopTicker = tickerScheduler.register({
+      id: 'settings-sensor-fusion-poll',
+      intervalMs: 5000,
+      visibility: 'visible-only',
+      handler: () => void loadStatus(),
+    })
+    return stopTicker
   }, [loadStatus])
 
   /** 更新配置 */

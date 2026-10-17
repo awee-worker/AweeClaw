@@ -18,13 +18,14 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { logger } from '@shared/toolkit/LogEngine'
 import { APP_TEMP_ROOT_NAME } from '@shared/appConstants'
+import { mainTickerScheduler } from '../lifecycle/mainTickerScheduler'
 
 /** 定时清理周期：30 分钟 */
 const CLEANUP_INTERVAL_MS = 30 * 60 * 1000
 /** 运行期残留文件的过期阈值：2 小时 */
 const STALE_TTL_MS = 2 * 60 * 60 * 1000
-
-let timer: NodeJS.Timeout | null = null
+/** 调度器任务标识 */
+const CLEANUP_TICKER_ID = 'script-temp-cleanup'
 
 /** 应用级回退临时目录（无工作空间时使用） */
 function fallbackTempDir(): string {
@@ -79,14 +80,19 @@ export function startScriptTempCleanup(): void {
     logger.system.warn('[TempCleanup] 启动清理失败:', (err as Error)?.message)
   }
 
-  if (timer) return
-  timer = setInterval(() => {
-    try {
-      cleanupScriptTempDirs(false)
-    } catch {
-      // 定时清理失败静默忽略，下个周期重试
-    }
-  }, CLEANUP_INTERVAL_MS)
-  // 不阻止应用退出
-  if (typeof timer.unref === 'function') timer.unref()
+  // 周期性清理走主进程统一调度器：重复注册会先摘掉旧任务，天然幂等。
+  // 用 always 而非 visible-only——临时文件的产生（AI 执行脚本）与窗口是否可见无关，
+  // 后台执行期间窗口常常是隐藏的，正是最需要清理的时候。
+  mainTickerScheduler.register({
+    id: CLEANUP_TICKER_ID,
+    intervalMs: CLEANUP_INTERVAL_MS,
+    visibility: 'always',
+    handler: () => {
+      try {
+        cleanupScriptTempDirs(false)
+      } catch {
+        // 定时清理失败静默忽略，下个周期重试
+      }
+    },
+  })
 }

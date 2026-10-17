@@ -54,7 +54,7 @@ describe('postEditVerify — 编辑后强制验证', () => {
 
   it('dev 场景下编辑代码文件，诊断结果附加到工具结果', async () => {
     vi.mocked(lintService.getLintErrors).mockResolvedValue({
-      errors: [{ severity: 'error', message: 'Type error', startLine: 12 }],
+      errors: [{ file: 'src/a.ts', severity: 'error', message: 'Type error', startLine: 12 }],
     })
     const result = await verifyEditedFile('edit_file', { path: 'src/a.ts' }, '/ws')
     expect(result).toContain('[Verification]')

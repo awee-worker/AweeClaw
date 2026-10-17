@@ -10,7 +10,7 @@ import WorkflowRunner from './WorkflowRunner'
 import WorkflowHistory from './WorkflowHistory'
 import WorkflowBuilder from './WorkflowBuilder'
 import NodeEditor from './NodeEditor'
-import { Agent } from '@intelligence/engine'
+import { Agent } from '@intelligence/engine/IntelligenceCore'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import {

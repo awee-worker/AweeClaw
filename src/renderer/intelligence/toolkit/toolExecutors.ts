@@ -1348,7 +1348,7 @@ async function scanWorkspaceByBasename(root: string, targetBasenameLower: string
 
     while (queue.length > 0 && visited < FALLBACK_SCAN_MAX_ENTRIES && matches.length < 50) {
         const dir = queue.shift()!
-        let entries: Awaited<ReturnType<typeof api.file.readDir>> = null
+        let entries: Awaited<ReturnType<typeof api.file.readDir>> | null = null
         try {
             entries = await api.file.readDir(dir)
         } catch {

@@ -182,12 +182,7 @@ export function registerCausalReasoningIpc(): void {
       return wrap(async () => {
         // 动态导入 LLMService 避免循环依赖
         const { LLMService } = await import('../ai-provider/AIProviderService');
-        const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-        if (!win) {
-          throw new Error('无可用的 BrowserWindow，无法初始化 LLMService');
-        }
-
-        const llmService = new LLMService(win);
+        const llmService = new LLMService();
         llmAssertionExtractor.initialize(llmService, config);
 
         // 注入回调到 AssertionExtractor（主进程直调，不再走 IPC 回调）

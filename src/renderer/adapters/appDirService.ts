@@ -51,6 +51,63 @@ import {
 } from './sessionStorageAdapter'
 
 /**
+ * 线程写盘指纹
+ *
+ * ── 为什么不能整串序列化 ──
+ *
+ * 判断「这条线程到底变了没有」原先靠 `stableStringify(整个线程对象)`。它是递归
+ * 序列化：消息体、parts、toolCalls 全部展开成字符串再拼接。单次成本与会话全文
+ * 成正比，而调用发生在每次快照暂存上 —— 流式期间每个分片都会触发一次，于是
+ * 开销随会话变长持续上升，且产出的中间字符串本身就是一批可观的垃圾。
+ *
+ * 这里换成结构化指纹：消息体只比**引用**，元数据（title / todos / contextItems
+ * 等）才做序列化 —— 后者体量很小且与消息数无关。
+ *
+ * 引用比较之所以够用：快照来自不可变状态更新，内容变化必然伴随对象重建。
+ * `toPersistedChatThread` 虽会重建 messages 数组，但元素逐个保留原引用，
+ * 因此「新增 / 流式改写末条 / 编辑中间条 / 删除轮次」都会体现为某个下标引用不等。
+ */
+interface ThreadFingerprint {
+  /** 消息条数，用于提前短路 */
+  messageCount: number
+  /** 消息列表的引用快照，逐位比较 */
+  messageRefs: readonly unknown[]
+  /** 元数据签名（已剔除 messages，体量与消息量无关） */
+  meta: string
+}
+
+function buildThreadFingerprint(thread: PersistedChatThread): ThreadFingerprint {
+  const { messages, ...meta } = thread
+  // 懒加载线程的 messages 一定是数组，但指纹不应依赖调用方遵守这一点：
+  // 这里一旦抛错，会让整条快照暂存链路中断，表现为「编辑不落盘」这类难查现象。
+  const list = Array.isArray(messages) ? messages : []
+  return {
+    messageCount: list.length,
+    // 逐位比较只需要引用，不复制消息体
+    messageRefs: list.slice(),
+    meta: stableStringify(meta),
+  }
+}
+
+/**
+ * 两份指纹是否等价
+ *
+ * @param next 本轮指纹
+ * @param previous 上一轮指纹；缺失时一律视为变化
+ */
+function isSameFingerprint(next: ThreadFingerprint, previous: ThreadFingerprint | undefined): boolean {
+  if (!previous) return false
+  if (next.messageCount !== previous.messageCount) return false
+  if (next.meta !== previous.meta) return false
+
+  const length = next.messageRefs.length
+  for (let i = 0; i < length; i++) {
+    if (next.messageRefs[i] !== previous.messageRefs[i]) return false
+  }
+  return true
+}
+
+/**
  * 基于 SQLite 的会话数据存储
  *
  * 通过 IPC 调用主进程的 SessionDb 模块，替代原有的 JSONL 文件读写。
@@ -315,7 +372,7 @@ class ScenarioDirectoryManager {
     }
 
   private flushTimer: ReturnType<typeof setTimeout> | null = null
-  private threadHashes: Map<string, string> = new Map()
+  private threadFingerprints: Map<string, ThreadFingerprint> = new Map()
   private metaHash: string | null = null
   private metaWriteRevision = 0
 
@@ -391,7 +448,7 @@ class ScenarioDirectoryManager {
     await this.initialize(rootPath)
     this.cache = { sessionMeta: null, threads: new Map(), workspaceState: null, settings: null }
     this.dirty = { sessionMeta: false, dirtyThreads: new Set(), workspaceState: false, settings: false }
-    this.threadHashes.clear()
+    this.threadFingerprints.clear()
     this.metaHash = null
     // 初始化 SQLite 数据库（含自动迁移 JSONL 数据）
     await this.sessionDb.initialize(this.getSessionsDirPath())
@@ -423,7 +480,7 @@ class ScenarioDirectoryManager {
     await this.initialize(rootPath)
     this.cache = { sessionMeta: null, threads: new Map(), workspaceState: null, settings: null }
     this.dirty = { sessionMeta: false, dirtyThreads: new Set(), workspaceState: false, settings: false }
-    this.threadHashes.clear()
+    this.threadFingerprints.clear()
     this.metaHash = null
     logger.system.info('[AweeClawDir] Primary root lite set:', rootPath)
   }
@@ -465,7 +522,7 @@ class ScenarioDirectoryManager {
     this.initialized = false
     this.cache = { sessionMeta: null, threads: new Map(), workspaceState: null, settings: null }
     this.dirty = { sessionMeta: false, dirtyThreads: new Set(), workspaceState: false, settings: false }
-    this.threadHashes.clear()
+    this.threadFingerprints.clear()
     this.metaHash = null
     this.metaWriteRevision = 0
     logger.system.info('[AweeClawDir] Reset')
@@ -503,7 +560,7 @@ class ScenarioDirectoryManager {
       const data = this.cache.threads.get(threadId)
       if (data !== undefined) {
         promises.push(this.sessionDb.writeThreadMeta(threadId, data))
-        this.threadHashes.set(threadId, stableStringify(data))
+        this.threadFingerprints.set(threadId, buildThreadFingerprint(data))
       }
     }
 
@@ -734,7 +791,7 @@ class ScenarioDirectoryManager {
     const data = await this.sessionDb.readThreadMeta(threadId)
     if (data !== null) {
       this.cache.threads.set(threadId, data)
-      this.threadHashes.set(threadId, stableStringify(data))
+      this.threadFingerprints.set(threadId, buildThreadFingerprint(data))
     }
     return data
   }
@@ -748,13 +805,20 @@ class ScenarioDirectoryManager {
     return this.sessionDb.loadThreadMessages(threadId)
   }
 
+  /**
+   * 暂存一次线程快照，并判断是否真的需要写盘
+   *
+   * 指纹只比消息引用与元数据，不再序列化消息体：本方法在流式期间每个分片都会
+   * 被调用一次，整串序列化的成本与会话全文成正比，且随会话变长持续上升。
+   * 比较的成本是 O(消息数) 次指针比较，与消息体积无关。
+   */
   setThreadDirty(threadId: string, data: PersistedChatThread): void {
-    const nextHash = stableStringify(data)
-    const prevHash = this.threadHashes.get(threadId)
+    const nextFingerprint = buildThreadFingerprint(data)
+    const previousFingerprint = this.threadFingerprints.get(threadId)
     this.cache.threads.set(threadId, data)
-    if (prevHash === nextHash) return
+    if (isSameFingerprint(nextFingerprint, previousFingerprint)) return
     this.dirty.dirtyThreads.add(threadId)
-    this.threadHashes.set(threadId, nextHash)
+    this.threadFingerprints.set(threadId, nextFingerprint)
     this.scheduleFlush()
   }
 
@@ -770,7 +834,7 @@ class ScenarioDirectoryManager {
   async deleteThreadData(threadId: string): Promise<void> {
     this.cache.threads.delete(threadId)
     this.dirty.dirtyThreads.delete(threadId)
-    this.threadHashes.delete(threadId)
+    this.threadFingerprints.delete(threadId)
 
     const meta = await this.getSessionMeta()
     const nextThreadIds = meta.threadIds.filter(id => id !== threadId)
@@ -794,7 +858,7 @@ class ScenarioDirectoryManager {
     const count = await this.sessionDb.repairMissingTitles()
     if (count > 0) {
       this.cache.threads.clear()
-      this.threadHashes.clear()
+      this.threadFingerprints.clear()
     }
     return count
   }
@@ -803,7 +867,7 @@ class ScenarioDirectoryManager {
     const meta = await this.getSessionMeta()
     for (const threadId of meta.threadIds) {
       this.cache.threads.delete(threadId)
-      this.threadHashes.delete(threadId)
+      this.threadFingerprints.delete(threadId)
     }
     this.cache.sessionMeta = { ...DEFAULT_SESSION_META }
     this.metaHash = stableStringify(this.cache.sessionMeta)
@@ -833,7 +897,7 @@ class ScenarioDirectoryManager {
       const batchData = await this.sessionDb.batchReadThreadMeta(uncachedThreadIds)
       for (const [threadId, data] of Object.entries(batchData)) {
         this.cache.threads.set(threadId, data)
-        this.threadHashes.set(threadId, stableStringify(data))
+        this.threadFingerprints.set(threadId, buildThreadFingerprint(data))
       }
     }
 
@@ -908,7 +972,7 @@ class ScenarioDirectoryManager {
       const batchData = await this.sessionDb.batchReadThreadMeta(uncachedThreadIds)
       for (const [threadId, data] of Object.entries(batchData)) {
         this.cache.threads.set(threadId, data)
-        this.threadHashes.set(threadId, stableStringify(data))
+        this.threadFingerprints.set(threadId, buildThreadFingerprint(data))
       }
     }
 

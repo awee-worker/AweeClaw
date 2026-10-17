@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom/client'
 import 'katex/dist/katex.min.css'
 import './styles/globals.css'
 import { logger } from '@toolkit/LogEngine'
-import { injectSharedDependencies } from '@scenario-system/core/SharedDependencyProvider'
 
 // 注入生产环境标记（供 shared 代码使用）
 // 必须在 Logger 首次使用前设置，确保生产环境检测正确
@@ -15,7 +14,20 @@ logger.refreshProductionMode()
 // 异步注入共享依赖（React、zustand 等）到 window.__AWEECLAW_SHARED__
 // 不 await：应用启动时场景尚未加载，注入会在场景加载前完成；
 // ProgrammaticScenarioLoader 中有兜底检查（isInjected + await），确保 bundle 执行前已注入。
-injectSharedDependencies()
+//
+// 这里用动态 import 而不是顶部静态导入：该模块与场景系统、intelligence 两侧共享，
+// 静态导入会把它所在的 chunk（打包时与 Agent 引擎合并在一起）一并提升为首屏静态依赖，
+// 导致首屏被迫加载整套引擎。动态导入把它推到本轮微任务之后，
+// 场景加载本来就是异步的，且有 isInjected 兜底，时序不受影响。
+void import('@scenario-system/core/SharedDependencyProvider').then(
+  ({ injectSharedDependencies }) => {
+    try {
+      injectSharedDependencies()
+    } catch (err) {
+      logger.system.error('[Bootstrap] Shared dependency injection failed:', err)
+    }
+  },
+)
 
 // 初始化插件 UI 扩展点注册表：拉取已安装插件的 contributes 声明，
 // 注册插件贡献的侧边栏导航项（懒加载，ui.js 在面板首次激活时才 import）。
@@ -134,17 +146,38 @@ class TopLevelErrorBoundary extends React.Component<
 }
 
 // 启动应用
-const root = ReactDOM.createRoot(document.getElementById('root')!)
+//
+// 文案按语言分包懒加载，必须在首次渲染前就绪：t() 是同步 API，
+// 字典未加载时只能返回原始 key。语言取自用户设置（持久化在 store 里），
+// 未设置时回落到浏览器语言。
+async function mountApp() {
+  const root = ReactDOM.createRoot(document.getElementById('root')!)
 
-root.render(
-  <React.StrictMode>
-    <TopLevelErrorBoundary>
-      <React.Suspense fallback={<AppSkeleton />}>
-        <App />
-      </React.Suspense>
-    </TopLevelErrorBoundary>
-  </React.StrictMode>
-)
+  try {
+    const [{ initI18n, detectBrowserLanguage }, { useStore }] = await Promise.all([
+      import('./i18n/i18nSetup'),
+      import('@store'),
+    ])
+    const stored = useStore.getState().language
+    const lang = stored === 'zh' || stored === 'en' ? stored : detectBrowserLanguage()
+    await initI18n(lang)
+  } catch (err) {
+    // 文案加载失败不阻塞启动：界面会显示 key，但应用本身仍可用
+    logger.system.error('[Bootstrap] i18n initialization failed:', err)
+  }
+
+  root.render(
+    <React.StrictMode>
+      <TopLevelErrorBoundary>
+        <React.Suspense fallback={<AppSkeleton />}>
+          <App />
+        </React.Suspense>
+      </TopLevelErrorBoundary>
+    </React.StrictMode>
+  )
+}
+
+void mountApp()
 
 // 空闲时预加载 Monaco
 if ('requestIdleCallback' in window) {

@@ -8,9 +8,8 @@
 import { logger } from '@shared/toolkit/LogEngine'
 import { mailAccountStore } from './MailAccountStore'
 import { mailRepository } from './MailRepository'
-import { simpleParser } from 'mailparser'
+import { mailProxy } from '@main/storage/mailProxy'
 import {
-  fetchMessageSource,
   fetchNewMessages,
   listMailboxes,
   setMessageFlags,
@@ -234,16 +233,8 @@ class MailService {
   ): Promise<{ success: boolean; data?: Buffer; error?: string }> {
     const credential = this.buildCredential(accountId)
     if (!credential) return { success: false, error: '未找到账户凭据，请先在设置中填写' }
-    try {
-      const raw = await fetchMessageSource(credential, folder, uid)
-      if (!raw) return { success: false, error: '无法获取邮件原始内容' }
-      const parsed = await simpleParser(raw)
-      const target = (parsed.attachments ?? []).find((a) => (a.filename || '') === filename)
-      if (!target) return { success: false, error: `未找到附件：${filename}` }
-      return { success: true, data: target.content }
-    } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
-    }
+    // 附件提取（拉报文 + mailparser 解析）已在 mail.worker 子进程完成
+    return mailProxy.fetchAttachment(credential, folder, uid, filename)
   }
 
   // ============================================

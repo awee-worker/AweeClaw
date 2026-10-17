@@ -42,8 +42,11 @@ export type { ContextStats } from './state/IntelligenceStore'
 /* ------------------------------------------------------------------ */
 /* 核心引擎                                                           */
 /* ------------------------------------------------------------------ */
-export { Agent, EventBus, approvalService } from '@intelligence/engine'
-export type { LLMConfig, AgentEvent, EventType } from '@intelligence/engine'
+export { Agent } from '@intelligence/engine/IntelligenceCore'
+export { EventBus } from '@intelligence/engine/EventDispatcher'
+export { approvalService } from '@intelligence/engine/toolOrchestrator'
+export type { AgentEvent, EventType } from '@intelligence/engine/EventDispatcher'
+export type { LLMConfig } from '@intelligence/providerTypes'
 
 /* ------------------------------------------------------------------ */
 /* 工具系统                                                           */

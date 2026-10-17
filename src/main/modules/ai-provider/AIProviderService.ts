@@ -7,8 +7,8 @@
  * - 方法分发器：将调用转发到对应的子服务
  */
 
-import { BrowserWindow } from 'electron'
 import { StreamingService } from './services/StreamProcessor'
+import { streamSubscriptions, type StreamSubscriptions } from './services/StreamSubscriptions'
 import { SyncService } from './services/ModelSyncCoordinator'
 import { StructuredService } from './services/StructuredOutputEngine'
 import { EmbeddingService } from './services/VectorEmbeddingEngine'
@@ -73,15 +73,15 @@ class RequestLifecycleManager {
 /* 服务装配器                                                         */
 /* ------------------------------------------------------------------ */
 
-/** 按窗口隔离各子服务实例 */
+/** 组装各子服务实例 */
 class ServiceAssembler {
   readonly streaming: StreamingService
   readonly sync: SyncService
   readonly structured: StructuredService
   readonly embedding: EmbeddingService
 
-  constructor(window: BrowserWindow) {
-    this.streaming = new StreamingService(window)
+  constructor(subscriptions: StreamSubscriptions = streamSubscriptions) {
+    this.streaming = new StreamingService(subscriptions)
     this.sync = new SyncService()
     this.structured = new StructuredService()
     this.embedding = new EmbeddingService()
@@ -97,8 +97,8 @@ export class LLMService {
   private readonly services: ServiceAssembler
   private readonly lifecycle = new RequestLifecycleManager()
 
-  constructor(window: BrowserWindow) {
-    this.services = new ServiceAssembler(window)
+  constructor() {
+    this.services = new ServiceAssembler()
   }
 
   /** 发送流式消息 */
