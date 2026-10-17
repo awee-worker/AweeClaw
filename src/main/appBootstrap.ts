@@ -375,10 +375,14 @@ function isFloatingAvatarVisible(): boolean {
 
 /**
  * 确保悬浮头像可见（二次启动 / 激活时调用）
+ *
+ * 仅在用户开启悬浮头像时显示：默认关闭后，二次启动不应再把头像拉起来。
  */
 function ensureFloatingAvatarVisible(): void {
   try {
-    FloatingAvatarManager.getInstance().show()
+    const manager = FloatingAvatarManager.getInstance()
+    if (!manager.getConfig().enabled) return
+    manager.show()
   } catch {
     /* 模块未初始化时忽略 */
   }

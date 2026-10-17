@@ -321,7 +321,13 @@ export function createWindow(isEmpty = false, deferLoad = false): BrowserWindow 
       webSecurity: true,
       allowRunningInsecureContent: false,
       v8CacheOptions: 'bypassHeatCheck',
-      backgroundThrottling: false,
+      // 主窗口保持默认的后台节流（true）：窗口最小化或被完全遮挡后，
+      // rAF 与定时器会被降到约 1Hz，不再满帧空转。
+      // 悬浮球 / VRM 伴侣 / 字幕层等需要隐藏后持续渲染的窗口由各自模块显式关闭节流。
+      backgroundThrottling: true,
+      // 关闭拼写检查：Electron 默认会为主窗口加载系统词典并持续做拼写分析，
+      // Windows 上这部分常驻内存约十几到几十 MB，而本应用的输入场景用不到
+      spellcheck: false,
       // 启用 <webview> 标签用于内置浏览器（元素检查/原生导航）
       // 安全由 registerWebviewGuard 的 will-attach-webview 守卫保障
       webviewTag: true,

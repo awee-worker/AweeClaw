@@ -32,7 +32,7 @@ import { SafeMarkdownHTML, SafeHTML } from '@components/foundation/SanitizedHTML
 import { useStore } from '@store'
 import { themeManager } from '../../config/themeDefinition'
 import { t, type Language } from '@renderer/i18n'
-import { openUrlInBrowser } from '@utils/browserLauncher'
+import { openLinkSmart, openLocalFileInEditor } from '@utils/linkRouter'
 
 /** 复制成功状态保持时间（毫秒） */
 const COPY_RESET_DELAY = 2000
@@ -354,16 +354,27 @@ function TableContent({
 function FileContent({ item }: { item: ToolRichContent }) {
   const fileName = item.title || (item.uri ? getFileName(item.uri) : 'File')
 
+  // 文件卡片此前只有 hover 样式，点击没有任何行为；这里接到编辑器打开链路，
+  // 图片 / PDF / Office 会由对应预览器接管，而不是被当成文本读一次。
+  const handleOpen = useCallback(() => {
+    if (item.uri) void openLocalFileInEditor(item.uri)
+  }, [item.uri])
+
   return (
     <div className="flex items-center gap-1.5 text-[12px] group mt-1">
       <FileText className="w-3 h-3 text-text-muted" aria-hidden />
       <span
         className="font-medium text-text-primary transition-colors cursor-pointer hover:underline"
         title={item.uri}
+        onClick={handleOpen}
+        role="button"
       >
         {fileName}
       </span>
-      <ExternalLink className="w-3 h-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-accent" />
+      <ExternalLink
+        className="w-3 h-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-accent"
+        onClick={handleOpen}
+      />
     </div>
   )
 }
@@ -374,7 +385,7 @@ function LinkContent({ item }: { item: ToolRichContent }) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault()
-      if (item.url) openUrlInBrowser(item.url)
+      if (item.url) openLinkSmart(item.url)
     },
     [item.url],
   )

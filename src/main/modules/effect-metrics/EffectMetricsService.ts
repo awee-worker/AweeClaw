@@ -200,7 +200,10 @@ export class EffectMetricsService {
   }
 
   async initialize(): Promise<boolean> {
-    return this.store.initialize()
+    // 不在此打开 LanceDB：EffectMetricsStore 的读写路径都会经 ensureTable() 自动连接。
+    // 记录只在会话结束时产生，冷启动阶段没有任何数据需要落盘，提前 connect 的收益为零，
+    // 代价却是一份常驻的 native 连接与表缓存。
+    return true
   }
 
   // ============================================================

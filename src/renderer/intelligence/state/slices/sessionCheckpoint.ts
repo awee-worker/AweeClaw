@@ -2,7 +2,11 @@ import { api } from '../../../adapters/electronBridge'
 import type { StateCreator } from 'zustand'
 import { logger } from '@toolkit/LogEngine'
 import { internalWriteTracker } from '@services/writeTracker'
-import { buildAgentSessionSnapshot, persistCriticalAgentSessionState } from '../intelligenceStorage'
+import {
+  buildAgentSessionSnapshot,
+  persistCriticalAgentSessionState,
+  schedulePersistedAgentSessionState,
+} from '../intelligenceStorage'
 import type {
   ChatThread,
   CheckpointImage,
@@ -62,6 +66,66 @@ function persistCheckpointState(state: {
   activeBranchId: Record<string, unknown>
 }): void {
   void persistCriticalAgentSessionState(buildAgentSessionSnapshot(state))
+}
+
+/** 单个检查点内文件快照的总字符预算（超出后不再收录新快照，避免内存顶满） */
+const CHECKPOINT_SNAPSHOT_BUDGET_CHARS = 8 * 1024 * 1024
+
+/** 单个检查点内图片 base64 的总字符预算 */
+const CHECKPOINT_IMAGE_BUDGET_CHARS = 16 * 1024 * 1024
+
+/** 统计检查点内文件快照已占用的字符数 */
+function countSnapshotChars(fileSnapshots: Record<string, FileSnapshot>): number {
+  let total = 0
+  for (const snapshot of Object.values(fileSnapshots)) {
+    total += snapshot?.content?.length ?? 0
+  }
+  return total
+}
+
+/**
+ * 按预算裁剪检查点图片。
+ *
+ * 图片以 base64 存在检查点里，而检查点会随会话保留 15 份，单张截图放大后
+ * 可达数 MB，多轮粘贴会把这些 base64 全部钉在内存中。超出预算时保留先到的
+ * 图片并丢弃剩余项，被丢弃的部分只影响该检查点的图片回填，不影响文本回滚。
+ */
+function limitCheckpointImages(images?: CheckpointImage[]): CheckpointImage[] | undefined {
+  if (!images || images.length === 0) return images
+
+  let used = 0
+  const kept: CheckpointImage[] = []
+  for (const image of images) {
+    const size = image?.base64?.length ?? 0
+    if (used + size > CHECKPOINT_IMAGE_BUDGET_CHARS) {
+      logger.agent.warn(
+        `[Checkpoint] Image budget exceeded, dropping ${images.length - kept.length} image(s)`,
+        { used, limit: CHECKPOINT_IMAGE_BUDGET_CHARS },
+      )
+      break
+    }
+    used += size
+    kept.push(image)
+  }
+  return kept
+}
+
+/**
+ * 写入检查点后的持久化（防抖）。
+ *
+ * 检查点是 Agent 执行期最热的写入路径：一次任务里每编辑一个文件都会追加一份
+ * 文件快照。若每次都同步构建会话全量快照并立即落盘，序列化体积与主线程耗时
+ * 都会随会话历史线性放大，表现为执行期窗口卡顿、内存峰值陡增。
+ * 这里改为交给存储层的防抖调度：状态变更立即生效，落盘合并到一次，
+ * 撤销读的是内存中的检查点，能力不受影响。
+ */
+function scheduleCheckpointPersist(state: {
+  threads: Record<string, unknown>
+  currentThreadId: string | null
+  branches: Record<string, unknown>
+  activeBranchId: Record<string, unknown>
+}): void {
+  schedulePersistedAgentSessionState(() => state)
 }
 
 function getThreadCheckpoints(thread?: ChatThread): MessageCheckpoint[] {
@@ -309,7 +373,7 @@ export const createCheckpointSlice: StateCreator<
       timestamp: Date.now(),
       fileSnapshots,
       description,
-      images,
+      images: limitCheckpointImages(images),
       contextItems,
     }
 
@@ -321,7 +385,7 @@ export const createCheckpointSlice: StateCreator<
       'with files:',
       Object.keys(fileSnapshots),
       'images:',
-      images?.length ?? 0,
+      checkpoint.images?.length ?? 0,
       'contextItems:',
       contextItems?.length ?? 0
     )
@@ -336,12 +400,12 @@ export const createCheckpointSlice: StateCreator<
       return { threads }
     })
 
-    persistCheckpointState(get())
+    scheduleCheckpointPersist(get())
     return checkpoint.id
   },
 
   addSnapshotToCheckpoint: (checkpointId, filePath, content) => {
-    logger.agent.info(
+    logger.agent.debug(
       '[Checkpoint] Adding snapshot for checkpoint:',
       checkpointId,
       'file:',
@@ -359,7 +423,7 @@ export const createCheckpointSlice: StateCreator<
 
       const checkpoints = getThreadCheckpoints(thread)
       if (checkpoints.length === 0) {
-        logger.agent.info('[Checkpoint] No checkpoints exist, cannot add snapshot')
+        logger.agent.debug('[Checkpoint] No checkpoints exist, cannot add snapshot')
         return state
       }
 
@@ -371,7 +435,7 @@ export const createCheckpointSlice: StateCreator<
       }
       const targetCheckpoint = nextCheckpoints[checkpointIndex]
 
-      logger.agent.info(
+      logger.agent.debug(
         '[Checkpoint] Target checkpoint:',
         targetCheckpoint.id,
         'existing files:',
@@ -379,7 +443,21 @@ export const createCheckpointSlice: StateCreator<
       )
 
       if (filePath in targetCheckpoint.fileSnapshots) {
-        logger.agent.info('[Checkpoint] Snapshot already exists for:', filePath)
+        logger.agent.debug('[Checkpoint] Snapshot already exists for:', filePath)
+        return state
+      }
+
+      // 预算检查：单个检查点内的快照总量受控，避免多轮编辑后正文全部驻留内存。
+      // 超出预算的文件不建撤销点（与跳过超大文件同一语义），不影响本轮写入本身。
+      const usedChars = countSnapshotChars(targetCheckpoint.fileSnapshots)
+      const incomingChars = content?.length ?? 0
+      if (usedChars + incomingChars > CHECKPOINT_SNAPSHOT_BUDGET_CHARS) {
+        logger.agent.warn('[Checkpoint] Snapshot budget exceeded, skip undo point:', {
+          filePath,
+          usedChars,
+          incomingChars,
+          limit: CHECKPOINT_SNAPSHOT_BUDGET_CHARS,
+        })
         return state
       }
 
@@ -391,7 +469,7 @@ export const createCheckpointSlice: StateCreator<
         },
       }
 
-      logger.agent.info('[Checkpoint] Added snapshot for:', filePath)
+      logger.agent.debug('[Checkpoint] Added snapshot for:', filePath)
 
       return {
         threads: {
@@ -404,7 +482,7 @@ export const createCheckpointSlice: StateCreator<
       }
     })
 
-    persistCheckpointState(get())
+    scheduleCheckpointPersist(get())
   },
 
   restoreToCheckpoint: async (checkpointId) => {

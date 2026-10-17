@@ -1,9 +1,5 @@
 import React, { useCallback, useMemo } from 'react'
-import { api } from '../../adapters/electronBridge'
-import { openUrlInBrowser } from '@utils/browserLauncher'
-import { useStore } from '@store'
-import { useShallow } from 'zustand/react/shallow'
-import { joinPath } from '@shared/toolkit/pathHelper'
+import { openLinkSmart, openLocalFileInEditor } from '@utils/linkRouter'
 import { FileCode, ExternalLink } from 'lucide-react'
 
 interface FilePathAnchorProps {
@@ -58,40 +54,30 @@ function parseContentSegments(input: string): ParsedSegment[] {
 }
 
 export function FilePathAnchor({ text, className = '', enableLineNumbers = true }: FilePathAnchorProps) {
-    const { workspacePath, openFile, setActiveFile } = useStore(useShallow(s => ({ workspacePath: s.workspacePath, openFile: s.openFile, setActiveFile: s.setActiveFile })))
-
-    const handleFileOpen = useCallback(async (e: React.MouseEvent, filePath: string, _line?: number) => {
+    // 路径解析与预览器选择统一交给 linkRouter：此前这里只读文本，
+    // 图片 / PDF / Office 文档点了没有任何反应。
+    const handleFileOpen = useCallback((e: React.MouseEvent, filePath: string, _line?: number) => {
         e.stopPropagation()
-        let absPath = filePath
-        const isAbsolute = /^([a-zA-Z]:[\\/]|[/])/.test(filePath)
-        if (!isAbsolute && workspacePath) {
-            absPath = joinPath(workspacePath, absPath)
-        }
-
-        try {
-            const content = await api.file.read(absPath)
-            if (content !== null) {
-                openFile(absPath, content)
-                setActiveFile(absPath)
-            }
-        } catch { /* ignore invalid files */ }
-    }, [workspacePath, openFile, setActiveFile])
+        void openLocalFileInEditor(filePath)
+    }, [])
 
     const handleUrlClick = useCallback((e: React.MouseEvent, url: string) => {
         e.stopPropagation()
         e.preventDefault()
-        openUrlInBrowser(url)
+        openLinkSmart(url)
     }, [])
 
     const renderedSegments = useMemo(() => {
         const segments = parseContentSegments(text)
         return segments.map((seg, i) => {
             if (seg.type === 'filepath') {
+                // 行号单独展示，不能混进路径：带 :12 的字符串拿去读文件会直接失败
+                const barePath = seg.content.replace(/:\d+$/, '')
                 return (
                     <span
                         key={`fp-${i}-${seg.content.slice(0, 15)}`}
                         className="inline-flex items-center gap-1 cursor-pointer hover:underline text-accent/90 hover:text-accent transition-colors break-all group"
-                        onClick={(e) => handleFileOpen(e, seg.content, seg.line)}
+                        onClick={(e) => handleFileOpen(e, barePath, seg.line)}
                         title={`Open ${seg.content}${seg.line ? `:${seg.line}` : ''}`}
                     >
                         <FileCode className="w-3 h-3 opacity-0 group-hover:opacity-70 transition-opacity flex-shrink-0" />

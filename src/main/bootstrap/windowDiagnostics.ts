@@ -4,7 +4,7 @@
  * 将渲染进程的关键事件（加载失败、渲染进程崩溃、console 输出）转发到主进程日志，
  * 便于在排查渲染进程问题时无需打开 DevTools 即可看到完整上下文。
  */
-import { BrowserWindow } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 
 /** 渲染进程已知的良性警告，转发时过滤避免日志噪音 */
@@ -15,8 +15,54 @@ const BENIGN_RENDERER_ERRORS = [
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
+/**
+ * app 级子进程诊断是否已注册
+ *
+ * `child-process-gone` 是应用级事件，每创建一次窗口就挂一份会让同一次崩溃
+ * 被重复记录 N 遍，因此用模块级标志保证只注册一次。
+ */
+let childProcessDiagnosticsRegistered = false
+
+/**
+ * 注册 GPU / Utility 子进程崩溃诊断
+ *
+ * 白屏最常见的两种成因在日志里是完全不同的证据：
+ * - 渲染进程卡死 → 窗口有内容但不再更新（renderer unresponsive）
+ * - GPU 进程崩溃 → 窗口整片空白，渲染进程本身是健康的（child-process-gone）
+ * 只有把两者都记下来，才能区分「页面卡住」和「合成器没了」。
+ */
+function registerChildProcessDiagnostics(): void {
+  if (childProcessDiagnosticsRegistered) return
+  childProcessDiagnosticsRegistered = true
+
+  app.on('child-process-gone', (_event, details) => {
+    logger.system.error('[Main] child-process-gone', {
+      type: details.type,
+      reason: details.reason,
+      exitCode: details.exitCode,
+      serviceName: details.serviceName ?? '',
+    })
+  })
+}
+
 /** 为指定窗口注册诊断事件监听 */
 export function registerWindowDiagnostics(win: BrowserWindow): void {
+  registerChildProcessDiagnostics()
+
+  // 渲染进程卡死：执行期出现长同步任务时主线程被占满，窗口表现为白屏/无响应。
+  // 此前只记录崩溃事件，卡死没有任何留痕，白屏反馈无法定位到具体窗口与时机。
+  win.webContents.on('unresponsive', () => {
+    logger.system.warn('[Window] renderer unresponsive', {
+      windowId: win.id,
+      visible: win.isVisible(),
+      minimized: win.isMinimized(),
+    })
+  })
+
+  win.webContents.on('responsive', () => {
+    logger.system.info('[Window] renderer responsive again', { windowId: win.id })
+  })
+
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     logger.system.error('[Window] did-fail-load', {
       windowId: win.id,

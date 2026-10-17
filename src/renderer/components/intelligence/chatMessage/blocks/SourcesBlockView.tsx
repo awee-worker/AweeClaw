@@ -4,16 +4,23 @@
  */
 import React from 'react'
 import { Link2 } from 'lucide-react'
-import { openUrlInBrowser } from '@utils/browserLauncher'
+import { openLinkSmart } from '@utils/linkRouter'
 import type { LLMStreamSource } from '@shared/protocols/modelGateway'
 
 interface SourcesBlockViewProps {
   sources: LLMStreamSource[]
 }
 
-/** 获取来源链接 */
+/**
+ * 获取来源链接
+ *
+ * 文档来源也要返回：filename 通常是本地文件名或路径，交给 linkRouter 后可以
+ * 直接在编辑器里打开；此前只处理 url，文档来源整行都不可点击。
+ */
 function getSourceHref(source: LLMStreamSource): string | null {
-  return source.sourceType === 'url' && source.url ? source.url : null
+  if (source.sourceType === 'url' && source.url) return source.url
+  if (source.sourceType === 'document' && source.filename) return source.filename
+  return null
 }
 
 /** 获取来源显示名称 */
@@ -51,7 +58,7 @@ function SourcesBlockViewBase({ sources }: SourcesBlockViewProps) {
                   className="block text-sm font-medium text-accent transition-colors hover:text-accent-hover hover:underline"
                   onClick={(e) => {
                     e.preventDefault()
-                    openUrlInBrowser(href)
+                    openLinkSmart(href)
                   }}
                 >
                   {label}

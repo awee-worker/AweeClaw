@@ -3,7 +3,7 @@
  * 支持 Markdown 预览、图片显示、不支持文件类型提示
  */
 import { api } from '../../adapters/electronBridge'
-import { openUrlInBrowser } from '@utils/browserLauncher'
+import { openLinkSmart } from '@utils/linkRouter'
 import { logger } from '@toolkit/LogEngine'
 import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -18,53 +18,20 @@ import { useStore } from '@store'
 import { themeManager } from '../../config/themeDefinition'
 import {t, type Language} from '@renderer/i18n'
 
-// 文件类型分类
-const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']
-const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v', 'ogv', '3gp']
-const MARKDOWN_EXTENSIONS = ['md', 'markdown', 'mdx']
-const HTML_EXTENSIONS = ['html', 'htm']
-const PDF_EXTENSIONS = ['pdf']
-const DOCX_EXTENSIONS = ['docx']
-const DOC_EXTENSIONS = ['doc']
-const PPTX_EXTENSIONS = ['pptx']
-const PPT_EXTENSIONS = ['ppt']
-const XLSX_EXTENSIONS = ['xlsx', 'xls']
-const CSV_EXTENSIONS = ['csv', 'tsv']
-const BINARY_EXTENSIONS = ['exe', 'dll', 'so', 'dylib', 'bin', 'zip', 'tar', 'gz', 'rar', '7z', 'mp3', 'wav', 'flac', 'psd', 'ai', 'sketch']
-// 3D 模型文件扩展名（GLB 自包含纹理，glTF 需要外部 .bin/.png）
-const MODEL_3D_EXTENSIONS = ['glb', 'gltf']
+// 文件类型判定集中在 @utils/fileKind：链接分发、文件树与编辑器共用同一张表，
+// 这里只做转出，保持既有调用方的导入路径可用
+export {
+  getFileType,
+  isPreviewableFile,
+  isBinaryFile,
+  needsTextContent,
+} from '@utils/fileKind'
+export type { FileType } from '@utils/fileKind'
 
 // remark/rehype 插件数组提升为模块级常量：内联数组每次渲染都会产生新引用，
 // react-markdown 会因 props 变化整棵重新解析，AI 执行期间高频重渲染时预览就会闪动。
 const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath]
 const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex]
-
-export type FileType = 'text' | 'markdown' | 'image' | 'video' | 'html' | 'pdf' | 'docx' | 'doc' | 'pptx' | 'ppt' | 'xlsx' | 'csv' | 'binary' | 'model3d' | 'unknown'
-
-export function getFileType(path: string): FileType {
-    const ext = path.split('.').pop()?.toLowerCase() || ''
-
-    if (IMAGE_EXTENSIONS.includes(ext)) return 'image'
-    if (VIDEO_EXTENSIONS.includes(ext)) return 'video'
-    if (MARKDOWN_EXTENSIONS.includes(ext)) return 'markdown'
-    if (HTML_EXTENSIONS.includes(ext)) return 'html'
-    if (PDF_EXTENSIONS.includes(ext)) return 'pdf'
-    if (DOCX_EXTENSIONS.includes(ext)) return 'docx'
-    if (DOC_EXTENSIONS.includes(ext)) return 'doc'
-    if (PPTX_EXTENSIONS.includes(ext)) return 'pptx'
-    if (PPT_EXTENSIONS.includes(ext)) return 'ppt'
-    if (XLSX_EXTENSIONS.includes(ext)) return 'xlsx'
-    if (CSV_EXTENSIONS.includes(ext)) return 'csv'
-    if (MODEL_3D_EXTENSIONS.includes(ext)) return 'model3d'
-    if (BINARY_EXTENSIONS.includes(ext)) return 'binary'
-
-    return 'text'
-}
-
-export function isPreviewableFile(path: string): boolean {
-    const type = getFileType(path)
-    return type === 'markdown' || type === 'image' || type === 'video' || type === 'pdf' || type === 'docx' || type === 'doc' || type === 'pptx' || type === 'ppt' || type === 'xlsx' || type === 'csv' || type === 'model3d'
-}
 
 /**
  * 将本地文件路径转为 local-preview:// 协议 URL
@@ -77,10 +44,6 @@ export function isPreviewableFile(path: string): boolean {
  */
 function toLocalPreviewUrl(filePath: string): string {
     return `local-preview:///${encodeURIComponent(filePath).replace(/%2F/g, '/')}`
-}
-
-export function isBinaryFile(path: string): boolean {
-    return getFileType(path) === 'binary'
 }
 
 // ===== Markdown 预览组件 =====
@@ -105,7 +68,9 @@ export const MarkdownPreview = memo(function MarkdownPreview({ content, fontSize
     // components 映射用 useMemo 固定引用：内联字面量每次渲染都是新对象，
     // 会让 react-markdown 整棵重新解析重建 DOM，表现为预览内容闪动。
     // 只有字号或明暗主题真正变化时才重建。
-    const markdownComponents = useMemo(() => ({
+    // 显式标注组件映射类型：否则各标签回调的参数都是隐式 any，
+    // 传给 react-markdown 的 components 时整体不兼容。
+    const markdownComponents = useMemo<React.ComponentProps<typeof ReactMarkdown>['components']>(() => ({
         code({ className, children, node, ...props }: { className?: string; children?: React.ReactNode; node?: unknown }) {
             const match = /language-(\w+)/.exec(className || '')
             const codeContent = String(children)
@@ -135,7 +100,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({ content, fontSize
             const cleanHref = href ? href.replace(/[*_~`#|]+$/g, '').replace(/^[*_~`#|]+/g, '').trim() : href
             return (
                 <a href={cleanHref} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline"
-                    onClick={(e) => { e.preventDefault(); if (cleanHref) openUrlInBrowser(cleanHref) }}
+                    onClick={(e) => { e.preventDefault(); if (cleanHref) openLinkSmart(cleanHref) }}
                 >
                     {children}
                 </a>

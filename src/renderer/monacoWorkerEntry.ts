@@ -4,6 +4,7 @@
  */
 
 import * as monaco from 'monaco-editor'
+import { registerMonaco } from './monacoRegistry'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
 import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
@@ -95,5 +96,9 @@ javascriptDefaults.setCompilerOptions({
   esModuleInterop: true,
   skipLibCheck: true,
 })
+
+// 登记到注册表：保存 / 版本同步等模块据此判断 Monaco 是否已在内存中，
+// 而不必静态 import 本模块（那会让懒加载失效）
+registerMonaco(monaco)
 
 export { monaco }

@@ -33,9 +33,10 @@ interface FloatingAvatarConfig {
 // 默认配置
 // ============================================
 
+/** 默认关闭：与主进程 DEFAULT_CONFIG 保持一致，避免加载前的初始态与实际不符 */
 const DEFAULT_AVATAR_CONFIG: FloatingAvatarConfig = {
-  enabled: true,
-  showOnStartup: true,
+  enabled: false,
+  showOnStartup: false,
 }
 
 // ============================================

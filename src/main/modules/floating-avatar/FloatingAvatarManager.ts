@@ -66,10 +66,10 @@ interface PersistedAvatarConfig {
   positionY: number | null
 }
 
-/** 默认配置 */
+/** 默认配置（头像默认关闭，由用户在「设置 → 外观设置 → 悬浮头像」中主动开启） */
 const DEFAULT_CONFIG: PersistedAvatarConfig = {
-  enabled: true,
-  showOnStartup: true,
+  enabled: false,
+  showOnStartup: false,
   size: AVATAR_WIDTH,
   positionX: null,
   positionY: null,
@@ -183,6 +183,10 @@ export class FloatingAvatarManager {
 
     // 设置 alwaysOnTop 级别（create 选项中 alwaysOnTop:true 默认 level 为 'normal'，需显式提升）
     this.window.setAlwaysOnTop(true, 'screen-saver')
+
+    // 任务栏策略必须在窗口真正显示前后各声明一次，见 applyTaskbarPolicy 注释
+    this.applyTaskbarPolicy()
+    this.window.on('show', () => this.applyTaskbarPolicy())
 
     // macOS：悬浮球不出现在 Dock 右键菜单的窗口列表中
     // （excludedFromShownWindowsMenu 仅支持实例属性，不支持构造选项，故此处设置）
@@ -397,6 +401,8 @@ export class FloatingAvatarManager {
     }
     if (this.window && !this.window.isVisible()) {
       this.window.showInactive()
+      // Windows 会在窗口首次显示时重新登记任务栏条目，显示后必须再压一次
+      this.applyTaskbarPolicy()
       logger.system.info('[FloatingAvatar] Shown')
     }
     // 头像可见时启用主窗口 hide-on-close（关闭主窗口仅隐藏，保留 warm renderer）
@@ -441,6 +447,28 @@ export class FloatingAvatarManager {
   setAlwaysOnTop(onTop: boolean): void {
     if (this.window && !this.window.isDestroyed()) {
       this.window.setAlwaysOnTop(onTop, 'screen-saver')
+      // 调整置顶层级会改动窗口的 owner 关系，任务栏登记需要重新压掉
+      this.applyTaskbarPolicy()
+    }
+  }
+
+  /**
+   * 应用任务栏显示策略
+   *
+   * Windows 上 `skipTaskbar` 只在「窗口还没有任务栏登记」时有效：构造选项在窗口
+   * 创建阶段执行，而任务栏按钮由系统在窗口首次显示、以及 owner/置顶层级变化时
+   * 重新登记。只在构造时声明，结果就是主窗口之外再多出一个悬浮球条目。
+   *
+   * 因此把「不占任务栏」当作一个需要反复声明的状态：创建后、每次显示后、
+   * 每次调整置顶层级后都重新压一次。macOS 侧走窗口菜单排除，不调用该接口。
+   */
+  private applyTaskbarPolicy(): void {
+    if (!this.window || this.window.isDestroyed()) return
+    if (process.platform !== 'win32' && process.platform !== 'linux') return
+    try {
+      this.window.setSkipTaskbar(true)
+    } catch (err) {
+      logger.system.warn('[FloatingAvatar] setSkipTaskbar failed:', err)
     }
   }
 

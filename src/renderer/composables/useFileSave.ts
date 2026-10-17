@@ -12,7 +12,7 @@ import { globalDecide as globalConfirm } from '@components/foundation/DecisionOv
 import { toast } from '@components/foundation/NotificationProvider'
 import { t, type Language } from '@renderer/i18n'
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
-import { monaco } from '@renderer/monacoWorkerEntry'
+import { getLoadedMonaco } from '@renderer/monacoRegistry'
 
 /** 自动保存延迟模式下的默认等待时长 */
 const DEFAULT_AUTOSAVE_DELAY = 1000
@@ -23,6 +23,9 @@ const DEFAULT_AUTOSAVE_DELAY = 1000
 
 /** 读取文件对应 Monaco model 的版本号 */
 function getModelVersionId(filePath: string): number | undefined {
+  // 编辑器从未打开过时 Monaco 不在内存中，也就不存在对应 model
+  const monaco = getLoadedMonaco()
+  if (!monaco) return undefined
   const uri = monaco.Uri.file(filePath)
   const model = monaco.editor.getModel(uri)
   return model?.getAlternativeVersionId()

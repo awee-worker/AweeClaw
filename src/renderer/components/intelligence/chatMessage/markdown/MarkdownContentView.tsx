@@ -8,11 +8,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { useStore } from '@store'
-import { useShallow } from 'zustand/react/shallow'
-import { api } from '../../../../adapters/electronBridge'
-import { openUrlInBrowser } from '@utils/browserLauncher'
-import { toFullPath } from '@shared/toolkit/pathHelper'
-import { logger } from '@shared/toolkit/LogEngine'
+import { cleanLinkHref, openLinkSmart, openLocalFileInEditor } from '@utils/linkRouter'
 import { useSmoothStream } from '@hooks/useSmoothStream'
 import { SystemAlert, parseSystemAlert } from '../../SystemAlert'
 
@@ -188,26 +184,15 @@ function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, i
   )
   const enableBlockReveal = smoothStreaming
 
-  const { workspacePath, openFile, setActiveFile } = useStore(useShallow(s => ({
-    workspacePath: s.workspacePath,
-    openFile: s.openFile,
-    setActiveFile: s.setActiveFile,
-  })))
-
-  /** 打开文件预览 */
-  const handleOpenFile = React.useCallback(async (filePath: string) => {
-    if (!workspacePath) return
-    const resolvedPath = toFullPath(filePath, workspacePath)
-    try {
-      const fileContent = await api.file.read(resolvedPath)
-      if (fileContent !== null) {
-        openFile(resolvedPath, fileContent)
-        setActiveFile(resolvedPath)
-      }
-    } catch (err) {
-      logger.ui.warn('Failed to open file from markdown:', err)
-    }
-  }, [workspacePath, openFile, setActiveFile])
+  /**
+   * 打开正文里提到的文件
+   *
+   * 统一走 linkRouter：解析相对路径、按扩展名选择预览器、二进制文件不预读内容。
+   * 此前这里直接 read 文本再交给编辑器，图片 / PDF / Office 文档一律打不开。
+   */
+  const handleOpenFile = React.useCallback((filePath: string) => {
+    void openLocalFileInEditor(filePath)
+  }, [])
 
   /** 流式子节点装饰 */
   const renderStreamingChildren = React.useCallback((children: React.ReactNode) => {
@@ -223,21 +208,29 @@ function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, i
       const isCodeBlock = match || node?.position?.start?.line !== node?.position?.end?.line
       const isInline = !isCodeBlock && !codeContent.includes('\n')
 
-      const looksLikePath = isInline && (
+      // 行内 code 可能是文件路径，也可能是被代码化包起来的网址（AI 常这么写）。
+      // 两者都要可点，但目标不同：网址进浏览器，路径进编辑器。
+      const isInlineUrl = isInline && /^https?:\/\//i.test(codeContent)
+
+      const looksLikePath = !isInlineUrl && isInline && (
         codeContent.includes('/') ||
         codeContent.includes('\\') ||
         codeContent.match(/\.(ts|tsx|js|jsx|vue|uvue|md|json|css|scss|less|html|go|rs|py|java|c|cpp|h|hpp)$/i)
       ) && !codeContent.includes(' ') && codeContent.length > 2
 
-      if (isInline && looksLikePath) {
+      if (isInline && (looksLikePath || isInlineUrl)) {
         return (
           <code
             className="bg-surface-muted px-1.5 py-0.5 rounded-md text-accent font-mono text-[0.9em] border border-border break-all cursor-pointer hover:underline decoration-accent/50 underline-offset-2 transition-all"
             onClick={(e) => {
               e.preventDefault()
+              if (isInlineUrl) {
+                openLinkSmart(codeContent)
+                return
+              }
               handleOpenFile(codeContent)
             }}
-            title="Click to open file"
+            title={isInlineUrl ? 'Click to open link' : 'Click to open file'}
             {...props}
           >
             {children}
@@ -261,7 +254,7 @@ function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, i
     ol: ({ children }: any) => <ol className={`list-decimal pl-5 mb-3 space-y-1 ${enableBlockReveal ? 'animate-block-reveal' : ''}`}>{children}</ol>,
     li: ({ children }: any) => <li className={`pl-1 ${enableBlockReveal ? 'animate-block-reveal' : ''}`}>{renderStreamingChildren(children)}</li>,
     a: ({ href, children }: any) => {
-      const cleanHref = href ? href.replace(/[*_~`#|]+$/g, '').replace(/^[*_~`#|]+/g, '').trim() : href
+      const cleanHref = href ? cleanLinkHref(href) : href
       return (
         <a
           href={cleanHref}
@@ -269,7 +262,7 @@ function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, i
           className="text-accent hover:underline decoration-accent/50 underline-offset-2 font-medium"
           onClick={(e) => {
             e.preventDefault()
-            if (cleanHref) openUrlInBrowser(cleanHref)
+            if (cleanHref) openLinkSmart(cleanHref)
           }}
         >{renderStreamingChildren(children)}</a>
       )

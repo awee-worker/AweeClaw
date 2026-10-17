@@ -2,7 +2,27 @@ import { logger } from '@toolkit/LogEngine'
 import { agentSessionRepository, type AgentSessionSnapshot } from '@services/sessionRepository'
 import { toPersistedChatThread, type ChatThread } from '@intelligence/providerTypes'
 
-let lastSerializedValue: string | null = null
+/**
+ * 上一次已落盘快照的指纹
+ *
+ * 这里只保留指纹而不保留整串序列化结果：会话快照包含消息正文与检查点里的
+ * 文件副本，一份完整字符串常有数十 MB，常驻等于凭空多占一份会话内存。
+ * 指纹由长度与两个独立滚动哈希组成，用于「内容未变则跳过写盘」的等价判断，
+ * 碰撞概率可忽略。
+ */
+let lastSerializedFingerprint: string | null = null
+
+/** 计算序列化内容的轻量指纹（不保留原串，避免大字符串常驻） */
+function fingerprintOf(serialized: string): string {
+  let hashA = 0x811c9dc5
+  let hashB = 0x1000193
+  for (let i = 0; i < serialized.length; i += 1) {
+    const code = serialized.charCodeAt(i)
+    hashA = Math.imul(hashA ^ code, 0x01000193)
+    hashB = Math.imul(hashB + code, 0x85ebca6b)
+  }
+  return `${serialized.length}:${(hashA >>> 0).toString(36)}:${(hashB >>> 0).toString(36)}`
+}
 let writeSuspendCount = 0
 let scheduledPersistTimer: ReturnType<typeof setTimeout> | null = null
 let pendingStateGetter: (() => Partial<PersistedAgentSessionState>) | null = null
@@ -113,7 +133,7 @@ export function parseAgentStorageValue(value: string): AgentSessionSnapshot {
 }
 
 export function markAgentStorageSnapshotAsCurrent(snapshot: AgentSessionSnapshot | null): void {
-  lastSerializedValue = snapshot ? serializeAgentSessionSnapshot(snapshot) : null
+  lastSerializedFingerprint = snapshot ? fingerprintOf(serializeAgentSessionSnapshot(snapshot)) : null
 }
 
 function clearScheduledPersistTimer(): void {
@@ -130,13 +150,13 @@ function stagePersistedAgentSessionFromGetter(
     return
   }
   const snapshot = buildAgentSessionSnapshot(getState())
-  const serialized = serializeAgentSessionSnapshot(snapshot)
-  if (serialized === lastSerializedValue) {
+  const fingerprint = fingerprintOf(serializeAgentSessionSnapshot(snapshot))
+  if (fingerprint === lastSerializedFingerprint) {
     return
   }
 
   agentSessionRepository.stageSnapshot(snapshot)
-  lastSerializedValue = serialized
+  lastSerializedFingerprint = fingerprint
 }
 
 export function schedulePersistedAgentSessionState(
@@ -187,7 +207,7 @@ export async function persistCriticalAgentSessionState(
     flushScheduledPersistedAgentSessionState()
     agentSessionRepository.stageSnapshot(buildAgentSessionSnapshot(state))
     await agentSessionRepository.flush()
-    lastSerializedValue = null
+    lastSerializedFingerprint = null
   } catch (error) {
     logger.agent.error('[AgentStorage] Failed to persist critical agent session state:', error)
   }
@@ -196,6 +216,6 @@ export async function persistCriticalAgentSessionState(
 export async function clearPersistedAgentSessionState(): Promise<void> {
   clearScheduledPersistTimer()
   pendingStateGetter = null
-  lastSerializedValue = null
+  lastSerializedFingerprint = null
   await agentSessionRepository.clear()
 }

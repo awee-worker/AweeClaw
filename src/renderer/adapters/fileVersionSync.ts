@@ -9,7 +9,7 @@
  */
 
 import { useStore } from '@store'
-import { monaco } from '@renderer/monacoWorkerEntry'
+import { getLoadedMonaco } from '@renderer/monacoRegistry'
 import { logger } from '@toolkit/LogEngine'
 
 interface ScenarioSyncConfig {
@@ -68,6 +68,9 @@ export function scheduleSavedVersionSync(filePath: string, expectedContent: stri
     let attempts = 0
 
     const sync = () => {
+        // 编辑器未加载时没有可同步的 model，直接结束（与 model 不存在同义）
+        const monaco = getLoadedMonaco()
+        if (!monaco) return
         const model = monaco.editor.getModel(monaco.Uri.file(filePath))
         if (!model) return
 

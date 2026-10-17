@@ -85,13 +85,12 @@ export class MonitoringService {
    */
   async initialize(): Promise<boolean> {
     try {
-      const ok = await this.store.initialize()
-      if (!ok) {
-        logger.monitoring?.warn('[MonitoringService] 存储初始化失败，将仅使用内存模式')
-      }
+      // 不在此打开 LanceDB。SystemMetricsStore 的每次读写都会经 ensureTable() 自动
+      // 建立连接，启动时主动 connect 只会让「监控默认关闭」的绝大多数用户白白常驻
+      // 一份 native 连接与索引缓存（Windows 上通常十几到几十 MB）。
       this.config = this.store.getConfig()
       this.detector.updateConfig(this.config)
-      logger.monitoring?.info('[MonitoringService] 初始化完成')
+      logger.monitoring?.info('[MonitoringService] 初始化完成（存储按需连接）')
       return true
     } catch (e) {
       logger.monitoring?.error('[MonitoringService] 初始化失败:', e)
