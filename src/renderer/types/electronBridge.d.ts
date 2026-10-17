@@ -1698,7 +1698,7 @@ export interface ElectronAPI {
    */
   openFolder: () => Promise<WorkspaceOpenResult>
   selectFolder: () => Promise<string | null>
-  selectForImport: (options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean }) => Promise<string[]>
+  selectForImport: (options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean; mode?: 'files' | 'dirs' }) => Promise<string[]>
   selectForExport: (options: { title?: string; defaultPath?: string }) => Promise<string | null>
   importIntoWorkspace: (sourcePaths: string[], targetDir: string) => Promise<{ success: boolean; error?: string; results?: Array<{ source: string; target: string; success: boolean; error?: string }> }>
   exportFromWorkspace: (sourcePath: string, targetDir: string) => Promise<{ success: boolean; error?: string; target?: string }>

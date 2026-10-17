@@ -84,6 +84,14 @@ export class FloatingAvatarManager {
   private window: BrowserWindow | null = null
   private config: PersistedAvatarConfig = { ...DEFAULT_CONFIG }
 
+  /**
+   * 窗口创建回调。
+   *
+   * 右键菜单等依赖窗口实例的绑定必须跟随窗口生命周期，而不是在初始化时
+   * 绑一次：头像窗口改为按需创建后，初始化阶段可能根本没有窗口。
+   */
+  private onCreated: ((win: BrowserWindow) => void) | null = null
+
   private constructor() {}
 
   static getInstance(): FloatingAvatarManager {
@@ -197,8 +205,32 @@ export class FloatingAvatarManager {
 
     this.loadAvatarContent()
 
+    // 通知外部挂载依赖窗口实例的绑定（右键菜单等）
+    try {
+      this.onCreated?.(this.window)
+    } catch (err) {
+      logger.system.warn('[FloatingAvatar] onCreated callback failed:', err)
+    }
+
     logger.system.info('[FloatingAvatar] Window created', { x, y })
     return this.window
+  }
+
+  /**
+   * 注册窗口创建回调；窗口已存在时立即执行一次。
+   *
+   * 用回调而不是让调用方先 create 再 attach：窗口可能由 show() / ensureCreated()
+   * 或其它入口拉起，只有挂在创建链路上才能保证每次都有绑定。
+   */
+  setOnCreated(fn: (win: BrowserWindow) => void): void {
+    this.onCreated = fn
+    if (this.window && !this.window.isDestroyed()) {
+      try {
+        fn(this.window)
+      } catch (err) {
+        logger.system.warn('[FloatingAvatar] onCreated callback failed:', err)
+      }
+    }
   }
 
   /** 加载头像窗口内容：生产 loadFile / 开发 loadURL */

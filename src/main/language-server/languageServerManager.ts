@@ -15,6 +15,7 @@ import { toAppError } from '@shared/toolkit/errorCatalog'
 import { getExecutableName } from '@shared/toolkit/pathHelper'
 import { normalizeLspUri } from '@shared/toolkit/uriHelper'
 import { spawn, ChildProcess } from 'child_process'
+import { hardKillProcessTree } from '../process/processTree'
 import * as path from 'path'
 import * as fs from 'fs'
 import { BrowserWindow } from 'electron'
@@ -449,17 +450,31 @@ class LspManager {
   private diagnosticsCache: CacheService<any[]>
   private startingServers: Set<string> = new Set()
 
+  // 主动停止中的服务器：close 回调据此跳过自动重启，避免「停掉又拉起」的抖动
+  private stoppingServers: Set<string> = new Set()
+
   // 跟踪每个服务器打开的文档
   private serverOpenedDocuments: Map<string, Map<string, { languageId: string; version: number; text: string }>> = new Map()
 
   // 空闲关闭配置
   private serverLastActivity: Map<string, number> = new Map()
   private idleCheckInterval: NodeJS.Timeout | null = null
-  private static readonly IDLE_TIMEOUT_MS = 5 * 60 * 1000 // 5 分钟无活动则关闭
+  private static readonly IDLE_TIMEOUT_MS = 2 * 60 * 1000 // 2 分钟无活动则关闭
 
   // 自动重启配置
   private static readonly MAX_CRASH_COUNT = 3
   private static readonly CRASH_COOLDOWN_MS = LSP_DEFAULTS.crashCooldownMs
+
+  /**
+   * 同时运行的 LSP 进程上限。
+   *
+   * 语言服务器的 key 含根目录，monorepo 里每个子项目都有自己的 package.json /
+   * tsconfig.json，同一语言会被拆成多个实例，而每个实例都是完整的语言服务进程
+   * （单个 tsserver 常在 150MB 以上）。AI 在一次任务里跨子项目读写文件时，
+   * 这些实例会一个接一个地被拉起并长期保活，任务管理器里就会出现八九个主程序
+   * 子进程、内存一路走高。这里统一收敛为「每种语言一个实例 + 全局上限」。
+   */
+  private static readonly MAX_RUNNING_SERVERS = 4
 
   // waitForDiagnostics 相关
   private diagnosticsWaiters: Map<string, { resolve: () => void; timeout: NodeJS.Timeout }[]> = new Map()
@@ -510,7 +525,7 @@ class LspManager {
           }
         }
       }
-    }, 60000) // 每分钟检查一次
+    }, 30000) // 每 30s 巡检一次，让空闲阈值在实际释放时点上不被巡检间隔明显放大
   }
 
   private updateActivity(key: string) {
@@ -521,15 +536,104 @@ class LspManager {
     return `${serverName}:${workspacePath.replace(/\\/g, '/')}`
   }
 
+  /**
+   * 查找该语言已就绪的实例 key。
+   *
+   * 语言服务的 key 带根目录，但一个进程完全可以服务同一语言的多个根目录，
+   * 而多开一个进程的代价是多一份完整语言服务的常驻内存。这里按语言收敛。
+   */
+  private findReusableServerKey(serverName: string): string | null {
+    for (const [key, instance] of this.servers) {
+      if (
+        instance.config.name === serverName &&
+        instance.initialized &&
+        instance.process &&
+        instance.process.exitCode === null &&
+        !instance.process.killed
+      ) {
+        return key
+      }
+    }
+    return null
+  }
+
+  /**
+   * 计算调用方应使用的实例 key：已有同语言实例就用它的 key，否则按根目录新建。
+   *
+   * startServer 内部会在复用时跳过 spawn，但 key 仍按传入的根目录算，
+   * 调用方拿这个 key 发通知就会打到一个不存在的实例上，因此必须统一在这里解析。
+   */
+  private resolveServerKey(serverName: string, workspacePath: string): string {
+    return this.findReusableServerKey(serverName) ?? this.getInstanceKey(serverName, workspacePath)
+  }
+
+  /**
+   * 回收最久未活动的实例，把运行中的 LSP 进程数压到上限以内。
+   *
+   * 只在新进程即将拉起时触发，且挑的是最久没人用的那个，不会打断正在服务请求的实例。
+   */
+  private async evictLeastActiveServer(): Promise<void> {
+    if (this.servers.size < LspManager.MAX_RUNNING_SERVERS) return
+
+    let victimKey: string | null = null
+    let victimActivity = Number.POSITIVE_INFINITY
+
+    for (const [key, instance] of this.servers) {
+      // 正在启动的不动，避免刚起来就被回收
+      if (!instance.initialized || this.startingServers.has(key)) continue
+      const activity = this.serverLastActivity.get(key) ?? 0
+      if (activity < victimActivity) {
+        victimActivity = activity
+        victimKey = key
+      }
+    }
+
+    if (!victimKey) return
+
+    logger.lsp.info(
+      `[LSP ${victimKey}] Evicting least-recently-used server (limit ${LspManager.MAX_RUNNING_SERVERS})`,
+    )
+    await this.stopServerByKey(victimKey)
+  }
+
   getServerForLanguage(languageId: LanguageId): string | undefined {
     return this.languageToServer.get(languageId)
   }
 
+  /** 同语言启动请求的串行队列：并发请求排队，避免各自拉起一个进程 */
+  private startQueues: Map<string, Promise<boolean>> = new Map()
+
   async startServer(serverName: string, workspacePath: string): Promise<boolean> {
+    const previous = this.startQueues.get(serverName)
+    const task = (previous ?? Promise.resolve(false))
+      .catch(() => false)
+      .then(() => this.startServerCore(serverName, workspacePath))
+
+    this.startQueues.set(serverName, task)
+    try {
+      return await task
+    } finally {
+      if (this.startQueues.get(serverName) === task) {
+        this.startQueues.delete(serverName)
+      }
+    }
+  }
+
+  private async startServerCore(serverName: string, workspacePath: string): Promise<boolean> {
     const key = this.getInstanceKey(serverName, workspacePath)
     const existing = this.servers.get(key)
 
-    if (existing?.process && existing.initialized) return true
+    if (existing?.process && existing.initialized) {
+      this.updateActivity(key)
+      return true
+    }
+
+    // 同一语言已有可用实例 → 复用，不再按根目录分裂出第二个进程
+    const reusableKey = this.findReusableServerKey(serverName)
+    if (reusableKey) {
+      this.updateActivity(reusableKey)
+      return true
+    }
 
     // 如果最近短时间内启动失败过，直接返回避免刷日志 (冷却时间 60s)
     const lastFailed = this.unavailableServers.get(key)
@@ -544,6 +648,9 @@ class LspManager {
 
     const config = LSP_SERVERS.find(c => c.name === serverName)
     if (!config) return false
+
+    // 拉起新进程前先确保没有超出全局上限，避免语言种类多时进程堆积
+    await this.evictLeastActiveServer()
 
     this.startingServers.add(key)
     try {
@@ -592,6 +699,8 @@ class LspManager {
     }
 
     this.servers.set(key, instance)
+    // 启动即写入活动时间：否则该 key 不会进入空闲巡检，进程将永远不被回收
+    this.serverLastActivity.set(key, Date.now())
 
     logger.lsp.debug(`[LSP ${key}] Starting process: ${command} ${args.join(' ')}`)
 
@@ -607,36 +716,47 @@ class LspManager {
 
     proc.on('close', (code) => {
       logger.lsp.debug(`[LSP ${key}] Closed with code: ${code}`)
-      const inst = this.servers.get(key)
-      this.servers.delete(key)
+
+      const current = this.servers.get(key)
+      const isCurrent = current === instance
+      if (isCurrent) {
+        this.servers.delete(key)
+        this.serverLastActivity.delete(key)
+        this.serverOpenedDocuments.delete(key)
+      }
+
+      // 主动停止（空闲回收 / 工作空间切换 / 初始化失败）不重启，
+      // 否则 kill 出来的非零退出码会让进程刚停就被拉回来
+      const wasStopping = this.stoppingServers.delete(key)
+      if (wasStopping || !isCurrent) return
 
       // 自动重启逻辑（改进版）
-      if (code !== 0 && code !== null && inst) {
+      if (code !== 0 && code !== null) {
         const now = Date.now()
 
         // 如果距离上次崩溃超过冷却时间，重置计数
-        if (now - inst.lastCrashTime > LspManager.CRASH_COOLDOWN_MS) {
-          inst.crashCount = 1
+        if (now - instance.lastCrashTime > LspManager.CRASH_COOLDOWN_MS) {
+          instance.crashCount = 1
         } else {
-          inst.crashCount++
+          instance.crashCount++
         }
-        inst.lastCrashTime = now
+        instance.lastCrashTime = now
 
         // 只有在崩溃次数未超限时才重启
-        if (inst.crashCount <= LspManager.MAX_CRASH_COUNT) {
-          const delay = Math.min(1000 * inst.crashCount, 5000) // 递增延迟，最大 5 秒
-          logger.lsp.warn(`[LSP ${key}] Server crashed (${inst.crashCount}/${LspManager.MAX_CRASH_COUNT}), restarting in ${delay}ms...`)
+        if (instance.crashCount <= LspManager.MAX_CRASH_COUNT) {
+          const delay = Math.min(1000 * instance.crashCount, 5000) // 递增延迟，最大 5 秒
+          logger.lsp.warn(`[LSP ${key}] Server crashed (${instance.crashCount}/${LspManager.MAX_CRASH_COUNT}), restarting in ${delay}ms...`)
 
           setTimeout(() => {
-            // 再次检查是否应该重启（可能用户已手动停止）
+            // 再次检查是否应该重启（可能已换成另一个实例）
             if (!this.servers.has(key)) {
-              this.startServer(inst.config.name, inst.workspacePath).catch(e => {
+              this.startServer(instance.config.name, instance.workspacePath).catch(e => {
                 logger.lsp.error(`[LSP ${key}] Restart failed:`, e)
               })
             }
           }, delay)
         } else {
-          logger.lsp.error(`[LSP ${key}] Server crashed ${inst.crashCount} times, giving up`)
+          logger.lsp.error(`[LSP ${key}] Server crashed ${instance.crashCount} times, giving up`)
         }
       }
     })
@@ -1003,13 +1123,25 @@ class LspManager {
     // 清除文档跟踪（服务器关闭后文档状态无效）
     this.serverOpenedDocuments.delete(key)
 
+    // 标记为主动停止：kill 产生的非零退出码不应触发自动重启
+    this.stoppingServers.add(key)
+
     try {
       await this.sendRequest(key, 'shutdown', null, 3000)
       this.sendNotification(key, 'exit', null)
     } catch (e) { logger.lsp.debug('LSP shutdown failed:', e) }
-    instance.process.kill()
+    // 必须按进程树终止：typescript-language-server 启动后还会 fork 出
+    // tsserver（可能有多个实例）与 typingsInstaller，只 kill 直接子进程时
+    // 这些孙进程会被 init 收养继续存活。Windows 上它们与主程序同名，
+    // 表现为任务管理器里「任务已完成但 AweeClaw 进程不消失」。
+    hardKillProcessTree(instance.process.pid)
+    // 进程早已退出时不会再触发 close 回调，这里兜底清掉标记，避免集合里留下死 key
+    if (instance.process.exitCode !== null) {
+      this.stoppingServers.delete(key)
+    }
     this.servers.delete(key)
     this.serverLastActivity.delete(key)
+    this.serverOpenedDocuments.delete(key)
 
     logger.lsp.info(`[LSP ${key}] Server stopped and diagnostics cleared`)
   }
@@ -1027,7 +1159,7 @@ class LspManager {
     const serverName = this.getServerForLanguage(languageId)
     if (!serverName) return null
     const success = await this.startServer(serverName, workspacePath)
-    return success ? this.getInstanceKey(serverName, workspacePath) : null
+    return success ? this.resolveServerKey(serverName, workspacePath) : null
   }
 
   getRunningServers(): string[] {
@@ -1166,7 +1298,8 @@ class LspManager {
     // 使用智能根目录检测
     const bestRoot = await this.findBestRoot(filePath, languageId, workspacePath)
     const success = await this.startServer(serverName, bestRoot)
-    return success ? this.getInstanceKey(serverName, bestRoot) : null
+    // 复用已有实例时返回的是那个实例的 key，调用方据此发通知/请求
+    return success ? this.resolveServerKey(serverName, bestRoot) : null
   }
 
   // ============ 文件监视通知 ============

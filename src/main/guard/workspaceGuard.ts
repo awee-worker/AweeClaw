@@ -704,18 +704,44 @@ export function registerWorkspaceHandlers(
 
   ipcMain.handle(
     'dialog:selectForImport',
-    async (event, options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean }) => {
+    async (
+      event,
+      options: {
+        title?: string
+        allowFiles?: boolean
+        allowDirs?: boolean
+        multiSelection?: boolean
+        /** 文件与目录无法在同一对话框内同时选择时，指定本次要选哪一种 */
+        mode?: 'files' | 'dirs'
+      },
+    ) => {
       const currentWindow = resolveDialogParent(event, getMainWindowFn)
       if (!currentWindow) return []
 
+      const allowFiles = options.allowFiles !== false
+      const allowDirs = options.allowDirs === true
+
+      // Windows / Linux 的打开对话框无法同时充当文件选择器与目录选择器：
+      // 两者同时设置时会退化为「只选文件夹」，文件一律置灰、点不中。
+      // 因此这两个平台按调用方指定的 mode 二选一，未指定时优先文件（导入文件是主要用途）。
+      const modesAreExclusive = process.platform === 'win32' || process.platform === 'linux'
+      const pickDirectory = allowDirs && (!allowFiles || (modesAreExclusive && options.mode === 'dirs'))
+
       const properties: Electron.OpenDialogOptions['properties'] = []
-      if (options.allowFiles !== false) properties.push('openFile')
-      if (options.allowDirs) properties.push('openDirectory')
+      if (pickDirectory) {
+        properties.push('openDirectory')
+      } else if (allowFiles) {
+        properties.push('openFile')
+      } else if (allowDirs) {
+        properties.push('openDirectory')
+      }
       if (options.multiSelection) properties.push('multiSelections')
 
       const result = await dialog.showOpenDialog(currentWindow, {
         title: options.title || 'Import',
         properties,
+        // 目录选择不接受 filters，加上会在部分平台导致文件/目录判断异常
+        ...(pickDirectory ? {} : { filters: [{ name: 'All Files', extensions: ['*'] }] }),
       })
 
       if (!result.canceled && result.filePaths.length > 0) {

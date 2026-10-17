@@ -4040,6 +4040,8 @@ export const en = {
   'contextMenu.convertFailed': 'Conversion failed',
   'contextMenu.convertViaAgent': 'Launching AI agent to convert...',
   'contextMenu.importFiles': 'Import...',
+  'contextMenu.importFileOnly': 'Import Files...',
+  'contextMenu.importFolderOnly': 'Import Folder...',
   'contextMenu.exportFiles': 'Export...',
   'contextMenu.shareItem': 'Share...',
   'contextMenu.renameSuccess': 'Renamed',

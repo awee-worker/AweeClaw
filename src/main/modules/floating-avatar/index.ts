@@ -160,10 +160,7 @@ export function initFloatingAvatar(deps: FloatingAvatarDeps): void {
     }
     registerFloatingAvatarIpc(ipcCallbacks)
 
-    // 3. 创建头像窗口
-    const avatarWin = manager.create()
-
-    // 4. 绑定右键菜单
+    // 3. 绑定右键菜单（头像窗口按需创建，绑定挂到窗口创建回调上）
     // 会议纪要管理器：右键「会议纪要」触发，显示独立常驻窗口
     // 复用主进程单例（首次 getInstance 注入 getWorkspacePath，后续 show 时幂等注册 IPC）
     const meetingNotesManager = MeetingNotesManager.getInstance(deps.getWorkspacePath)
@@ -214,9 +211,10 @@ export function initFloatingAvatar(deps: FloatingAvatarDeps): void {
     }
     const menu = new AvatarMenu(menuCallbacks)
     menu.setLanguage(deps.getLanguage())
-    menu.attach(avatarWin)
+    // 窗口可能由 show()/托盘/菜单等任意入口拉起，绑定统一挂在创建回调上
+    manager.setOnCreated((win) => menu.attach(win))
 
-    // 5. 创建系统托盘
+    // 4. 创建系统托盘
     tray.create({
       openMainWindow: () => {
         const win = deps.getOrCreateMainWindow()
@@ -231,7 +229,7 @@ export function initFloatingAvatar(deps: FloatingAvatarDeps): void {
     })
     tray.setLanguage(deps.getLanguage())
 
-    // 6. 按 showOnStartup 决定是否显示头像
+    // 5. 按 showOnStartup 决定是否显示头像（show 会按需创建窗口）
     //    延迟到主窗口 dom-ready 后显示，避免应用启动过程中头像先于主窗口出现背景闪烁
     if (config.enabled && config.showOnStartup) {
       const doShow = (): void => {

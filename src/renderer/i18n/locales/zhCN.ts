@@ -4039,6 +4039,8 @@ export const zh = {
   'contextMenu.convertFailed': '转换失败',
   'contextMenu.convertViaAgent': '正在启动 AI 助手进行转换...',
   'contextMenu.importFiles': '导入...',
+  'contextMenu.importFileOnly': '导入文件...',
+  'contextMenu.importFolderOnly': '导入文件夹...',
   'contextMenu.exportFiles': '导出...',
   'contextMenu.shareItem': '分享...',
   'contextMenu.renameSuccess': '重命名成功',

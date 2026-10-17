@@ -384,11 +384,19 @@ export function ExplorerView() {
     }))
   }, [clipboardItem, workspacePath])
 
-  const handleImportToDirectory = useCallback(async (targetDir: string) => {
+  /**
+   * 导入到目标目录。
+   *
+   * mode 区分「导入文件」与「导入文件夹」：Windows / Linux 的打开对话框不能同时
+   * 充当文件选择器与目录选择器（同时请求会退化为只选文件夹，文件全部置灰），
+   * 所以拆成两个独立入口。
+   */
+  const handleImportToDirectory = useCallback(async (targetDir: string, mode: 'files' | 'dirs' = 'files') => {
     const selectedPaths = await api.file.selectForImport({
       title: t('explorer.importfilesorfolders', language as Language),
-      allowFiles: true,
-      allowDirs: true,
+      allowFiles: mode === 'files',
+      allowDirs: mode === 'dirs',
+      mode,
       multiSelection: true,
     })
     if (!selectedPaths || selectedPaths.length === 0) return
@@ -416,7 +424,20 @@ export function ExplorerView() {
       id: 'import',
       label: t('explorer.import', language as Language),
       icon: Download,
-      onClick: () => workspacePath && handleImportToDirectory(workspacePath),
+      children: [
+        {
+          id: 'importFiles',
+          label: t('contextMenu.importFileOnly', language as Language),
+          icon: FilePlus,
+          onClick: () => workspacePath && handleImportToDirectory(workspacePath, 'files'),
+        },
+        {
+          id: 'importFolder',
+          label: t('contextMenu.importFolderOnly', language as Language),
+          icon: FolderPlus,
+          onClick: () => workspacePath && handleImportToDirectory(workspacePath, 'dirs'),
+        },
+      ],
     },
     ...(isWorkspaceEditor
       ? [

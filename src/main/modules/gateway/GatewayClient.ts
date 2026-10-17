@@ -17,6 +17,7 @@
 import { EventEmitter } from 'events'
 import * as childProcess from 'child_process'
 import * as net from 'net'
+import { hardKillProcessTree } from '../../process/processTree'
 import * as path from 'path'
 import { app } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
@@ -143,15 +144,13 @@ class GatewayClient extends EventEmitter {
     // 断开 Socket
     this.disconnectSocket()
 
-    // 强制杀进程
-    if (this.process && !this.process.killed) {
-      this.process.kill('SIGTERM')
-      setTimeout(() => {
-        if (this.process && !this.process.killed) {
-          this.process.kill('SIGKILL')
-        }
-      }, 5000)
-      this.process = null
+    // 强制杀进程树：Gateway 以 daemon 模式 fork 运行，若它再派生出子进程，
+    // 只杀父进程会留下孤儿继续占用 Socket 与端口。上面的 SHUTDOWN 请求已经
+    // 给过优雅退出的机会，这里按进程树终止，确保退出后无残留。
+    const gatewayPid = this.process?.pid
+    this.process = null
+    if (gatewayPid) {
+      hardKillProcessTree(gatewayPid)
     }
 
     this.status = 'disconnected'

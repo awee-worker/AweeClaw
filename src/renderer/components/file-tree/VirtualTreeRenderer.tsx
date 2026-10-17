@@ -1050,12 +1050,20 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     }
   }, [language])
 
-  const handleImportIntoFolder = useCallback(async (node: FlattenedNode) => {
+  /**
+   * 导入到目标目录。
+   *
+   * mode 用于区分「导入文件」与「导入文件夹」：Windows / Linux 的打开对话框
+   * 无法同时充当文件选择器与目录选择器（同时请求会退化为只选文件夹，文件全部置灰），
+   * 因此这里把两者拆成独立入口，由用户显式选择。
+   */
+  const handleImportIntoFolder = useCallback(async (node: FlattenedNode, mode: 'files' | 'dirs' = 'files') => {
     const targetDir = node.item.isDirectory ? node.item.path : getDirPath(node.item.path)
     const selectedPaths = await api.file.selectForImport({
       title: t('file-tree.importfilesorfolders', language as Language),
-      allowFiles: true,
-      allowDirs: true,
+      allowFiles: mode === 'files',
+      allowDirs: mode === 'dirs',
+      mode,
       multiSelection: true,
     })
     if (!selectedPaths || selectedPaths.length === 0) return
@@ -1150,7 +1158,15 @@ export const VirtualFileTree = memo(function VirtualFileTree({
         { id: 'newFile', label: t('newFile', contextMenuLanguage), icon: FilePlus, onClick: () => handleNewFile(node) },
         { id: 'newFolder', label: t('newFolder', contextMenuLanguage), icon: FolderPlus, onClick: () => handleNewFolder(node) },
         { id: 'sep1', label: '', separator: true },
-        { id: 'import', label: t('contextMenu.importFiles', contextMenuLanguage), icon: Download, onClick: () => handleImportIntoFolder(node) },
+        {
+          id: 'import',
+          label: t('contextMenu.importFiles', contextMenuLanguage),
+          icon: Download,
+          children: [
+            { id: 'importFiles', label: t('contextMenu.importFileOnly', contextMenuLanguage), icon: FilePlus, onClick: () => handleImportIntoFolder(node, 'files') },
+            { id: 'importFolder', label: t('contextMenu.importFolderOnly', contextMenuLanguage), icon: FolderPlus, onClick: () => handleImportIntoFolder(node, 'dirs') },
+          ],
+        },
         { id: 'export', label: t('contextMenu.exportFiles', contextMenuLanguage), icon: Upload, onClick: () => handleExportFromNode(node) },
         { id: 'share', label: t('contextMenu.shareItem', contextMenuLanguage), icon: Share2, onClick: () => handleShareItem(node) },
         ...(isWorkspaceEditor

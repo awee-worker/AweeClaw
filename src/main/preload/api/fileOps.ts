@@ -66,6 +66,7 @@ export function createFileOpsApi() {
       allowFiles?: boolean
       allowDirs?: boolean
       multiSelection?: boolean
+      mode?: 'files' | 'dirs'
     }) => invoke('dialog:selectForImport')(options),
     selectForExport: (options: { title?: string; defaultPath?: string }) =>
       invoke('dialog:selectForExport')(options),

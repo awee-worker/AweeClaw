@@ -455,7 +455,7 @@ function createGroupedAPI() {
       extractKnowledgePdfText: (path: string) => raw.extractKnowledgePdfText(path),
       openFolder: () => raw.openFolder(),
       selectFolder: () => raw.selectFolder(),
-      selectForImport: (options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean }) => raw.selectForImport(options),
+      selectForImport: (options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean; mode?: 'files' | 'dirs' }) => raw.selectForImport(options),
       selectForExport: (options: { title?: string; defaultPath?: string }) => raw.selectForExport(options),
       importIntoWorkspace: (sourcePaths: string[], targetDir: string) => raw.importIntoWorkspace(sourcePaths, targetDir),
       exportFromWorkspace: (sourcePath: string, targetDir: string) => raw.exportFromWorkspace(sourcePath, targetDir),
