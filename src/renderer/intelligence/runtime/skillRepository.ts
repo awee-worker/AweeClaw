@@ -200,10 +200,26 @@ export function notifySkillsChanged(): void {
 // ============================================
 
 class SkillService {
-    private cache: SkillItem[] | null = null
+    /**
+     * 基础层缓存：内置 + 全局 + 插件三层技能
+     *
+     * 这三层与工作空间无关，切换工作空间时不清空，避免每次切换都把
+     * 「readDir + 每个技能一次 readFile」这组 IPC 重新跑一遍。
+     */
+    private baseCache: SkillItem[] | null = null
+    private baseScanTime = 0
+    /** 工作空间层缓存：记录归属路径，路径变化即视为失效 */
+    private projectCache: { workspacePath: string; skills: SkillItem[]; scanTime: number } | null = null
     private configCache: SkillConfig | null = null
-    private lastScanTime = 0
     private readonly SCAN_INTERVAL = 5000 // 5 秒缓存
+    /**
+     * 基础层兜底重扫间隔
+     *
+     * 基础层的正常失效走显式路径（安装/删除/启停技能、插件变化都会 clearCache）。
+     * 这里留一个较长的兜底间隔，让用户直接改动文件系统里的技能目录时也能自愈，
+     * 同时保证切换工作空间几乎不会触发基础层重扫。
+     */
+    private readonly BASE_SCAN_INTERVAL = 300000
     private readonly SKILLS_DIR = BRAND.paths.skills
     /** 技能配置文件名：机器级，落在全局技能目录下，与工作空间解耦 */
     private readonly CONFIG_FILE = BRAND.paths.skillsConfig
@@ -235,17 +251,39 @@ class SkillService {
 
     /**
      * 获取所有 Skills（包括禁用的）
-     * 三层扫描，优先级由低到高：
-     *   内置 (resources/skills) → 全局 ({userData}/skills/) → 工作空间 (BRAND.paths.skills)
-     * 同名技能后扫描的覆盖先扫描的
+     *
+     * 分层扫描后合并，优先级由低到高：
+     *   内置 (resources/skills) → 全局 ({userData}/skills/) → 插件 → 工作空间 (BRAND.paths.skills)
+     * 同名技能后扫描的覆盖先扫描的。
+     *
+     * 前三层与工作空间无关，合并结果缓存在 baseCache；工作空间层按路径缓存在
+     * projectCache，切换工作空间只重扫这一段。
      */
     async getAllSkills(forceRefresh = false): Promise<SkillItem[]> {
+        const config = await this.loadConfig()
+        const baseSkills = await this.getBaseSkills(config, forceRefresh)
+        const projectSkills = await this.getProjectSkills(config, forceRefresh)
+
+        const skillMap = new Map<string, SkillItem>()
+        for (const skill of baseSkills) skillMap.set(skill.name, skill)
+        for (const skill of projectSkills) skillMap.set(skill.name, skill)
+
+        const skills = Array.from(skillMap.values())
+        logger.agent.info(`[SkillService] Loaded ${skills.length} skills`)
+        return skills
+    }
+
+    /**
+     * 扫描基础层技能：内置 → 全局 → 插件
+     *
+     * 结果与工作空间解耦，切换工作空间不失效。
+     */
+    private async getBaseSkills(config: SkillConfig, forceRefresh: boolean): Promise<SkillItem[]> {
         const now = Date.now()
-        if (!forceRefresh && this.cache && (now - this.lastScanTime) < this.SCAN_INTERVAL) {
-            return this.cache
+        if (!forceRefresh && this.baseCache && (now - this.baseScanTime) < this.BASE_SCAN_INTERVAL) {
+            return this.baseCache
         }
 
-        const config = await this.loadConfig()
         const skillMap = new Map<string, SkillItem>()
 
         // 1. 扫描内置 Skills（最低优先级，随客户端分发）
@@ -320,20 +358,44 @@ class SkillService {
             logger.agent.warn('[SkillService] Failed to load plugin skills:', err)
         }
 
-        // 4. 扫描工作空间 Skills（覆盖全局、插件与内置同名）
-        const { workspacePath } = useStore.getState()
-        if (workspacePath) {
-            const projectDir = joinPath(workspacePath, this.SKILLS_DIR)
-            await this.scanSkillsDir(projectDir, 'project', config, skillMap)
-        }
-
         const skills = Array.from(skillMap.values())
-
-        this.cache = skills
-        this.lastScanTime = now
-        logger.agent.info(`[SkillService] Loaded ${skills.length} skills`)
+        this.baseCache = skills
+        this.baseScanTime = now
         return skills
     }
+
+    /**
+     * 扫描当前工作空间下的技能
+     *
+     * 缓存绑定 workspacePath：切到别的工作空间后路径不匹配即自动重扫。
+     * 目录不存在时 scanSkillsDir 静默返回空集合。
+     */
+    private async getProjectSkills(config: SkillConfig, forceRefresh: boolean): Promise<SkillItem[]> {
+        const { workspacePath } = useStore.getState()
+        if (!workspacePath) {
+            this.projectCache = null
+            return []
+        }
+
+        const now = Date.now()
+        const cached = this.projectCache
+        if (
+            !forceRefresh &&
+            cached &&
+            cached.workspacePath === workspacePath &&
+            (now - cached.scanTime) < this.SCAN_INTERVAL
+        ) {
+            return cached.skills
+        }
+
+        const skillMap = new Map<string, SkillItem>()
+        await this.scanSkillsDir(joinPath(workspacePath, this.SKILLS_DIR), 'project', config, skillMap)
+
+        const skills = Array.from(skillMap.values())
+        this.projectCache = { workspacePath, skills, scanTime: now }
+        return skills
+    }
+
 
 
     /**
@@ -765,10 +827,7 @@ Add your skill instructions here.
         await this.saveConfig(config)
 
         // 更新缓存
-        if (this.cache) {
-            const skill = this.cache.find(s => s.name === name)
-            if (skill) skill.enabled = enabled
-        }
+        this.patchCachedSkill(name, { enabled })
 
         notifySkillsChanged()
         return true
@@ -793,10 +852,7 @@ Add your skill instructions here.
         await this.saveConfig(config)
 
         // 更新缓存
-        if (this.cache) {
-            const skill = this.cache.find(s => s.name === name)
-            if (skill) skill.visible = visible
-        }
+        this.patchCachedSkill(name, { visible })
 
         notifySkillsChanged()
         return true
@@ -1092,10 +1148,7 @@ ${sections}`
         await this.saveConfig(config)
 
         // 更新缓存
-        if (this.cache) {
-            const skill = this.cache.find(s => s.name === name)
-            if (skill) skill.type = type
-        }
+        this.patchCachedSkill(name, { type })
 
         notifySkillsChanged()
         return true
@@ -1122,10 +1175,7 @@ ${sections}`
         await this.saveConfig(config)
 
         // 更新缓存
-        if (this.cache) {
-            const skill = this.cache.find(s => s.name === name)
-            if (skill) skill.sceneMode = value || undefined
-        }
+        this.patchCachedSkill(name, { sceneMode: value || undefined })
 
         notifySkillsChanged()
         return true
@@ -1136,12 +1186,40 @@ ${sections}`
      * 清除缓存
      */
     clearCache(): void {
-        this.cache = null
+        this.baseCache = null
+        this.baseScanTime = 0
+        this.projectCache = null
         this.configCache = null
         // 配置目录可能随用户设置变化，重新解析路径
         this.configPathCache = null
-        this.lastScanTime = 0
         notifySkillsChanged()
+    }
+
+    /**
+     * 仅让工作空间层技能缓存失效
+     *
+     * 切换工作空间时调用：内置、全局与插件技能与工作空间无关，保留缓存后
+     * 只重扫新工作空间的技能目录，不再把基础层整层重扫一遍。
+     */
+    invalidateWorkspaceSkills(): void {
+        this.projectCache = null
+        notifySkillsChanged()
+    }
+
+    /**
+     * 就地刷新已缓存技能字段
+     *
+     * 启用状态、列表展示、触发类型与场景归属都由配置覆盖表达，改动只需更新内存
+     * 条目，不必整表重扫；两层缓存都要同步，否则下一次合并会取回旧值。
+     */
+    private patchCachedSkill(
+        name: string,
+        patch: Partial<Pick<SkillItem, 'enabled' | 'visible' | 'type' | 'sceneMode'>>,
+    ): void {
+        for (const list of [this.baseCache, this.projectCache?.skills]) {
+            const skill = list?.find(s => s.name === name)
+            if (skill) Object.assign(skill, patch)
+        }
     }
 
     // ============================================

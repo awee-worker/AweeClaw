@@ -6,6 +6,7 @@ import { lintService } from '@intelligence/runtime/codeAnalysisService'
 import { streamingEditService } from '@intelligence/runtime/streamingEditor'
 import { clearHealthCache } from './providerHealthAdapter'
 import { workspaceStorageRuntime } from './workspaceStorageAdapter'
+import { skillService } from '@intelligence/runtime/skillRepository'
 import {
   suspendAgentStorageWrites,
   resumeAgentStorageWrites,
@@ -46,4 +47,7 @@ export function resetWorkspaceRuntimeState(): void {
   streamingEditService.clearAll()
   clearHealthCache()
   workspaceStorageRuntime.reset()
+
+  // 技能只有工作空间层与当前目录相关，其余层级保留缓存，切回时无需重扫
+  skillService.invalidateWorkspaceSkills()
 }
