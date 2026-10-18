@@ -430,7 +430,7 @@ const PluginProvider: ContextProvider = {
       const server = servers.find(s => s.id === serverId)
       if (server && Array.isArray(server.tools) && server.tools.length > 0) {
         const toolNames = server.tools.map(t => `\`${McpToolProvider.getFullToolName(server.id, t.name)}\``)
-        toolHint = `\n\n此插件已连接 MCP（server: \`${server.id}\`），已注册以下工具，请直接调用：\n${toolNames.join('\n')}`
+        toolHint = `\n\n此插件已连接（server: \`${server.id}\`），已注册以下工具，请直接调用：\n${toolNames.join('\n')}`
       }
     } catch {
       // 查询失败不影响注入
@@ -438,8 +438,8 @@ const PluginProvider: ContextProvider = {
 
     return (
       `\n### Plugin: ${name}\n${desc}${toolHint}\n\n` +
-      `注意：这是用户通过 @ 引用的已安装插件（MCP 插件），不是 Skill。` +
-      `请直接调用上面列出的 MCP 工具（mcp_ 前缀）或从可用工具列表中选择该插件的工具来执行任务，` +
+      `注意：这是用户选择的已安装插件，不是 Skill。` +
+      `请直接调用上面列出的工具（mcp_ 前缀），或从可用工具列表中选择该插件提供的工具来执行任务，` +
       `不要使用 apply_skill 加载它。\n`
     )
   },

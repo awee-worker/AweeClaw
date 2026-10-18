@@ -864,7 +864,7 @@ export class PluginInstaller {
    *
    * 只切换可见性开关，不改动插件的运行状态：
    * - 技能型插件：下次读取技能贡献时按该开关决定技能是否并入技能列表；
-   * - 非技能型插件：当前新建任务界面尚不展示其能力，状态先行记录。
+   * - 其余插件：渲染层读取已安装插件时按该开关决定是否补一条插件条目。
    */
   setNewTaskVisible(pluginKey: string, visible: boolean): { success: boolean; error?: string } {
     const record = this.installedRecords.get(pluginKey) ?? this.builtinRecords.get(pluginKey)

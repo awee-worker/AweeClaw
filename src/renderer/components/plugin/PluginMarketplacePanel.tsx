@@ -48,6 +48,7 @@ import type {
   PluginInstallProgress,
 } from '@services/pluginService'
 import { t, type Language } from '@renderer/i18n'
+import { skillService } from '@intelligence/runtime/skillRepository'
 import { PluginInstallConfigDialog, PluginQrLoginModal } from './PluginInstallConfigDialog'
 import { PaymentDialog } from '@components/payment/PaymentDialog'
 import type { PluginConfigField, PluginConfigValues } from './PluginConfigForm'
@@ -284,6 +285,8 @@ export function PluginMarketplacePanel() {
       if (result.success) {
         setInstalledKeys((prev) => new Set(prev).add(item.pluginKey))
         setSelectedItem(null)
+        // 新装插件会改变技能来源：清掉技能缓存，让空会话技能条立即可见
+        skillService.clearCache()
         // 安装成功但 MCP 连接失败时，提示用户前往设置面板重试
         if (result.mcpConnectError) {
           toast.card({
@@ -422,6 +425,8 @@ export function PluginMarketplacePanel() {
     if (result.success) {
       setInstalledKeys((prev) => new Set(prev).add(target.item.pluginKey))
       setSelectedItem(null)
+      // 与免费安装一致：清掉技能缓存，让技能条立即反映新插件
+      skillService.clearCache()
       toast.success(
         language === 'zh'
           ? `插件「${target.item.nameZh}」${target.expired ? '续费' : '购买'}并安装成功`

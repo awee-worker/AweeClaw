@@ -822,25 +822,24 @@ function PluginCard({
             loading={operating}
             tone="danger"
           />
-          {/* 在新建任务界面显示：只有技能型插件才需要这个开关，
-              非技能型插件没有可并入技能列表的内容，不显示以免造成误解；
+          {/* 在新建任务界面显示：技能型插件以技能条目出现在空会话技能条，
+              其余插件以插件条目排在技能之后，两类都需要该开关控制展示；
               与启用/禁用独立，仅用图标避免被误解为启用/停用 */}
-          {(plugin.types || []).includes('skill') && (
-            <button
-              type="button"
-              onClick={onToggleNewTaskVisible}
-              disabled={operating || !plugin.enabled}
-              title={language === 'zh' ? '在新建任务界面显示' : 'Show in new task screen'}
-              aria-label={language === 'zh' ? '在新建任务界面显示' : 'Show in new task screen'}
-              className={`ml-auto flex items-center justify-center w-7 h-7 rounded-md transition-colors disabled:opacity-40 disabled:pointer-events-none ${
-                newTaskVisible
-                  ? 'text-accent hover:bg-accent/10'
-                  : 'text-text-muted/60 hover:bg-text-primary/[0.06] hover:text-text-primary'
-              }`}
-            >
-              {newTaskVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onToggleNewTaskVisible}
+            disabled={operating || !plugin.enabled}
+            title={language === 'zh' ? '在新建任务界面显示' : 'Show in new task screen'}
+            aria-label={language === 'zh' ? '在新建任务界面显示' : 'Show in new task screen'}
+            className={`ml-auto flex items-center justify-center w-7 h-7 rounded-md transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+              newTaskVisible
+                ? 'text-accent hover:bg-accent/10'
+                : 'text-text-muted/60 hover:bg-text-primary/[0.06] hover:text-text-primary'
+            }`}
+          >
+            {newTaskVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+          </button>
+
         </div>
       </div>
     </div>

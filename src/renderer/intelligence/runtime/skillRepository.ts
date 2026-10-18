@@ -7,7 +7,7 @@
  */
 
 import { api } from '../../adapters/electronBridge'
-import { browsePlugins, getPluginSkillContributions } from '../../adapters/pluginService'
+import { browsePlugins, getInstalledPlugins, getPluginSkillContributions } from '../../adapters/pluginService'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
 import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
@@ -52,6 +52,32 @@ export interface SkillItem {
     sceneMode?: string
     /** 二级选项：选中后在输入框自动填入 prompt（如「网站开发」下的细分场景） */
     subSkills?: SubSkillItem[]
+    /** 来源插件标识：source 为 plugin 时指向提供该技能的插件，用于与插件条目去重 */
+    pluginKey?: string
+}
+
+/**
+ * 空会话技能列表中的插件条目
+ *
+ * 技能列表除了 SKILL.md 形式的技能，还要把「插件与技能市场」里安装的插件补在后面。
+ * mcp / tool 型插件没有技能正文，不能在列表里凭空消失，因此单独作为一种条目呈现：
+ * 点击后按插件上下文下发，由 AI 直接调用该插件注册的工具。
+ */
+export interface PluginListEntry {
+    /** 插件唯一标识 */
+    pluginKey: string
+    /** 英文展示名 */
+    name: string
+    /** 中文展示名 */
+    nameZh?: string
+    description: string
+    descriptionZh?: string
+    /** 插件图标：图片地址或 lucide 图标名 */
+    icon?: string
+    /** 插件对应 MCP server id，供上下文注入时定位工具 */
+    mcpServerId?: string
+    /** 插件类型集合：mcp / tool / skill / channel 等 */
+    types: string[]
 }
 
 /** 技能二级选项 */
@@ -248,6 +274,53 @@ class SkillService {
         return all.filter(s => s.enabled && s.visible && isSkillVisibleInScene(s, currentSceneMode))
     }
 
+    /**
+     * 获取空会话技能列表应展示的插件
+     *
+     * 技能列表的固定契约是「技能在前、插件在后」：技能来自 SKILL.md，插件来自
+     * 「插件与技能市场」的安装记录。mcp / tool 型插件没有技能正文，过去完全不进入
+     * 列表，用户装完插件在新建任务界面看不到任何痕迹。
+     *
+     * 去重规则：声明为 skill 型且技能正文已成功并入技能的插件不再重复展示
+     * （技能条目本身已代表它）；技能正文缺失时仍以插件条目兜底，避免「装了却看不见」。
+     *
+     * 与其他来源一致，只返回已启用、且未关闭「在新建任务界面显示」的插件。
+     */
+    async getSkillListPlugins(): Promise<PluginListEntry[]> {
+        const [plugins, allSkills] = await Promise.all([
+            getInstalledPlugins(),
+            this.getAllSkills(),
+        ])
+
+        // 已由技能条目表达的插件：这些插件的技能正文正常，不需要再补一条插件条目
+        const presentPluginKeys = new Set(
+            allSkills
+                .filter(s => s.source === 'plugin' && s.pluginKey)
+                .map(s => s.pluginKey as string),
+        )
+
+        const entries: PluginListEntry[] = []
+        for (const plugin of plugins) {
+            if (!plugin.enabled) continue
+            if (plugin.newTaskVisible === false) continue
+            if (plugin.types.includes('skill') && presentPluginKeys.has(plugin.pluginKey)) continue
+
+            const manifest = plugin.manifest || {}
+            entries.push({
+                pluginKey: plugin.pluginKey,
+                name: (manifest.name as string) || plugin.pluginKey,
+                nameZh: manifest.nameZh as string | undefined,
+                description: (manifest.description as string) || '',
+                descriptionZh: manifest.descriptionZh as string | undefined,
+                icon: manifest.icon as string | undefined,
+                mcpServerId: plugin.mcpServerId,
+                types: plugin.types,
+            })
+        }
+
+        return entries
+    }
+
 
     /**
      * 获取所有 Skills（包括禁用的）
@@ -334,6 +407,9 @@ class SkillService {
 
                 const skill = this.buildSkillItem(contribution.skillName, contribution.skillMdPath, 'plugin', parsed, config)
                 if (!skill) continue
+
+                // 记住来源插件，供技能条与插件条目去重
+                skill.pluginKey = contribution.pluginKey
 
                 // SKILL.md frontmatter 不含 nameZh，中文界面会因缺少该字段回退成英文技能名；
                 // 插件 manifest 声明的中英文名与图标一并合入 metadata，由技能条优先取用，
