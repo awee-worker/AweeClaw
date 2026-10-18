@@ -445,7 +445,6 @@ export function PluginMarketplacePanel() {
     }
 
     setPayTarget(null)
-    setPayTarget(null)
   }
 
   /** 付费插件支付弹窗（详情视图与列表视图共用，故抽成函数复用） */
@@ -500,6 +499,49 @@ export function PluginMarketplacePanel() {
     )
   }
 
+  /**
+   * 安装时的配置对话框
+   *
+   * 列表页与详情页都能触发安装，因此抽成函数在两处都渲染：
+   * 只在列表视图挂载时，从详情页点安装（插件带必填配置）会一片空白，
+   * 必须返回列表才能看到弹窗。
+   */
+  function renderInstallConfigDialog() {
+    return (
+      <PluginInstallConfigDialog
+        open={configDialog.open}
+        pluginName={configDialog.item?.nameZh || configDialog.item?.name || ''}
+        fields={configDialog.fields}
+        loading={configDialog.loading}
+        error={configDialog.error}
+        onConfirm={handleConfigDialogConfirm}
+        onCancel={() =>
+          !configDialog.loading &&
+          setConfigDialog({ open: false, item: null, fields: [], loading: false })
+        }
+      />
+    )
+  }
+
+  /** 扫码登录对话框（qrLogin 渠道安装成功后弹出），与配置对话框同理两处共用 */
+  function renderQrLoginDialog() {
+    if (!qrLoginDialog.open || !qrLoginDialog.item || !qrLoginDialog.channelId) return null
+
+    return (
+      <PluginQrLoginModal
+        pluginName={qrLoginDialog.item.nameZh || qrLoginDialog.item.name || ''}
+        channelId={qrLoginDialog.channelId}
+        language={language}
+        addingAccount={qrLoginDialog.addingAccount}
+        onSuccess={handleQrLoginSuccess}
+        onCancel={() =>
+          !qrLoginDialog.addingAccount &&
+          setQrLoginDialog({ open: false, item: null, channelId: null, addingAccount: false })
+        }
+      />
+    )
+  }
+
   // 未登录
   if (!authenticated) {
     return (
@@ -528,6 +570,9 @@ export function PluginMarketplacePanel() {
           onBack={() => setSelectedItem(null)}
           onInstall={() => handleInstall(selectedItem)}
         />
+        {/* 详情页安装同样要能看到配置弹窗与扫码登录弹窗，不能只在列表视图挂载 */}
+        {renderInstallConfigDialog()}
+        {renderQrLoginDialog()}
         {renderPaymentDialog()}
       </>
     )
@@ -674,36 +719,13 @@ export function PluginMarketplacePanel() {
       )}
 
       {/* 安装时配置对话框 */}
-      <PluginInstallConfigDialog
-        open={configDialog.open}
-        pluginName={configDialog.item?.nameZh || configDialog.item?.name || ''}
-        fields={configDialog.fields}
-        loading={configDialog.loading}
-        error={configDialog.error}
-        onConfirm={handleConfigDialogConfirm}
-        onCancel={() =>
-          !configDialog.loading &&
-          setConfigDialog({ open: false, item: null, fields: [], loading: false })
-        }
-      />
+      {renderInstallConfigDialog()}
 
       {/* 付费插件支付弹窗（购买 / 续费） */}
       {renderPaymentDialog()}
 
       {/* 扫码登录对话框（qrLogin 渠道安装成功后弹出） */}
-      {qrLoginDialog.open && qrLoginDialog.item && qrLoginDialog.channelId && (
-        <PluginQrLoginModal
-          pluginName={qrLoginDialog.item.nameZh || qrLoginDialog.item.name || ''}
-          channelId={qrLoginDialog.channelId}
-          language={language}
-          addingAccount={qrLoginDialog.addingAccount}
-          onSuccess={handleQrLoginSuccess}
-          onCancel={() =>
-            !qrLoginDialog.addingAccount &&
-            setQrLoginDialog({ open: false, item: null, channelId: null, addingAccount: false })
-          }
-        />
-      )}
+      {renderQrLoginDialog()}
     </div>
   )
 }

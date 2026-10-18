@@ -16,6 +16,21 @@ subSkills:
   - label: 方案路演
     labelEn: Pitch Deck
     prompt: 请帮我制作一份项目路演 PPT 大纲，包含背景、目标、方案、竞争优势、实施计划与预期收益。
+  - type: select
+    label: 页面比例
+    labelEn: Slide Ratio
+    promptTemplate: 请按 {value} 的页面比例规划演示文稿的版式与内容排布，并说明该比例下的版面分区建议。
+    promptTemplateEn: Plan the deck layout for a {value} slide ratio, including layout regions for that ratio.
+    options:
+      - label: 宽屏 16:9
+        labelEn: Widescreen 16:9
+        value: "16:9"
+      - label: 标准 4:3
+        labelEn: Standard 4:3
+        value: "4:3"
+      - label: 竖版 9:16
+        labelEn: Portrait 9:16
+        value: "9:16"
 metadata:
   nameZh: PPT 制作
   descriptionZh: 从大纲到版式的演示文稿制作方法，按「每页一个要点」组织内容。

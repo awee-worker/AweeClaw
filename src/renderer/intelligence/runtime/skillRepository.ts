@@ -78,18 +78,183 @@ export interface PluginListEntry {
     mcpServerId?: string
     /** 插件类型集合：mcp / tool / skill / channel 等 */
     types: string[]
+    /**
+     * 插件二级选项
+     *
+     * 与技能的二级选项共用同一套结构与解析逻辑，插件可在 manifest 中声明
+     * 选择器与动作，因此插件条目同样能展开二级行。
+     */
+    subSkills?: SubSkillItem[]
 }
 
-/** 技能二级选项 */
-export interface SubSkillItem {
+/**
+ * 二级选项的交互类型
+ *
+ * - prompt：点击后把提示词填入输入框（原有能力，缺省值）
+ * - select：点击后展开一组可选项，选中后按模板填充，适合比例、风格、尺寸这类枚举参数
+ * - action：点击后触发一个动作，不写入输入框，适合打开抽屉、执行命令这类旁路操作
+ */
+export type SubSkillType = 'prompt' | 'select' | 'action'
+
+/** select 类型的候选项 */
+export interface SubSkillOption {
     /** 显示文本（中文） */
     label: string
     /** 显示文本（英文，可选） */
     labelEn?: string
-    /** 点击后填入输入框的需求提示词（中文） */
-    prompt: string
+    /** 写回提示词模板的值 */
+    value: string
+}
+
+/**
+ * action 类型要触发的动作
+ *
+ * id 由客户端内置注册表解析（见 subSkillActions.ts），技能与插件只声明标识与参数，
+ * 不承载实现，因此 SKILL.md 与 manifest 里不需要出现任何前端代码。
+ */
+export interface SubSkillAction {
+    /** 动作标识，如 openPluginDrawer */
+    id: string
+    /** 动作参数，交由对应处理器解释 */
+    payload?: Record<string, unknown>
+}
+
+/** 技能二级选项 */
+export interface SubSkillItem {
+    /**
+     * 交互类型，缺省视为 prompt
+     *
+     * 解析时会按该值校验必填字段：prompt 需要 prompt，select 需要 options，
+     * action 需要 action.id；不满足的条目直接丢弃，避免渲染出点了没反应的按钮。
+     */
+    type?: SubSkillType
+    /** 显示文本（中文） */
+    label: string
+    /** 显示文本（英文，可选） */
+    labelEn?: string
+    /** 点击后填入输入框的需求提示词（中文）；prompt 类型必填 */
+    prompt?: string
     /** 英文需求提示词（可选，英文界面使用） */
     promptEn?: string
+    /** select 类型的候选项 */
+    options?: SubSkillOption[]
+    /**
+     * select 类型选中后的提示词模板
+     *
+     * 支持 {value} 与 {label} 两个占位符。例如「生成比例为 {value} 的图片」，
+     * 选中 1:1 后得到「生成比例为 1:1 的图片」并填入输入框。
+     */
+    promptTemplate?: string
+    /** 英文提示词模板（可选，英文界面使用） */
+    promptTemplateEn?: string
+    /** select 类型的默认选中项（value） */
+    defaultOption?: string
+    /** action 类型要触发的动作 */
+    action?: SubSkillAction
+    /** 图标：图片地址或 lucide 图标名 */
+    icon?: string
+}
+
+/**
+ * 解析 select 类型的候选项
+ *
+ * value 缺失时回退为 label，避免作者漏写 value 导致选择后写不进提示词。
+ */
+function parseSubSkillOptions(raw: unknown): SubSkillOption[] {
+    if (!Array.isArray(raw)) return []
+    const options: SubSkillOption[] = []
+    for (const entry of raw) {
+        if (!entry || typeof entry !== 'object') continue
+        const item = entry as Record<string, unknown>
+        const label = typeof item.label === 'string' ? item.label.trim() : ''
+        if (!label) continue
+        const value = typeof item.value === 'string' && item.value.trim() ? item.value.trim() : label
+        options.push({
+            label,
+            labelEn: typeof item.labelEn === 'string' ? item.labelEn : undefined,
+            value,
+        })
+    }
+    return options
+}
+
+/** 解析 action 类型要触发的动作；缺少 id 的声明无法派发，直接丢弃 */
+function parseSubSkillAction(raw: unknown): SubSkillAction | undefined {
+    if (!raw || typeof raw !== 'object') return undefined
+    const item = raw as Record<string, unknown>
+    const id = typeof item.id === 'string' ? item.id.trim() : ''
+    if (!id) return undefined
+    const payload = item.payload && typeof item.payload === 'object'
+        ? item.payload as Record<string, unknown>
+        : undefined
+    return { id, payload }
+}
+
+/**
+ * 解析二级选项声明
+ *
+ * 技能（SKILL.md frontmatter）与插件（manifest.json）共用这一处逻辑，
+ * 保证两边的字段含义、缺省值与容错规则完全一致。
+ *
+ * 校验按类型区分，不满足的条目直接丢弃而不是留一个点了没反应的按钮：
+ * - prompt：必须有 prompt
+ * - select：必须有至少一个可选项
+ * - action：必须有 action.id
+ */
+export function parseSubSkills(raw: unknown): SubSkillItem[] {
+    if (!Array.isArray(raw)) return []
+
+    const result: SubSkillItem[] = []
+    for (const entry of raw) {
+        if (!entry || typeof entry !== 'object') continue
+        const item = entry as Record<string, unknown>
+
+        const label = typeof item.label === 'string' ? item.label.trim() : ''
+        if (!label) continue
+
+        // 存量声明没有 type 字段，一律按 prompt 处理，保证旧数据行为不变
+        const declaredType = typeof item.type === 'string' ? item.type : 'prompt'
+        const type: SubSkillType = declaredType === 'select' || declaredType === 'action'
+            ? declaredType
+            : 'prompt'
+
+        const base = {
+            type,
+            label,
+            labelEn: typeof item.labelEn === 'string' ? item.labelEn : undefined,
+            icon: typeof item.icon === 'string' ? item.icon : undefined,
+        }
+
+        if (type === 'prompt') {
+            const prompt = typeof item.prompt === 'string' ? item.prompt.trim() : ''
+            if (!prompt) continue
+            result.push({
+                ...base,
+                prompt,
+                promptEn: typeof item.promptEn === 'string' ? item.promptEn : undefined,
+            })
+            continue
+        }
+
+        if (type === 'select') {
+            const options = parseSubSkillOptions(item.options)
+            if (options.length === 0) continue
+            result.push({
+                ...base,
+                options,
+                promptTemplate: typeof item.promptTemplate === 'string' ? item.promptTemplate : undefined,
+                promptTemplateEn: typeof item.promptTemplateEn === 'string' ? item.promptTemplateEn : undefined,
+                defaultOption: typeof item.defaultOption === 'string' ? item.defaultOption : undefined,
+            })
+            continue
+        }
+
+        const action = parseSubSkillAction(item.action)
+        if (!action) continue
+        result.push({ ...base, action })
+    }
+
+    return result
 }
 
 /**
@@ -306,6 +471,8 @@ class SkillService {
             if (plugin.types.includes('skill') && presentPluginKeys.has(plugin.pluginKey)) continue
 
             const manifest = plugin.manifest || {}
+            // 插件与技能共用同一套二级选项解析，manifest 里声明什么就渲染什么
+            const pluginSubSkills = parseSubSkills(manifest.subSkills)
             entries.push({
                 pluginKey: plugin.pluginKey,
                 name: (manifest.name as string) || plugin.pluginKey,
@@ -315,6 +482,7 @@ class SkillService {
                 icon: manifest.icon as string | undefined,
                 mcpServerId: plugin.mcpServerId,
                 types: plugin.types,
+                subSkills: pluginSubSkills.length > 0 ? pluginSubSkills : undefined,
             })
         }
 
@@ -542,17 +710,8 @@ class SkillService {
             ? frontmatter.keywords.filter((k): k is string => typeof k === 'string')
             : []
 
-        // 二级选项：label 与 prompt 都非空才保留
-        const subSkills: SubSkillItem[] = Array.isArray(frontmatter.subSkills)
-            ? (frontmatter.subSkills as Array<Record<string, unknown>>)
-                .map(item => ({
-                    label: typeof item?.label === 'string' ? item.label.trim() : '',
-                    labelEn: typeof item?.labelEn === 'string' ? item.labelEn : undefined,
-                    prompt: typeof item?.prompt === 'string' ? item.prompt.trim() : '',
-                    promptEn: typeof item?.promptEn === 'string' ? item.promptEn : undefined,
-                }))
-                .filter(item => item.label && item.prompt)
-            : []
+        // 二级选项：技能与插件共用 parseSubSkills，三种交互类型的校验规则集中在那里
+        const subSkills = parseSubSkills(frontmatter.subSkills)
 
         // 场景归属：frontmatter 顶层 sceneMode 优先，兼容 metadata.sceneMode；
         // 技能列表中的调整写入配置覆盖，优先级最高（内置技能目录只读，只能靠覆盖调整）

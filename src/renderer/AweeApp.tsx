@@ -28,6 +28,7 @@ import { ThemeManager } from '@components/workspace-editor/EditorThemeProvider'
 import { FullScreenLoading } from './components/ui/ProgressIndicator'
 import { startupMetrics } from '@shared/toolkit/bootMetrics'
 import { PluginHostBridge } from '@renderer/plugins/PluginHostBridge'
+import PluginDrawerHost from '@renderer/plugins/PluginDrawerHost'
 import { TodoHubCollector } from '@components/todo-hub/TodoHubCollector'
 import { initRenderBudget, subscribeRenderBudget } from './services/renderBudget'
 
@@ -412,6 +413,9 @@ function AppContent() {
 
       {/* 插件宿主桥接器：代理插件 UI 的宿主能力请求（如发送聊天消息），无 UI */}
       <PluginHostBridge />
+
+      {/* 插件抽屉：二级选项的 action 拉起插件面板（如模板选择），无触发时不渲染 */}
+      <PluginDrawerHost />
 
       {/* 待办中心采集器：把会话 / 挂载任务中未完成的事项自动汇入待办清单，无 UI */}
       <TodoHubCollector />
