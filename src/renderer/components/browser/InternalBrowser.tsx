@@ -19,6 +19,7 @@ import { t, type Language } from '@renderer/i18n'
 import { api } from '@renderer/adapters/electronBridge'
 import type { PreviewSession } from '@shared/protocols/previewProtocol'
 import { useWebviewController } from '@components/workspace-editor/browser/hooks/useWebviewController'
+import { useDeferredMount } from '@renderer/composables/useDeferredMount'
 import BrowserWebView from '@components/workspace-editor/browser/BrowserWebView'
 import { sanitizeUrl } from '@components/workspace-editor/browser/hooks/usePreviewSessionSync'
 
@@ -47,6 +48,15 @@ export default function InternalBrowser() {
   const [address, setAddress] = useState(url ?? '')
 
   const controller = useWebviewController(session)
+
+  /**
+   * webview 挂载推迟两帧
+   *
+   * 打开内置浏览器会同时改变主区域布局（内容区从聊天栏独占变为左右分栏）并创建
+   * guest 渲染进程。两件事压在同一帧里，主线程一帧做不完，会出现主窗口卡顿和
+   * 一次画面跳动。先让布局与首帧绘制落地，再创建 guest。
+   */
+  const canMount = useDeferredMount()
 
   // 外部 URL 变化（打开另一个自定义菜单）→ 同步到本地会话
   useEffect(() => {
@@ -156,9 +166,9 @@ export default function InternalBrowser() {
       </div>
 
       {/* webview 主体（复用已有内置浏览器的 webview 容器） */}
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative bg-background-editor">
         {/* key 用重建序号：刷新令牌推进时 React 重建 webview 元素，页面重新加载 */}
-        {session && (
+        {session && canMount && (
           <BrowserWebView key={controller.reloadNonce} session={session} controller={controller} />
         )}
       </div>

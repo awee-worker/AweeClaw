@@ -755,10 +755,11 @@ async function backupFile(filePath: string, workspacePath: string | null): Promi
     try {
         const target = resolveBackupPath(filePath, workspacePath)
         if (!target) return
-        const content = await api.file.read(filePath)
-        if (content === null || content === undefined) return
         await api.file.ensureDir(target.backupDir)
-        await api.file.write(target.backupPath, content)
+        // 交给主进程直接复制：读写各一次会把整份文件内容经 IPC 在渲染进程往返一遍，
+        // 大文件下这两次序列化足以让工具执行期间掉帧。复制只传两个路径，且对二进制
+        // 文件同样精确。源文件不存在或不是文件时复制失败，由 catch 兜住（与原语义一致）。
+        await api.file.copy(filePath, target.backupPath)
     } catch {
         // 备份失败不影响主流程
     }

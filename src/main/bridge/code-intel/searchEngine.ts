@@ -195,7 +195,8 @@ function extractMatchesFromRgJson(output: string, rootPath: string): SearchFileR
 
 function executeRgSearch(args: string[], rootPath: string): Promise<SearchFileResult[]> {
   return new Promise((resolve) => {
-    const rg: ChildProcess = spawn(resolveRgBinaryPath(), args)
+    // ripgrep 在 Windows 上是控制台程序：不隐藏会为每次搜索闪一个黑窗口
+    const rg: ChildProcess = spawn(resolveRgBinaryPath(), args, { windowsHide: true })
     let stdout = ''
     let stderr = false
 

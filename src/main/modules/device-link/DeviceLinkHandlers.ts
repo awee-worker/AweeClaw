@@ -482,6 +482,8 @@ export async function handleCommand(
             cwd: root || undefined,
             timeout: 60000,
             maxBuffer: 2 * 1024 * 1024,
+            // Windows 上 exec 经 cmd.exe 执行，不隐藏会弹出控制台窗口
+            windowsHide: true,
           })
           const output = [stdout, stderr].filter(Boolean).join('\n')
           return {
@@ -565,7 +567,7 @@ export async function handlePowerControl(
         : process.platform === 'darwin'
         ? 'pmset sleepnow'
         : 'systemctl suspend'
-      await execAsync(cmd).catch(() => { throw new Error('sleep_failed') })
+      await execAsync(cmd, { windowsHide: true }).catch(() => { throw new Error('sleep_failed') })
       return { applied: true }
     }
     case 'wake': {

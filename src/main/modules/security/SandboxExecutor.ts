@@ -276,6 +276,7 @@ class SandboxExecutor extends EventEmitter {
       const child = childProcess.spawn('sh', ['-c', command], {
         cwd,
         env,
+        windowsHide: true,
       })
 
       let stdout = ''

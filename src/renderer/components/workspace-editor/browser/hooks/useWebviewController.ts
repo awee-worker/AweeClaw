@@ -130,6 +130,8 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
   const [canGoForward, setCanGoForward] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [devtoolsOpen, setDevtoolsOpen] = useState(false)
+  /** 导航状态同步的待执行帧 id：非 0 表示本帧已排期，用于合并重复事件 */
+  const navSyncFrameRef = useRef(0)
   /** guest id 同步到 state：内嵌 DevTools 面板要据此判断能否挂载 */
   const [guestId, setGuestId] = useState<number | null>(null)
   const [zoomFactor, setZoomFactor] = useState(1)
@@ -145,16 +147,38 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
    */
   const appliedDeviceUaRef = useRef<string | null | undefined>(undefined)
 
-  /** 同步 webview 导航状态到本地 state + previewSessionService（内存态） */
-  const syncNavState = useStableCallback((webview: HTMLWebViewElement) => {
-    const back = webview.canGoBack()
-    const forward = webview.canGoForward()
-    setCanGoBack(back)
-    setCanGoForward(forward)
-    const sid = sessionIdRef.current
-    if (sid) {
-      previewSessionService.syncWebviewState(sid, { canGoBack: back, canGoForward: forward })
-    }
+  /**
+   * 同步 webview 导航状态到本地 state + previewSessionService（内存态）
+   *
+   * 合并到下一帧执行：一次导航会连续触发 did-stop-loading / did-finish-load /
+   * did-navigate 三个事件，而 canGoBack() / canGoForward() 在 Electron 里是同步 IPC，
+   * 调用方会阻塞到 guest 应答。逐事件读两遍等于同一个往返做六次，全部落在
+   * 页面刚加载完、主线程最忙的时刻。这里只在本帧末尾读一次，结果一致。
+   */
+  const syncNavState = useStableCallback(() => {
+    if (navSyncFrameRef.current) return
+    navSyncFrameRef.current = requestAnimationFrame(() => {
+      navSyncFrameRef.current = 0
+      const webview = nodeRef.current
+      if (!webview) return
+
+      let back = false
+      let forward = false
+      try {
+        back = webview.canGoBack()
+        forward = webview.canGoForward()
+      } catch {
+        // guest 尚未 attach 时读导航状态会抛错，保持上一次的值
+        return
+      }
+
+      setCanGoBack(back)
+      setCanGoForward(forward)
+      const sid = sessionIdRef.current
+      if (sid) {
+        previewSessionService.syncWebviewState(sid, { canGoBack: back, canGoForward: forward })
+      }
+    })
   })
 
   /**
@@ -220,13 +244,13 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
       // did-finish-load 在某些 SPA / 持续加载页面可能不触发，此处兜底置 ready
       const sid = sessionIdRef.current
       if (sid) previewSessionService.markStatus(sid, 'ready')
-      syncNavState(webview)
+      syncNavState()
     }
     const handleFinishLoad = () => {
       setIsLoading(false)
       const sid = sessionIdRef.current
       if (sid) previewSessionService.markStatus(sid, 'ready')
-      syncNavState(webview)
+      syncNavState()
     }
     const handleFailLoad = (event: Event) => {
       const detail = event as unknown as FailLoadEvent
@@ -247,7 +271,7 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
       if (sid && detail.url) {
         previewSessionService.navigate(sid, detail.url)
       }
-      syncNavState(webview)
+      syncNavState()
     }
     const handleNavigateInPage = (event: Event) => {
       const detail = event as unknown as NavigateEvent
@@ -313,12 +337,20 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
       void api.preview.watchAutoReload(autoReloadRoot, autoReloadUrl)
     }
 
-    // 挂载时先尝试上报一次：页面已经加载完成的重挂（开发态 StrictMode 的模拟卸载再挂载）
+    // 挂载时补报一次：页面已经完成加载的重挂（开发态 StrictMode 的模拟卸载再挂载）
     // 不会再有 dom-ready，只把上报挂在事件上会让健康采集永久缺席。
-    // 未就绪时 getWebContentsId 会抛错，由 registerHealth 内部吞掉。
-    registerHealth()
+    //
+    // 推到两帧之后：元素刚插入时 attach 还没完成，此刻读 guest id 是同步 IPC，
+    // 而且必然失败，等于用一个必然抛错的同步往返阻塞主线程——正是打开预览
+    // 卡顿的组成之一。等节点完成一次布局后再读，时机仍足够早。
+    let healthReportFrame = requestAnimationFrame(() => {
+      healthReportFrame = requestAnimationFrame(() => {
+        registerHealth()
+      })
+    })
 
     return () => {
+      cancelAnimationFrame(healthReportFrame)
       listeners.forEach(([name, handler]) => webview.removeEventListener(name, handler))
       webview.removeEventListener('dom-ready', handleDomReady)
 
@@ -357,12 +389,9 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
       // webview 的 src 已由 React 设置为 session.url，标记为已加载，避免 effect 重复 loadURL
       lastLoadedUrlRef.current = sessionRef.current?.url || ''
       lastReloadTokenRef.current = sessionRef.current?.reloadToken || 0
-      // 读取初始缩放
-      try {
-        setZoomFactor(el.getZoomFactor())
-      } catch {
-        // webview 未就绪时忽略
-      }
+      // 不在这里读缩放：getZoomFactor() 是同步 IPC，而 webview 刚插入时 guest
+      // 尚未 attach，读不到真实值又阻塞主线程。新建 webview 的缩放本来就是 100%，
+      // state 初值即为 1，真正变化由用户操作 applyZoom 写回。
       cleanupRef.current = bindEvents(el)
     }
   }, [bindEvents])

@@ -119,13 +119,79 @@ export function buildStreamingEditPreview(originalContent: string, args: Record<
   return applyBatchEditPreview(originalContent, resolution.args.edits)
 }
 
+/**
+ * 流式编辑预览的最小刷新间隔
+ *
+ * 一次 edit_file 的参数可能有上百个分片，每份「新参数」都要在原文上重算一次全量
+ * 预览（整篇 split / replace），再推给编辑器做 diff 渲染。文件越大、分片越多，
+ * 这部分开销越重，是工具执行期间掉帧的常见来源。预览不需要逐 token 刷新。
+ */
+const STREAMING_PREVIEW_THROTTLE_MS = 150
+
+interface ThrottleState {
+  lastRunAt: number
+  timer: ReturnType<typeof setTimeout> | null
+  pending: {
+    partialArgs: Record<string, unknown>
+    workspacePath?: string | null
+  } | null
+}
+
 export class StreamingEditPreviewCoordinator {
   private sessions = new Map<string, StreamingEditPreviewSession>()
   private pendingLoads = new Map<string, Promise<StreamingEditPreviewSession | null>>()
+  private throttleStates = new Map<string, ThrottleState>()
 
-  async sync(toolId: string, toolName: string, partialArgs?: Record<string, unknown>, workspacePath?: string | null): Promise<void> {
+  /**
+   * 同步流式编辑预览（节流入口）
+   *
+   * 窗口内只记下最新一份参数，到点用最后一份重算，因此不会丢掉最终态；
+   * 参数已完整时（收尾、工具即将执行）传 immediate 跳过等待。
+   */
+  async sync(
+    toolId: string,
+    toolName: string,
+    partialArgs?: Record<string, unknown>,
+    workspacePath?: string | null,
+    options?: { immediate?: boolean },
+  ): Promise<void> {
     if (!partialArgs || !STREAMABLE_EDIT_TOOL_NAMES.has(toolName)) return
 
+    const state = this.throttleStates.get(toolId)
+      ?? { lastRunAt: 0, timer: null, pending: null }
+    state.pending = { partialArgs, workspacePath }
+    this.throttleStates.set(toolId, state)
+
+    const elapsed = Date.now() - state.lastRunAt
+    if (options?.immediate || elapsed >= STREAMING_PREVIEW_THROTTLE_MS) {
+      await this.flushPreview(toolId)
+      return
+    }
+
+    if (state.timer) return
+    state.timer = setTimeout(() => {
+      state.timer = null
+      void this.flushPreview(toolId)
+    }, STREAMING_PREVIEW_THROTTLE_MS - elapsed)
+  }
+
+  /** 立即应用当前记录的最新参数（无待处理项时为空操作） */
+  private async flushPreview(toolId: string): Promise<void> {
+    const state = this.throttleStates.get(toolId)
+    if (!state?.pending) return
+
+    const { partialArgs, workspacePath } = state.pending
+    state.pending = null
+    state.lastRunAt = Date.now()
+
+    await this.applyPreview(toolId, partialArgs, workspacePath)
+  }
+
+  private async applyPreview(
+    toolId: string,
+    partialArgs: Record<string, unknown>,
+    workspacePath?: string | null,
+  ): Promise<void> {
     const filePath = resolveStreamingEditFilePath(partialArgs.path, workspacePath)
     if (!filePath) return
 
@@ -142,6 +208,10 @@ export class StreamingEditPreviewCoordinator {
   }
 
   release(toolId: string): void {
+    const state = this.throttleStates.get(toolId)
+    if (state?.timer) clearTimeout(state.timer)
+    this.throttleStates.delete(toolId)
+
     const existing = this.sessions.get(toolId)
     if (!existing) return
 
@@ -151,6 +221,10 @@ export class StreamingEditPreviewCoordinator {
   }
 
   releaseAll(): void {
+    for (const [toolId, state] of this.throttleStates) {
+      if (state.timer) clearTimeout(state.timer)
+      this.throttleStates.delete(toolId)
+    }
     for (const toolId of Array.from(this.sessions.keys())) {
       this.release(toolId)
     }

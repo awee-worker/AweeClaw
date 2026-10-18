@@ -3,7 +3,7 @@
  */
 
 import { api } from '../../../adapters/electronBridge'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { FolderOpen, Plus, RefreshCw, FolderPlus, FilePlus, ExternalLink, Crosshair, Terminal, Clipboard, Download, Eye, EyeOff } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -33,6 +33,23 @@ interface WorkspaceFilesChangedDetail {
   affectedPaths?: string[]
   deletedPaths?: string[]
   refreshRoot?: boolean
+}
+
+/**
+ * 应用内部快照目录（与工具层的备份目录同名）
+ *
+ * 每次编辑 / 覆写前，工具会把原文件复制一份到这里，而这次复制会以 file:changed
+ * 通知的形式回到渲染进程。路径落在工作空间内，于是命中文件树的刷新条件 ——
+ * 结果每个工具编辑都额外多一次目录重读与文件树重渲染，而这些快照文件本身从不
+ * 需要出现在文件树里。这里把它们排除在刷新链路之外。
+ */
+const INTERNAL_SNAPSHOT_DIR = '.history'
+
+/** 路径是否位于应用内部快照目录内 */
+function isInternalSnapshotPath(filePath: string, workspaceRoot: string): boolean {
+  if (!pathStartsWith(filePath, workspaceRoot)) return false
+  const relative = filePath.slice(workspaceRoot.length)
+  return relative.split(/[/\\]/).includes(INTERNAL_SNAPSHOT_DIR)
 }
 
 export function ExplorerView() {
@@ -101,13 +118,17 @@ export function ExplorerView() {
   }, [isResizingArtifacts, setArtifactRatio])
 
   // 产物栏显隐跟随产物：当前工作空间有产物自动展开，产物清空后自动收起。
-  // 只订阅「是否有产物」这个布尔值，产物落盘引起的列表更新不会带来额外渲染。
-  const hasArtifacts = useStore(state => {
-    if (state.artifacts.length === 0) return false
-    const ws = state.workspacePath
-    if (!ws) return true
-    return state.artifacts.some(item => pathStartsWith(item.path, ws))
-  })
+  //
+  // 不在 selector 里直接算这个布尔值：zustand 的 selector 在每次 store 变更时都会
+  // 重新执行，而流式对话期间 store 每秒会更新数十次。产物列表有上限但仍可能上百条，
+  // 每次都遍历一遍做路径匹配，等于让侧边栏白白吃掉整场对话的 CPU。
+  // 改成订阅列表引用本身，只有产物真的增删时才重算。
+  const artifacts = useStore(state => state.artifacts)
+  const hasArtifacts = useMemo(() => {
+    if (artifacts.length === 0) return false
+    if (!workspacePath) return true
+    return artifacts.some(item => pathStartsWith(item.path, workspacePath))
+  }, [artifacts, workspacePath])
 
   // 记录上一次判定依据：产物有无未变化时保持现状，不覆盖用户手动折叠 / 展开的选择
   const artifactPresenceRef = useRef<{ workspacePath: string | null; hasArtifacts: boolean } | null>(null)
@@ -130,31 +151,53 @@ export function ExplorerView() {
     }
   }, [activeFilePath])
 
+  /**
+   * 「当前工作空间是不是 Git 仓库」的探测结果缓存
+   *
+   * 仓库属性只在切换工作空间时可能改变，文件一有改动就重新探测没有意义：
+   * 每次探测要 spawn 一个 git 子进程，失败还要重试三轮（每轮间隔 200ms）。
+   * AI 连续写文件时这条链路会被高频触发，Windows 上进程启动开销高，足以
+   * 在工具执行期间拖出可见的停顿。
+   */
+  const repoProbeRef = useRef<{ workspacePath: string; isRepo: boolean } | null>(null)
+
+  /** Git 状态刷新的合并定时器：短时间内多次文件变更只落后一次查询 */
+  const gitRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // 更新 Git 状态（带重试逻辑）
   const updateGitStatus = useCallback(async () => {
     if (!workspacePath) {
       setGitStatus(null)
       setIsGitRepo(false)
+      repoProbeRef.current = null
       return
     }
 
     gitService.setWorkspace(workspacePath)
-    
+
+    const cached = repoProbeRef.current
+    if (cached && cached.workspacePath === workspacePath && cached.isRepo) {
+      setIsGitRepo(true)
+      setGitStatus(await gitService.getStatus())
+      return
+    }
+
     // 重试逻辑：有时工作空间刚设置时 git 命令可能失败
     let retries = 3
     let isRepo = false
-    
+
     while (retries > 0) {
       isRepo = await gitService.isGitRepo()
       if (isRepo) break
-      
+
       // 如果失败，等待一小段时间后重试
       retries--
       if (retries > 0) {
         await new Promise(resolve => setTimeout(resolve, 200))
       }
     }
-    
+
+    repoProbeRef.current = { workspacePath, isRepo }
     setIsGitRepo(isRepo)
 
     if (isRepo) {
@@ -162,6 +205,45 @@ export function ExplorerView() {
       setGitStatus(status)
     }
   }, [workspacePath, setGitStatus, setIsGitRepo])
+
+  /**
+   * 合并 Git 状态刷新
+   *
+   * 文件树刷新与 Git 状态查询来自同一次文件变更，但后者贵得多（至少一次子进程）。
+   * 变更事件在 Windows 上会为「目录延迟可见」补发一次，再加上文件监听自身的防抖，
+   * 同一次写入能触达三次；这里统一收敛成一次查询。
+   */
+  const scheduleGitStatusUpdate = useCallback((delayMs = 400) => {
+    if (gitRefreshTimerRef.current) clearTimeout(gitRefreshTimerRef.current)
+    gitRefreshTimerRef.current = setTimeout(() => {
+      gitRefreshTimerRef.current = null
+      void updateGitStatus()
+    }, delayMs)
+  }, [updateGitStatus])
+
+  // 切换工作空间时缓存必须失效，否则新目录会沿用上一个目录的探测结论
+  useEffect(() => {
+    repoProbeRef.current = null
+  }, [workspacePath])
+
+  useEffect(() => {
+    return () => {
+      if (gitRefreshTimerRef.current) clearTimeout(gitRefreshTimerRef.current)
+      gitRefreshTimerRef.current = null
+    }
+  }, [])
+
+  /**
+   * 最近一次自动刷新的指纹
+   *
+   * 一次写入会经由几条独立的路触发刷新：工具主动通知（Windows 上还会补发一次）、
+   * 主进程文件监听的批量事件、以及 .git 状态的延迟查询。它们描述的是同一批变更，
+   * 却各自去读一遍目录、重建一次文件树；根目录命中时还要整棵树重渲染。这里按
+   * 「受影响路径 + 删除路径 + 是否刷根」记指纹，短窗口内完全相同的自动刷新直接跳过。
+   *
+   * 手动刷新（resetTree）不参与去重，用户点刷新应当立刻生效。
+   */
+  const lastAutoRefreshRef = useRef<{ signature: string; at: number } | null>(null)
 
   // 刷新文件列表
   const refreshFiles = useCallback(async (options?: TreeRefreshOptions) => {
@@ -174,6 +256,20 @@ export function ExplorerView() {
       || options?.refreshRoot === true
       || affectedPaths.some(path => pathEquals(path, workspacePath))
       || deletedPaths.some(path => pathEquals(getDirPath(path), workspacePath))
+
+    if (!shouldResetTree && (affectedPaths.length > 0 || deletedPaths.length > 0)) {
+      const signature = [
+        [...affectedPaths].sort().join('|'),
+        [...deletedPaths].sort().join('|'),
+        shouldRefreshRoot ? 'root' : '',
+      ].join('#')
+      const now = Date.now()
+      const last = lastAutoRefreshRef.current
+      if (last && last.signature === signature && now - last.at < 300) {
+        return
+      }
+      lastAutoRefreshRef.current = { signature, at: now }
+    }
 
     if (shouldResetTree) {
       directoryCacheService.clear()
@@ -197,8 +293,9 @@ export function ExplorerView() {
       }))
     }
 
-    void updateGitStatus()
-  }, [workspacePath, setFiles, updateGitStatus])
+    // Git 状态查询比目录刷新贵得多（子进程），统一合并到一次延迟查询里
+    scheduleGitStatusUpdate()
+  }, [workspacePath, setFiles, scheduleGitStatusUpdate])
 
   // 工作空间变化时更新 Git 状态（只在初始化时执行一次）
   useEffect(() => {
@@ -257,10 +354,10 @@ export function ExplorerView() {
 
     const config = getEditorConfig()
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
-    let gitDebounceTimer: ReturnType<typeof setTimeout> | null = null
     let pendingChanges: Array<{ path: string; event: string }> = []
 
     const unsubscribe = api.file.onChanged((event: { event: 'create' | 'update' | 'delete'; path: string }) => {
+      if (isInternalSnapshotPath(event.path, workspacePath)) return
       if (pathStartsWith(event.path, workspacePath)) {
         pendingChanges.push({ path: event.path, event: event.event })
 
@@ -297,10 +394,11 @@ export function ExplorerView() {
           }
         }, config.performance.fileChangeDebounceMs)
         
-        // 如果启用了自动刷新且是 .git 目录变化，延迟刷新 Git 状态
+        // 如果启用了自动刷新且是 .git 目录变化，延迟刷新 Git 状态。
+        // 走统一的合并入口：它与目录刷新引起的 Git 查询是同一次变更的两种触发，
+        // 各起一个定时器只会让同一次变更查询两次。
         if (config.git.autoRefresh && event.path.includes('.git')) {
-          if (gitDebounceTimer) clearTimeout(gitDebounceTimer)
-          gitDebounceTimer = setTimeout(updateGitStatus, 500)
+          scheduleGitStatusUpdate(500)
         }
       }
     })
@@ -308,9 +406,8 @@ export function ExplorerView() {
     return () => {
       unsubscribe()
       if (debounceTimer) clearTimeout(debounceTimer)
-      if (gitDebounceTimer) clearTimeout(gitDebounceTimer)
     }
-  }, [workspacePath, refreshFiles, updateGitStatus])
+  }, [workspacePath, refreshFiles, scheduleGitStatusUpdate])
 
   const handleOpenFolder = async () => {
     // 选择器同时接受文件夹与 .aweeclaw-workspace 文件（多根）

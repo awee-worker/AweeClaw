@@ -2,6 +2,7 @@
  * AweeClaw 主进程入口
  *
  * 仅负责应用生命周期编排与模块间协调，具体职责委托到 bootstrap/ 下的子模块：
+ * - processVisibility.ts  子进程控制台窗口治理（Windows 下默认 windowsHide）
  * - schemeRegistry.ts     自定义协议特权注册（必须在 ready 前一次性完成）
  * - stores.ts             Store 初始化
  * - appConfig.ts          应用配置文件首次创建
@@ -10,6 +11,10 @@
  * - windowManager.ts      窗口创建与生命周期
  * - moduleInitializer.ts  后台模块初始化
  */
+// 子进程控制台窗口治理：必须在任何业务模块之前加载，否则模块内已取到原始
+// child_process 函数引用，Windows 下的黑框兜底就不会生效（见文件注释）
+import './bootstrap/processVisibility'
+
 import { app } from 'electron'
 import * as path from 'path'
 import { logger } from '@shared/toolkit/LogEngine'
@@ -103,6 +108,17 @@ function sleep(ms: number): Promise<void> {
  * 同样使用了该开关，这里对齐以保证打包后仍走 GPU 合成。
  */
 app.commandLine.appendSwitch('ignore-gpu-blocklist')
+
+/**
+ * Windows 应用标识。
+ *
+ * 不设置时系统会把每个新建窗口/进程当成独立应用归组，任务栏在窗口出现与消失
+ * 时会多出一组图标并闪烁；显式声明后这些窗口统一归到应用自身，任务栏不再跳。
+ * 取值与 electron-builder 的 appId 保持一致。
+ */
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.aweeclaw.app')
+}
 
 // ==========================================
 // 单例锁（必须在模块加载时立即执行）

@@ -115,13 +115,27 @@ function AppContent() {
   }, [activeSidePanel, activeFilePath])
 
   // v2.3.1：打开文件/预览/PPT 预览时，自动缩小聊天窗口到最小宽度，给编辑器更多空间
+  //
+  // 推出两帧执行：改宽度会让主内容区整片重新分配，而打开文件的同一帧还在做编辑器
+  // 区域首次挂载与懒加载 chunk 执行。几件事压在一帧里，主线程做不完，观感就是
+  // 「画面缩放一下 + 卡顿」。先让新布局与首帧绘制落地，再收窄聊天栏。
   useEffect(() => {
-    if (activeFilePath) {
-      const { setChatWidth, chatWidth } = useStore.getState()
-      // 仅当聊天窗口比最小宽度大时才缩小（避免用户手动调宽后又被打回）
-      if (chatWidth > 480) {
-        setChatWidth(460) // CHAT_MIN_WIDTH
-      }
+    if (!activeFilePath) return
+
+    let inner = 0
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        const { setChatWidth, chatWidth } = useStore.getState()
+        // 仅当聊天窗口比最小宽度大时才缩小（避免用户手动调宽后又被打回）
+        if (chatWidth > 480) {
+          setChatWidth(460) // CHAT_MIN_WIDTH
+        }
+      })
+    })
+
+    return () => {
+      cancelAnimationFrame(outer)
+      if (inner) cancelAnimationFrame(inner)
     }
   }, [activeFilePath])
 

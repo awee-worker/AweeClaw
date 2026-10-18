@@ -29,7 +29,9 @@ export default function BrowserWebView({ session, controller }: BrowserWebViewPr
       ref={controller.webviewRef}
       src={initialSrc}
       title={session.title}
-      className="w-full h-full border-0 bg-white"
+      // 背景用编辑器底色而不是纯白：webview 挂载到首次绘制之间是空位图，
+      // 白色会在打开标签页的瞬间闪出一块白斑，深色底与周围区域连贯。
+      className="w-full h-full border-0 bg-background-editor"
       // 不设置 nodeintegration / disablewebsecurity / allowpopups：
       // - nodeIntegration 由主进程 will-attach-webview 强制为 false
       // - 弹窗由主进程 setWindowOpenHandler 统一拦截

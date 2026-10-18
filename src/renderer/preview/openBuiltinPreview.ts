@@ -107,7 +107,7 @@ export async function openBuiltinPreview(
             }
         }
         const title = input.title || deriveTitle(rawUrl)
-        const session = activatePreview(rawUrl, title, undefined, input.device)
+        const session = await activatePreview(rawUrl, title, undefined, input.device)
         const ready = await waitForSessionReady(session.id)
         return { success: true, url: rawUrl, title, sessionId: session.id, ready }
     }
@@ -126,7 +126,7 @@ export async function openBuiltinPreview(
             }
         }
         const title = input.title || deriveTitle(rawPath)
-        const session = activatePreview(resolved.url, title, resolved.rootDir, input.device)
+        const session = await activatePreview(resolved.url, title, resolved.rootDir, input.device)
         const ready = await waitForSessionReady(session.id)
         return { success: true, url: resolved.url, title, sessionId: session.id, rootDir: resolved.rootDir, ready }
     } catch (err) {
@@ -138,26 +138,32 @@ export async function openBuiltinPreview(
 }
 
 /** 打开（或复用）预览标签页并激活，返回对应会话（调用方据此等待页面就绪） */
-function activatePreview(url: string, title: string, rootDir?: string, device?: string): PreviewSession {
+async function activatePreview(url: string, title: string, rootDir?: string, device?: string): Promise<PreviewSession> {
+    const store = useStore.getState()
+
+    // 侧边栏收起与打开标签页必须落在同一次 React 提交里
+    //
+    // 收起侧边栏会让主内容区变宽，打开标签页又会让聊天栏从「弹性占满」变成
+    // 「固定宽度」，同时挤出编辑器区域。拆成两帧时用户会先看到界面变宽、紧接着
+    // 内容被压窄——两次布局变化连着闪，观感就是整个界面缩了一下。合并到同一次
+    // 提交后只有一次布局与一次绘制，直接到达最终形态。
+    if (store.activeSidePanel !== null) {
+        store.setActiveSidePanel(null)
+    }
+
     const session = previewSessionService.openUrl(url, {
         title,
         source: 'manual',
         activate: true,
         previewRoot: rootDir,
+        // 设备档随会话一起下发：首帧就是设备框形态，不会先按铺满渲染一轮再缩回去
+        deviceId: device,
     })
-
-    // 指定了设备档位：打开即应用，页面首次加载就按设备 viewport 渲染
-    if (device) {
-        previewSessionService.setDevice(session.id, { deviceId: device })
-    }
 
     // 本地静态页面：登记目录监听，页面文件改动后自动刷新
     if (rootDir) {
         void api.preview.watchAutoReload(rootDir, url)
     }
-
-    // 预览要抢焦点，避免被右侧边栏挡住
-    useStore.getState().setActiveSidePanel(null)
 
     return session
 }

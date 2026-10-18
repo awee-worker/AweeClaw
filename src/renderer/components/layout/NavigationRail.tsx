@@ -610,6 +610,30 @@ export default function NavigationRail() {
     closeInternalBrowser()
   }
 
+  /**
+   * 打开自定义菜单（内部浏览器）
+   *
+   * 分两步走：收起侧边栏、关闭全屏页面都会让主区域重新分配宽度，紧接着挂载
+   * 内置浏览器（lazy chunk + <webview> 的 guest 进程）又是一批重活。全部压在同一
+   * 帧里主线程做不完，表现为主窗口卡一下。这里先把布局变化落地一帧再打开浏览器，
+   * 与打开预览 Tab 时「先让出侧边栏、再挂载 webview」的处理保持一致。
+   */
+  const handleOpenCustomMenu = useCallback((menu: { url: string; name: string; id: string }) => {
+    const hadSidePanel = useStore.getState().activeSidePanel !== null
+    setActiveSidePanel(null)
+    closeAllFullPages()
+
+    const open = () => openInternalBrowser(menu.url, menu.name, menu.id)
+
+    // 侧边栏本来就没展开时没有额外重排，不必多等一帧
+    if (!hadSidePanel) {
+      open()
+      return
+    }
+
+    requestAnimationFrame(() => requestAnimationFrame(open))
+  }, [setActiveSidePanel, closeAllFullPages, openInternalBrowser])
+
   const handleBrandClick = useCallback(() => {
     setActiveSidePanel(null)
     setShowWelcomePage(true)
@@ -1207,7 +1231,7 @@ export default function NavigationRail() {
               <button
                 key={menu.id}
                 title={menu.url}
-                onClick={() => { setActiveSidePanel(null); closeAllFullPages(); openInternalBrowser(menu.url, menu.name, menu.id) }}
+                onClick={() => handleOpenCustomMenu(menu)}
                 className={`${p}-nav-rail-item hover:bg-text-primary/[0.06] group`}
                 data-active={isCustomMenuActive}
               >
@@ -1225,7 +1249,7 @@ export default function NavigationRail() {
             ) : (
               <HintOverlay key={menu.id} content={menu.name} side="right" delay={400}>
                 <button
-                  onClick={() => { setActiveSidePanel(null); closeAllFullPages(); openInternalBrowser(menu.url, menu.name, menu.id) }}
+                  onClick={() => handleOpenCustomMenu(menu)}
                   className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
                   data-active={isCustomMenuActive}
                 >

@@ -96,7 +96,8 @@ function openWithSystemCommand(url: string): boolean {
         : `xdg-open "${escaped}"`
 
   try {
-    exec(cmd, (err) => {
+    // Windows 的 `start` 经 cmd 执行：不隐藏会闪一个黑色控制台窗口
+    exec(cmd, { windowsHide: true }, (err) => {
       if (err) logger.system.warn('[SafeOpen] System fallback also failed:', url, err.message)
     })
     return true

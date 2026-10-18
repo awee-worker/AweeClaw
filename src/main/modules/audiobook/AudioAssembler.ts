@@ -141,7 +141,10 @@ export class AudioAssembler {
         silencePath,
       ]
 
-      const proc = spawn(FFMPEG_PATH!, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+      const proc = spawn(FFMPEG_PATH!, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      })
 
       let stderrOutput = ''
 
@@ -235,7 +238,10 @@ export class AudioAssembler {
         outputPath,
       ]
 
-      const proc = spawn(FFMPEG_PATH!, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+      const proc = spawn(FFMPEG_PATH!, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      })
 
       let stderrOutput = ''
 
@@ -269,7 +275,10 @@ export class AudioAssembler {
         '-of', 'csv=p=0',
       ]
 
-      const proc = spawn(FFMPEG_PATH!, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+      const proc = spawn(FFMPEG_PATH!, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      })
 
       let stdoutOutput = ''
 

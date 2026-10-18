@@ -262,6 +262,8 @@ interface SecurityCheckResult {
         // 独立进程组：超时/清理时可按进程组一次性终止整棵树，
         // 避免「只杀直接子进程、孙进程继续占用 CPU」
         detached: process.platform !== 'win32',
+        // Windows 下不隐藏会为每条命令闪出控制台窗口
+        windowsHide: true,
         env: {
           ...process.env,
           PATH: process.env.PATH,

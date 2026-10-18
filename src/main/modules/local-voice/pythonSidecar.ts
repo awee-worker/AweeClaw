@@ -216,6 +216,8 @@ export class PythonSidecar {
 
     const child = spawn(pythonPath, [scriptPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
+      // Python 解释器在 Windows 上是控制台程序，不隐藏会直接弹出窗口
+      windowsHide: true,
       cwd,
       env: {
         ...process.env,

@@ -271,6 +271,7 @@ function execCommandAsync(
       cwd: options?.cwd,
       timeout: options?.timeout || 60_000,
       env: { ...process.env, PATH: getAugmentedPathEnv(), ...options?.env },
+      windowsHide: true,
     })
     let stdout = ''
     let stderr = ''
@@ -382,6 +383,7 @@ function extractArchive(archivePath: string, destDir: string): Promise<void> {
     const proc = spawn('tar', ['-xf', archivePath, '-C', destDir], {
       timeout: EXTRACT_TIMEOUT_MS,
       env: { ...process.env, PATH: getAugmentedPathEnv() },
+      windowsHide: true,
     })
     let stderr = ''
     proc.stderr?.on('data', (data: Buffer) => { stderr += data.toString() })
@@ -394,6 +396,7 @@ function extractArchive(archivePath: string, destDir: string): Promise<void> {
       if (archivePath.endsWith('.zip')) {
         const unzipProc = spawn('unzip', ['-o', archivePath, '-d', destDir], {
           timeout: EXTRACT_TIMEOUT_MS,
+          windowsHide: true,
         })
         let unzipStderr = ''
         unzipProc.stderr?.on('data', (data: Buffer) => { unzipStderr += data.toString() })

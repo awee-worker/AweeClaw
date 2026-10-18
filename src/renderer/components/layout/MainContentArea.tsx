@@ -9,7 +9,7 @@
  * - secondary: 支持多种场景布局（editor-centric, dashboard-centric, canvas-centric 等）
  */
 
-import { Suspense, lazy, useMemo } from 'react'
+import { Suspense, lazy, useMemo, useEffect } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
@@ -76,7 +76,7 @@ function PanelSlot({ children }: { children: React.ReactNode }) {
 function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaProps) {
   const { chatVisible, hasOpenFiles, activeFilePath,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage,
-    activeSidePanel } = useStore(useShallow((s) => ({
+    activeSidePanel, internalBrowserUrl } = useStore(useShallow((s) => ({
     chatVisible: s.chatVisible,
     // 只订阅「是否存在打开的文件」这一布尔量：openFiles 数组会随编辑内容逐键重建，
     // 直接订阅数组会让主内容区（连同编辑器与对话区）在打字时全程重渲染。
@@ -89,7 +89,15 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
     showSessionHistoryPage: s.showSessionHistoryPage,
     showPluginCenterPage: s.showPluginCenterPage,
     activeSidePanel: s.activeSidePanel,
+    internalBrowserUrl: s.internalBrowserUrl,
   })))
+
+  /**
+   * 是否由内置浏览器接管左侧工作区
+   *
+   * AI 浏览器面板自行承载内置浏览器（见 AIBrowserView），其余情况由主内容区接管。
+   */
+  const showInternalBrowser = Boolean(internalBrowserUrl) && activeSidePanel !== 'ai-browser'
 
   // 宽模式面板（chat-centric 场景，聊天为主区域）
   // 是否隐藏聊天由场景配置统一决定（wideModeHidesChat），不再按 panelId 硬编码特例：
@@ -129,17 +137,26 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
     return <FullPageSlot><ErrorBoundary><Suspense fallback={<InlineSettingsSkeleton />}><PluginCenterPage /></Suspense></ErrorBoundary></FullPageSlot>
   }
 
-  // 始终渲染 ChatSection，避免 activeFilePath 变化时卸载/重新挂载
-  // 有文件时：EditorSlot 在左，ChatSection 在右固定宽度
-  // 无文件时：只渲染 ChatSection，flex:1 占满整个主区域
+  // 始终渲染 ChatSection，避免 activeFilePath / 内置浏览器切换时卸载重新挂载
+  //
+  // 左侧工作区在「内置浏览器 / 编辑器 / 空」之间切换，ChatSection 始终是同一个位置的
+  // 同一个元素（key 固定）。打开内置浏览器时不再整体换成另一棵树：那会把 ChatPanel
+  // 一起卸载重建，而它携带整段消息 DOM、虚拟列表与滚动状态，重建一次就是主窗口
+  // 卡顿并伴随画面跳动的直接原因。
   const hasFile = hasOpenFiles && activeFilePath !== null
+  const hasWorkspace = hasFile || showInternalBrowser
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden">
-      {hasFile && <EditorSlot />}
+      {showInternalBrowser ? (
+        <InternalBrowserSlot key="internal-browser" />
+      ) : hasFile ? (
+        <EditorSlot key="editor" />
+      ) : null}
       <ChatSection
+        key="chat"
         visible={chatVisible}
         mode="primary"
-        hasFile={hasFile}
+        hasFile={hasWorkspace}
       />
     </div>
   )
@@ -150,7 +167,7 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
 function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeComponent }: MainContentAreaProps) {
   const { chatVisible, hasOpenFiles, activeFilePath,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage,
-    activeSidePanel } = useStore(useShallow((s) => ({
+    activeSidePanel, internalBrowserUrl } = useStore(useShallow((s) => ({
     chatVisible: s.chatVisible,
     // 只订阅「是否存在打开的文件」这一布尔量：openFiles 数组会随编辑内容逐键重建，
     // 直接订阅数组会让主内容区（连同编辑器与对话区）在打字时全程重渲染。
@@ -163,6 +180,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     showSessionHistoryPage: s.showSessionHistoryPage,
     showPluginCenterPage: s.showPluginCenterPage,
     activeSidePanel: s.activeSidePanel,
+    internalBrowserUrl: s.internalBrowserUrl,
   })))
 
   const isShellStudioActive = activeSidePanel === 'shell'
@@ -194,6 +212,26 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     return false
   }, [chatVisible, isWideModePanel, activeSidePanel, layoutConfig.wideModeHidesChat, layoutConfig.keepChatPanelIds, layoutConfig.showEditor, scenarioWelcomeComponent, hasOpenFiles, activeFilePath])
 
+  /**
+   * 内置浏览器（自定义菜单）：只顶掉左侧工作区，右侧 ChatSection 原位保留
+   *
+   * 这里的返回结构与下方「编辑器模式」分支必须同形（Fragment > [工作区 div, ChatSection]）。
+   * 原先这一分支写在 MainContentArea 顶层提前 return 另一棵树，ChatSection 的位置随之
+   * 改变，React 只能把编辑器与 ChatPanel 整棵卸载后重建 —— ChatPanel 携带整段消息 DOM、
+   * 虚拟列表与滚动状态，重建一次就是打开内置浏览器时那一下卡顿和画面跳动。
+   */
+  const showInternalBrowser = Boolean(internalBrowserUrl) && activeSidePanel !== 'ai-browser'
+  if (showInternalBrowser) {
+    return (
+      <>
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          <InternalBrowserSlot />
+        </div>
+        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
+      </>
+    )
+  }
+
   // 宽模式面板
   if (isWideModePanel && activeSidePanel) {
     return (
@@ -203,7 +241,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
             <DynamicPanelView panelId={activeSidePanel} />
           </PanelSlot>
         </FullPageSlot>
-        {layoutConfig.showChat && <ChatSection visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
       </>
     )
   }
@@ -235,7 +273,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     if (shouldHideEditor) {
       return (
         <>
-          {layoutConfig.showChat && <ChatSection visible={!shouldHideChat} mode="secondary" />}
+          {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
         </>
       )
     }
@@ -251,7 +289,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
             <EditorBottomBar />
           </div>
         )}
-        {layoutConfig.showChat && <ChatSection visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
       </>
     )
   }
@@ -269,7 +307,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
             <PanelSlot><DataDashboard /></PanelSlot>
           )}
         </FullPageSlot>
-        {layoutConfig.showChat && <ChatSection visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
       </>
     )
   }
@@ -278,7 +316,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     return (
       <>
         <FullPageSlot><PanelSlot><CanvasWorkspace /></PanelSlot></FullPageSlot>
-        {layoutConfig.showChat && <ChatSection visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
       </>
     )
   }
@@ -295,7 +333,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
             <PanelSlot><DataDashboard /></PanelSlot>
           )}
         </FullPageSlot>
-        {layoutConfig.showChat && <ChatSection visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
       </>
     )
   }
@@ -312,7 +350,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
             <PanelSlot><ScenarioDashboard /></PanelSlot>
           )}
         </FullPageSlot>
-        {layoutConfig.showChat && <ChatSection visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
       </>
     )
   }
@@ -321,6 +359,61 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
 }
 
 // ====== 导出 ======
+
+/**
+ * 空闲预热懒加载 chunk
+ *
+ * 编辑器与内置浏览器都是打开时才 import 的重模块：下载、解析、执行全部落在
+ * 「打开」那一帧，和布局重排、guest 渲染进程创建叠在一起，就是打开瞬间卡一下
+ * 的直接来源。这里在主内容区渲染完之后借浏览器空闲时间把模块先取回（只 import、
+ * 不渲染），首次真正打开时只剩执行开销。
+ *
+ * 同一路径的 dynamic import 命中模块缓存，与 lazy() 共用同一份 chunk，
+ * 不会重复下载。
+ */
+function useChunkWarmup(load: () => Promise<unknown>): void {
+  useEffect(() => {
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number
+      cancelIdleCallback?: (handle: number) => void
+    }
+
+    const warm = () => {
+      void load()
+    }
+
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      const handle = idleWindow.requestIdleCallback(warm, { timeout: 4000 })
+      return () => idleWindow.cancelIdleCallback?.(handle)
+    }
+
+    const timer = setTimeout(warm, 1500)
+    return () => clearTimeout(timer)
+    // load 都是模块级常量函数，引用稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+}
+
+/** 编辑器模块（含整套编辑器组件与 hooks，Monaco 本体由 bootstrap 预热） */
+const loadEditorChunk = () => import('@components/workspace-editor/WorkspaceEditor')
+
+/**
+ * 内置浏览器模块
+ *
+ * 这个 chunk 单独预热：打开自定义菜单是用户主动操作，等待窗口只有一两帧，
+ * 现场下载会比编辑器更明显地表现为「点了没反应 / 卡一下」。
+ */
+const loadInternalBrowserChunk = () => import('@components/browser/InternalBrowser')
+
+/**
+ * 预览标签页模块
+ *
+ * WorkspaceEditor 用 safeLazy 加载 WebPreviewTab，而这套组件（工具栏、设备舞台、
+ * webview 控制器、会话同步 hook）单独成一个 chunk，WorkspaceEditor 的预热带不上它。
+ * 首次 open_preview 时现场下载并执行，负担全部落在打开预览的那一帧——表现为整个
+ * 界面卡顿并伴随一次跳动。这里提前把它取到缓存里。
+ */
+const loadPreviewTabChunk = () => import('@components/workspace-editor/WebPreviewTab')
 
 /**
  * 内部浏览器插槽
@@ -336,7 +429,8 @@ function InternalBrowserSlot() {
   return (
     <div className="flex-1 min-w-0 overflow-hidden">
       <ErrorBoundary>
-        <Suspense fallback={null}>
+        {/* chunk 尚未就绪时铺编辑器底色，避免浏览器区域闪一下空白 */}
+        <Suspense fallback={<div className="h-full w-full bg-background-editor" />}>
           <InternalBrowser />
         </Suspense>
       </ErrorBoundary>
@@ -345,24 +439,12 @@ function InternalBrowserSlot() {
 }
 
 export default function MainContentArea(props: MainContentAreaProps) {
-  // 自定义菜单打开时：内部浏览器占据左侧工作空间位置（flex-1）。
-  // 打开时自动隐藏聊天窗口（见 layoutSlice.openInternalBrowser），浏览器全宽显示；
-  // chatVisible 为 true 时右侧恢复聊天窗口，浏览器让出空间
-  const internalBrowserUrl = useStore((s) => s.internalBrowserUrl)
-  const chatVisible = useStore((s) => s.chatVisible)
-  const activeSidePanel = useStore((s) => s.activeSidePanel)
+  useChunkWarmup(loadEditorChunk)
+  useChunkWarmup(loadInternalBrowserChunk)
+  useChunkWarmup(loadPreviewTabChunk)
 
-  // AI 浏览器自行承载内部浏览器（见 AIBrowserView）：面板保持挂载，
-  // 浏览网页后关闭浏览器不会丢失检索结果。其余场景仍由主区域整体接管。
-  if (internalBrowserUrl && activeSidePanel !== 'ai-browser') {
-    return (
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        <InternalBrowserSlot />
-        {chatVisible && <ChatSection visible mode="primary" hasFile />}
-      </div>
-    )
-  }
-
+  // 内置浏览器的承载位置在各个布局分支内部（Primary / Secondary 的左侧工作区），
+  // 不在这里整体替换主区域：那样会把 ChatSection 连同 ChatPanel 一起卸载重建。
   return (
     <>
       {props.layoutConfig.chatPosition === 'primary' ? <PrimaryMainContent {...props} /> : <SecondaryMainContent {...props} />}

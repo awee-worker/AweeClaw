@@ -280,6 +280,8 @@ class ExternalAgentService {
       cwd,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
+      // 外部 Agent CLI 是控制台程序：不隐藏会在 Windows 上弹窗
+      windowsHide: true,
     })
     session.proc = proc
 

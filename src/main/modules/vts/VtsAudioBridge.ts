@@ -141,7 +141,10 @@ function runFfmpeg(audio: Buffer, inputFormat?: string): Promise<Buffer> {
       'pipe:1',
     )
 
-    const proc = spawn(FFMPEG_PATH as string, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const proc = spawn(FFMPEG_PATH as string, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
 
     const chunks: Buffer[] = []
     let stderr = ''

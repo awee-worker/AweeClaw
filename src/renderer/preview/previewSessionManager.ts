@@ -35,6 +35,32 @@ function originOf(url: string): string | null {
   }
 }
 
+/**
+ * 把设备档位规整成会话字段
+ *
+ * 建会话（openUrl）与后续切换（setDevice）必须用同一份口径，否则「打开即带设备档」
+ * 与「打开后再切」得到的视口可能不一致，表现为设备框尺寸跳一下。
+ *
+ * 桌面档返回空对象：不往会话上写 deviceId/deviceViewport，渲染层据缺省值铺满。
+ */
+function resolveDeviceFields(options: {
+  deviceId?: string
+  width?: number
+  height?: number
+}): Pick<PreviewSession, 'deviceId' | 'deviceViewport'> {
+  const deviceId = options.deviceId?.trim() || DESKTOP_PROFILE.id
+  if (deviceId === DESKTOP_PROFILE.id) return {}
+
+  const preset = DEVICE_PRESETS.find((item) => item.id === deviceId)
+  return {
+    deviceId,
+    deviceViewport: {
+      width: Math.max(200, Math.round(options.width || preset?.width || 390)),
+      height: Math.max(200, Math.round(options.height || preset?.height || 844)),
+    },
+  }
+}
+
 export class PreviewSessionService {
   private readonly listeners = new Set<PreviewSessionListener>()
   private readonly sessions = new Map<string, PreviewSession>()
@@ -108,6 +134,17 @@ export class PreviewSessionService {
       forceNew?: boolean
       /** 静态预览的根目录（本地文件预览才有，用于目录变化后自动刷新） */
       previewRoot?: string
+      /**
+       * 建会话时就确定的设备档位
+       *
+       * 打开即带设备档的场景（open_preview 的 device 参数）必须走这里，不能先建
+       * 桌面会话再调 setDevice：那会让界面先按「铺满」渲染一轮、再整体缩成设备框，
+       * 视觉上就是整个页面猛地缩一下，且 webview 要重挂一次。
+       */
+      deviceId?: string
+      /** 设备视口宽高覆盖（自定义档位 / 横竖屏切换时使用） */
+      deviceWidth?: number
+      deviceHeight?: number
     } = {},
   ): PreviewSession {
     this.ensureHealthBridge()
@@ -118,8 +155,9 @@ export class PreviewSessionService {
       if (existingSessionId) {
         const existingSession = this.sessions.get(existingSessionId)
         if (existingSession) {
+          this.applyRequestedDevice(existingSession.id, options)
           this.activateSession(existingSession, options.activate)
-          return existingSession
+          return this.sessions.get(existingSession.id) || existingSession
         }
       }
 
@@ -130,6 +168,7 @@ export class PreviewSessionService {
         const merged = this.findSessionByOrigin(url)
         if (merged) {
           this.navigate(merged.id, url)
+          this.applyRequestedDevice(merged.id, options)
           const next = this.sessions.get(merged.id) || merged
           this.activateSession(next, options.activate)
           return next
@@ -149,6 +188,12 @@ export class PreviewSessionService {
       workspaceRoot: options.workspaceRoot,
       candidateId: options.candidateId,
       previewRoot: options.previewRoot,
+      // 设备档位随会话一起落定：首帧就是最终形态，不存在「先铺满再缩放」
+      ...resolveDeviceFields({
+        deviceId: options.deviceId,
+        width: options.deviceWidth,
+        height: options.deviceHeight,
+      }),
     }
 
     this.sessions.set(session.id, session)
@@ -227,6 +272,13 @@ export class PreviewSessionService {
       return
     }
 
+    // 状态没变就不广播：一次页面加载会连着触发 did-stop-loading 与 did-finish-load，
+    // 两者都记 ready。每次 emit 都会让整棵预览组件树（含 webview 容器）重渲染，而
+    // 页面刚加载完正是主线程最忙的时刻，重复的这一轮渲染会直接表现成卡顿。
+    if (session.status === status && session.lastError === error) {
+      return
+    }
+
     this.sessions.set(sessionId, {
       ...session,
       status,
@@ -263,6 +315,13 @@ export class PreviewSessionService {
     }
 
     const urlChanged = session.url !== url
+
+    // 同址且已在加载中：这是 did-navigate 的回执，页面正在加载，状态无需再改。
+    // 继续往下走会把它重置成 loading 广播一次，随后 did-finish-load 又广播回 ready，
+    // 页面加载完成那一刻凭空多出两轮整树重渲染。
+    if (!urlChanged && session.status === 'loading') {
+      return
+    }
 
     if (urlChanged) {
       this.sessionByUrl.delete(session.url)
@@ -327,6 +386,13 @@ export class PreviewSessionService {
       return
     }
 
+    // 值没变就不广播：canGoBack/canGoForward 在每次导航后都会重新同步，多数时候
+    // 前后两个值完全一样，照旧 emit 只会让预览组件树白重渲染一轮。
+    const unchanged = (Object.keys(partial) as Array<keyof typeof partial>).every(
+      (key) => session[key] === partial[key],
+    )
+    if (unchanged) return
+
     this.sessions.set(sessionId, {
       ...session,
       ...partial,
@@ -355,6 +421,24 @@ export class PreviewSessionService {
       reason: reason || 'external-browser-opened',
     })
     return paths.length
+  }
+
+  /**
+   * 复用已有会话时补应用本次请求的设备档
+   *
+   * 同一地址再次打开不会再走建会话分支，若不在这里补一次，`open_preview` 带的
+   * device 参数就被静默丢弃了。setDevice 自身有去重，重复调用不会产生多余广播。
+   */
+  private applyRequestedDevice(
+    sessionId: string,
+    options: { deviceId?: string; deviceWidth?: number; deviceHeight?: number },
+  ): void {
+    if (!options.deviceId) return
+    this.setDevice(sessionId, {
+      deviceId: options.deviceId,
+      width: options.deviceWidth,
+      height: options.deviceHeight,
+    })
   }
 
   /** 激活（或复用）标签页：统一 openPreview 的调用点 */
@@ -547,24 +631,19 @@ export class PreviewSessionService {
       return
     }
 
-    const deviceId = options.deviceId?.trim() || DESKTOP_PROFILE.id
-    const isDesktop = deviceId === DESKTOP_PROFILE.id
-    const preset = DEVICE_PRESETS.find((item) => item.id === deviceId)
+    const fields = resolveDeviceFields(options)
 
-    let viewport: { width: number; height: number } | undefined
-    if (!isDesktop) {
-      const fallbackWidth = preset?.width || 390
-      const fallbackHeight = preset?.height || 844
-      viewport = {
-        width: Math.max(200, Math.round(options.width || fallbackWidth)),
-        height: Math.max(200, Math.round(options.height || fallbackHeight)),
-      }
-    }
+    // 档位与视口都没变就不广播：工具栏重挂、标签页切换都会调到这里，
+    // 每次 emit 都是一轮整树重渲染，而尺寸本来就没动。
+    const unchanged =
+      (session.deviceId ?? DESKTOP_PROFILE.id) === (fields.deviceId ?? DESKTOP_PROFILE.id) &&
+      session.deviceViewport?.width === fields.deviceViewport?.width &&
+      session.deviceViewport?.height === fields.deviceViewport?.height
+    if (unchanged) return
 
     this.sessions.set(sessionId, {
       ...session,
-      deviceId: isDesktop ? undefined : deviceId,
-      deviceViewport: viewport,
+      ...fields,
       updatedAt: Date.now(),
     })
     this.rebuildState()

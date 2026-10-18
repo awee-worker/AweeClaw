@@ -681,6 +681,8 @@ class LspManager {
       cwd: workspacePath,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
+      // GUI 进程没有控制台可继承，不显式隐藏会在 Windows 上闪出子进程控制台窗口
+      windowsHide: true,
     })
 
     if (!proc.stdout || !proc.stdin) return false

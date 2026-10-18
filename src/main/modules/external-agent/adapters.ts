@@ -98,6 +98,7 @@ function probeVersion(command: string, extraArgs: string[]): Promise<string | nu
       const proc = spawn(command, extraArgs, {
         timeout: 15_000,
         env: { ...process.env, PATH: nodeManager.getAugmentedPath() },
+        windowsHide: true,
       })
       let out = ''
       proc.stdout?.on('data', (d: Buffer) => { out += d.toString() })

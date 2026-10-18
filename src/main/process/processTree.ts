@@ -68,7 +68,12 @@ export function signalProcessTree(pid: number, signal: NodeJS.Signals = 'SIGTERM
 
   if (process.platform === 'win32') {
     try {
-      execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore', timeout: TREE_KILL_TIMEOUT_MS })
+      execSync(`taskkill /F /T /PID ${pid}`, {
+        stdio: 'ignore',
+        timeout: TREE_KILL_TIMEOUT_MS,
+        // 退出流程里每次 kill 都会闪一个控制台窗口
+        windowsHide: true,
+      })
       return
     } catch {
       // taskkill 失败（进程通常已退出）→ 回退为直接终止该进程

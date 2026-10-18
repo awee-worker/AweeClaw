@@ -309,6 +309,7 @@ export class NodeDebugAdapter extends EventEmitter {
       cwd: config.cwd,
       env: { ...process.env, ...config.env },
       stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     })
 
     // 监听输出获取调试端口

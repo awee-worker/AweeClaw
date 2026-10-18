@@ -198,6 +198,7 @@ export function runProcess(options: ProcessRunOptions): Promise<ProcessRunOutcom
         stdio: ['pipe', 'pipe', 'pipe'],
         // POSIX 下建新进程组，便于整组回收；Windows 下 detached 会弹控制台窗口，必须关掉
         detached: process.platform !== 'win32',
+        windowsHide: true,
       })
     } catch (err) {
       spawnError = err instanceof Error ? err.message : String(err)

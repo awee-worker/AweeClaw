@@ -45,6 +45,16 @@ function dispatchWorkspaceFilesChanged(opts: WorkspaceTreeChangeOptions): void {
     }))
 }
 
+/**
+ * 同一目标路径的待派发定时器
+ *
+ * Windows 上的延迟刷新是两次定时派发，而每个派发都会让文件面板重读目录、
+ * 查询 Git 状态。AI 连续写同一个文件时（edit_file 多次、流式写入收尾后的补写），
+ * 若不做合并，定时器会按调用次数成倍叠加，表现为工具执行期间周期性的卡顿。
+ * 以「路径 + 变更类型」为键，后到的调用直接覆盖前一批，保证同一时刻只有一组待派发。
+ */
+const pendingDispatches = new Map<string, ReturnType<typeof setTimeout>[]>()
+
 export function notifyWorkspaceTreeChange(opts: WorkspaceTreeChangeOptions): void {
     if (typeof window === 'undefined' || !opts.targetPath) return
 
@@ -54,10 +64,21 @@ export function notifyWorkspaceTreeChange(opts: WorkspaceTreeChangeOptions): voi
     // 解决方案：Windows 上延迟派发事件给文件系统 flush 时间，
     // 并在更长延迟后二次刷新作为兜底，确保文件最终可见。
     if (platform.isWindows) {
+        const key = `${opts.changeType}:${opts.targetPath}`
+        const previous = pendingDispatches.get(key)
+        if (previous) {
+            for (const timer of previous) clearTimeout(timer)
+        }
+
         // 首次刷新：等待 150ms 让文件系统完成 flush
-        setTimeout(() => dispatchWorkspaceFilesChanged(opts), 150)
+        const first = setTimeout(() => dispatchWorkspaceFilesChanged(opts), 150)
         // 二次兜底刷新：600ms 后再刷一次，覆盖 flush 较慢的情况
-        setTimeout(() => dispatchWorkspaceFilesChanged(opts), 600)
+        const second = setTimeout(() => {
+            dispatchWorkspaceFilesChanged(opts)
+            pendingDispatches.delete(key)
+        }, 600)
+
+        pendingDispatches.set(key, [first, second])
         return
     }
 

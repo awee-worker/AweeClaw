@@ -13,7 +13,7 @@ import { EventBus } from './EventDispatcher'
 import { getErrorMessage, ErrorCode } from '@shared/toolkit/errorCatalog'
 import type { ToolCall, TokenUsage } from '@intelligence/providerTypes'
 import type { LLMCallResult } from '@intelligence/providerTypes'
-import { filterToolCallLeakChunk } from '@intelligence/utils/toolCallSanitizer'
+import { filterToolCallLeakChunk, flushToolCallLeakBuffer } from '@intelligence/utils/toolCallSanitizer'
 import { t } from '@renderer/i18n'
 import { StreamingEditPreviewCoordinator } from '../runtime/editPreviewStreamer'
 import type { LLMStreamSource } from '@shared/protocols/modelGateway'
@@ -155,6 +155,17 @@ export function createStreamProcessor(
     decoded: string
   }>()
 
+  /**
+   * 流式预览目标路径缓存（按 toolId）
+   *
+   * path 位于参数串最前面，解析出完整值之后就不会再变，而
+   * synchronizeFilePreviewStream 在每个参数分片到达时都会调用一次。每次都对整个
+   * 参数串重新解析（即使有扫描窗口上限）会随分片数量累积成正则扫描开销 —— 一段
+   * 长文件的流式写入会因此持续占用渲染线程。这里缓存已解析的路径，只在参数串
+   * 变短（被重置）时才重新解析。
+   */
+  const filePreviewPathStates = new Map<string, { argsLength: number; filePath: string }>()
+
   // Cleanup callbacks for request-scoped listeners.
   const cleanups: (() => void)[] = []
 
@@ -205,14 +216,20 @@ export function createStreamProcessor(
     scheduleToolPreviewFlush()
   }
 
-  const synchronizeEditPreviewStream = async (toolId: string, toolName: string, partialArgs?: Record<string, unknown>) => {
+  const synchronizeEditPreviewStream = async (
+    toolId: string,
+    toolName: string,
+    partialArgs?: Record<string, unknown>,
+    options?: { immediate?: boolean },
+  ) => {
     // 「实时预览文件」关闭时整条预览链路短路：不再解析参数、读文件、推送编辑器更新
     if (!isLiveFilePreviewEnabled()) return
     await streamingEditPreviewCoordinator.sync(
       toolId,
       toolName,
       partialArgs,
-      useStore.getState().workspacePath
+      useStore.getState().workspacePath,
+      options,
     )
   }
 
@@ -270,7 +287,9 @@ export function createStreamProcessor(
     }
 
     let cursor = state.rawCursor
-    let decoded = state.decoded
+    // 新增片段先收进数组再一次性拼接：单字符 `+=` 会在长内容下堆出大量中间字符串
+    // 节点，而每个 delta 真正新增的只有尾部这一小段，拼一次就够。
+    const appended: string[] = []
 
     while (cursor < argsString.length) {
       const ch = argsString[cursor]
@@ -279,7 +298,7 @@ export function createStreamProcessor(
       if (ch === '"') break
 
       if (ch !== '\\') {
-        decoded += ch
+        appended.push(ch)
         cursor += 1
         continue
       }
@@ -293,23 +312,25 @@ export function createStreamProcessor(
         // 十六进制位未到齐：等下一批增量
         if (hex.length < 4) break
         if (/^[0-9a-fA-F]{4}$/.test(hex)) {
-          decoded += String.fromCharCode(parseInt(hex, 16))
+          appended.push(String.fromCharCode(parseInt(hex, 16)))
           cursor += 6
         } else {
-          decoded += 'u'
+          appended.push('u')
           cursor += 2
         }
         continue
       }
 
       const simple = JSON_SIMPLE_ESCAPES[next]
-      decoded += simple !== undefined ? simple : next
+      appended.push(simple !== undefined ? simple : next)
       cursor += 2
     }
 
     state.rawCursor = cursor
-    state.decoded = decoded
-    return decoded
+    if (appended.length > 0) {
+      state.decoded += appended.join('')
+    }
+    return state.decoded
   }
 
   const drainFilePreviewQueue = () => {
@@ -339,19 +360,39 @@ export function createStreamProcessor(
     }, FILE_PREVIEW_THROTTLE_MS) as unknown as number
   }
 
+  /**
+   * 解析流式预览的目标路径
+   *
+   * path 在首次完整解析后就不再变化，后续分片直接复用缓存值，避免每个 delta
+   * 都重跑一遍参数解析。
+   */
+  const resolvePreviewFilePath = (toolId: string, argsString: string): string | null => {
+    const cached = filePreviewPathStates.get(toolId)
+    if (cached && argsString.length >= cached.argsLength) {
+      cached.argsLength = argsString.length
+      return cached.filePath
+    }
+
+    const workspacePath = useStore.getState().workspacePath
+    const partialArgs = parsePartialJsonArgs(argsString)
+    if (!partialArgs || typeof partialArgs.path !== 'string') return null
+
+    const filePath = normalizeFilePath(partialArgs.path, workspacePath)
+    filePreviewPathStates.set(toolId, { argsLength: argsString.length, filePath })
+    return filePath
+  }
+
   const synchronizeFilePreviewStream = (toolId: string, toolName: string, argsString: string) => {
     if (!STREAMABLE_FILE_TOOLS.has(toolName)) return
     if (!isLiveFilePreviewEnabled()) return
 
-    const workspacePath = useStore.getState().workspacePath
-    const partialArgs = parsePartialJsonArgs(argsString)
-    if (!partialArgs || typeof partialArgs.path !== 'string') return
-
-    const filePath = normalizeFilePath(partialArgs.path, workspacePath)
+    const filePath = resolvePreviewFilePath(toolId, argsString)
+    if (!filePath) return
 
     // 仅文档类型文件启用实时预览
     if (!isPreviewableDocument(filePath)) return
 
+    const workspacePath = useStore.getState().workspacePath
     const partialContent = extractContentFragment(toolId, argsString)
     if (partialContent === null) return
 
@@ -402,6 +443,7 @@ export function createStreamProcessor(
 
     streamingFilePreview.delete(toolId)
     contentFragmentStates.delete(toolId)
+    filePreviewPathStates.delete(toolId)
 
     pendingFilePreviewUpdates.set(toolId, {
       content,
@@ -432,6 +474,7 @@ export function createStreamProcessor(
     pendingFilePreviewUpdates.clear()
     streamingFilePreview.clear()
     contentFragmentStates.clear()
+    filePreviewPathStates.clear()
     streamingEditPreviewCoordinator.releaseAll()
 
     for (const fn of cleanups) {
@@ -601,7 +644,8 @@ export function createStreamProcessor(
             const finalArgs = parseFinalJsonArgs(tc.argsString)
             const resolvedArgs = finalArgs || tc.lastPreviewArgs || {}
             if (finalArgs) {
-              void synchronizeEditPreviewStream(tc.id, tc.name, finalArgs)
+              // 参数已完整：跳过节流窗口，直接落到最终预览
+              void synchronizeEditPreviewStream(tc.id, tc.name, finalArgs, { immediate: true })
               // 参数已完整：把预览内容更新为最终值，但保留预览条目 ——
               // 工具此刻尚未写入 parts（要等 orchestrator 调 addToolCallPart）。
               // 原先这里传 streamingState: undefined，会经 updateToolCall 触发
@@ -683,7 +727,7 @@ export function createStreamProcessor(
           })
         }
 
-        void synchronizeEditPreviewStream(tcId, toolName, args)
+        void synchronizeEditPreviewStream(tcId, toolName, args, { immediate: true })
 
         // 最终化流式文件内容预览（兜底处理）
         completeFilePreviewStream(tcId, toolName, args)
@@ -727,12 +771,38 @@ export function createStreamProcessor(
     resolveWait = resolve
   })
 
+  /**
+   * 冲刷跨块过滤缓冲
+   *
+   * 正文进入 store 前要过一遍工具泄漏过滤，末尾疑似标签的片段会留在缓冲里等
+   * 下一块补齐。流收起时必须把它处理掉：正常结束、报错、用户中止都会汇到
+   * doResolve，少了这一步，结尾那段内容会永远停在「还没到达」的状态，用户看到
+   * 的就是回复在某个 `<` 处被硬截断。
+   */
+  const flushFilteredToolMarkup = () => {
+    if (!filteredToolMarkupBuffer) return
+
+    const leftover = flushToolCallLeakBuffer(filteredToolMarkupBuffer)
+    filteredToolMarkupBuffer = ''
+    if (!leftover) return
+
+    content += leftover
+    if (assistantId) {
+      store.appendToAssistant(assistantId, leftover)
+    }
+    EventBus.emit({ type: 'stream:text', text: leftover })
+  }
+
   const doResolve = (result: LLMCallResult) => {
     if (isResolved) return
     isResolved = true
 
+    // 冲刷会继续向 content 追加内容，因此结果里的正文以冲刷后的值为准
+    flushFilteredToolMarkup()
+    const finalResult: LLMCallResult = result.content === content ? result : { ...result, content }
+
     if (resolveWait) {
-      resolveWait(result)
+      resolveWait(finalResult)
     }
 
     cleanup()

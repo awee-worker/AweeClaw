@@ -150,19 +150,35 @@ function resolveCommandPath(cmd: string): string | null {
 }
 
 /**
+ * 已确认存在的命令缓存
+ *
+ * execSync 是同步阻塞：一次语言服务器探测要连查十余个命令，Windows 上每条
+ * where 都要拉起一次进程（数十到数百毫秒），累加起来就是打开工作区时主线程
+ * 明显卡顿。只缓存命中结果、不缓存未命中——命令可能是用户刚装的，否定结论
+ * 不能长期留存。
+ */
+const commandExistsCache = new Set<string>()
+
+/**
  * 检查命令是否存在于 PATH 中
  */
 export function commandExists(cmd: string): boolean {
+  if (commandExistsCache.has(cmd)) return true
+
   try {
     const env = { ...process.env, PATH: getAugmentedPathEnv() }
+    // windowsHide：Windows 上 where/which 会为每次探测闪一个控制台窗口
     if (process.platform === 'win32') {
-      execSync(`where ${cmd}`, { stdio: 'ignore', env })
+      execSync(`where ${cmd}`, { stdio: 'ignore', env, windowsHide: true })
     } else {
-      execSync(`which ${cmd}`, { stdio: 'ignore', env })
+      execSync(`which ${cmd}`, { stdio: 'ignore', env, windowsHide: true })
     }
+    commandExistsCache.add(cmd)
     return true
   } catch {
-    return resolveCommandPath(cmd) !== null
+    const resolved = resolveCommandPath(cmd) !== null
+    if (resolved) commandExistsCache.add(cmd)
+    return resolved
   }
 }
 
@@ -208,6 +224,7 @@ async function npmInstall(packageNames: string | string[], targetDir: string): P
       cwd: targetDir,
       stdio: 'pipe',
       env,
+      windowsHide: true,
     })
 
     let stdout = ''
@@ -387,6 +404,7 @@ async function extractTarXz(archivePath: string, destDir: string): Promise<boole
           cwd: destDir,
           stdio: 'pipe',
           encoding: 'utf-8',
+          windowsHide: true,
         })
         logger.lsp.debug(`[LSP Installer] tar output: ${output}`)
         logger.lsp.info('[LSP Installer] tar.xz extracted successfully (Windows)')
@@ -851,6 +869,7 @@ export async function installGopls(): Promise<LspInstallResult> {
     const proc = spawn('go', ['install', 'golang.org/x/toolkit/gopls@latest'], {
       env: { ...process.env, GOBIN: binDir },
       stdio: 'pipe',
+      windowsHide: true,
     })
 
     let stdout = ''
@@ -1178,6 +1197,7 @@ export async function installCsharpLs(): Promise<LspInstallResult> {
   return new Promise((resolve) => {
     const proc = spawn('dotnet', ['tool', 'install', 'csharp-ls', '--tool-path', binDir], {
       stdio: 'pipe',
+      windowsHide: true,
     })
 
     let stdout = ''

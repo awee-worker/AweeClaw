@@ -501,6 +501,8 @@ function execCommandAsync(command: string, args: string[], options?: { cwd?: str
       cwd: options?.cwd,
       timeout: effectiveTimeout,
       env: { ...process.env, ...(options?.env || {}), PATH: getAugmentedPathEnv(cachedUserPath) },
+      // GUI 进程无控制台可继承，Windows 上不隐藏会弹出子进程控制台窗口
+      windowsHide: true,
     })
     let stdout = ''
     let stderr = ''
@@ -553,14 +555,20 @@ function extractArchive(archivePath: string, destDir: string): Promise<void> {
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
 
     if (archivePath.endsWith('.zip')) {
-      const proc = spawn('unzip', ['-o', archivePath, '-d', destDir], { timeout: 60000 })
+      const proc = spawn('unzip', ['-o', archivePath, '-d', destDir], {
+        timeout: 60000,
+        windowsHide: true,
+      })
       proc.on('close', (code) => {
         if (code === 0) resolve()
         else reject(new Error(`unzip failed with code ${code}`))
       })
       proc.on('error', reject)
     } else {
-      const proc = spawn('tar', ['-xzf', archivePath, '-C', destDir], { timeout: 60000 })
+      const proc = spawn('tar', ['-xzf', archivePath, '-C', destDir], {
+        timeout: 60000,
+        windowsHide: true,
+      })
       proc.on('close', (code) => {
         if (code === 0) resolve()
         else reject(new Error(`tar failed with code ${code}`))

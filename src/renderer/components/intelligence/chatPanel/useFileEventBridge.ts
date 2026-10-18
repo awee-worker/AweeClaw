@@ -75,6 +75,38 @@ export function useFileEventBridge({
   teamModeEnabled,
 }: UseFileEventBridgeParams) {
   useEffect(() => {
+    /** 推迟到后续任务执行的文件打开动作，卸载时一并取消 */
+    const pendingTimers = new Set<ReturnType<typeof setTimeout>>()
+    let disposed = false
+
+    /**
+     * 推迟打开文本文件
+     *
+     * 这一步拿到的只是「写入前」的磁盘内容 —— 本次写入的最终结果随后会由
+     * file:stream_content（流式预览）或 file:written（写入完成）送达。在工具执行的
+     * 当帧去读整份文件，等于白做一次大文件 IPC 往返，还会让编辑器抢在同一帧建模型，
+     * 用户看到的就是点下工具后卡一下。
+     *
+     * 因此这里只把动作挪到后续任务，并在真正执行时重新确认：若文件已被后续事件
+     * 打开，就放弃这次读盘，避免旧内容把刚写入的新内容覆盖回去。
+     */
+    const scheduleTextPreviewOpen = (fullPath: string) => {
+      const timer = setTimeout(async () => {
+        pendingTimers.delete(timer)
+        if (disposed) return
+
+        const state = useStore.getState()
+        if (state.activeFilePath === fullPath) return
+        if (state.openFiles.some(f => f.path === fullPath)) return
+
+        const content = await api.file.read(fullPath)
+        if (disposed || content === null) return
+        openFile(fullPath, content)
+        setActiveFile(fullPath)
+      }, 0)
+      pendingTimers.add(timer)
+    }
+
     const unsubWriting = EventBus.on('file:writing', async event => {
       if (!event.filePath) return
       if (teamModeEnabled) return
@@ -108,11 +140,7 @@ export function useFileEventBridge({
 
       // 文本文件：需要 workspacePath 才能判断文件位置
       if (!workspacePath) return
-      const content = await api.file.read(fullPath)
-      if (content !== null) {
-        openFile(fullPath, content)
-        setActiveFile(fullPath)
-      }
+      scheduleTextPreviewOpen(fullPath)
     })
 
     const unsubStreamContent = EventBus.on('file:stream_content', async event => {
@@ -177,6 +205,9 @@ export function useFileEventBridge({
     })
 
     return () => {
+      disposed = true
+      for (const timer of pendingTimers) clearTimeout(timer)
+      pendingTimers.clear()
       unsubWriting()
       unsubStreamContent()
       unsubWritten()

@@ -325,6 +325,7 @@ export class DAPClient extends EventEmitter {
 
     this.process = spawn(descriptor.command, descriptor.args || [], {
       stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     })
 
     this.process.stdout?.on('data', (data: Buffer) => {
@@ -582,6 +583,8 @@ export class DAPClient extends EventEmitter {
         stdio: 'ignore',
         detached: true,
         shell: true,
+        // shell:true 在 Windows 上走 cmd.exe，不隐藏必然弹控制台窗口
+        windowsHide: true,
       })
 
       child.unref()

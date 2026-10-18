@@ -305,6 +305,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         env: this.buildDockerEnv(),
         stdio: 'ignore',
         detached: false,
+        windowsHide: true,
       })
       const guard = setTimeout(() => {
         try {

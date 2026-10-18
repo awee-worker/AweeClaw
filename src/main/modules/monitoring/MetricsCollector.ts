@@ -330,7 +330,8 @@ export class MetricsCollector {
       const cmd = platform === 'win32' ? 'tasklist' : 'ps'
       const args = platform === 'win32' ? ['/FI', 'STATUS eq RUNNING'] : ['-e']
 
-      execFile(cmd, args, { maxBuffer: 1 * 1024 * 1024 }, (err, stdout) => {
+      // windowsHide：Windows 上 tasklist 每次采集都会闪一个控制台窗口
+      execFile(cmd, args, { maxBuffer: 1 * 1024 * 1024, windowsHide: true }, (err, stdout) => {
         if (err) {
           // 失败时返回缓存或 0
           resolve(this.cachedProcessCount)

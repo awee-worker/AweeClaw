@@ -1225,6 +1225,38 @@ export async function executeAgentCycle(
         break
       }
 
+      // 正文有输出、但撞上输出上限：这不是任务完成。用户看到的是一段写到一半的
+      // 回复，按 completed 收尾就再没有补齐的机会了，必须显式告知并给出续接入口。
+      if (result.finishReason === 'length' && hasTextOutput) {
+        const { language } = useStore.getState()
+        logger.agent.warn('[Loop] Text output reached the output limit → treating as incomplete', {
+          finishReason: result.finishReason,
+          contentLength: result.content?.length ?? 0,
+        })
+
+        threadStore.addSystemAlertPart(assistantId, {
+          alertType: 'warning',
+          title: getLocalizedText(language, '输出已达上限', 'Output Limit Reached'),
+          message: getLocalizedText(
+            language,
+            '本轮回复在达到模型的最大输出 Token 后被截断，内容并不完整。',
+            'This reply was cut off at the model\'s max output tokens, so it is incomplete.',
+          ),
+          suggestion: getLocalizedText(
+            language,
+            '可在「设置 → 模型 → 高级设置」调大「最大 Token」（或设为「不限」）后点击继续。',
+            'Raise "Max Tokens" (or set it to "Unlimited") in Settings → Model → Advanced, then click Continue.',
+          ),
+          action: { label: getLocalizedText(language, '继续', 'Continue'), actionType: 'continue' },
+        })
+        threadStore.updateExecutionMeta({ loopState: 'aborted' })
+        EventBus.emit({ type: 'loop:end', reason: 'truncated', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+
+        // 同「无正文」路径：非用户意愿的收尾自动续接（内部限次）
+        scheduleAutoResume(threadId, 'output-limit')
+        break
+      }
+
       resetAutoResumeCounter(threadId)
       // 任务收尾（有可见输出）→ 新一轮任务的自由模式轮次预算重新计数
       resetFreeModeRounds(threadId)

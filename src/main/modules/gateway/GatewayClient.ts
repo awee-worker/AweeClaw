@@ -252,14 +252,21 @@ class GatewayClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       const startTime = Date.now()
 
-      this.process = childProcess.fork(this.gatewayScriptPath, [], {
+      // windowsHide 是 spawn 的选项，fork 内部会把它透传给 spawn；@types/node 的
+      // ForkOptions 没有声明该字段，这里用交叉类型标注，不要删。
+      // 不隐藏的话，GUI 进程没有控制台可继承，Windows 会为每个 fork 出的子进程
+      // 在桌面上闪一个黑底窗口。
+      const forkOptions: childProcess.ForkOptions & { windowsHide: boolean } = {
         env: {
           ...process.env,
           GATEWAY_SOCKET_PATH: this.socketPath,
           GATEWAY_MODE: 'daemon',
         },
         stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-      })
+        windowsHide: true,
+      }
+
+      this.process = childProcess.fork(this.gatewayScriptPath, [], forkOptions)
 
       this.process.on('error', (err) => {
         logger.gateway.error(`[GatewayClient] Gateway process error: ${err}`)

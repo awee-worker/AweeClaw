@@ -124,7 +124,10 @@ export function probeVideo(filePath: string): Promise<VideoProbeResult> {
     // ffmpeg-static 不含 ffprobe，所以用 ffmpeg -i 解析 stderr
     const args = ['-i', filePath, '-hide_banner']
 
-    const proc = spawn(ffmpegPath, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const proc = spawn(ffmpegPath, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
 
     let stderrOutput = ''
 
@@ -340,6 +343,7 @@ export function transcodeToH264(
 
       const proc = spawn(ffmpegPath, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
       })
 
       let stderrOutput = ''
