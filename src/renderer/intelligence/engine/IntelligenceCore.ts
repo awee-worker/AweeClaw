@@ -396,6 +396,14 @@ export class AgentClass {
           `features: [${complexityResult.features.join(', ')}]`
         )
 
+        // 规划优先角色：用户锁定的专家排首位，其后接复杂度检测的建议角色。
+        // 团队模式的主对话人设仍走 systemPrompt，但实际干活的是一组被规划出来的 Agent；
+        // 不在这里显式置顶，就会出现「选了架构设计专家、执行的却是一批自动挑选的 Agent」。
+        const lockedExpertId = promptOptions?.explicitRoleId || null
+        const preferredRoles = lockedExpertId
+          ? [lockedExpertId, ...complexityResult.suggestedRoles.filter((id) => id !== lockedExpertId)]
+          : complexityResult.suggestedRoles
+
         await executeMultiAgent(
           multiAgentTask,
           config,
@@ -406,7 +414,7 @@ export class AgentClass {
           { enabled: true, mode: 'always', threshold: 0, requireConsensus: true, maxAgents: 6 },
           this.runningTasks,
           // 复杂度检测的建议角色：作为规划时的优先项，让团队位置与角色库对齐
-          complexityResult.suggestedRoles
+          preferredRoles
         )
 
         return { threadId, assistantId, requestId }

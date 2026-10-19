@@ -61,7 +61,7 @@ import {
 import { useRoleLibraryStore } from '@renderer/modes/roleLibraryStore'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { buildSceneRolePersonaSection } from '../prompt-engine/PromptComposer'
-import { setPlanRoleResolver, type PlanRoleResolution } from '../toolkit/planBuilder'
+import { setPlanRoleResolver, setPlanSessionRoleResolver, type PlanRoleResolution } from '../toolkit/planBuilder'
 import type { RoleDescriptor } from '../capabilities/role/RoleDescriptor'
 import { resolveSceneRole } from '../capabilities/role/sceneRoleMatcher'
 import type { TaskExecutionClass } from '../planner/planTypes'
@@ -107,6 +107,16 @@ function ensurePlanRoleResolverRegistered(): void {
             return null
         }
     })
+
+    // 会话锁定专家：用户在输入区选定后，计划里没写 suggestedRole 的子任务也归该专家，
+    // 否则「选了架构设计专家 → 子任务被分给前端/测试」的角色漂移会一直存在
+    setPlanSessionRoleResolver(() => {
+        try {
+            return useStore.getState().agentConfig?.activeExpertId || null
+        } catch {
+            return null
+        }
+    })
 }
 
 /** 按角色引用取启用中的角色（角色库 id 命中才返回，模板 id 返回 undefined） */
@@ -131,6 +141,12 @@ function resolveTaskRole(roleRef: string | undefined): RoleDescriptor | undefine
 function resolveBalancedRoleId(task: PlanTask): string {
     if (task.role) return task.role
     try {
+        // 会话锁定专家优先于按标题自动匹配：用户已明确指定由谁执行
+        const locked = useStore.getState().agentConfig?.activeExpertId
+        if (locked) {
+            const lockedRole = useRoleLibraryStore.getState().getRole(locked)
+            if (lockedRole && lockedRole.enabled) return lockedRole.id
+        }
         const sceneMode = useSceneModeStore.getState().currentSceneMode
         const match = resolveSceneRole({
             userMessage: `${task.title}\n${task.description}`,

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, Check, GraduationCap, UserRound } from 'lucide-react'
-import { useStore } from '@store'
+import { ChevronDown, Check, GraduationCap, UserRound, Zap } from 'lucide-react'
+import { useStore, useModeStore } from '@store'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { useRoleLibraryStore } from '@renderer/modes/roleLibraryStore'
 import { getLucideIcon } from '@components/foundation/IconMap'
@@ -22,6 +22,11 @@ export default function ModeSelector({ className = '', disabled = false }: ModeS
   const activeExpertId = useStore(s => s.agentConfig?.activeExpertId ?? null)
   const set = useStore(s => s.set)
 
+  // 快速模式（chat）不进入角色体系：不匹配角色、不注入人设，选了也不生效。
+  // 与输入框下方的 ExpertSelector 保持同一口径，避免两个入口给出不一致的状态。
+  const chatMode = useModeStore(s => s.currentMode)
+  const roleDisabledByMode = chatMode === 'chat'
+
   const sceneRoles = getRolesByScene(currentSceneMode)
   const enabledRoles = sceneRoles.filter(r => r.enabled)
   const activeRole = activeExpertId ? sceneRoles.find(r => r.id === activeExpertId && r.enabled) : null
@@ -37,12 +42,22 @@ export default function ModeSelector({ className = '', disabled = false }: ModeS
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [isOpen])
 
+  // 切到快速模式时弹窗若仍开着，会留下一个「可点但无效」的专家列表，直接收起
+  useEffect(() => {
+    if (roleDisabledByMode) setIsOpen(false)
+  }, [roleDisabledByMode])
+
   const isZh = language === 'zh'
   const expertLabel = activeRole?.nameZh || (isZh ? '自动' : 'Auto')
-  const buttonLabel = isZh ? `专家 · ${expertLabel}` : `Expert · ${expertLabel}`
+  // 快速模式下不展示已锁定的专家名：此刻它并未注入提示词，展示会造成误判
+  const buttonLabel = roleDisabledByMode
+    ? (isZh ? '专家 · 快速模式不可用' : 'Expert · unavailable in Fast mode')
+    : isZh
+      ? `专家 · ${expertLabel}`
+      : `Expert · ${expertLabel}`
 
   const handleSelectExpert = (roleId: string | null) => {
-    if (disabled) return
+    if (disabled || roleDisabledByMode) return
     set('agentConfig', { ...useStore.getState().agentConfig, activeExpertId: roleId })
     setIsOpen(false)
   }
@@ -51,14 +66,19 @@ export default function ModeSelector({ className = '', disabled = false }: ModeS
     <div ref={dropdownRef} className={`relative ${className}`}>
       <button
         onClick={() => {
-          if (disabled) return
+          if (disabled || roleDisabledByMode) return
           setIsOpen(!isOpen)
         }}
-        disabled={disabled}
+        disabled={disabled || roleDisabledByMode}
+        title={roleDisabledByMode
+          ? (isZh
+              ? '快速模式不启用专家角色，切换到思考或专家模式后生效'
+              : 'Experts are inactive in Fast mode. Switch to Think or Expert mode.')
+          : undefined}
         className={`
           flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold
           transition-all duration-200
-          ${disabled
+          ${disabled || roleDisabledByMode
             ? 'opacity-40 cursor-not-allowed'
             : isOpen
               ? 'bg-surface-active text-text-primary shadow-[0_0_0_1px_rgba(var(--accent)/0.15)]'
@@ -66,9 +86,13 @@ export default function ModeSelector({ className = '', disabled = false }: ModeS
           }
         `}
       >
-        <GraduationCap className="w-3 h-3" style={{ color: '#c084fc' }} />
+        {roleDisabledByMode
+          ? <Zap className="w-3 h-3 text-text-muted" />
+          : <GraduationCap className="w-3 h-3" style={{ color: '#c084fc' }} />}
         <span className="max-w-[112px] truncate">{buttonLabel}</span>
-        <ChevronDown className={`w-2.5 h-2.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        {!roleDisabledByMode && (
+          <ChevronDown className={`w-2.5 h-2.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        )}
       </button>
 
       {isOpen && (

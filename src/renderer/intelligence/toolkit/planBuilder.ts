@@ -159,6 +159,62 @@ function resolvePlanRole(suggestedRole: string): PlanRoleResolution | null {
     }
 }
 
+/**
+ * 会话锁定专家的解析钩子
+ *
+ * agentConfig.activeExpertId（输入区 ExpertSelector 的选择）由执行侧注入，
+ * planBuilder 依旧不直接依赖 store。
+ *
+ * 作用：主 Agent 建计划时通常只给部分任务写 suggestedRole，剩余任务会落到
+ * 「均衡」并由执行期各自自动匹配角色。用户在会话里锁定了专家时，
+ * 这些"没点名"的子任务也应交给该专家，否则会出现「用户选的是架构设计专家、
+ * 子任务却分给前端工程师」的角色漂移。
+ */
+type SessionRoleResolver = () => string | null
+
+let sessionRoleResolver: SessionRoleResolver | null = null
+
+export function setPlanSessionRoleResolver(resolver: SessionRoleResolver | null): void {
+    sessionRoleResolver = resolver
+}
+
+/** 取会话锁定的专家 id：未锁定或查询异常时返回 null */
+function resolveLockedRoleId(): string | null {
+    if (!sessionRoleResolver) return null
+    try {
+        return sessionRoleResolver()
+    } catch {
+        return null
+    }
+}
+
+/**
+ * 子任务角色解析
+ *
+ * 优先级：任务显式 suggestedRole > 会话锁定专家 > 「均衡」（执行期自动匹配）
+ */
+function resolveTaskRoleRef(arg: PlanTaskArg): {
+    roleId: string
+    roleResolution: PlanRoleResolution | null
+} {
+    if (arg.suggestedRole) {
+        const resolution = resolvePlanRole(arg.suggestedRole)
+        return {
+            roleId: resolution?.roleId ?? resolveDefault(arg.suggestedRole, DEFAULT_ROLE),
+            roleResolution: resolution,
+        }
+    }
+
+    const locked = resolveLockedRoleId()
+    if (locked) {
+        const resolution = resolvePlanRole(locked)
+        // 只有确实存在于角色库时才继承，避免把失效 id 写进计划
+        if (resolution) return { roleId: resolution.roleId, roleResolution: resolution }
+    }
+
+    return { roleId: DEFAULT_ROLE, roleResolution: null }
+}
+
 // ============================================
 // 辅助函数
 // ============================================
@@ -299,9 +355,8 @@ export function buildPlanTask(
 ): PlanTask {
     const taskId = `task-${index + 1}`
 
-    // 角色解析：suggestedRole 先查角色库（回填 provider/model），未命中走模板默认
-    const roleResolution = resolvePlanRole(arg.suggestedRole ?? '')
-    const roleId = roleResolution?.roleId ?? resolveDefault(arg.suggestedRole, DEFAULT_ROLE)
+    // 角色解析：suggestedRole 先查角色库（回填 provider/model），未指定时继承会话锁定专家
+    const { roleId, roleResolution } = resolveTaskRoleRef(arg)
 
     const task: PlanTask = {
         id: taskId,
@@ -405,9 +460,8 @@ export function buildAddedTask(
     index: number,
     defaults?: PlanModelDefaults,
 ): PlanTask {
-    // 角色解析：与 buildPlanTask 同口径
-    const roleResolution = resolvePlanRole(arg.suggestedRole ?? '')
-    const roleId = roleResolution?.roleId ?? resolveDefault(arg.suggestedRole, DEFAULT_ROLE)
+    // 角色解析：与 buildPlanTask 同口径（含会话锁定专家继承）
+    const { roleId, roleResolution } = resolveTaskRoleRef(arg)
 
     const task: PlanTask = {
         id: `task-${timestamp}-${index}`,

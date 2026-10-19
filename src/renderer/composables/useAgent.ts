@@ -477,6 +477,8 @@ export function useThreadMessenger() {
           // 与 sendMessage 保持一致：漏传会让「继续」/自动续接脱离计划阶段，
           // 工具集重新放开全量能力，模型直接开工而不是先补计划
           taskPlanMode: useStore.getState().agentConfig?.taskPlanMode === true,
+          // 专家锁定同理：漏传会让续接消息回落到规则自动匹配，同一个任务中途换掉执行专家
+          explicitRoleId: useStore.getState().agentConfig?.activeExpertId || undefined,
         },
         { threadId, silent: options?.silent },
       )

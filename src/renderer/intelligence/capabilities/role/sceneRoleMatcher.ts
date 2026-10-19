@@ -139,8 +139,9 @@ export function resolveSceneRole(input: RoleMatchInput): RoleMatchResult {
 
     // —— 第一级：显式指定 ——
     // 优先级：会话内选择器 > @提及 > 场景默认角色锁定
+    const lockedBySelector = input.explicitRoleId ?? null
     const explicitId =
-      input.explicitRoleId ??
+      lockedBySelector ??
       parseRoleMention(input.userMessage) ??
       (store.autoMatchEnabled ? store.getDefaultRole(input.sceneMode)?.id ?? null : null)
     if (explicitId) {
@@ -153,6 +154,18 @@ export function resolveSceneRole(input: RoleMatchInput): RoleMatchResult {
           candidates: [{ roleId: role.id, score: 1 }],
           multiRoleSuggested: false,
         }
+      }
+      // 用户在输入区锁定的专家已失效（场景切换、角色被禁用或删除）：
+      // 此处不能降级到规则匹配——那会让执行者从"用户选中的专家"静默换成
+      // 关键词得分更高的另一个角色，用户看到的仍是已选专家。
+      // 返回空结果，主对话沿用场景默认人设，失效原因通过日志暴露。
+      if (lockedBySelector) {
+        logger.agent.warn(
+          `[SceneRoleMatcher] Locked expert ${lockedBySelector} is unavailable ` +
+          `(exists=${!!role}, sceneMatch=${role?.sceneMode === input.sceneMode}, enabled=${role?.enabled ?? false}), ` +
+          'falling back to scene default persona instead of rule matching',
+        )
+        return empty
       }
     }
 
