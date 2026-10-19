@@ -19,7 +19,7 @@ import type { RoleDescriptor } from '../capabilities/role/RoleDescriptor'
 import { ROLE_MANIFEST_BUDGET_TOKENS, isRoleAgentEnabled } from '../capabilities/role/RoleDescriptor'
 import { generateToolsPromptDescriptionFiltered, type ToolCategory } from '@configuration/toolDefinitions'
 import { getToolsForContext } from '@configuration/toolCategoryDefs'
-import { preselectTools } from '../decision/toolPreselector'
+import { preselectTools, type ToolPreselection } from '../decision/toolPreselector'
 import { DEFAULT_AGENT_CONFIG } from '@configuration/agentProfile'
 import { PERFORMANCE_DEFAULTS } from '@shared/configuration/defaultProfile'
 import { rulesService, type ProjectRules } from '../runtime/ruleEngine'
@@ -170,6 +170,13 @@ export interface PromptContext {
    * 空数组 / 缺省时该段落不注入。
    */
   deniedShellCommands?: string[]
+  /**
+   * 任务计划模式（输入区专家弹窗选择）。
+   *
+   * 为真时注入「任务计划模式」段落：本轮必须先用 create_task_plan 拆解任务，
+   * 再按计划执行，而不是直接动手。
+   */
+  taskPlanMode?: boolean
 }
 
 /** 感知预测上下文（由主进程通过 IPC 提供） */
@@ -399,7 +406,7 @@ function isBuiltinBrowserAutomationConnected(): boolean {
 }
 
 
-function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' | 'executing', isChannel?: boolean, sceneToolsEnabled = false, userMessage?: string, gitToolsEnabled = false): string {
+function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' | 'executing', isChannel?: boolean, sceneToolsEnabled = false, userMessage?: string, gitToolsEnabled = false, taskPlanMode = false): string {
   const excludeCategories: ToolCategory[] = []
   const activeScenario = scenarioRegistry.getActive()
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
@@ -409,10 +416,17 @@ function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' 
   // 场景工具按需暴露：prompt 中的工具描述与执行层工具列表保持一致（致命问题 #4）
   // 套餐工具能力组：系统提示里的工具清单必须与执行层可见工具一致，
   // 否则 AI 会去调用被套餐禁用的工具（可见性才是主闸门）
-  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, scenarioTools, isChannel, sceneToolsEnabled, gitToolsEnabled, sceneMode: useSceneModeStore.getState().currentSceneMode, allowedToolGroups: getAllowedToolGroupsSync(), ...agentFields })
+  // taskPlanMode 必须传入：否则提示词会把全量工具都描述一遍，而执行层已按计划阶段收窄，
+  // 模型会持续尝试调用不存在于本轮的写类工具
+  const allowedTools = getToolsForContext({ mode, templateId, planPhase, taskPlanMode, scenarioToolPacks, scenarioTools, isChannel, sceneToolsEnabled, gitToolsEnabled, sceneMode: useSceneModeStore.getState().currentSceneMode, allowedToolGroups: getAllowedToolGroupsSync(), ...agentFields })
   // 按用户意图裁剪工具描述以压缩提示词体积；
   // 命中开发类意图或无法判定意图时保持全量，避免因漏选工具导致任务失败
-  const preselected = preselectTools({ userMessage: userMessage ?? '', allowedTools })
+  // 计划阶段已把工具集收窄到十几个，无需再按意图裁剪；
+  // 若照常裁剪，用户消息命中「文档/数据」类意图时会把 create_task_plan 的描述裁掉，
+  // 与"本轮必须先建计划"的约束相互矛盾
+  const preselected: ToolPreselection = taskPlanMode
+    ? { tools: allowedTools, intents: [], source: 'fallback', reason: '任务计划模式：工具集已收窄' }
+    : preselectTools({ userMessage: userMessage ?? '', allowedTools })
   const baseTools = generateToolsPromptDescriptionFiltered(excludeCategories, preselected.tools)
   const { toolGuidelines } = getActiveScenarioIdentity()
   // 预览指引跟随工具可见性：工具不可用时不必占用提示词
@@ -974,6 +988,24 @@ export function buildCommandBlacklistSection(deniedCommands?: string[]): string 
 - 若完成任务确实需要其中某个命令，请改为提示用户手动在终端执行，或给出不需要该命令的替代方案`
 }
 
+/**
+ * 任务计划模式声明
+ *
+ * 用户在输入区专家弹窗选择「任务计划模式」时注入：要求本轮先用 create_task_plan
+ * 拆解任务、按计划分派执行，而不是直接动手。保留一步可完成的问答不建计划的例外，
+ * 避免轻量问题被无意义地拆成计划。
+ */
+function buildTaskPlanDirectiveSection(): string {
+  return `## 任务计划模式（本轮强制）
+用户已选择「任务计划模式」。这是本轮的硬约束，优先级高于下方"直接动手/Bias toward action"一类通用行为准则：
+- 本轮你没有写文件、改代码、执行命令、修改环境的工具，这些工具不会下发到本轮的可用工具列表里
+- 因此第一步必须是 \`create_task_plan\`：把需求拆成可执行子任务（含依赖、角色、验收点），不要直接回答"我来做"就结束
+- 建计划前允许用只读工具（读文件、列目录、检索代码与资料）把需求弄清楚，这是为了让计划可执行，不是开工
+- 需求不明确时先用 \`ask_user\` 收敛信息，再建计划；不要替用户假设关键参数
+- 创建计划后停下，把计划交给用户确认；用户确认后系统会进入执行阶段，写类与执行类工具随之恢复，你不需要（也拿不到）自行启动计划的工具
+- 唯一例外：纯知识性问答（不产生任何文件、命令或环境改动，如"这个函数什么意思"），可直接回答`
+}
+
 export function buildSystemPrompt(ctx: PromptContext): string {
   const identity = getActiveScenarioIdentity()
   const sections: (string | null)[] = [
@@ -987,7 +1019,9 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     identity.securityRules,
     buildTrustBoundary(ctx),
     buildCommandBlacklistSection(ctx.deniedShellCommands),
-    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery, ctx.gitToolsEnabled),
+    // 任务计划模式声明放在工具清单之前：先立约束，再让模型看到"本轮只剩计划与只读工具"
+    ctx.taskPlanMode ? buildTaskPlanDirectiveSection() : null,
+    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery, ctx.gitToolsEnabled, ctx.taskPlanMode),
     identity.conventions,
     identity.workflow,
     GRAPH_PLAN_GUIDE,
@@ -1025,12 +1059,13 @@ export function buildChatPrompt(ctx: PromptContext): string {
     identity.securityRules,
     buildTrustBoundary(ctx),
     buildCommandBlacklistSection(ctx.deniedShellCommands),
-    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery, ctx.gitToolsEnabled),
+    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery, ctx.gitToolsEnabled, ctx.taskPlanMode),
     identity.conventions,
     GRAPH_PLAN_GUIDE,
     identity.outputFormat,
     buildModeSpecificSections(ctx.modeDescriptor),
     ctx.sceneModeDirectives ?? null,
+    // 快速模式（chat）没有工具调用能力，任务计划模式声明只在 system 提示词里注入
     ctx.sceneToolsEnabled ? (ctx.sceneToolsContext ?? null) : null,
     buildEnvironment(ctx),
     buildUserContext(ctx.userInfo),
@@ -1075,6 +1110,11 @@ export async function buildAgentSystemPrompt(
      * 走 resolveSceneRole 第一级显式指定，优先级高于自动匹配与场景默认角色
      */
      explicitRoleId?: string | null
+    /**
+     * 任务计划模式（输入区专家弹窗选择）：为真时注入段落，
+     * 要求本轮先用 create_task_plan 拆解任务，再按计划执行
+     */
+    taskPlanMode?: boolean
   }
 ): Promise<{ prompt: string; activeSkills: { name: string; description: string }[]; appliedSkills: { name: string; description: string }[]; matchedRole: { id: string; nameZh: string; icon: string } | null }> {
   const {
@@ -1090,6 +1130,7 @@ export async function buildAgentSystemPrompt(
     untrustedContext,
     sceneRolePersonaOverride,
     explicitRoleId,
+    taskPlanMode,
   } = options || {}
 
   let template = promptTemplateId
@@ -1271,7 +1312,15 @@ export async function buildAgentSystemPrompt(
     sceneToolsGuide: sceneToolsIntent ? buildSceneToolsGuideSection(sceneProfile) : null,
     sceneToolsContext: sceneToolsIntent ? buildSceneToolsContextSection(sceneProfile) : null,
     customAgentPrompt: activeAgent?.systemPrompt || null,
+    taskPlanMode: taskPlanMode === true,
   }
+
+  // 计划阶段的三个入口（提示词段落 / 工具清单 / 执行层门控）都取决于这两个值，
+  // 落一条日志便于排查「选了任务计划模式但 AI 没建计划」这类反馈时区分
+  // 「上下文没传到」与「上下文传到了但模型没照做」
+  logger.agent.info(
+    `[PromptBuilder] Plan stage: taskPlanMode=${ctx.taskPlanMode === true}, planPhase=${ctx.planPhase ?? 'none'}, mode=${mode}`,
+  )
 
   const prompt = mode === 'chat' ? buildChatPrompt(ctx) : buildSystemPrompt(ctx)
 

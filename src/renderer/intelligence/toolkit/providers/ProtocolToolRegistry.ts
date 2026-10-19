@@ -311,14 +311,25 @@ export class McpToolProvider implements ToolProvider {
     if (prop.type === 'array') {
       result.items = prop.items ? this.convertMcpProperty(prop.items) : { type: 'string' }
     }
-    // 处理嵌套对象
-    else if (prop.type === 'object' && prop.properties) {
-      result.properties = {}
-      for (const [key, value] of Object.entries(prop.properties)) {
-        result.properties[key] = this.convertMcpProperty(value)
+    // 处理嵌套对象：properties 可能缺省（如 z.record 生成的数组项），
+    // 此时仍要输出 additionalProperties，否则下游会把该对象当成「不允许任何字段」，
+    // 模型填好的内容会被丢弃
+    else if (prop.type === 'object') {
+      if (prop.properties) {
+        result.properties = {}
+        for (const [key, value] of Object.entries(prop.properties)) {
+          result.properties[key] = this.convertMcpProperty(value)
+        }
       }
       if (prop.required) {
         result.required = prop.required
+      }
+      if (prop.additionalProperties !== undefined) {
+        const extra = prop.additionalProperties
+        // {} 是「允许任意值」的标准写法，原样保留；只有带 type 的子 schema 才需要递归转换
+        result.additionalProperties = extra && typeof extra === 'object' && extra.type
+          ? this.convertMcpProperty(extra)
+          : extra
       }
     }
 

@@ -2,14 +2,15 @@
  * ExpertSelector - 聊天输入框下方的「专家角色」选择器
  *
  * 当前输入区默认执行档位固定为专家档（WorkMode=expert），这里只负责：
- * 1. 自动匹配（当前场景默认角色 + autoMatch）
- * 2. 显式锁定当前场景下的某个角色
+ * 1. 自动模式（当前场景默认角色 + autoMatch）
+ * 2. 任务计划模式（本轮强制先用 create_task_plan 拆解任务）
+ * 3. 显式锁定当前场景下的某个角色
  *
  * 专家角色只影响「用哪套方法做事」，不改变安全边界与记忆域。
  */
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Check, GraduationCap, Search } from 'lucide-react'
+import { ChevronDown, Check, GraduationCap, ListChecks, Search } from 'lucide-react'
 import { useStore } from '@store'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { useRoleLibraryStore } from '@renderer/modes/roleLibraryStore'
@@ -32,6 +33,7 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
   const defaultRoleId = useRoleLibraryStore(s => s.defaultRoleIds[currentSceneMode])
 
   const activeExpertId = useStore(s => s.agentConfig?.activeExpertId ?? null)
+  const taskPlanMode = useStore(s => s.agentConfig?.taskPlanMode ?? false)
   const set = useStore(s => s.set)
 
   const [isOpen, setIsOpen] = useState(false)
@@ -44,6 +46,8 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
   const enabledRoles = sceneRoles.filter(r => r.enabled)
   const activeRole = activeExpertId ? sceneRoles.find(r => r.id === activeExpertId && r.enabled) : null
   const isZh = language === 'zh'
+  // 自动模式 = 未锁定具体专家，且未开启任务计划模式
+  const autoModeActive = activeExpertId === null && !taskPlanMode
 
   const visibleRoles = enabledRoles.filter(role => {
     const q = search.trim().toLowerCase()
@@ -86,7 +90,13 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
   /* ---------- 选择动作 ---------- */
   const handleSelectRole = useCallback((roleId: string | null) => {
     if (disabled) return
-    set('agentConfig', { ...useStore.getState().agentConfig, activeExpertId: roleId })
+    set('agentConfig', { ...useStore.getState().agentConfig, activeExpertId: roleId, taskPlanMode: false })
+    setIsOpen(false)
+  }, [disabled, set])
+
+  const handleSelectTaskPlanMode = useCallback(() => {
+    if (disabled) return
+    set('agentConfig', { ...useStore.getState().agentConfig, activeExpertId: null, taskPlanMode: true })
     setIsOpen(false)
   }, [disabled, set])
 
@@ -133,9 +143,15 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
           }
         `}
         >
-          <GraduationCap className="w-3 h-3 text-purple-400" />
+          {taskPlanMode
+            ? <ListChecks className="w-3 h-3 text-purple-400" />
+            : <GraduationCap className="w-3 h-3 text-purple-400" />}
           <span className="max-w-[72px] truncate">
-            {activeRole ? activeRole.nameZh : (isZh ? '自动' : 'Auto')}
+            {taskPlanMode
+              ? (isZh ? '任务计划' : 'Task plan')
+              : activeRole
+                ? activeRole.nameZh
+                : (isZh ? '自动' : 'Auto')}
           </span>
           <ChevronDown className={`w-2.5 h-2.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
@@ -147,8 +163,7 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
           style={{ width: POPUP_WIDTH, maxHeight: POPUP_MAX_HEIGHT, overflowY: 'auto' }}
           className="fixed z-[9999] bg-surface border border-border rounded-xl shadow-2xl py-1 animate-scale-in"
         >
-          <div className="px-3 pt-1.5 pb-2">
-            <div className="text-[10px] text-text-muted/70 px-1 mb-1.5">{isZh ? '搜索专家' : 'Search experts'}</div>
+          <div className="px-3 pt-2 pb-2">
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
               <input
@@ -166,7 +181,7 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
               onClick={() => handleSelectRole(null)}
               className={`
                 w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors
-                ${activeExpertId === null
+                ${autoModeActive
                   ? 'bg-accent/10'
                   : 'hover:bg-surface-active'}
               `}
@@ -175,15 +190,41 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
                 <GraduationCap className="w-3.5 h-3.5" strokeWidth={1.8} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className={`text-[11px] font-medium truncate ${activeExpertId === null ? 'text-accent' : 'text-text-primary'}`}>
-                  {isZh ? '自动匹配' : 'Auto match'}
+                <div className={`text-[11px] font-medium truncate ${autoModeActive ? 'text-accent' : 'text-text-primary'}`}>
+                  {isZh ? '自动模式' : 'Auto mode'}
                 </div>
                 <div className="text-[10px] text-text-muted/70 truncate">
                   {isZh ? '按场景默认角色与任务特征自动选择' : 'Pick a role automatically by scene and task'}
                 </div>
               </div>
-              {activeExpertId === null && <Check className="w-3 h-3 flex-shrink-0 text-accent" />}
+              {autoModeActive && <Check className="w-3 h-3 flex-shrink-0 text-accent" />}
             </button>
+
+            <button
+              onClick={handleSelectTaskPlanMode}
+              className={`
+                w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors
+                ${taskPlanMode
+                  ? 'bg-accent/10'
+                  : 'hover:bg-surface-active'}
+              `}
+            >
+              <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-purple-500/10 text-purple-400">
+                <ListChecks className="w-3.5 h-3.5" strokeWidth={1.8} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className={`text-[11px] font-medium truncate ${taskPlanMode ? 'text-accent' : 'text-text-primary'}`}>
+                  {isZh ? '任务计划模式' : 'Task plan mode'}
+                </div>
+                <div className="text-[10px] text-text-muted/70 truncate">
+                  {isZh ? '先拆解任务计划，再按计划执行' : 'Break the task into a plan, then execute it'}
+                </div>
+              </div>
+              {taskPlanMode && <Check className="w-3 h-3 flex-shrink-0 text-accent" />}
+            </button>
+
+            {/* 任务计划模式是「执行方式」，下面的专家是「执行角色」，两者分属不同维度 */}
+            <div className="my-1 mx-3 border-t border-border/50" />
 
             {visibleRoles.length === 0 && (
               <div className="px-3 py-2 text-[11px] text-text-muted/70">
@@ -222,12 +263,6 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
                 </button>
               )
             })}
-          </div>
-
-          <div className="border-t border-border/30 mt-1 pt-1.5 px-3 pb-1.5">
-            <div className="text-[10px] text-text-muted/60 leading-snug px-1">
-              {isZh ? '专家只改变「做事方法」，不改变安全边界与记忆域' : 'Experts change method only, not safety or memory scope.'}
-            </div>
           </div>
         </div>,
         document.body,

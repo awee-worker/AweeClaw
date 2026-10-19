@@ -38,8 +38,19 @@ export interface ToolLoadingContext {
   mode: WorkMode
   /** 角色模板 ID（可选） */
   templateId?: string
-  /** Plan 阶段：planning = 只有编排工具, executing = 所有工具 */
+  /**
+   * Plan 阶段：
+   * - planning  = 只下发「计划 + 只读探索」工具，写类/执行类工具一律不下发
+   * - executing = 全量工具
+   */
   planPhase?: 'planning' | 'executing'
+  /**
+   * 任务计划模式（输入区专家弹窗选中的会话级开关）
+   *
+   * 为真时本轮按 planning 处理：模型可见工具收窄为计划与只读探索工具，
+   * 想推进任务就只能先调用 create_task_plan 拆解，而不是直接动手。
+   */
+  taskPlanMode?: boolean
   /** 场景 ID（可选）：场景指定的 ToolPack 优先于默认工具组 */
   scenarioId?: string
   /** 场景工具包列表（可选）：直接指定需要的工具包 */
@@ -275,6 +286,43 @@ const PLAN_EXPLORATION_TOOLS: string[] = [
   'get_document_symbols',
   'get_file_info',
 ]
+
+/**
+ * 计划阶段可见工具
+ *
+ * 任务计划模式（或 plan 的 planning 阶段）下只放行「建计划 + 只读取证」两类能力：
+ * 模型看不到写文件 / 跑命令 / 改环境 / 改 Git 的工具，也就无法“先把活干完”，
+ * 想推进任务只能先 create_task_plan 拆解，交给用户确认后再执行。
+ *
+ * 只读探索保留是必要的：建计划前需要读代码、看目录、查资料，否则计划只能凭猜。
+ */
+export const PLAN_STAGE_TOOLS: readonly string[] = Array.from(new Set([
+  ...PLAN_PLANNING_TOOLS,
+  ...PLAN_EXPLORATION_TOOLS,
+  'extract_document',
+  'web_search',
+  'read_url',
+  'knowledge_search',
+  'remember',
+]))
+
+/**
+ * 是否处于计划阶段（只读 + 建计划）
+ *
+ * 判定集中在这里，供工具可见性过滤（getToolsForContext）、执行层兜底门控
+ * （setToolLoadingContext）、提示词工具清单三处共用，避免各自写一份后走偏。
+ *
+ * 关键约束：计划已进入执行阶段（planPhase === 'executing'）时一律不放行计划阶段收窄，
+ * 否则「任务计划模式」这个会话级开关会在计划批准后继续把写类工具挡在门外，
+ * 表现为用户确认计划后 AI 依旧只能用只读工具。
+ */
+export function isPlanStageContext(context: {
+  planPhase?: 'planning' | 'executing'
+  taskPlanMode?: boolean
+}): boolean {
+  if (context.planPhase === 'executing') return false
+  return context.planPhase === 'planning' || context.taskPlanMode === true
+}
 
 /**
  * 全量内置工具 —— 三种工作模式与所有场景共用同一份内置工具集
@@ -641,6 +689,17 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
     for (const tool of EXTERNAL_AGENT_TOOL_NAMES) {
       tools.add(tool)
     }
+  }
+
+  // 8.5 计划阶段收窄（planning 或任务计划模式）：
+  //     只保留「建计划 + 只读取证」工具，写类 / 执行类 / Git 类工具全部剔除。
+  //     这是任务计划模式的硬闸门 —— 此前 planPhase 只被写进提示词，工具集仍是全量，
+  //     模型可以直接动手，create_task_plan 就成了可选项而不是必经步骤。
+  //     收窄发生在场景 / 角色追加之后，避免这些来源把写类工具又加回来。
+  const planStageActive = isPlanStageContext(context)
+  if (planStageActive) {
+    const planTools = new Set(PLAN_STAGE_TOOLS)
+    tools = new Set(Array.from(tools).filter((tool) => planTools.has(tool)))
   }
 
   // 9. 套餐能力组白名单过滤（置于最后一道，对全部来源的工具统一生效）

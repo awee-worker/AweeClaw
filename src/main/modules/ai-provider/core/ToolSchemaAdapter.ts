@@ -77,7 +77,11 @@ export class ToolConverter {
           }
           shape[key] = fieldSchema
         }
-        zodType = z.object(shape)
+        // 透传未声明字段：MCP 工具里存在大量「结构不由属性表穷举」的对象参数
+        //（例如 z.record 声明的大纲数组项、自定义载荷）。若在这里按已知字段收窄，
+        // 模型实际传入的内容会被 zod 静默剥离，工具只能收到空对象，
+        // 表现为「参数通道传不进内容」
+        zodType = z.object(shape).passthrough()
         break
       default:
         zodType = z.any()

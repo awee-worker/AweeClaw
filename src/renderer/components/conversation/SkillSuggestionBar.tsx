@@ -81,6 +81,10 @@ const toPluginEntry = (plugin: PluginListEntry): BarEntry => ({
   plugin,
 })
 
+/** 二级项展示名：与按钮文案保持一致，避免记录下来的选择与用户看到的对不上 */
+const subLabelOf = (sub: SubSkillItem, isZh: boolean) =>
+  isZh ? sub.label : (sub.labelEn || sub.label)
+
 /** 技能图标：metadata.icon 支持图片地址与 lucide 图标名，缺省回退通用工具图标 */
 function SkillIcon({ icon, fallback = Wrench }: { icon?: string; fallback?: LucideIcon }) {
   if (isImageIcon(icon)) {
@@ -332,6 +336,9 @@ export default function SkillSuggestionBar() {
   const pluginMoreRef = useRef<HTMLDivElement>(null)
   // 整条技能栏容器：给弹出面板提供左右边界与宽度
   const barRef = useRef<HTMLDivElement>(null)
+  // 当前会话：技能栏常驻在空会话视图里，新建任务不会卸载本组件，
+  // 因此展开状态必须显式跟随会话切换复位
+  const currentThreadId = useAgentStore(s => s.currentThreadId)
 
   useEffect(() => {
     let cancelled = false
@@ -370,13 +377,40 @@ export default function SkillSuggestionBar() {
     }
   }, [skills, plugins, openEntry])
 
+  /**
+   * 切换会话（新建任务、或打开另一条历史会话）时收起二级行与下拉
+   *
+   * 二级项与下拉属于「本轮输入」的临时展开，只对当时选中的上下文有意义。
+   * 新建任务时 contextItems 随新线程清空，若继续保留展开的那一行，
+   * 新会话一打开就停在上一轮的技能二级项上，与空会话的语义直接冲突。
+   *
+   * 「空会话 → 首个新线程」不算切换：空会话里没有任何线程，用户点第一个技能时
+   * contextItems 的写入会顺带创建线程（addContextItem 内部 createThread），
+   * 若把这次变化也当成切换，刚展开的二级行会被立刻收起，
+   * 表现为「第一次点技能展不开、要点第二次」。这里只在两个真实线程之间跳转时复位。
+   */
+  const prevThreadIdRef = useRef(currentThreadId)
+  useEffect(() => {
+    const previousThreadId = prevThreadIdRef.current
+    prevThreadIdRef.current = currentThreadId
+    if (!previousThreadId || previousThreadId === currentThreadId) return
+    setOpenEntry(null)
+    setOpenSelect(null)
+    setPluginPanelOpen(false)
+  }, [currentThreadId])
+
   /** 技能展示名：中文界面取中文名，回退到技能 ID */
   const getSkillLabel = useCallback((skill: SkillItem) => (
     isZh ? (skill.metadata?.nameZh || skill.name) : (skill.metadata?.nameEn || skill.name)
   ), [isZh])
 
-  /** 写入技能上下文（skillId 保持英文以便后端定位，展示名走中文） */
-  const attachSkill = useCallback((skill: SkillItem) => {
+  /**
+   * 写入技能上下文（skillId 保持英文以便后端定位，展示名走中文）
+   *
+   * subSelection 必须随对象一起写入，不能事后单独补：上下文项是发送时整对象
+   * 快照进消息的，晚一步写只会落在 store 上，用户气泡里仍然只剩技能名。
+   */
+  const attachSkill = useCallback((skill: SkillItem, subSelection?: string) => {
     const label = getSkillLabel(skill)
     useAgentStore.getState().addContextItem({
       type: 'Skill',
@@ -384,6 +418,7 @@ export default function SkillSuggestionBar() {
       name: label,
       displayName: label,
       description: skill.description,
+      ...(subSelection ? { subSelection } : {}),
     })
   }, [getSkillLabel])
 
@@ -398,7 +433,7 @@ export default function SkillSuggestionBar() {
    * 插件没有 SKILL.md 正文，不能走技能上下文；按插件上下文下发后，
    * 上下文管道会列出该插件已注册的工具，并提示 AI 直接调用而不是加载技能。
    */
-  const attachPlugin = useCallback((plugin: PluginListEntry) => {
+  const attachPlugin = useCallback((plugin: PluginListEntry, subSelection?: string) => {
     // 与技能同等对待：插件点击也要进统计，否则常用插件永远进不了置顶区
     recordPluginClick(plugin.pluginKey)
     const label = getPluginLabel(plugin)
@@ -409,6 +444,7 @@ export default function SkillSuggestionBar() {
       displayName: label,
       description: (isZh && plugin.descriptionZh) || plugin.description,
       mcpServerId: plugin.mcpServerId,
+      ...(subSelection ? { subSelection } : {}),
     })
   }, [getPluginLabel, isZh])
 
@@ -446,7 +482,13 @@ export default function SkillSuggestionBar() {
     // 一旦换了一级条目，上一条目在二级项里做的选择就失效了：
     // 界面那条状态标签与写进上下文的说明必须一起清掉，
     // 否则 AI 会拿着旧条目的选择继续作答（用户已切到别的技能，却说「用深色模板」）。
-    useAgentStore.getState().clearPluginStateNotes()
+    // 本次点击的条目要排除在外：重复点同一条目只是展开/收起二级行，
+    // 把它自己的选择一起清掉，用户刚选的那一项就从消息上消失了。
+    useAgentStore.getState().clearPluginStateNotes(
+      entry.kind === 'skill'
+        ? { type: 'Skill', id: entry.skill.name.toLowerCase() }
+        : { type: 'Plugin', id: entry.plugin.pluginKey },
+    )
     clearPluginNotice()
 
     if (entry.kind === 'skill') {
@@ -500,9 +542,12 @@ export default function SkillSuggestionBar() {
     const prompt = isZh ? sub.prompt : (sub.promptEn || sub.prompt)
     if (!prompt) return
     useAgentStore.getState().setChatDraft(prompt)
-    if (entry.kind === 'skill') attachSkill(entry.skill)
+    // 二级项一旦写进输入框就只剩技能/插件标签，选择结果必须随上下文项一起带出去
+    const subLabel = subLabelOf(sub, isZh)
+    if (entry.kind === 'skill') attachSkill(entry.skill, subLabel)
+    else attachPlugin(entry.plugin, subLabel)
     setOpenSelect(null)
-  }, [attachSkill, isZh])
+  }, [attachPlugin, attachSkill, isZh])
 
   /**
    * 选中选项：把值填进提示词模板
@@ -518,10 +563,13 @@ export default function SkillSuggestionBar() {
       ? template.replace(/\{value\}/g, option.value).replace(/\{label\}/g, optionLabel)
       : `${isZh ? sub.label : (sub.labelEn || sub.label)}: ${optionLabel}`
     useAgentStore.getState().setChatDraft(text)
-    if (entry.kind === 'skill') attachSkill(entry.skill)
+    // 标签后面要能看出选的是哪一项，因此连二级项名一起记
+    const selection = `${subLabelOf(sub, isZh)}：${optionLabel}`
+    if (entry.kind === 'skill') attachSkill(entry.skill, selection)
+    else attachPlugin(entry.plugin, selection)
     // 只收起下拉、保留二级行：选完一项通常还要接着选别的，退回一级会把操作打断
     setOpenSelect(null)
-  }, [attachSkill, isZh])
+  }, [attachPlugin, attachSkill, isZh])
 
   // 置顶候选池：技能与插件投进同一个池子，常用项因此能越过场景内置技能排到最前
   const pinnedKeys = useMemo(
@@ -563,6 +611,31 @@ export default function SkillSuggestionBar() {
 
   // 插件是单选上下文（contextItems 里最多一个 Plugin）：取它作为行内按钮与面板的选中态
   const contextItems = useAgentStore(selectContextItems)
+
+  /**
+   * 发送后收起二级行
+   *
+   * 发送会清空线程上下文，此时展开的二级项已经没有任何归属：继续留着，
+   * 输入框上方就会停在上一轮的选择上，新建任务时看到的更是上一个会话的残影。
+   * 用「该技能是否还挂在上下文里」判断，比监听发送事件更稳——
+   * 用户手动删掉技能标签时同样应该收起。
+   */
+  useEffect(() => {
+    if (!openEntry) return
+    // 技能与插件都是单选上下文：任一类从上下文里消失，展开的二级行就失去归属
+    const stillMounted = openEntry.kind === 'skill'
+      ? contextItems.some(
+          item => item.type === 'Skill' && item.skillId === openEntry.skill.name.toLowerCase(),
+        )
+      : contextItems.some(
+          item => item.type === 'Plugin' && item.pluginId === openEntry.plugin.pluginKey,
+        )
+    if (!stillMounted) {
+      setOpenEntry(null)
+      setOpenSelect(null)
+    }
+  }, [contextItems, openEntry])
+
   const selectedPluginIndex = useMemo(
     () => contextItems.findIndex(item => item.type === 'Plugin'),
     [contextItems],

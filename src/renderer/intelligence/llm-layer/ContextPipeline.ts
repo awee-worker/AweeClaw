@@ -408,7 +408,10 @@ const SkillProvider: ContextProvider = {
   priority: 10,
   async process(item, _ctx) {
     const { name, description } = item as { name: string; description?: string }
-    return `\n### Skill: ${name}\n${description || ''}\n`
+    // 二级项的选择随技能一起注入：用户已明确的选项不必再问一遍
+    const selection = (item as { subSelection?: string }).subSelection
+    const selectionLine = selection ? `\n用户已选：${selection}` : ''
+    return `\n### Skill: ${name}\n${description || ''}${selectionLine}\n`
   },
 }
 
@@ -438,9 +441,12 @@ const PluginProvider: ContextProvider = {
 
     // 插件在 UI 里做过的选择（如已选模板）随上下文一并注入，AI 无需再问一遍
     const stateNote = plugin.stateNote ? `\n\n当前状态：${plugin.stateNote}` : ''
+    // 技能栏二级项的选择结果同样是用户已经明确的决定，不必再问一遍
+    const selection = (plugin as { subSelection?: string }).subSelection
+    const selectionLine = selection ? `\n\n用户已选：${selection}` : ''
 
     return (
-      `\n### Plugin: ${name}\n${desc}${toolHint}${stateNote}\n\n` +
+      `\n### Plugin: ${name}\n${desc}${toolHint}${stateNote}${selectionLine}\n\n` +
       `注意：这是用户选择的已安装插件，不是 Skill。` +
       `请直接调用上面列出的工具（mcp_ 前缀），或从可用工具列表中选择该插件提供的工具来执行任务，` +
       `不要使用 apply_skill 加载它。\n`

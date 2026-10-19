@@ -113,16 +113,31 @@ export interface MessageActions {
      *
      * 只更新该插件上下文项的 stateNote，不发消息、不触发 AI；
      * 该插件尚未挂载为上下文时自动挂上，保证下一次提问 AI 就能看到。
+     *
+     * selectionLabel 是界面用的短标签（如「风格 · 商务浅色」）。它同时写进
+     * subSelection，消息气泡才会在插件名后面展示用户这次选了什么；只写 stateNote
+     * 的话，标签裸挂在输入框上方，发出去的消息上却只剩一个插件名。
      */
-    setPluginStateNote: (pluginId: string, note: string, displayName?: string) => void
+    setPluginStateNote: (pluginId: string, note: string, displayName?: string, selectionLabel?: string) => void
     /**
-     * 清空所有插件上下文里的操作结果说明。
+     * 写入技能的二级项选择结果（如「模板：商务浅色」）。
+     *
+     * 技能是单选上下文，因此直接作用在当前挂载的那个技能项上：
+     * 同一技能里换一个二级选项即覆盖，发给 AI 与消息标签都以最后一次为准。
+     * 传 undefined 表示撤销选择。
+     */
+    setSkillSubSelection: (selection?: string) => void
+    /**
+     * 清空插件/技能上下文里的操作结果说明与二级项选择。
      *
      * 二级项的选择只对本次挂载有效：用户换了一级条目，上一条目留下的说明
      * 就成了过期状态，继续带给 AI 会让它按旧选择作答。
-     * 只清说明、保留插件挂载本身，因为「用过哪个插件」这件事依然成立。
+     * 只清说明、保留技能与插件的挂载本身，因为「用过哪个能力」依然成立。
+     *
+     * keep 指定本次点击的条目：它自己的选择正是用户刚做的决定，
+     * 重复点击同一条目（多是展开/收起二级行）不该把选择一起抹掉。
      */
-    clearPluginStateNotes: () => void
+    clearPluginStateNotes: (keep?: { type: 'Skill' | 'Plugin'; id: string }) => void
     removeContextItem: (index: number, targetThreadId?: string) => void
     clearContextItems: (targetThreadId?: string) => void
 
@@ -1614,7 +1629,29 @@ export const createMessageSlice: StateCreator<
                 }
 
                 const sameType = items.filter(existing => existing.type === itemType)
-                if (sameType.some(existing => keyOf(existing) === keyOf(item))) return state
+                if (sameType.some(existing => keyOf(existing) === keyOf(item))) {
+                    // 同一技能/插件的重复挂载只有在「这次带了二级项结果」时才有新信息：
+                    // 无脑丢弃会让选择一直停在首次挂载的旧对象上，发送时快照进消息的
+                    // contextItems 仍是空选择，用户气泡里就只剩一个技能名。
+                    const incoming = item as { skillId?: string; pluginId?: string; subSelection?: string }
+                    if (incoming.subSelection) {
+                        const matchKey = keyOf(item)
+                        return {
+                            threads: {
+                                ...state.threads,
+                                [threadId]: {
+                                    ...thread,
+                                    contextItems: items.map(existing =>
+                                        keyOf(existing) === matchKey
+                                            ? { ...existing, subSelection: incoming.subSelection }
+                                            : existing,
+                                    ),
+                                },
+                            },
+                        }
+                    }
+                    return state
+                }
 
                 return {
                     threads: {
@@ -1651,8 +1688,11 @@ export const createMessageSlice: StateCreator<
 
 
     // 写入插件侧的操作结果说明：只改上下文，不触发 AI
-    setPluginStateNote: (pluginId, note, displayName) => {
+    setPluginStateNote: (pluginId, note, displayName, selectionLabel) => {
         if (!pluginId || !note) return
+
+        // 界面短标签缺省时退回完整说明：宁可长一点，也不能让用户看不到自己选了什么
+        const selection = selectionLabel || note
 
         let threadId = get().currentThreadId
         if (!threadId || !get().threads[threadId]) {
@@ -1673,6 +1713,7 @@ export const createMessageSlice: StateCreator<
                 name: pluginId,
                 displayName,
                 stateNote: note,
+                subSelection: selection,
             })
             return
         }
@@ -1688,7 +1729,7 @@ export const createMessageSlice: StateCreator<
                         ...target,
                         contextItems: target.contextItems.map(item =>
                             item.type === 'Plugin' && item.pluginId === pluginId
-                                ? { ...item, stateNote: note }
+                                ? { ...item, stateNote: note, subSelection: selection }
                                 : item,
                         ),
                     },
@@ -1697,19 +1738,53 @@ export const createMessageSlice: StateCreator<
         })
     },
 
-    // 清空插件侧的操作结果说明：换了一级条目后，旧二级项的选择不再有效
-    clearPluginStateNotes: () => {
+    // 写入技能的二级项选择结果：消息标签与上下文注入都以它为准
+    setSkillSubSelection: (selection) => {
         const threadId = get().currentThreadId
         if (!threadId) return
+
+        const skill = get().threads[threadId]?.contextItems.find(item => item.type === 'Skill')
+        // 已是同一选择时不重建对象，避免无意义的上下文引用变化
+        if (!skill || (skill.type === 'Skill' && skill.subSelection === selection)) return
+
+        set(state => {
+            const thread = state.threads[threadId]
+            if (!thread) return state
+            return {
+                threads: {
+                    ...state.threads,
+                    [threadId]: {
+                        ...thread,
+                        contextItems: thread.contextItems.map(item =>
+                            item.type === 'Skill' ? { ...item, subSelection: selection } : item,
+                        ),
+                    },
+                },
+            }
+        })
+    },
+
+    // 清空插件侧的操作结果说明与二级项选择：换了一级条目后它们不再有效
+    clearPluginStateNotes: (keep) => {
+        const threadId = get().currentThreadId
+        if (!threadId) return
+
+        /** 本次点击的条目不做清理，它承载的正是用户刚做出的选择 */
+        const isKept = (item: ContextItem): boolean => {
+            if (!keep) return false
+            if (keep.type === 'Skill') return item.type === 'Skill' && item.skillId === keep.id
+            return item.type === 'Plugin' && item.pluginId === keep.id
+        }
 
         set(state => {
             const thread = state.threads[threadId]
             if (!thread) return state
 
             // 没有任何说明时直接返回原 state，避免无意义的对象重建引起重渲染
-            const hasNote = thread.contextItems.some(
-                item => item.type === 'Plugin' && item.stateNote,
-            )
+            const hasNote = thread.contextItems.some(item => !isKept(item) && (
+                (item.type === 'Plugin' && (item.stateNote || item.subSelection))
+                || (item.type === 'Skill' && item.subSelection)
+            ))
             if (!hasNote) return state
 
             return {
@@ -1717,11 +1792,16 @@ export const createMessageSlice: StateCreator<
                     ...state.threads,
                     [threadId]: {
                         ...thread,
-                        contextItems: thread.contextItems.map(item =>
-                            item.type === 'Plugin' && item.stateNote
-                                ? { ...item, stateNote: undefined }
-                                : item,
-                        ),
+                        contextItems: thread.contextItems.map(item => {
+                            if (isKept(item)) return item
+                            if (item.type === 'Plugin' && (item.stateNote || item.subSelection)) {
+                                return { ...item, stateNote: undefined, subSelection: undefined }
+                            }
+                            if (item.type === 'Skill' && item.subSelection) {
+                                return { ...item, subSelection: undefined }
+                            }
+                            return item
+                        }),
                     },
                 },
             }

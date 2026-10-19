@@ -21,9 +21,10 @@ import {
   isToolAllowedByPlanSync,
   buildToolNotAllowedMessage,
 } from '@services/featureGuardService'
-import { GIT_TOOL_NAMES, DEV_ONLY_TOOL_NAMES } from '@configuration/toolCategoryDefs'
+import { GIT_TOOL_NAMES, DEV_ONLY_TOOL_NAMES, PLAN_STAGE_TOOLS } from '@configuration/toolCategoryDefs'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { isGitToolsEnabled } from '../gitToolsGate'
+import { isPlanStageActive } from '../planStageGate'
 import { buildMissingPathHint, normalizeToolPathArgs } from '../toolArgNormalizer'
 
 class ToolManager {
@@ -326,6 +327,26 @@ class ToolManager {
         success: false,
         result: '',
         error: gitErrorMsg,
+        outcome: { kind: 'error', code: 'TOOL_NOT_ALLOWED', retryable: false },
+      }, 'validation')
+    }
+
+    // 计划阶段兜底校验（执行层强制）
+    // 主闸门是「可见性」—— 计划阶段 getToolsForContext 只下发计划与只读工具；
+    // 此处拦住绕过可见性过滤的写类调用（外部 API 桥 / 渠道会话 / 模型幻觉），
+    // 并把模型引导回 create_task_plan，而不是返回一个裸错误让它换个工具再试。
+    if (isPlanStageActive() && !PLAN_STAGE_TOOLS.includes(toolName)) {
+      logger.agent.warn(
+        `[ToolManager] Tool "${toolName}" rejected: plan stage only allows planning and read-only tools`,
+      )
+      const isZhPlanStage = useStore.getState().language === 'zh'
+      const planStageErrorMsg = isZhPlanStage
+        ? `本轮处于「任务计划模式」，工具 "${toolName}" 属于执行类能力，计划阶段不可用。\n请先用 create_task_plan 把任务拆成子任务并交给用户确认，确认后再用 start_task_execution 进入执行阶段。`
+        : `This turn is in Task Plan mode: "${toolName}" is an execution tool and is unavailable during planning.\nCall create_task_plan first to break the work into tasks, wait for user confirmation, then use start_task_execution.`
+      return this.finalizeResult(toolName, executionId, startedAt, undefined, {
+        success: false,
+        result: '',
+        error: planStageErrorMsg,
         outcome: { kind: 'error', code: 'TOOL_NOT_ALLOWED', retryable: false },
       }, 'validation')
     }

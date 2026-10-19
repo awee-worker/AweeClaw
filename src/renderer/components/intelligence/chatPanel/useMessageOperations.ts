@@ -8,6 +8,7 @@ import { composerService } from '@intelligence/runtime/composerEngine'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { useToast } from '@components/foundation/NotificationProvider'
+import { clearPluginNotice } from '@renderer/plugins/pluginNoticeStore'
 import { slashCommandService } from '@services/slashCommandAdapter'
 import {
   isUserMessage,
@@ -104,6 +105,10 @@ export function useMessageOperations({
       setInput('')
       attachmentManager.clearImages()
       scrollToBottom('smooth')
+      // 发送会清空线程上下文，插件侧的选择状态随之失效：必须在这一刻就收掉提示。
+      // 放到 await sendMessage 之后是不行的 —— sendMessage 要等整轮会话跑完才 resolve，
+      // 期间输入框上方会一直挂着上一次的二级项结果，直到会话结束才消失。
+      clearPluginNotice()
       await sendMessage(userMessage)
     },
     [

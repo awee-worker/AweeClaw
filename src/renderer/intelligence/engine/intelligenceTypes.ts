@@ -20,6 +20,13 @@ export interface ExecutionContext {
   workspacePath: string | null
   chatMode: WorkMode
   planPhase?: 'planning' | 'executing'
+  /**
+   * 任务计划模式（输入区专家弹窗的会话级开关）
+   *
+   * 为真时本轮按 planning 处理：工具集收窄为计划 + 只读探索工具，
+   * 模型必须先 create_task_plan 才能推进任务。
+   */
+  taskPlanMode?: boolean
   abortSignal?: AbortSignal
   /** 绑定的线程 ID（用于后台任务隔离） */
   threadId?: string | null

@@ -105,6 +105,11 @@ export class AgentClass {
        */
       explicitRoleId?: string | null
       /**
+       * 任务计划模式：来自输入区专家弹窗的「任务计划模式」选项。
+       * 为真时提示词要求先用 create_task_plan 拆解任务，再按计划执行。
+       */
+      taskPlanMode?: boolean
+      /**
        * 子任务显式角色人设（角色库）：由 planExecutor 在分派子任务时传入，
        * 优先级高于主对话的自动匹配结果；不传时走自动匹配
        */
@@ -461,6 +466,8 @@ export class AgentClass {
         workspacePath,
         chatMode,
         planPhase: promptOptions?.planPhase,
+        // 任务计划模式必须同时进入执行上下文：提示词只负责说明，工具集收窄才是硬约束
+        taskPlanMode: promptOptions?.taskPlanMode === true,
         abortSignal: abortController.signal,
         threadId,
         requestId,

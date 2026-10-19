@@ -42,6 +42,7 @@ import ChangesReviewPanel from './ChangesReviewPanel'
 import SlashCommandPopup from './SlashCommandPopup'
 import EmptyChatSuggestions from '../conversation/WelcomeSuggestions'
 import SkillSuggestionBar from '../conversation/SkillSuggestionBar'
+import { clearPluginNotice } from '@renderer/plugins/pluginNoticeStore'
 import { ChatMessagesSkeleton, Spinner } from '../ui/ProgressIndicator'
 import { playNotificationSound } from '@utils/notificationSound'
 import { AgentWorkspace } from './AgentWorkspace'
@@ -262,8 +263,21 @@ export default function ChatPanel() {
     // 重新开始流式时重置提示音标记
     if (isStreaming) {
       pendingReviewSoundPlayedRef.current = false
+      // 本轮已经发出去了：输入框上方的插件选择提示不再代表「待发送的输入」，
+      // 从这里统一收掉，语音、插件自发消息等非输入框发送路径也一并生效
+      if (!wasStreaming) clearPluginNotice()
     }
   }, [isStreaming, pendingChanges.length])
+
+  /**
+   * 切换会话（新建任务、打开历史会话）时清掉插件状态提示
+   *
+   * 这条提示是全局单例，记录的是「上一个线程里插件的选中状态」。
+   * 不清的话，新建任务页的输入框上方会一直挂着上一次会话的二级项结果。
+   */
+  useEffect(() => {
+    clearPluginNotice()
+  }, [currentThreadId])
 
   const { sendMessage, abort, approveAllTools, rejectAllTools } = useAgentCommands()
   // 定向发送（不切换当前线程）：供自动续接把消息发回被中断的线程。

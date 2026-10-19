@@ -26,8 +26,10 @@ import { builtinToolProvider } from './BuiltinToolRegistry'
 import { mcpToolProvider } from './ProtocolToolRegistry'
 import { a2aToolProvider } from './A2aToolRegistry'
 import type { ToolLoadingContext } from '@configuration/toolCategoryDefs'
+import { isPlanStageContext } from '@configuration/toolCategoryDefs'
 import { getAllowedToolGroupsSync } from '@services/featureGuardService'
 import { setGitToolsEnabled } from '../gitToolsGate'
+import { setPlanStageActive } from '../planStageGate'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 
 let initialized = false
@@ -68,6 +70,8 @@ export function setToolLoadingContext(context: ToolLoadingContext): void {
   }
   // Git 工具门控缓存同步刷新：执行层（ToolCoordinator）需要同步读取本轮是否放行 git_*
   setGitToolsEnabled(merged.gitToolsEnabled === true)
+  // 计划阶段缓存同理由此刷新：执行层用它拦住绕过可见性过滤的写类调用
+  setPlanStageActive(isPlanStageContext(merged))
   builtinToolProvider.setContext(merged)
   mcpToolProvider.setContext(merged)
   a2aToolProvider.setContext(merged)

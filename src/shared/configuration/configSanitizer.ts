@@ -196,6 +196,8 @@ export interface AgentConfigSchema {
   ignoredDirectories?: string[]
   /** 当前会话锁定的专家（角色库角色 id），null/undefined 表示自动编排档 */
   activeExpertId?: string | null
+  /** 任务计划模式：开启后本轮对话强制走 create_task_plan 拆解执行 */
+  taskPlanMode?: boolean
   multiAgent?: {
     enabled?: boolean
     mode?: 'auto' | 'always'
@@ -289,6 +291,11 @@ export function cleanAgentConfig(config: Record<string, unknown>): AgentConfigSc
   // activeExpertId（会话锁定的专家角色，null 表示自动档）
   if (config.activeExpertId === null || typeof config.activeExpertId === 'string') {
     cleaned.activeExpertId = config.activeExpertId
+  }
+
+  // taskPlanMode（任务计划模式开关）
+  if (typeof config.taskPlanMode === 'boolean') {
+    cleaned.taskPlanMode = config.taskPlanMode
   }
 
   // soundNotifications 子对象

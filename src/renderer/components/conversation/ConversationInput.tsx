@@ -794,6 +794,12 @@ const ChatInput = memo(function ChatInput({
                   >
                     {ContextIcon && <ContextIcon className="w-3 h-3 opacity-70" />}
                     <span className="max-w-[120px] truncate">{label}</span>
+                    {/* 二级项结果：与消息气泡里的标签保持一致，发送前就能核对 */}
+                    {(item.type === 'Skill' || item.type === 'Plugin') && item.subSelection && (
+                      <span className="max-w-[140px] truncate opacity-80" title={item.subSelection}>
+                        · {item.subSelection}
+                      </span>
+                    )}
                     <button
                       onClick={() => {
                         // 移除插件上下文即取消这次选择，对应的状态说明也要一起消失
@@ -816,8 +822,9 @@ const ChatInput = memo(function ChatInput({
             {hasTerminalRef && <ContextChip icon={Terminal} label="@terminal" color="cyan" />}
             {hasWebRef && <ContextChip icon={Globe} label="@web" color="blue" />}
 
-            {/* 插件操作结果：弱化的行内状态文字，与上方药丸标签区分开，不抢视觉 */}
-            {pluginNotice && (
+            {/* 插件操作结果：弱化的行内状态文字，与上方药丸标签区分开，不抢视觉。
+                选择结果已经作为 subSelection 挂在对应标签上时不再重复展示一遍。 */}
+            {pluginNotice && !contextItems.some(item => item.type === 'Plugin' && item.subSelection) && (
               <span
                 className="inline-flex items-center gap-1.5 px-1 text-[11px] text-text-muted select-none"
                 title={pluginNotice.text}

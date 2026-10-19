@@ -73,6 +73,13 @@ export interface SkillContext {
   description?: string
   /** LLM 自动选中（非 @mention） */
   auto?: boolean
+  /**
+   * 二级项的选择结果（如「模板：商务浅色」）。
+   *
+   * 二级项只在技能栏里可见，一旦发送出去就只剩技能标签，用户无从确认
+   * 当时选了什么；这个字段让消息气泡把选择一并展示，并随上下文注入给 AI。
+   */
+  subSelection?: string
 }
 
 export interface PluginContext {
@@ -92,6 +99,14 @@ export interface PluginContext {
    * 使 AI 知道用户在插件界面里已经做过的选择，不必再问。
    */
   stateNote?: string
+  /**
+   * 二级项的选择结果（如「模板：商务浅色」）。
+   *
+   * 与技能的 subSelection 同义：插件条目在技能栏里同样能展开二级项，
+   * 用户点过的选择必须随上下文一起发出去，并在消息气泡里显示出来，
+   * 否则消息上只剩一个插件名，用户无从确认当时选了什么。
+   */
+  subSelection?: string
 }
 
 /** 上下文项联合类型 */

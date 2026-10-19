@@ -141,7 +141,11 @@ export function PluginHostBridge() {
       const detail = (event as CustomEvent<PluginContextNoteDetail>).detail
       if (!detail?.text || !detail.pluginKey) return
       try {
-        useAgentStore.getState().setPluginStateNote(detail.pluginKey, detail.text, detail.displayName)
+        // 短标签一并写进上下文项：消息气泡用它展示「这一次选了什么」，
+        // 否则发出去的消息上只剩插件名，用户无从确认当时的选择
+        useAgentStore
+          .getState()
+          .setPluginStateNote(detail.pluginKey, detail.text, detail.displayName, detail.label)
         // 上下文用完整说明，界面用短标签；插件没给标签时退回完整说明
         setPluginNotice({ text: detail.label || detail.text, pluginKey: detail.pluginKey })
       } catch (err) {

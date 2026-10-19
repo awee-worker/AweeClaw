@@ -563,6 +563,8 @@ export async function executeAgentCycle(
     mode: context.chatMode,
     templateId: useStore.getState().promptTemplateId,
     planPhase: context.chatMode === 'expert' ? context.planPhase : undefined,
+    // 任务计划模式：与 planPhase='planning' 等价地收窄工具集（快速模式无工具调用能力，忽略）
+    taskPlanMode: context.chatMode !== 'chat' && context.taskPlanMode === true,
     scenarioId: activeScenarioId,
     scenarioToolPacks,
     scenarioTools,
@@ -581,6 +583,15 @@ export async function executeAgentCycle(
   const loopDetector = new LoopDetector()
   let iteration = 0
   let shouldContinue = true
+  /**
+   * 计划阶段纠偏是否已用掉。
+   *
+   * 计划阶段的工具集已收窄到「建计划 + 只读取证」，但模型仍可能读完资料后
+   * 直接输出一段文字方案了事 —— 用户选的是「任务计划模式」，要的是可确认、
+   * 可分派的计划，不是一段自由文本。这里只纠偏一次：给足机会，也避免
+   * 模型反复不服从时把循环拖成死转。
+   */
+  let planStageNudged = false
   threadStore.setStreamState({ waitPhase: 'waiting_model' })
 
   const concludeWithThresholdIntervention = async (
@@ -1141,6 +1152,31 @@ export async function executeAgentCycle(
     }
 
     if (!result.toolCalls || result.toolCalls.length === 0) {
+      // 计划阶段纠偏：本轮要求先建计划，模型却打算用纯文本收尾。
+      // 这是「工具已收窄但模型不服从」的唯一出口 —— 不收尾，明确要求它调用
+      // create_task_plan（只纠偏一次，见 planStageNudged）。
+      const planStageActive = context.taskPlanMode === true || context.planPhase === 'planning'
+      if (planStageActive && !planStageNudged && !context.abortSignal?.aborted) {
+        const planAlreadyCreated = llmMessages.some((m) => {
+          if (m.role !== 'assistant') return false
+          const assistantMsg = m as AssistantMessage
+          return assistantMsg.toolCalls?.some((tc) => tc.name === 'create_task_plan') ?? false
+        })
+        if (!planAlreadyCreated) {
+          planStageNudged = true
+          const { language } = useStore.getState()
+          logger.agent.warn('[Loop] Plan stage: model tried to finish without create_task_plan, nudging once')
+          llmMessages.push({
+            role: 'user',
+            content: language === 'zh'
+              ? '【计划阶段硬性要求】你还未创建任务计划。本轮处于「任务计划模式 / 计划阶段」，不允许以纯文字方案收尾，也不能直接动手执行。\n请立即调用 `create_task_plan`：把任务拆成可执行子任务（每个子任务含标题、说明、必要时含依赖与建议角色），然后停下等待用户确认。\n注意：计划内容必须通过该工具提交，不要只在回复文字里复述计划。'
+              : '【Plan stage requirement】No task plan has been created yet. This turn is in Task Plan mode — you may not finish with a text-only proposal, and you may not start executing.\nCall `create_task_plan` now: break the work into executable subtasks (title, description, dependencies and suggested role where relevant), then stop and wait for the user to confirm.\nSubmit the plan through the tool — do not merely restate it in prose.',
+          })
+          shouldContinue = true
+          continue
+        }
+      }
+
       const hookResult = invokeModePostProcessor(context.chatMode, {
         mode: context.chatMode,
         messages: llmMessages,

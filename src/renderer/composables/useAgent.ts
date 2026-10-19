@@ -107,6 +107,31 @@ function clearAgentConversationState(): void {
 /* 命令 Hook                                                          */
 /* ------------------------------------------------------------------ */
 
+/** 计划阶段：无活动计划时为 undefined（不参与计划阶段收窄） */
+type PlanPhase = 'planning' | 'executing' | undefined
+
+/**
+ * 从当前活动计划推导计划阶段
+ *
+ * 只有确实存在活动计划时才返回阶段值：早期实现把「没有计划」也当成 planning，
+ * 而 planning 会收窄工具集，结果所有专家档对话都在模型不知情的情况下失去写类工具
+ * （只能读文件、不能落盘），表现为「AI 只讲方案不动手」，也导致任务计划模式的
+ * 提示词与实际可用工具对不上。
+ */
+function selectPlanPhase(state: {
+  plans: Array<{ id: string; status: PlanStatus }>
+  activePlanId?: string | null
+}): PlanPhase {
+  const activePlan = state.plans.find((plan) => plan.id === state.activePlanId)
+  const status = activePlan?.status
+  if (!status) return undefined
+  // 计划已结束：不再锁定计划阶段
+  if (status === 'completed' || status === 'failed' || status === 'stopped') return undefined
+  return status === 'executing' || status === 'pausing' || status === 'stopping'
+    ? 'executing'
+    : 'planning'
+}
+
 /** 发送消息所需的运行时参数 */
 interface SendParams {
   llmConfig: LLMConfig
@@ -116,7 +141,7 @@ interface SendParams {
   aiInstructions: string
   openFiles: Array<{ path: string }>
   activeFilePath: string | null
-  planPhase: 'planning' | 'executing'
+  planPhase: PlanPhase
 }
 
 export function useAgentCommands() {
@@ -136,12 +161,7 @@ export function useAgentCommands() {
     })
   }, [])
 
-  const planPhase = useAgentStore<'planning' | 'executing'>((state) => {
-    const activePlan = state.plans.find((plan) => plan.id === state.activePlanId)
-    const status = activePlan?.status
-    const executingStatuses: PlanStatus[] = ['executing', 'pausing', 'stopping']
-    return status && executingStatuses.includes(status) ? 'executing' : 'planning'
-  })
+  const planPhase = useAgentStore<PlanPhase>(selectPlanPhase)
 
   const streamState = useAgentStore(selectStreamState)
 
@@ -188,6 +208,8 @@ export function useAgentCommands() {
       planPhase: params.chatMode === 'expert' ? params.planPhase : undefined,
       // 专家选择器锁定的角色：走 resolveSceneRole 第一级显式指定；未选（自动档）为 undefined，由自动匹配接管
       explicitRoleId: useStore.getState().agentConfig?.activeExpertId || undefined,
+      // 任务计划模式：输入区专家弹窗选中后，本轮强制走 create_task_plan 拆解执行
+      taskPlanMode: useStore.getState().agentConfig?.taskPlanMode === true,
     })
   }, [])
 
@@ -395,12 +417,7 @@ export function useThreadMessenger() {
     })
   }, [])
 
-  const planPhase = useAgentStore<'planning' | 'executing'>((state) => {
-    const activePlan = state.plans.find((plan) => plan.id === state.activePlanId)
-    const status = activePlan?.status
-    const executingStatuses: PlanStatus[] = ['executing', 'pausing', 'stopping']
-    return status && executingStatuses.includes(status) ? 'executing' : 'planning'
-  })
+  const planPhase = useAgentStore<PlanPhase>(selectPlanPhase)
 
   const sendParamsRef = useRef({
     llmConfig,
@@ -457,6 +474,9 @@ export function useThreadMessenger() {
           customInstructions: params.aiInstructions,
           promptTemplateId: params.promptTemplateId,
           planPhase: params.chatMode === 'expert' ? params.planPhase : undefined,
+          // 与 sendMessage 保持一致：漏传会让「继续」/自动续接脱离计划阶段，
+          // 工具集重新放开全量能力，模型直接开工而不是先补计划
+          taskPlanMode: useStore.getState().agentConfig?.taskPlanMode === true,
         },
         { threadId, silent: options?.silent },
       )

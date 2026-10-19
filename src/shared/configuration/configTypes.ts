@@ -111,6 +111,11 @@ export interface AgentConfig {
   activeCustomAgentId?: string
   /** 当前会话锁定的专家（角色库角色 id），null/undefined 表示自动编排档 */
   activeExpertId?: string | null
+  /**
+   * 任务计划模式：开启后本轮对话强制走 create_task_plan 拆解执行。
+   * 与 activeExpertId 互斥（选择任务计划模式时 activeExpertId 置空）。
+   */
+  taskPlanMode?: boolean
   /** 自定义 Agent 角色配置 */
   customAgentProfiles?: Array<{
     id: string

@@ -213,6 +213,7 @@ const RoleSelector = memo(function RoleSelector({
 }) {
     const currentSceneMode = useSceneModeStore((s) => s.currentSceneMode)
     const getRolesByScene = useRoleLibraryStore((s) => s.getRolesByScene)
+    const getRole = useRoleLibraryStore((s) => s.getRole)
     const language = useStore((s) => s.language)
     const isZh = language === 'zh'
 
@@ -227,13 +228,21 @@ const RoleSelector = memo(function RoleSelector({
                 label: r.nameZh || r.name,
             })),
         ]
-        // 当前角色不在候选中（历史计划或旧的模板 id）时补一条，否则选择器会显示空白
+        // 当前角色不在候选中（角色被停用、历史计划或旧的模板 id）时补一条，
+        // 否则选择器会退化成展示原始 id（如 work.marketing-strategist）。
+        // 角色名取角色库的完整视图，停用的角色同样有中文名，不能被当成未知值。
         if (role && !opts.some(o => o.value === role)) {
-            const known = getPromptTemplateSummary().find(t => t.id === role)
-            opts.push({ value: role, label: known ? (known.nameZh || known.name) : role })
+            const knownRole = getRole(role)
+            const knownTemplate = getPromptTemplateSummary().find(t => t.id === role)
+            const label = knownRole
+                ? (knownRole.nameZh || knownRole.name)
+                : knownTemplate
+                    ? (knownTemplate.nameZh || knownTemplate.name)
+                    : role
+            opts.push({ value: role, label })
         }
         return opts
-    }, [currentSceneMode, getRolesByScene, role, isZh])
+    }, [currentSceneMode, getRolesByScene, getRole, role, isZh])
 
     return (
         <div className="flex gap-2 items-center">
