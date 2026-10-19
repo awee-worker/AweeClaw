@@ -6,6 +6,7 @@
 import { EventEmitter } from 'events'
 import path from 'path'
 import fs from 'fs'
+import { pathToFileURL } from 'url'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -48,6 +49,7 @@ import { isRemoteConfig, isBuiltinConfig, isPluginConfig } from '@shared/protoco
 
 const DEFAULT_TIMEOUT = 30000
 const NPX_TIMEOUT = 60000  // npx/uvx 首次需要下载包，给更长超时
+const IN_PROCESS_TOOL_TIMEOUT = 3600000  // 进程内插件（PPT/视频生成等）单次工具调用上限：1 小时
 
 /**
  * 从插件入口模块解析出 MCP 服务器工厂函数。
@@ -84,6 +86,23 @@ function resolvePluginFactory(
     }
   }
   return null
+}
+
+/**
+ * 加载插件入口模块，尽量拿到当前磁盘上的那一份代码。
+ *
+ * ESM 以说明符为键缓存模块实例，同一路径第二次 import 不会重新执行模块体。
+ * 插件按版本号分目录时升级会换路径，但同版本覆盖安装不会——此时若不做处理，
+ * 重连后跑的仍是上一版模块。带时间戳 query 可绕过缓存；CJS 入口不接受 query，
+ * 退回普通加载即可（CJS 的缓存由 require 缓存决定，另有 close 时清理）。
+ */
+async function importWithCacheBust(entryPath: string): Promise<Record<string, unknown>> {
+  const href = pathToFileURL(entryPath).href
+  try {
+    return (await import(`${href}?v=${Date.now()}`)) as Record<string, unknown>
+  } catch {
+    return (await import(href)) as Record<string, unknown>
+  }
 }
 
 /**
@@ -514,8 +533,12 @@ export class McpClient extends EventEmitter {
         throw new Error(`Plugin entry not found: ${entryPath}`)
       }
 
-      // 动态加载入口模块
-      const factoryModule = await import(entryPath)
+      // 动态加载入口模块。
+      // ESM 会按说明符缓存模块实例：插件目录按版本号分层时升级自然拿到新文件，
+      // 但同版本覆盖安装（后端重发同一版本、或用户重装同一版）路径完全没变，
+      // 直接 import 回来还是上一版模块，表现为「更新成功但行为没变」。
+      // 带时间戳加载可绕开缓存；入口是 CJS 时不接受 query，退回普通加载。
+      const factoryModule = await importWithCacheBust(entryPath)
       const factory = resolvePluginFactory(factoryModule)
       if (!factory) {
         throw new Error(
@@ -1121,7 +1144,7 @@ export class McpClient extends EventEmitter {
    *
    * 优先级：
    * 1. config.timeout（插件 manifest capabilities.mcp.timeout 声明的值）
-   * 2. in-process 插件默认 600000ms（10 分钟）— 视频生成等长时间任务需要
+   * 2. in-process 插件默认 3600000ms（1 小时）— 视频生成等长时间任务需要
    * 3. DEFAULT_TIMEOUT（30000ms = 30 秒）— 本地/远程 MCP 服务器
    */
   private resolveToolTimeout(): number {
@@ -1131,7 +1154,7 @@ export class McpClient extends EventEmitter {
     }
     // in-process 插件可能执行长时间任务（如视频生成异步轮询），使用更大的默认超时
     if (this.state.config.type === 'plugin' && (this.state.config as { transport?: string }).transport === 'in-process') {
-      return 600000 // 10 分钟
+      return IN_PROCESS_TOOL_TIMEOUT
     }
     return DEFAULT_TIMEOUT
   }

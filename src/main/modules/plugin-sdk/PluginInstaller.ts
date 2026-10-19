@@ -553,8 +553,8 @@ export class PluginInstaller {
 
       // MCP 型插件（含 in-process）的运行时不在 PluginRegistry 里，而是挂在 McpManager
       // 的 serverId 下——那个 id 只带 pluginKey（plugin:<pluginKey>），不带版本。
-      // 所以升级时必须先把这个旧实例断开：否则下面 registerMcpServer 里的 connectServer
-      // 会命中「已连接」分支直接返回，进程里留着的仍是旧版本模块，工具调用继续走旧代码；
+      // 所以升级时必须先把这个旧实例断开：即使下面 registerMcpServer 用的是 reconnect，
+      // 这里断干净也能让新版本在旧目录被移走前就停掉，不留一个指向已删目录的存活实例；
       // 而旧版本目录紧接着就被删除，插件包内的资源（如 forge 脚本）随之消失，报错现场
       // 看起来像「插件包损坏」，真因却是旧实例指向了一个已经不存在的目录。
       try {
@@ -1853,7 +1853,10 @@ export class PluginInstaller {
         })
         try {
           this.emitProgress(progressPluginId, 'registering', progressPackageSize || 0, progressPackageSize || 0, '正在连接 MCP 服务...')
-          await mcpManager.connectServer(serverId)
+          // 用 reconnect 而不是 connect：connect 命中「已连接」会直接返回，
+          // 升级时只要上一步的 disconnect 没断干净（它是 best-effort，失败仅记日志），
+          // 进程里留下的就还是旧版本模块，表现为「更新成功但工具行为没变」。
+          await mcpManager.reconnectServer(serverId)
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : String(err)
           logger.system.warn(`[PluginInstaller] MCP auto-connect failed for ${plugin.pluginKey}: ${errorMsg}`)
@@ -1865,7 +1868,8 @@ export class PluginInstaller {
       } else {
         try {
           this.emitProgress(progressPluginId || '', 'registering', progressPackageSize || 0, progressPackageSize || 0, '正在连接 MCP 服务...')
-          await mcpManager.connectServer(serverId)
+          // 同上：一律先断后连，升级后不需要用户再去设置里手动重连一次
+          await mcpManager.reconnectServer(serverId)
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : String(err)
           logger.system.warn(`[PluginInstaller] MCP auto-connect failed for ${plugin.pluginKey}: ${errorMsg}`)

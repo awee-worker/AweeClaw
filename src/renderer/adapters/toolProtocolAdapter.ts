@@ -19,6 +19,12 @@ import type {
   McpPromptGetResult,
 } from '@shared/protocols/toolProtocolBridge'
 
+/**
+ * MCP 工具调用默认超时（1 小时）
+ * PPT 生成、视频生成等长耗时任务可能持续数十分钟，超时只做兜底保护
+ */
+const DEFAULT_MCP_TOOL_TIMEOUT_MS = 3_600_000
+
 class McpService {
   private initialized = false
   private cleanupFns: Array<() => void> = []
@@ -148,7 +154,7 @@ class McpService {
   }
 
   /** 调用 MCP 工具（带超时保护 + OAuth 自动刷新） */
-  async callTool(request: McpToolCallRequest, timeoutMs = 60_000): Promise<McpToolCallResult> {
+  async callTool(request: McpToolCallRequest, timeoutMs = DEFAULT_MCP_TOOL_TIMEOUT_MS): Promise<McpToolCallResult> {
     const execute = () => {
       let timeoutId: ReturnType<typeof setTimeout>
       return Promise.race([

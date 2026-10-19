@@ -162,7 +162,14 @@ export function PluginHostBridge() {
         // 否则发出去的消息上只剩插件名，用户无从确认当时的选择
         useAgentStore
           .getState()
-          .setPluginStateNote(detail.pluginKey, detail.text, detail.displayName, detail.label)
+          .setPluginStateNote(
+            detail.pluginKey,
+            detail.text,
+            detail.displayName,
+            detail.label,
+            // 带二级项标识时按标识归位，多个并列选择才能同时留在上下文里
+            detail.selectionKey,
+          )
         // 上下文用完整说明，界面用短标签；插件没给标签时退回完整说明
         setPluginNotice({ text: detail.label || detail.text, pluginKey: detail.pluginKey })
       } catch (err) {

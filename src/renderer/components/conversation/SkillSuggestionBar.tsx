@@ -35,6 +35,12 @@ import {
   type PluginListEntry,
 } from '@intelligence/runtime/skillRepository'
 import { runSubSkillAction } from '@intelligence/runtime/subSkillActions'
+import {
+  deriveSubSelection,
+  mergeSubSelections,
+  normalizeSubSelections,
+} from '@intelligence/runtime/subSelection'
+import type { SubSelectionEntry } from '@intelligence/types/contextModel'
 import { useAgentStore, selectContextItems } from '@intelligence/state/IntelligenceStore'
 import { resolveLucideIcon, isImageIcon } from '@components/plugin/pluginIconResolver'
 import { clearPluginNotice } from '@renderer/plugins/pluginNoticeStore'
@@ -84,6 +90,28 @@ const toPluginEntry = (plugin: PluginListEntry): BarEntry => ({
 /** 二级项展示名：与按钮文案保持一致，避免记录下来的选择与用户看到的对不上 */
 const subLabelOf = (sub: SubSkillItem, isZh: boolean) =>
   isZh ? sub.label : (sub.labelEn || sub.label)
+
+/**
+ * 取出当前线程里该条目已做过的二级项选择
+ *
+ * 一个技能/插件往往有多个并列二级项，重新挂载上下文（点一级条目、点另一个二级项）
+ * 都会整体替换上下文对象，已做的选择必须整组带过去，
+ * 否则「先选生成方式、再选模板」时前一项就被冲掉了。
+ */
+function currentSubSelections(
+  entry: BarEntry,
+): SubSelectionEntry[] {
+  const state = useAgentStore.getState()
+  const threadId = state.currentThreadId
+  if (!threadId) return []
+  const item = state.threads[threadId]?.contextItems.find(candidate => (
+    entry.kind === 'skill'
+      ? candidate.type === 'Skill' && candidate.skillId === entry.skill.name.toLowerCase()
+      : candidate.type === 'Plugin' && candidate.pluginId === entry.plugin.pluginKey
+  ))
+  if (!item || (item.type !== 'Skill' && item.type !== 'Plugin')) return []
+  return normalizeSubSelections(item)
+}
 
 /** 技能图标：metadata.icon 支持图片地址与 lucide 图标名，缺省回退通用工具图标 */
 function SkillIcon({ icon, fallback = Wrench }: { icon?: string; fallback?: LucideIcon }) {
@@ -407,18 +435,24 @@ export default function SkillSuggestionBar() {
   /**
    * 写入技能上下文（skillId 保持英文以便后端定位，展示名走中文）
    *
-   * subSelection 必须随对象一起写入，不能事后单独补：上下文项是发送时整对象
+   * 二级项的选择必须随对象一起写入，不能事后单独补：上下文项是发送时整对象
    * 快照进消息的，晚一步写只会落在 store 上，用户气泡里仍然只剩技能名。
+   *
+   * created 只是本次新选的一项，写入前先与该条目已有的选择合并——
+   * 生成方式、模板风格这类并列项必须同时留在上下文里。
    */
-  const attachSkill = useCallback((skill: SkillItem, subSelection?: string) => {
+  const attachSkill = useCallback((skill: SkillItem, created?: SubSelectionEntry) => {
     const label = getSkillLabel(skill)
+    const merged = mergeSubSelections(currentSubSelections(toSkillEntry(skill)), created ? [created] : [])
+    const derived = deriveSubSelection(merged)
     useAgentStore.getState().addContextItem({
       type: 'Skill',
       skillId: skill.name.toLowerCase(),
       name: label,
       displayName: label,
       description: skill.description,
-      ...(subSelection ? { subSelection } : {}),
+      ...(merged.length > 0 ? { subSelections: merged } : {}),
+      ...(derived.subSelection ? { subSelection: derived.subSelection } : {}),
     })
   }, [getSkillLabel])
 
@@ -433,10 +467,15 @@ export default function SkillSuggestionBar() {
    * 插件没有 SKILL.md 正文，不能走技能上下文；按插件上下文下发后，
    * 上下文管道会列出该插件已注册的工具，并提示 AI 直接调用而不是加载技能。
    */
-  const attachPlugin = useCallback((plugin: PluginListEntry, subSelection?: string) => {
+  const attachPlugin = useCallback((plugin: PluginListEntry, created?: SubSelectionEntry) => {
     // 与技能同等对待：插件点击也要进统计，否则常用插件永远进不了置顶区
     recordPluginClick(plugin.pluginKey)
     const label = getPluginLabel(plugin)
+    // 插件是单选上下文，写入即整体替换；已有的二级项选择与静默说明必须先接管过来，
+    // 否则「先选生成方式、再选模板」这一步会把前一项连同它的约束说明一起冲掉，
+    // AI 收到的上下文里就只剩最后选的那一项。
+    const merged = mergeSubSelections(currentSubSelections(toPluginEntry(plugin)), created ? [created] : [])
+    const derived = deriveSubSelection(merged)
     useAgentStore.getState().addContextItem({
       type: 'Plugin',
       pluginId: plugin.pluginKey,
@@ -444,7 +483,9 @@ export default function SkillSuggestionBar() {
       displayName: label,
       description: (isZh && plugin.descriptionZh) || plugin.description,
       mcpServerId: plugin.mcpServerId,
-      ...(subSelection ? { subSelection } : {}),
+      ...(derived.stateNote ? { stateNote: derived.stateNote } : {}),
+      ...(merged.length > 0 ? { subSelections: merged } : {}),
+      ...(derived.subSelection ? { subSelection: derived.subSelection } : {}),
     })
   }, [getPluginLabel, isZh])
 
@@ -543,14 +584,19 @@ export default function SkillSuggestionBar() {
     if (!prompt) return
     useAgentStore.getState().setChatDraft(prompt)
     // 二级项一旦写进输入框就只剩技能/插件标签，选择结果必须随上下文项一起带出去
-    const subLabel = subLabelOf(sub, isZh)
-    if (entry.kind === 'skill') attachSkill(entry.skill, subLabel)
-    else attachPlugin(entry.plugin, subLabel)
+    const created: SubSelectionEntry = { key: sub.label, label: subLabelOf(sub, isZh) }
+    if (entry.kind === 'skill') attachSkill(entry.skill, created)
+    else attachPlugin(entry.plugin, created)
     setOpenSelect(null)
   }, [attachPlugin, attachSkill, isZh])
 
   /**
-   * 选中选项：把值填进提示词模板
+   * 选中选项：按声明决定模板去向
+   *
+   * silent 的选项是开关型设置（生成方式、输出比例一类），选它是给 AI 下约束，
+   * 不是要发一条需求：写进输入框会顶掉用户正在敲的内容，还得自己删干净重写。
+   * 这类选项把模板渲染结果写进插件的 stateNote（随上下文注入 AI），
+   * 输入框一律不动；未声明 silent 的仍按原行为填进输入框。
    *
    * 模板缺省时退化为「二级项名: 选项名」，保证没写模板的选择器也能用。
    */
@@ -562,11 +608,26 @@ export default function SkillSuggestionBar() {
     const text = template
       ? template.replace(/\{value\}/g, option.value).replace(/\{label\}/g, optionLabel)
       : `${isZh ? sub.label : (sub.labelEn || sub.label)}: ${optionLabel}`
+    // 标签后面要能看出选的是哪一项，因此连二级项名一起记；
+    // key 用二级项名，保证「生成方式」与「模板风格」各自占一条，互不覆盖
+    const created: SubSelectionEntry = {
+      key: sub.label,
+      label: `${subLabelOf(sub, isZh)}：${optionLabel}`,
+      // 说明正文随该项一起存：换另一个二级项时它必须留在上下文里
+      note: text,
+    }
+
+    if (sub.silent) {
+      // 开关型设置不写输入框，约束全部经由上下文带给 AI
+      if (entry.kind === 'skill') attachSkill(entry.skill, created)
+      else attachPlugin(entry.plugin, created)
+      setOpenSelect(null)
+      return
+    }
+
     useAgentStore.getState().setChatDraft(text)
-    // 标签后面要能看出选的是哪一项，因此连二级项名一起记
-    const selection = `${subLabelOf(sub, isZh)}：${optionLabel}`
-    if (entry.kind === 'skill') attachSkill(entry.skill, selection)
-    else attachPlugin(entry.plugin, selection)
+    if (entry.kind === 'skill') attachSkill(entry.skill, created)
+    else attachPlugin(entry.plugin, created)
     // 只收起下拉、保留二级行：选完一项通常还要接着选别的，退回一级会把操作打断
     setOpenSelect(null)
   }, [attachPlugin, attachSkill, isZh])
@@ -701,6 +762,32 @@ export default function SkillSuggestionBar() {
     )
   }
 
+  /**
+   * 展开条目下各二级项已选的值（二级项名 → 选项名）
+   *
+   * 只看当前展开的那一个条目：别的条目上的选择与本行无关，
+   * 混进来会让按钮显示成「生成方式：商务浅色」这种对不上的组合。
+   */
+  const chosenOptionLabels = useMemo(() => {
+    const labels = new Map<string, string>()
+    if (!openEntry) return labels
+    const mounted = contextItems.find(candidate => (
+      openEntry.kind === 'skill'
+        ? candidate.type === 'Skill' && candidate.skillId === openEntry.skill.name.toLowerCase()
+        : candidate.type === 'Plugin' && candidate.pluginId === openEntry.plugin.pluginKey
+    ))
+    if (!mounted || (mounted.type !== 'Skill' && mounted.type !== 'Plugin')) return labels
+    for (const selection of normalizeSubSelections(mounted)) {
+      // 标签是「二级项：选项」，按钮已经写着二级项名，这里只取选项那一段
+      const separator = selection.label.search(/[：:]/)
+      labels.set(
+        selection.key,
+        separator >= 0 ? selection.label.slice(separator + 1).trim() : selection.label,
+      )
+    }
+    return labels
+  }, [contextItems, openEntry])
+
   // 切到二级行、或插件数量回落到上限内时收起面板，避免面板失去锚点后悬空
   useEffect(() => {
     if (openEntry || hiddenPluginCount <= 0) setPluginPanelOpen(false)
@@ -730,6 +817,9 @@ export default function SkillSuggestionBar() {
             {orderedSubSkills.map(sub => {
               const active = openSelect?.entryKey === openEntry.key && openSelect.sub.label === sub.label
               const subLabel = isZh ? sub.label : (sub.labelEn || sub.label)
+              // 该二级项已选过的值：只用来点亮按钮与给悬停提示，不再拼到按钮文字后面——
+              // 选择结果在输入框上方的上下文标签里已经有了，两处同时显示会显得重复
+              const chosen = chosenOptionLabels.get(sub.label)
               // 插件可在 subSkills[].icon 里指定图标；未声明时按交互类型回退
               const SubIcon =
                 resolveLucideIcon(sub.icon) ||
@@ -742,10 +832,11 @@ export default function SkillSuggestionBar() {
                   aria-expanded={sub.type === 'select' ? active : undefined}
                   className={[
                     'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap shrink-0 transition-all duration-200 border',
-                    active
+                    active || chosen
                       ? 'bg-accent/10 border-accent/50 text-text-primary'
                       : 'bg-surface border-border/50 text-text-secondary hover:text-text-primary hover:border-accent/40 hover:bg-accent/10',
                   ].join(' ')}
+                  title={chosen ? `${subLabel}：${chosen}` : undefined}
                 >
                   <SubIcon className="w-3 h-3" strokeWidth={1.5} />
                   {subLabel}
@@ -758,7 +849,13 @@ export default function SkillSuggestionBar() {
             <SubSkillSelectMenu
               anchorEl={openSelect.anchorEl}
               options={openSelect.sub.options}
-              selectedValue={openSelect.sub.defaultOption}
+              selectedValue={
+                // 已选过的值优先于声明里的默认值，否则重开下拉会高亮回默认项
+                openSelect.sub.options?.find(option =>
+                  (isZh ? option.label : (option.labelEn || option.label))
+                  === chosenOptionLabels.get(openSelect.sub.label),
+                )?.value ?? openSelect.sub.defaultOption
+              }
               isZh={isZh}
               onSelect={option => handleOptionSelect(openEntry, openSelect.sub, option)}
               onClose={() => setOpenSelect(null)}

@@ -147,6 +147,15 @@ export interface SubSkillItem {
     promptTemplate?: string
     /** 英文提示词模板（可选，英文界面使用） */
     promptTemplateEn?: string
+    /**
+     * 选中后不写输入框，改为静默注入上下文
+     *
+     * 开关类选项（如「生成方式」「输出比例」）本身不是用户要发出去的需求正文，
+     * 写进输入框会把用户刚敲的内容顶掉，还得自己删掉再重写一遍。
+     * 置为 true 后，模板渲染结果写入插件的 stateNote（技能侧只有 subSelection 标签），
+     * AI 从上下文里读到约束，输入框留给用户自己描述任务。
+     */
+    silent?: boolean
     /** select 类型的默认选中项（value） */
     defaultOption?: string
     /** action 类型要触发的动作 */
@@ -244,6 +253,7 @@ export function parseSubSkills(raw: unknown): SubSkillItem[] {
                 options,
                 promptTemplate: typeof item.promptTemplate === 'string' ? item.promptTemplate : undefined,
                 promptTemplateEn: typeof item.promptTemplateEn === 'string' ? item.promptTemplateEn : undefined,
+                silent: item.silent === true,
                 defaultOption: typeof item.defaultOption === 'string' ? item.defaultOption : undefined,
             })
             continue

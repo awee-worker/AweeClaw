@@ -260,11 +260,25 @@ export function PluginInstalledPanel() {
     try {
       const result = await updatePlugin(plugin.pluginId, latestVersion)
       if (result.success) {
-        toast.success(
-          language === 'zh'
-            ? `「${displayName}」已更新到 v${latestVersion}`
-            : `${displayName} updated to v${latestVersion}`,
-        )
+        // 文件更新成功但 MCP 没连上时不能只报「已更新」：
+        // 工具仍是不可用状态，用户会以为升级把插件弄坏了
+        if (result.mcpConnectError) {
+          toast.card({
+            type: 'warning',
+            title: language === 'zh' ? '已更新，但服务未连上' : 'Updated, service not connected',
+            message: language === 'zh'
+              ? `「${displayName}」已更新到 v${latestVersion}，MCP 服务连接失败：${result.mcpConnectError}。可在设置里手动重连。`
+              : `${displayName} updated to v${latestVersion}, but the MCP service failed to connect: ${result.mcpConnectError}. Reconnect it in Settings.`,
+            duration: 8000,
+            source: 'PluginInstalled',
+          })
+        } else {
+          toast.success(
+            language === 'zh'
+              ? `「${displayName}」已更新到 v${latestVersion}`
+              : `${displayName} updated to v${latestVersion}`,
+          )
+        }
         // 清除该插件的更新标记
         setUpdates(prev => {
           const next = { ...prev }

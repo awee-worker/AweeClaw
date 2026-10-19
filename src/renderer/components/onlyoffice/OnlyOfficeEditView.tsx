@@ -2,7 +2,8 @@
  * ONLYOFFICE 在线编辑视图（主窗口内嵌 Tab，kind='oo-edit'）
  *
  * 结构：
- * - 顶部工具条：会话标题 + 服务器 + 「刷新」「保存」「放弃」
+ * - 顶部工具条：文件标题 + 「刷新」「用系统应用打开」「AI 修改」「更换风格」（仅演示文稿且
+ *   安装了 PPT 生成器时出现）「放弃」「保存」
  * - 主体：webview 加载 {ds}/oo-gw/demo.html?file=…（服务端注入 JWT 签名 config）
  *
  * 保存链路：
@@ -15,13 +16,15 @@
  * 安全：文件字节只在主进程流转；本组件仅持 editorUrl 与会话元信息。
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { PenLine, Save, XCircle, ExternalLink, Loader2, AlertCircle, RefreshCw, Sparkles } from 'lucide-react'
+import { PenLine, Save, XCircle, FolderOpen, Loader2, AlertCircle, RefreshCw, Sparkles, Palette } from 'lucide-react'
 import { api } from '@renderer/adapters/electronBridge'
 import { useStore } from '@store'
 import { buildOoEditPath, type OnlyOfficeEditSessionMeta } from '@shared/protocols/onlyOfficeProtocol'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { toast } from '@components/foundation/NotificationProvider'
 import { BROWSER_AI_EDIT_EVENT, buildDocAiEditPrompt } from '@components/workspace-editor/browser/aiEditPrompt'
+import { skillService, subscribeSkillsChanged, type SubSkillItem } from '@intelligence/runtime/skillRepository'
+import { runSubSkillAction } from '@intelligence/runtime/subSkillActions'
 import OoAiEditPanel from './OoAiEditPanel'
 
 interface OnlyOfficeEditViewProps {
@@ -46,6 +49,39 @@ const REFRESH_DEBOUNCE_MS = 600
 /** 等待选中时的轮询间隔与次数上限（约 60 秒） */
 const SELECTION_POLL_MS = 900
 const SELECTION_POLL_MAX = 66
+
+/** PPT 生成器插件标识：风格面板由它提供，未安装时不出现「更换风格」 */
+const PPT_PLUGIN_KEY = 'mcp-pptx'
+/** 模板风格面板的 id 片段：插件可能给面板加前缀，按片段匹配而不是整串比对 */
+const PPT_STYLE_PANEL_HINT = 'templates'
+
+interface StyleAction {
+  /** 动作标识，交给 runSubSkillAction 派发 */
+  id: string
+  /** 动作参数，含目标面板 id */
+  payload: Record<string, unknown>
+}
+
+/**
+ * 找出插件声明的「打开风格面板」动作
+ *
+ * 面板 id 完全由插件 manifest 决定，客户端不写死，因此插件换一套面板也不用改这里；
+ * 读不到该动作就当插件未安装，按钮不渲染，避免点开一个空抽屉。
+ */
+function pickStyleAction(groups: (SubSkillItem[] | undefined)[]): StyleAction | null {
+  for (const group of groups) {
+    for (const sub of group ?? []) {
+      const action = sub.action
+      if (!action || action.id !== 'openPluginDrawer') continue
+      const payload = action.payload ?? {}
+      const panelId = typeof payload.panelId === 'string' ? payload.panelId : ''
+      if (!panelId.includes(PPT_STYLE_PANEL_HINT)) continue
+      return { id: action.id, payload }
+    }
+  }
+  return null
+}
+
 
 interface ToolButtonProps {
   /** 悬停时显示的说明文字 */
@@ -129,8 +165,49 @@ export default function OnlyOfficeEditView({ session }: OnlyOfficeEditViewProps)
   const [aiSource, setAiSource] = useState<string | null>(null)
   /** 是否处于「等待用户在文档里选中文字」阶段 */
   const [awaitingSelection, setAwaitingSelection] = useState(false)
+  /** 演示文稿可用的风格入口；null 表示插件未安装或未声明该动作 */
+  const [styleAction, setStyleAction] = useState<StyleAction | null>(null)
   const tabPath = buildOoEditPath(session.sessionId)
   const fileName = getFileName(session.sourcePath)
+
+  /**
+   * 检测 PPT 生成器插件是否可用
+   *
+   * 只对演示文稿检测：文档与表格没有风格概念，多查一次插件列表也换不来任何东西。
+   * 订阅技能变更，是因为用户可能开着编辑器去市场装插件，回来不该还看不到入口。
+   */
+  useEffect(() => {
+    if (!isSlideDoc) {
+      setStyleAction(null)
+      return
+    }
+    let cancelled = false
+    const load = () => {
+      Promise.all([skillService.getSkillListPlugins(), skillService.getAllSkills()])
+        .then(([plugins, skills]) => {
+          if (cancelled) return
+          setStyleAction(pickStyleAction([
+            // 插件可能以插件条目出现，也可能已通过技能正文表达，两条路径都要看
+            ...plugins
+              .filter((plugin) => plugin.pluginKey === PPT_PLUGIN_KEY)
+              .map((plugin) => plugin.subSkills),
+            ...skills
+              .filter((skill) => skill.source === 'plugin' && skill.pluginKey === PPT_PLUGIN_KEY)
+              .map((skill) => skill.subSkills),
+          ]))
+        })
+        .catch(() => {
+          if (!cancelled) setStyleAction(null)
+        })
+    }
+    load()
+    const off = subscribeSkillsChanged(load)
+    return () => {
+      cancelled = true
+      off?.()
+    }
+  }, [isSlideDoc])
+
 
   // webview 加载状态跟踪
   // webview 加载状态跟踪 + guest 绑定
@@ -397,9 +474,24 @@ export default function OnlyOfficeEditView({ session }: OnlyOfficeEditViewProps)
     }
   }
 
-  const openExternal = () => {
-    const { openExternalUrl } = api.file || ({} as any)
-    if (openExternalUrl) openExternalUrl(session.editorUrl)
+  /** 用系统里已安装的办公软件打开本地源文件：编辑能力交给本机 Office，不再绕浏览器 */
+  const handleOpenInSystem = async () => {
+    try {
+      const ok = await api.file.openInBrowser(session.sourcePath)
+      if (!ok) toast.error('未能用系统应用打开该文件，请确认已安装对应的办公软件')
+    } catch {
+      toast.error('未能用系统应用打开该文件')
+    }
+  }
+
+  /** 更换风格：打开 PPT 生成器的模板面板（面板内容由插件提供） */
+  const handleChangeStyle = async () => {
+    if (!styleAction) return
+    const res = await runSubSkillAction(styleAction.id, styleAction.payload, {
+      isZh: true,
+      pluginKey: PPT_PLUGIN_KEY,
+    })
+    if (!res.ok) toast.error(res.error || '打开风格面板失败')
   }
 
   return (
@@ -409,21 +501,34 @@ export default function OnlyOfficeEditView({ session }: OnlyOfficeEditViewProps)
         <PenLine className="w-4 h-4 text-accent flex-shrink-0" />
         <span className="text-[13px] text-text-primary truncate flex-1">{fileName}</span>
 
-        <ToolButton
-          label={awaitingSelection ? '等待选中，再点一次取消' : `点击后选中${selectionHint}，让 AI 改写并替换`}
-          onClick={handleToggleAIEdit}
-          active={awaitingSelection || aiSource !== null}
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-        </ToolButton>
-
         <ToolButton label="重新载入本地文件的最新内容" onClick={handleManualRefresh} disabled={refreshing}>
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
         </ToolButton>
 
-        <ToolButton label="在浏览器中打开" onClick={openExternal}>
-          <ExternalLink className="w-3.5 h-3.5" />
+        <ToolButton label="用系统中的 Office 软件打开本地源文件" onClick={() => void handleOpenInSystem()}>
+          <FolderOpen className="w-3.5 h-3.5" />
         </ToolButton>
+
+        <ToolButton
+          label={awaitingSelection ? '等待选中，再点一次取消' : `点击后选中${selectionHint}，让 AI 改写并替换`}
+          onClick={handleToggleAIEdit}
+          active={awaitingSelection || aiSource !== null}
+          textual
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          AI 修改
+        </ToolButton>
+
+        {isSlideDoc && styleAction && (
+          <ToolButton
+            label="打开 PPT 生成器的风格面板，换一套模板风格"
+            onClick={() => void handleChangeStyle()}
+            textual
+          >
+            <Palette className="w-3.5 h-3.5" />
+            更换风格
+          </ToolButton>
+        )}
 
         <ToolButton
           label="放弃修改，删除服务器副本并关闭（本地文件不变）"

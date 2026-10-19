@@ -364,6 +364,9 @@ export class McpManager extends EventEmitter {
   /** 添加服务器 */
   async addServer(config: McpServerConfig, level: 'user' | 'workspace' = 'user'): Promise<void> {
     await this.configLoader.addServer(config, level)
+    // 配置已变，状态查询不能再吃旧缓存：插件升级后版本号、入口都换了，
+    // 缓存留着会让渲染进程拿回上一版的配置去展示
+    this.cachedConfigs = null
     logger.mcp?.info(`[McpManager] Added server: ${config.id} (${level})`)
   }
 
@@ -396,6 +399,7 @@ export class McpManager extends EventEmitter {
       await this.disconnectServer(serverId)
     }
     await this.configLoader.removeServer(serverId, level)
+    this.cachedConfigs = null
     logger.mcp?.info(`[McpManager] Removed server: ${serverId} (${level})`)
   }
 

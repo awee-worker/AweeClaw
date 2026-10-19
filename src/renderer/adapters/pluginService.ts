@@ -435,6 +435,8 @@ export async function installPluginFromMarketplace(
       void refreshPluginUiRegistry().catch((e) =>
         logger.ipc.warn(`[pluginService] refreshPluginUiRegistry after install failed: ${e}`),
       )
+      // 新装的 MCP 插件此时已在主进程连上，把它的服务器状态与工具清单拉进来
+      void refreshMcpAfterUpdate()
     }
 
     return {
@@ -465,6 +467,22 @@ async function refreshPluginUiRegistry(): Promise<void> {
   // 得重启应用才更新。
   const { notifySkillsChanged } = await import('@renderer/intelligence/runtime/skillRepository')
   notifySkillsChanged()
+}
+
+/**
+ * 插件更新后同步 MCP 服务状态
+ *
+ * 连接本身由主进程在安装收尾时重建，这里只把结果拉回来：
+ * 服务器状态、工具清单都是渲染进程侧的缓存，不同步就会一直显示旧版本的工具。
+ * 动态 import 避免与 MCP 适配器相互依赖成环。
+ */
+async function refreshMcpAfterUpdate(): Promise<void> {
+  try {
+    const { mcpService } = await import('@renderer/adapters/toolProtocolAdapter')
+    await mcpService.refreshServersState()
+  } catch (e) {
+    logger.ipc.warn(`[pluginService] refresh MCP state after update failed: ${e}`)
+  }
 }
 
 /**
@@ -520,11 +538,14 @@ export async function updatePlugin(
 
     logger.ipc.info(`[pluginService] Update result: ${ipcResult.success ? 'ok' : 'fail'} (${pluginId} → v${version})`)
 
-    // 更新成功后刷新插件 UI 扩展点注册表（版本变化会触发 reloadPlugin 清理旧组件并重新注册）
     if (ipcResult.success) {
+      // 更新成功后刷新插件 UI 扩展点注册表（版本变化会触发 reloadPlugin 清理旧组件并重新注册）
       void refreshPluginUiRegistry().catch((e) =>
         logger.ipc.warn(`[pluginService] refreshPluginUiRegistry after update failed: ${e}`),
       )
+      // 主进程已重连 MCP，但渲染进程这边拿的还是更新前的工具清单：
+      // 不重新拉一次，设置面板显示的还是旧工具，上下文注入给 AI 的工具名也对不上新版本。
+      void refreshMcpAfterUpdate()
     }
 
     return {

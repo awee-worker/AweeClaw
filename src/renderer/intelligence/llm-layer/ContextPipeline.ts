@@ -407,10 +407,20 @@ const SkillProvider: ContextProvider = {
   labelZh: '技能',
   priority: 10,
   async process(item, _ctx) {
-    const { name, description } = item as { name: string; description?: string }
-    // 二级项的选择随技能一起注入：用户已明确的选项不必再问一遍
-    const selection = (item as { subSelection?: string }).subSelection
-    const selectionLine = selection ? `\n用户已选：${selection}` : ''
+    // 只处理技能上下文；其余类型交给各自的 Provider
+    if (item.type !== 'Skill') return ''
+    const { name, description, subSelection, subSelections } = item
+    // 二级项的选择随技能一起注入：用户已明确的选项不必再问一遍。
+    // 每一项都要带上，生成方式、模板风格这类并列项缺一个，AI 就会自作主张补一个。
+    const entries = subSelections ?? []
+    const labels = entries.length > 0
+      ? entries.map(entry => entry.label).filter(Boolean).join(' · ')
+      : subSelection
+    const notes = entries
+      .map(entry => entry.note)
+      .filter((note): note is string => Boolean(note))
+    const constraints = notes.length > 0 ? `\n${notes.join('\n')}` : ''
+    const selectionLine = labels ? `\n用户已选：${labels}${constraints}` : ''
     return `\n### Skill: ${name}\n${description || ''}${selectionLine}\n`
   },
 }
@@ -441,9 +451,12 @@ const PluginProvider: ContextProvider = {
 
     // 插件在 UI 里做过的选择（如已选模板）随上下文一并注入，AI 无需再问一遍
     const stateNote = plugin.stateNote ? `\n\n当前状态：${plugin.stateNote}` : ''
-    // 技能栏二级项的选择结果同样是用户已经明确的决定，不必再问一遍
-    const selection = (plugin as { subSelection?: string }).subSelection
-    const selectionLine = selection ? `\n\n用户已选：${selection}` : ''
+    // 技能栏二级项的选择结果同样是用户已经明确的决定，不必再问一遍；
+    // 并列的多项选择全部列出，只报最后一项会让 AI 认为前面那项没选
+    const labels = plugin.subSelections?.length
+      ? plugin.subSelections.map(entry => entry.label).filter(Boolean).join(' · ')
+      : plugin.subSelection
+    const selectionLine = labels ? `\n\n用户已选：${labels}` : ''
 
     return (
       `\n### Plugin: ${name}\n${desc}${toolHint}${stateNote}${selectionLine}\n\n` +

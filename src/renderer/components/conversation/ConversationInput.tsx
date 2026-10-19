@@ -794,12 +794,24 @@ const ChatInput = memo(function ChatInput({
                   >
                     {ContextIcon && <ContextIcon className="w-3 h-3 opacity-70" />}
                     <span className="max-w-[120px] truncate">{label}</span>
-                    {/* 二级项结果：与消息气泡里的标签保持一致，发送前就能核对 */}
-                    {(item.type === 'Skill' || item.type === 'Plugin') && item.subSelection && (
-                      <span className="max-w-[140px] truncate opacity-80" title={item.subSelection}>
-                        · {item.subSelection}
-                      </span>
-                    )}
+                    {/* 二级项结果：与消息气泡里的标签保持一致，发送前就能核对。
+                        逐项单独成段而不是拼成一整串，否则生成方式、模板风格一起选完之后
+                        会被同一条截断规则吃掉后半截，看起来像丢了一项。 */}
+                    {(item.type === 'Skill' || item.type === 'Plugin') && item.subSelections?.length
+                      ? item.subSelections.map(selection => (
+                        <span
+                          key={selection.key || selection.label}
+                          className="max-w-[140px] truncate opacity-80"
+                          title={selection.label}
+                        >
+                          · {selection.label}
+                        </span>
+                      ))
+                      : (item.type === 'Skill' || item.type === 'Plugin') && item.subSelection && (
+                        <span className="max-w-[140px] truncate opacity-80" title={item.subSelection}>
+                          · {item.subSelection}
+                        </span>
+                      )}
                     <button
                       onClick={() => {
                         // 移除插件上下文即取消这次选择，对应的状态说明也要一起消失

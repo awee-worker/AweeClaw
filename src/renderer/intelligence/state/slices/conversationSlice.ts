@@ -23,6 +23,7 @@ import type {
     InteractiveContent,
     FormContent,
     TaskPlanPart,
+    SubSelectionEntry,
 } from '@intelligence/providerTypes'
 import type { LLMStreamSource } from '@shared/protocols/modelGateway'
 import { createIdleHandoffState, getMessageText } from '@intelligence/providerTypes'
@@ -30,6 +31,12 @@ import { classifyToolOrigin, type TrustScope } from '@intelligence/runtime/toolO
 import { buildToolPathPolicy } from '@intelligence/toolkit/toolPathPolicy'
 import { getTrustedAppDataRoots } from '@intelligence/toolkit/trustedPathRegistry'
 import { streamingBuffer } from '../StreamBuffer'
+import {
+    deriveSelectionKey,
+    deriveSubSelection,
+    mergeSubSelections,
+    normalizeSubSelections,
+} from '@intelligence/runtime/subSelection'
 import type { ThreadSlice } from './dialogThread'
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
@@ -117,16 +124,20 @@ export interface MessageActions {
      * selectionLabel 是界面用的短标签（如「风格 · 商务浅色」）。它同时写进
      * subSelection，消息气泡才会在插件名后面展示用户这次选了什么；只写 stateNote
      * 的话，标签裸挂在输入框上方，发出去的消息上却只剩一个插件名。
+     *
+     * selectionKey 是该二级项的标识（如「模板风格」）。同一插件常有多个并列二级项，
+     * 只有带上它才能把本次选择合并进已有结果，而不是把上一项顶掉；
+     * 缺省视为整体替换，与只报一条标签的旧调用保持一致。
      */
-    setPluginStateNote: (pluginId: string, note: string, displayName?: string, selectionLabel?: string) => void
+    setPluginStateNote: (pluginId: string, note: string, displayName?: string, selectionLabel?: string, selectionKey?: string) => void
     /**
      * 写入技能的二级项选择结果（如「模板：商务浅色」）。
      *
      * 技能是单选上下文，因此直接作用在当前挂载的那个技能项上：
-     * 同一技能里换一个二级选项即覆盖，发给 AI 与消息标签都以最后一次为准。
-     * 传 undefined 表示撤销选择。
+     * 同一个二级项换一个选项即覆盖，不同二级项（生成方式、模板风格）并存。
+     * 传 undefined 表示撤销全部选择。
      */
-    setSkillSubSelection: (selection?: string) => void
+    setSkillSubSelection: (selection?: string, selectionKey?: string) => void
     /**
      * 清空插件/技能上下文里的操作结果说明与二级项选择。
      *
@@ -1633,19 +1644,37 @@ export const createMessageSlice: StateCreator<
                     // 同一技能/插件的重复挂载只有在「这次带了二级项结果」时才有新信息：
                     // 无脑丢弃会让选择一直停在首次挂载的旧对象上，发送时快照进消息的
                     // contextItems 仍是空选择，用户气泡里就只剩一个技能名。
-                    const incoming = item as { skillId?: string; pluginId?: string; subSelection?: string }
-                    if (incoming.subSelection) {
+                    const incomingEntries = normalizeSubSelections(
+                        item as { subSelections?: SubSelectionEntry[]; subSelection?: string },
+                    )
+                    if (incomingEntries.length > 0) {
                         const matchKey = keyOf(item)
                         return {
                             threads: {
                                 ...state.threads,
                                 [threadId]: {
                                     ...thread,
-                                    contextItems: items.map(existing =>
-                                        keyOf(existing) === matchKey
-                                            ? { ...existing, subSelection: incoming.subSelection }
-                                            : existing,
-                                    ),
+                                    contextItems: items.map(existing => {
+                                        if (keyOf(existing) !== matchKey) return existing
+                                        const target = existing as {
+                                            subSelections?: SubSelectionEntry[]
+                                            subSelection?: string
+                                            stateNote?: string
+                                        }
+                                        // 并列的二级项逐项合并：这次只更新自己那一项，
+                                        // 生成方式、模板风格等先前的选择必须原样带下去。
+                                        const merged = mergeSubSelections(
+                                            normalizeSubSelections(target),
+                                            incomingEntries,
+                                        )
+                                        const derived = deriveSubSelection(merged)
+                                        return {
+                                            ...existing,
+                                            subSelections: merged,
+                                            subSelection: derived.subSelection,
+                                            ...(derived.stateNote ? { stateNote: derived.stateNote } : {}),
+                                        }
+                                    }),
                                 },
                             },
                         }
@@ -1688,11 +1717,18 @@ export const createMessageSlice: StateCreator<
 
 
     // 写入插件侧的操作结果说明：只改上下文，不触发 AI
-    setPluginStateNote: (pluginId, note, displayName, selectionLabel) => {
+    setPluginStateNote: (pluginId, note, displayName, selectionLabel, selectionKey) => {
         if (!pluginId || !note) return
 
         // 界面短标签缺省时退回完整说明：宁可长一点，也不能让用户看不到自己选了什么
         const selection = selectionLabel || note
+        // 插件大多只回短标签、不带二级项标识。这里必须补出 key：空 key 会被
+        // mergeSubSelections 判成旧格式的整体替换，把用户先前选好的其它二级项冲掉。
+        const entry: SubSelectionEntry = {
+            key: selectionKey || deriveSelectionKey(selectionLabel, note),
+            label: selection,
+            note,
+        }
 
         let threadId = get().currentThreadId
         if (!threadId || !get().threads[threadId]) {
@@ -1712,8 +1748,9 @@ export const createMessageSlice: StateCreator<
                 pluginId,
                 name: pluginId,
                 displayName,
-                stateNote: note,
+                subSelections: [entry],
                 subSelection: selection,
+                stateNote: note,
             })
             return
         }
@@ -1727,11 +1764,17 @@ export const createMessageSlice: StateCreator<
                     ...state.threads,
                     [tid]: {
                         ...target,
-                        contextItems: target.contextItems.map(item =>
-                            item.type === 'Plugin' && item.pluginId === pluginId
-                                ? { ...item, stateNote: note, subSelection: selection }
-                                : item,
-                        ),
+                        contextItems: target.contextItems.map(item => {
+                            if (item.type !== 'Plugin' || item.pluginId !== pluginId) return item
+                            const merged = mergeSubSelections(normalizeSubSelections(item), [entry])
+                            const derived = deriveSubSelection(merged)
+                            return {
+                                ...item,
+                                subSelections: merged,
+                                subSelection: derived.subSelection,
+                                stateNote: derived.stateNote ?? note,
+                            }
+                        }),
                     },
                 },
             }
@@ -1739,14 +1782,24 @@ export const createMessageSlice: StateCreator<
     },
 
     // 写入技能的二级项选择结果：消息标签与上下文注入都以它为准
-    setSkillSubSelection: (selection) => {
+    setSkillSubSelection: (selection, selectionKey) => {
         const threadId = get().currentThreadId
         if (!threadId) return
 
         const skill = get().threads[threadId]?.contextItems.find(item => item.type === 'Skill')
-        // 已是同一选择时不重建对象，避免无意义的上下文引用变化
-        if (!skill || (skill.type === 'Skill' && skill.subSelection === selection)) return
+        if (!skill || skill.type !== 'Skill') return
 
+        // 同一二级项、同一选项时不重建对象，避免无意义的上下文引用变化
+        const current = normalizeSubSelections(skill)
+        const next = selection
+            ? mergeSubSelections(current, [{ key: selectionKey || '', label: selection }])
+            : []
+        if (
+            next.length === current.length
+            && next.every((entry, index) => entry.label === current[index].label)
+        ) return
+
+        const derived = deriveSubSelection(next)
         set(state => {
             const thread = state.threads[threadId]
             if (!thread) return state
@@ -1755,9 +1808,15 @@ export const createMessageSlice: StateCreator<
                     ...state.threads,
                     [threadId]: {
                         ...thread,
-                        contextItems: thread.contextItems.map(item =>
-                            item.type === 'Skill' ? { ...item, subSelection: selection } : item,
-                        ),
+                        contextItems: thread.contextItems.map(item => (
+                            item.type === 'Skill'
+                                ? {
+                                    ...item,
+                                    subSelections: next.length > 0 ? next : undefined,
+                                    subSelection: derived.subSelection,
+                                }
+                                : item
+                        )),
                     },
                 },
             }
@@ -1782,8 +1841,9 @@ export const createMessageSlice: StateCreator<
 
             // 没有任何说明时直接返回原 state，避免无意义的对象重建引起重渲染
             const hasNote = thread.contextItems.some(item => !isKept(item) && (
-                (item.type === 'Plugin' && (item.stateNote || item.subSelection))
-                || (item.type === 'Skill' && item.subSelection)
+                ((item.type === 'Plugin' || item.type === 'Skill')
+                    && (item.subSelection || item.subSelections?.length))
+                || (item.type === 'Plugin' && item.stateNote)
             ))
             if (!hasNote) return state
 
@@ -1794,11 +1854,20 @@ export const createMessageSlice: StateCreator<
                         ...thread,
                         contextItems: thread.contextItems.map(item => {
                             if (isKept(item)) return item
-                            if (item.type === 'Plugin' && (item.stateNote || item.subSelection)) {
-                                return { ...item, stateNote: undefined, subSelection: undefined }
+                            // 两个字段必须一起清：只清展示串会把旧的注入说明留给 AI
+                            if (
+                                (item.type === 'Plugin' || item.type === 'Skill')
+                                && (item.subSelection || item.subSelections?.length)
+                            ) {
+                                return {
+                                    ...item,
+                                    subSelection: undefined,
+                                    subSelections: undefined,
+                                    ...(item.type === 'Plugin' ? { stateNote: undefined } : {}),
+                                }
                             }
-                            if (item.type === 'Skill' && item.subSelection) {
-                                return { ...item, subSelection: undefined }
+                            if (item.type === 'Plugin' && item.stateNote) {
+                                return { ...item, stateNote: undefined }
                             }
                             return item
                         }),

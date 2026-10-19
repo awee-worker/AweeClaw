@@ -155,6 +155,7 @@ export type {
   SkillContext,
   PluginContext,
   ContextItem,
+  SubSelectionEntry,
 } from './types/contextModel'
 
 // ============================================

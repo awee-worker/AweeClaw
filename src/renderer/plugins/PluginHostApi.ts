@@ -52,10 +52,18 @@ export interface PluginContextNoteDetail {
   /**
    * 界面短标签（可选）
    *
-   * 输入框上方展示的是「当前选中了什么」，一句话足够；
-   * 不传时回退用 text，但长句会把标签撑开，能省则省。
-   */
+    * 输入框上方展示的是「当前选中了什么」，一句话足够；
+     * 不传时回退用 text，但长句会把标签撑开，能省则省。
+     */
   label?: string
+  /**
+   * 二级项标识（如「生成方式」「风格」）
+   *
+   * 同一个技能/插件常同时有多个并列二级项，写回结果必须按标识归位：
+   * 没有标识就会被当成整体替换，把用户先前在别的二级项里做的选择冲掉。
+   * 插件不传时由宿主按 label 的前缀推导。
+   */
+  selectionKey?: string
 }
 
 /**
@@ -146,14 +154,14 @@ export function createPluginHostApi(opts: {
       })
     },
 
-    setContextNote: (text: string, label?: string) => {
+    setContextNote: (text: string, label?: string, selectionKey?: string) => {
       if (!text) return
       // 与 sendChatMessage 同为事件解耦：真正写入会话上下文的是 PluginHostBridge，
       // 这里只负责把「结果说明」交给宿主，不触发任何 AI 调用。
       try {
         window.dispatchEvent(
           new CustomEvent<PluginContextNoteDetail>(PLUGIN_CONTEXT_NOTE_EVENT, {
-            detail: { text, pluginKey, label },
+            detail: { text, pluginKey, label, selectionKey },
           }),
         )
       } catch (err) {

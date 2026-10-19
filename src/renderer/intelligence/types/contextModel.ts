@@ -64,6 +64,25 @@ export interface ProblemsContext {
   uri?: string
 }
 
+/**
+ * 二级项的选择结果（如「生成方式：逐页生成」）
+ *
+ * 同一个技能/插件往往有多个可同时生效的二级项（生成方式、模板风格、输出比例），
+ * 一次选择只覆盖它自己那一项，不能把别的项顶掉，因此按 key 分开记录。
+ */
+export interface SubSelectionEntry {
+  /** 二级项标识：取自 subSkills[].label，同一项重复选择时覆盖旧值 */
+  key: string
+  /** 展示用标签，如「生成方式：逐页生成」 */
+  label: string
+  /**
+   * 该项要注入 AI 的说明正文（静默项的模板渲染结果）。
+   *
+   * 与 label 分开：label 给人看，note 给模型看，两者都不允许被其他二级项覆盖。
+   */
+  note?: string
+}
+
 export interface SkillContext {
   type: 'Skill'
   skillId: string
@@ -78,8 +97,13 @@ export interface SkillContext {
    *
    * 二级项只在技能栏里可见，一旦发送出去就只剩技能标签，用户无从确认
    * 当时选了什么；这个字段让消息气泡把选择一并展示，并随上下文注入给 AI。
+   *
+   * 该字段是由 subSelections 各条 label 拼成的展示串，仅作画面与旧数据兼容用；
+   * 事实来源是 subSelections，写入一律走它。
    */
   subSelection?: string
+  /** 全部二级项的选择结果：不同项并存、同一项覆盖 */
+  subSelections?: SubSelectionEntry[]
 }
 
 export interface PluginContext {
@@ -105,8 +129,12 @@ export interface PluginContext {
    * 与技能的 subSelection 同义：插件条目在技能栏里同样能展开二级项，
    * 用户点过的选择必须随上下文一起发出去，并在消息气泡里显示出来，
    * 否则消息上只剩一个插件名，用户无从确认当时选了什么。
+   *
+   * 同样是由 subSelections 拼出的展示串，事实来源是 subSelections。
    */
   subSelection?: string
+  /** 全部二级项的选择结果：生成方式、模板风格这类并列项必须同时保留 */
+  subSelections?: SubSelectionEntry[]
 }
 
 /** 上下文项联合类型 */

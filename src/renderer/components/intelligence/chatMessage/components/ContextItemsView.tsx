@@ -17,6 +17,8 @@ interface ContextItemTag {
   displayName?: string
   /** 技能/插件二级项的选择结果（如「模板：商务浅色」） */
   subSelection?: string
+  /** 全部二级项选择：逐项展示，避免多条选择挤在一个截断串里 */
+  subSelections?: { key: string; label: string; note?: string }[]
   /** 插件侧写回的状态说明；没有 subSelection 时兜底展示，避免选择结果丢失 */
   stateNote?: string
   /** 静默项（上传附件自动添加），UI 不显示 */
@@ -81,8 +83,10 @@ function ContextItemsViewBase({ items }: ContextItemsViewProps) {
         const style = getContextStyle(item.type)
         const label = getContextLabel(item)
         const IconComponent = style.Icon
-        // 二级项结果：优先用专门的选择字段，历史消息里只写了状态说明时退回它
-        const selection = item.subSelection || item.stateNote
+        // 二级项结果：逐项展示优先，历史消息里只有单条选择时退回它，再退回状态说明
+        const selections = item.subSelections?.length
+          ? item.subSelections.map(entry => entry.label)
+          : [item.subSelection || item.stateNote].filter((text): text is string => Boolean(text))
 
         return (
           <span
@@ -92,11 +96,11 @@ function ContextItemsViewBase({ items }: ContextItemsViewProps) {
             {IconComponent && <IconComponent className="w-3 h-3 opacity-70" />}
             <span className="max-w-[150px] truncate">{label}</span>
             {/* 二级项结果跟在技能标签后：只有技能名会被单独截断，选择本身始终可读 */}
-            {selection && (
-              <span className="max-w-[160px] truncate opacity-80" title={selection}>
-                · {selection}
+            {selections.map(text => (
+              <span key={text} className="max-w-[160px] truncate opacity-80" title={text}>
+                · {text}
               </span>
-            )}
+            ))}
           </span>
         )
       })}

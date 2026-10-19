@@ -96,8 +96,11 @@ export interface PluginHostApi {
    * 因此 AI 知道「用户已经选了哪套模板」这类事实，而不必重新询问。
    * 插件上下文尚未挂载时会自动挂上。
    * @param text 结果说明，如「当前默认模板：科技深色（tech-dark）」
+   * @param label 输入框上方的短标签，如「风格 · 科技深色」
+   * @param selectionKey 二级项标识（如「风格」）。同一标识重复写回只覆盖自己，
+   *        不传时由宿主按标签前缀推导，多个并列选择才能同时留在上下文里。
    */
-  setContextNote: (text: string) => void
+  setContextNote: (text: string, label?: string, selectionKey?: string) => void
   /**
    * 关闭当前插件抽屉。
    *
