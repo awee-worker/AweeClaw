@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
+  <!-- document-key: __DOC_KEY__  (本次下发的 document.key，用于排查「会话已失效」) -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>__META_TITLE__ — ONLYOFFICE 在线编辑</title>
   <style>
@@ -76,6 +77,526 @@
       })
       window.docEditor = docEditor
     }
+
+    /* ---------------- 与编辑器交换数据：读取 / 替换选中内容 ---------------- */
+    // 直接操作编辑器内部文档对象，全程不经过剪贴板，也不依赖焦点停在哪个输入框：
+    // 宿主页上盖一层浮层面板、用户点面板里的按钮，都不会影响结果。
+    //
+    // 可用的通道只有一条：宿主页与编辑器 iframe 同源，可以在对端 realm 里构造
+    // 函数并直接调用，从而拿到 Asc.editor.WordControl.m_oLogicDocument。至于
+    // Asc.plugin / createConnector / callCommand 都属于插件运行时或完整构建才有的
+    // 能力，这份 api.js 不提供，不做指望。
+
+    function editorFrame() {
+      return document.querySelector('iframe')
+    }
+
+    // 文档类型：word / cell / slide。演示文稿（slide）的 Office API 没有选区概念，
+    // 拿不到「当前选中的形状」，所以选区读写对它不成立，直接给出明确结论，
+    // 而不是让前端一直等到超时。
+    function detectDocType() {
+      const declared = String((CONFIG && CONFIG.documentType) || '').toLowerCase()
+      if (declared === 'word' || declared === 'cell' || declared === 'slide') return declared
+      const file = String((CONFIG && (CONFIG.fileType || CONFIG.documentType)) || '')
+      if (/ppt|odp/i.test(file)) return 'slide'
+      if (/xls|csv|ods/i.test(file)) return 'cell'
+      return 'word'
+    }
+    const DOC_TYPE = detectDocType()
+
+    /* ---------------- 演示文稿：按形状读写 ---------------- */
+
+    // 演示文稿没有文档光标，用户选中的是「形状」而不是一段文字，所以读写都以形状
+    // 为单位。选择状态挂在当前幻灯片的 drawingObjects 控制器上：单选时对象在
+    // controller.selectedObjects，组合对象被选中时在 selection.groupSelection 上。
+    //
+    // 注意 GetSelectedSlideObjects 名字像「选中的形状」，实际返回的是选中的幻灯片，
+    // 不能用它取形状。
+    // 下面两段是函数体片段（不含 function 外壳），由调用处拼成完整命令：选中形状是
+    // 编辑器内部对象，跨 realm 传不回来，探测、读取、写入都必须在 iframe 里一次做完。
+    const SLIDE_PICK_BODY =
+      ' var ed = typeof Asc !== "undefined" && Asc ? Asc.editor : null;' +
+      ' var pres = ed && ed.WordControl ? ed.WordControl.m_oLogicDocument : null;' +
+      ' if (!pres || typeof pres.GetCurrentController !== "function") return null;' +
+      ' var ctrl = pres.GetCurrentController();' +
+      ' if (!ctrl) return null;' +
+      ' var sel = (ctrl.selection && ctrl.selection.groupSelection) ? ctrl.selection.groupSelection : ctrl;' +
+      ' var objs = (sel && sel.selectedObjects) ? sel.selectedObjects : [];' +
+      ' return { pres: pres, ctrl: ctrl, objs: objs };'
+
+    /** 形状里的文字：优先 getContentText，退到文档内容的 GetText */
+    const SLIDE_TEXT_BODY =
+      ' if (!s) return "";' +
+      ' var t = "";' +
+      ' try {' +
+      '   if (typeof s.getContentText === "function") { t = s.getContentText() || ""; }' +
+      '   else {' +
+      '     var dc = typeof s.getDocContent === "function" ? s.getDocContent() : null;' +
+      '     if (dc && typeof dc.GetText === "function") t = dc.GetText() || "";' +
+      '   }' +
+      ' } catch (e) { t = ""; }' +
+      ' return String(t);'
+
+    /**
+     * 读取选中形状里的文字（多个形状按行拼接）
+     *
+     * 必须把「选中了但没有文字」和「什么都没选中」分开回传：图形（矩形、箭头这些）
+     * 本身没有文本体，文字读出来就是空串，只按空串判断会被当成「还没选中」，
+     * 于是前端一直轮询到超时，用户看到的就是「选图形没反应」。
+     */
+    function readSlideSelection() {
+      const body =
+        ' var pick = (function () {' +
+        SLIDE_PICK_BODY +
+        ' })();' +
+        ' if (pick === null) return "NO_SELECTION_API";' +
+        ' if (!pick.objs.length) return JSON.stringify({ selected: false, editable: false, text: "" });' +
+        ' var texts = [];' +
+        ' var editable = false;' +
+        ' for (var i = 0; i < pick.objs.length; ++i) {' +
+        '   var s = pick.objs[i]; if (!s) continue;' +
+        '   var t = (function (s) {' +
+        SLIDE_TEXT_BODY +
+        ' })(s);' +
+        '   if (t) texts.push(t);' +
+        // canEditText 对普通图形为 true（直线/签名线除外），据此区分「能写字」与「图片之类」
+        '   if (!editable) {' +
+        '     var can = false;' +
+        '     try { can = typeof s.canEditText === "function" ? !!s.canEditText() : false; } catch (e) { can = false; }' +
+        '     if (can) editable = true;' +
+        '   }' +
+        ' }' +
+        ' return JSON.stringify({ selected: true, editable: editable, text: texts.join("\\n") });'
+
+      return runByCommand('function () {' + body + ' }', '读取选中内容失败').then(function (res) {
+        if (!res.ok) return res
+        if (res.value === 'NO_SELECTION_API') {
+          return { ok: false, error: '编辑器没有可用的形状接口（' + capabilitySnapshot() + '）' }
+        }
+        // 回传的是 JSON；解析不出来时按纯文本处理，避免个别构建连 JSON 都禁用
+        let parsed = null
+        try {
+          parsed = JSON.parse(res.value)
+        } catch (_) {
+          parsed = null
+        }
+        if (!parsed || typeof parsed !== 'object') {
+          return { ok: true, text: typeof res.value === 'string' ? res.value : '' }
+        }
+        return {
+          ok: true,
+          text: typeof parsed.text === 'string' ? parsed.text : '',
+          selected: parsed.selected === true,
+          editable: parsed.editable === true,
+        }
+      })
+    }
+
+    /**
+     * 用 text 替换选中形状的文字
+     *
+     * 形状是整体替换的语义：先清空原内容再写入，与「改这个文本框」一致。
+     * 写完把该形状重新选中，让用户直接看到改动落在哪个框——文字改掉后如果
+     * 只是画面更新，用户没法确认改的是不是自己点的那一个。
+     */
+    function replaceSlideSelection(text) {
+      const ctx = editorContext()
+      if (!ctx) return Promise.resolve({ ok: false, error: '编辑器还未加载完成' })
+      try {
+        if (ctx.asc && ctx.asc.scope) ctx.asc.scope.ooReplaceText = text
+      } catch (_) {
+        /* 挂不上时下面的命令自己会报错 */
+      }
+
+      const body =
+        ' var next = (Asc.scope && Asc.scope.ooReplaceText) || "";' +
+        ' var pick = (function () {' +
+        SLIDE_PICK_BODY +
+        ' })();' +
+        ' if (pick === null) return "NO_SELECTION_API";' +
+        ' if (!pick.objs.length) return "NO_SELECTION";' +
+        // 多个形状同时被选中时只改第一个能编辑文字的，避免把整页内容混在一起
+        ' var target = null;' +
+        ' for (var i = 0; i < pick.objs.length; ++i) {' +
+        '   var s = pick.objs[i]; if (!s) continue;' +
+        '   var editable = true;' +
+        '   try { if (typeof s.canEditText === "function") editable = s.canEditText(); } catch (e) { editable = false; }' +
+        '   if (editable) { target = s; break; }' +
+        ' }' +
+        ' if (!target) return "NOT_EDITABLE";' +
+        // 图形类形状第一次改字时需要先建文本框，否则拿不到文档内容
+        ' try { if (!target.getDocContent() && typeof target.createTextBodyOnEdit === "function") target.createTextBodyOnEdit(); } catch (e) {}' +
+        ' var dc = null;' +
+        ' try { dc = target.getDocContent(); } catch (e) { dc = null; }' +
+        ' if (!dc) return "NO_DOC_CONTENT";' +
+        ' try {' +
+        '   if (typeof dc.Clear_Content === "function") dc.Clear_Content();' +
+        '   else if (typeof dc.ClearContent === "function") dc.ClearContent(true);' +
+        ' } catch (e) {}' +
+        ' if (typeof dc.AddText === "function") dc.AddText(next, null);' +
+        // 重排 + 通知内容变更，否则画面上还是旧文字
+        ' try { if (typeof target.recalculateContent === "function") target.recalculateContent(); } catch (e) {}' +
+        ' try { if (typeof target.OnContentChange === "function") target.OnContentChange(); } catch (e) {}' +
+        // 改完重新选中该形状；pageIndex 缺失时按 0 处理，选中失败不影响写入结果
+        ' try {' +
+        '   if (typeof target.select === "function") {' +
+        '     var pageIdx = (pick.ctrl && typeof pick.ctrl.slideIndex === "number") ? pick.ctrl.slideIndex : 0;' +
+        '     target.select(pick.ctrl, pageIdx);' +
+        '   }' +
+        ' } catch (e) {}' +
+        ' return "OK";'
+
+      return runByCommand('function () {' + body + ' }', '写回选区失败').then(function (res) {
+        if (!res.ok) return res
+        if (res.value === 'OK') return { ok: true }
+        if (res.value === 'NO_SELECTION_API') {
+          return { ok: false, error: '编辑器没有可用的形状接口（' + capabilitySnapshot() + '）' }
+        }
+        if (res.value === 'NO_SELECTION') {
+          return { ok: false, error: '请先在幻灯片里选中要写入的文本框或图形' }
+        }
+        if (res.value === 'NOT_EDITABLE') {
+          return { ok: false, error: '选中的对象不支持写入文字（如图片），请改选文本框或图形' }
+        }
+        if (res.value === 'NO_DOC_CONTENT') {
+          return { ok: false, error: '选中的对象没有可取到的文字内容' }
+        }
+        return { ok: false, error: '写回选区失败（返回值：' + String(res.value) + '）' }
+      })
+    }
+
+    /**
+     * 取编辑器 iframe 的 window 与 Asc
+     *
+     * 这个部署下发的 api.js 是精简构建：DocEditor 只有一小组固定指令
+     * （serviceCommand / downloadAs 等），用 postMessage 转发，没有 createConnector，
+     * 也没有 callCommand。编辑器真正的入口在 iframe 内部——disableSpellCheck 一直
+     * 就是这么用的，所以命令也从这里下发。
+     */
+    function editorContext() {
+      const frame = editorFrame()
+      const win = frame && frame.contentWindow
+      if (!win) return null
+      const asc = win.Asc || null
+      // Asc.scope 是往命令里传参、回传结果用的载体，个别构建不会预先初始化
+      if (asc && !asc.scope) {
+        try {
+          asc.scope = {}
+        } catch (_) {
+          /* 写不进去时后续会如实报错 */
+        }
+      }
+      return { win: win, asc: asc, api: win.Api || null }
+    }
+
+    /**
+     * 在 iframe 的 realm 里造一个函数
+     *
+     * 跨 realm 直接传函数不可靠（回调与 Api 都是对端的全局），所以传源码、
+     * 在对端用 Function 重建，函数体内的 Api / Asc 才能在编辑器里解析到。
+     */
+    function commandInFrame(ctx, source) {
+      // Function 构造器与 eval 都以 iframe 的全局为作用域，函数体里的 Api / Asc
+      // 因此能解析到编辑器自己的对象；两者都试一遍，兜住 CSP 只放行其中一种的情况。
+      try {
+        return ctx.win.Function('return (' + source + ')')()
+      } catch (_) {
+        /* 落到 eval */
+      }
+      try {
+        return ctx.win.eval('(' + source + ')')
+      } catch (_) {
+        return null
+      }
+    }
+
+    /**
+     * 编辑器能力探测
+     *
+     * 全部通道都失败时把这份快照拼进错误里，下一轮按实际暴露的方法定位，
+     * 不用再逐个假设。只读属性、不调用，探测本身不会再抛错。
+     */
+    function capabilitySnapshot() {
+      const ctx = editorContext()
+      if (!ctx) return '编辑器 iframe 不可用'
+      const asc = ctx.asc
+      if (!asc) return 'iframe 内没有 Asc 对象'
+
+      const editor = asc.editor || null
+      // Asc.editor 是编辑器控制器；真正的文档对象挂在 WordControl 上
+      const logicDoc =
+        (editor && editor.WordControl && editor.WordControl.m_oLogicDocument) || null
+
+      const parts = ['Asc.editor=' + typeof editor]
+      if (editor) parts.push('editor.WordControl=' + typeof editor.WordControl)
+      parts.push('logicDoc=' + typeof logicDoc)
+
+      if (DOC_TYPE === 'slide') {
+        // 演示文稿看的是「能否取到选中形状」，与 Word 的选区方法无关
+        if (logicDoc) {
+          parts.push('GetCurrentController=' + typeof logicDoc.GetCurrentController)
+          let objs = 'n/a'
+          try {
+            const ctrl = logicDoc.GetCurrentController ? logicDoc.GetCurrentController() : null
+            const holder = (ctrl && ctrl.selection && ctrl.selection.groupSelection) || ctrl
+            objs = holder && holder.selectedObjects ? holder.selectedObjects.length : 'n/a'
+          } catch (_) {
+            objs = 'error'
+          }
+          parts.push('selectedObjects=' + objs)
+        }
+      } else if (logicDoc) {
+        parts.push('logicDoc.GetSelectedText=' + typeof logicDoc.GetSelectedText)
+        parts.push('logicDoc.RemoveSelection=' + typeof logicDoc.RemoveSelection)
+        parts.push('logicDoc.EnterText=' + typeof logicDoc.EnterText)
+      }
+
+      parts.push('Api=' + typeof ctx.api)
+      return parts.join(', ')
+    }
+
+    /**
+     * 取回命令写入的结果
+     *
+     * 命令在编辑器里执行完会把值写进 Asc.scope.ooResult；这里轮询等它变值。
+     * 之所以不走回调：callCommand 的第二参数在不同版本分别是 isClose 与回调，
+     * 写错就会被当成 true、回调永不触发，只能白等到超时。scope 传值没有这个问题。
+     */
+    function awaitScopeResult(ctx, token, ms) {
+      return new Promise((resolve) => {
+        const deadline = Date.now() + ms
+        const tick = () => {
+          let value
+          try {
+            value = ctx.asc && ctx.asc.scope ? ctx.asc.scope.ooResult : undefined
+          } catch (_) {
+            value = undefined
+          }
+          if (value !== undefined && value !== token) {
+            resolve({ ok: true, value: value })
+            return
+          }
+          if (Date.now() >= deadline) {
+            resolve({ ok: false, error: '命令没有回传结果' })
+            return
+          }
+          setTimeout(tick, 50)
+        }
+        tick()
+      })
+    }
+
+    /**
+     * 在编辑器内执行一条命令，按可用通道依次尝试
+     *
+     * 优先 Asc.plugin.callCommand（插件通道，完整编辑器必带）；
+     * 其次 Asc.editor.createConnector（部分构建挂在内部对象上）。
+     * 首个成功即返回，全部失败时把每条通道的原因拼进错误里。
+     */
+    function runByCommand(commandSource, failMessage) {
+      const ctx = editorContext()
+      if (!ctx) return Promise.resolve({ ok: false, error: '编辑器还未加载完成' })
+
+      const command = commandInFrame(ctx, commandSource)
+      if (!command) return Promise.resolve({ ok: false, error: '无法在编辑器内创建执行函数' })
+
+      const plugin = ctx.asc && ctx.asc.plugin
+      const inner = ctx.asc && ctx.asc.editor
+      const strategies = []
+
+      /**
+       * 同源直调：宿主页与编辑器 iframe 同源，能直接调用在对端 realm 里创建的
+       * 函数。这条通道不依赖 Asc.plugin（它只在插件运行时注入宿主页），
+       * 也不需要 callCommand/createConnector，是这个部署下唯一可用的入口。
+       */
+      strategies.push(function () {
+        return new Promise((resolve) => {
+          let value
+          try {
+            value = command()
+          } catch (e) {
+            resolve({ label: 'direct', ok: false, error: (e && e.message) || String(e) })
+            return
+          }
+          resolve({ label: 'direct', ok: true, value: value })
+        })
+      })
+
+      /** 每条通道都先清 scope、发命令、再轮询 scope 取结果，互不依赖回调签名 */
+      const viaScope = (label, invoke) =>
+        function () {
+          const token = 'PENDING-' + Date.now() + '-' + Math.random()
+          try {
+            if (ctx.asc && ctx.asc.scope) ctx.asc.scope.ooResult = token
+          } catch (_) {
+            return Promise.resolve({ label: label, ok: false, error: '无法写入 Asc.scope' })
+          }
+          let thrown = null
+          try {
+            invoke()
+          } catch (e) {
+            thrown = (e && e.message) || String(e)
+          }
+          if (thrown) return Promise.resolve({ label: label, ok: false, error: thrown })
+          return awaitScopeResult(ctx, token, 3000).then(function (res) {
+            return { label: label, ok: res.ok, value: res.value, error: res.error }
+          })
+        }
+
+      if (plugin && typeof plugin.callCommand === 'function') {
+        strategies.push(
+          viaScope('plugin.callCommand(cmd,false)', function () {
+            plugin.callCommand(command, false)
+          })
+        )
+        strategies.push(
+          viaScope('plugin.callCommand(cmd,false,false)', function () {
+            plugin.callCommand(command, false, false)
+          })
+        )
+      }
+
+      if (inner && typeof inner.createConnector === 'function') {
+        strategies.push(function () {
+          let connector = null
+          try {
+            connector = inner.createConnector()
+          } catch (e) {
+            return Promise.resolve({
+              label: 'editor.createConnector',
+              ok: false,
+              error: (e && e.message) || String(e),
+            })
+          }
+          if (!connector) {
+            return Promise.resolve({ label: 'editor.createConnector', ok: false, error: '返回空值' })
+          }
+          return viaScope('editor.createConnector', function () {
+            connector.callCommand(command, false)
+          })()
+        })
+      }
+
+      if (!strategies.length) {
+        return Promise.resolve({
+          ok: false,
+          error: failMessage + '：编辑器没有可用的命令通道（' + capabilitySnapshot() + '）',
+        })
+      }
+
+      const failures = []
+      let index = 0
+      const next = () => {
+        if (index >= strategies.length) {
+          return Promise.resolve({
+            ok: false,
+            error: failMessage + '：' + failures.join('；') + '（' + capabilitySnapshot() + '）',
+          })
+        }
+        return strategies[index++]().then(function (res) {
+          if (res.ok) return res
+          failures.push(res.label + '=' + (res.error || '失败'))
+          return next()
+        })
+      }
+      return next()
+    }
+
+
+    /** 读取当前选区文本 */
+    window.__ooReadSelection = function () {
+      if (DOC_TYPE === 'slide') {
+        return readSlideSelection()
+      }
+      const source =
+        'function () {' +
+        // Asc.editor 是编辑器控制器，GetSelectedText 挂在它下面的文档对象上：
+        // Asc.editor.WordControl.m_oLogicDocument（CDocument）。disableSpellCheck
+        // 取的也是这条路径，文档对象拿法保持一致。
+        ' var ed = typeof Asc !== "undefined" && Asc ? Asc.editor : null;' +
+        ' var doc = ed && ed.WordControl ? ed.WordControl.m_oLogicDocument : null;' +
+        ' if (doc && typeof doc.GetSelectedText === "function") {' +
+        '   try {' +
+        '     var picked = doc.GetSelectedText(false);' +
+        '     if (typeof picked === "string") return picked;' +
+        '   } catch (e) { /* 落到下面的兜底 */ }' +
+        ' }' +
+        // 部分构建把读取方法直接挂在控制器上
+        ' if (ed && typeof ed.GetSelectedText === "function") {' +
+        '   try {' +
+        '     var direct = ed.GetSelectedText(false);' +
+        '     if (typeof direct === "string") return direct;' +
+        '   } catch (e) { /* 放弃 */ }' +
+        ' }' +
+        ' return "NO_SELECTION_API";' +
+        ' }'
+      return runByCommand(source, '读取选中内容失败').then(function (res) {
+        if (!res.ok) return res
+        if (res.value === 'NO_SELECTION_API') {
+          return { ok: false, error: '编辑器没有可用的选区接口（' + capabilitySnapshot() + '）' }
+        }
+        return { ok: true, text: typeof res.value === 'string' ? res.value : '' }
+      })
+    }
+
+    /**
+     * 用 text 替换当前选区
+     *
+     * 函数体在编辑器内执行，与宿主页之间只传字符串，所以待写内容挂在
+     * Asc.scope 上（同源可直接写）。替换分两步：先删掉选区，再在删除后的
+     * 光标位插入新文本——ApiRange 没有 SetText，Delete + AddText 能达到替换效果。
+     */
+    window.__ooReplaceSelection = function (text) {
+      if (DOC_TYPE === 'slide') {
+        return replaceSlideSelection(text)
+      }
+      const ctx = editorContext()
+      if (!ctx) return Promise.resolve({ ok: false, error: '编辑器还未加载完成' })
+      try {
+        if (ctx.asc && ctx.asc.scope) ctx.asc.scope.ooReplaceText = text
+      } catch (_) {
+        /* 挂不上时下面的命令自己会报错 */
+      }
+
+      const source =
+        'function () {' +
+        ' var next = (Asc.scope && Asc.scope.ooReplaceText) || "";' +
+        ' var ed = typeof Asc !== "undefined" && Asc ? Asc.editor : null;' +
+        ' var doc = ed && ed.WordControl ? ed.WordControl.m_oLogicDocument : null;' +
+        ' if (doc && typeof doc.GetSelectedText === "function") {' +
+        '   var current = null;' +
+        '   try { current = doc.GetSelectedText(false); } catch (e) { current = null; }' +
+        '   if (!current) return "NO_SELECTION";' +
+        // CDocument.EnterText 只负责「在插入点输入」，不处理选区，所以先删掉选中内容
+        '   if (typeof doc.RemoveSelection === "function") doc.RemoveSelection();' +
+        '   if (typeof doc.EnterText !== "function") return "NO_ENTER_TEXT";' +
+        // 返回 false 表示被锁定（只读 / 受保护区域），不能当成成功
+        '   var written = doc.EnterText(next);' +
+        '   return written === false ? "LOCKED" : "OK";' +
+        ' }' +
+        ' return "NO_SELECTION_API";' +
+        ' }'
+
+      return runByCommand(source, '写回选区失败').then(function (res) {
+        if (!res.ok) return res
+        if (res.value === 'OK') return { ok: true }
+        if (res.value === 'NO_SELECTION_API') {
+          return { ok: false, error: '编辑器没有可用的写回接口（' + capabilitySnapshot() + '）' }
+        }
+        if (res.value === 'NO_ENTER_TEXT') {
+          return { ok: false, error: '文档对象没有 EnterText，无法写回（' + capabilitySnapshot() + '）' }
+        }
+        if (res.value === 'LOCKED') {
+          return { ok: false, error: '当前内容受保护或为只读，无法写回' }
+        }
+        if (res.value === 'NO_SELECTION') {
+          return { ok: false, error: '文档里没有选中的内容，请重新选中后再试' }
+        }
+        return { ok: false, error: '写回选区失败（返回值：' + String(res.value) + '）' }
+      })
+    }
+
+
 
     const script = document.createElement('script')
     script.src = DOC_SERVER + '/web-apps/apps/api/documents/api.js'

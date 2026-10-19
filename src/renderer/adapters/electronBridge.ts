@@ -522,6 +522,21 @@ function createGroupedAPI() {
         rect: Parameters<typeof raw.preview.setDevToolsBounds>[1],
       ) => raw.preview.setDevToolsBounds(guestId, rect),
       closeDevTools: (guestId: number) => raw.preview.closeDevTools(guestId),
+
+      // AI 修改：元素拾取 / 上下文读取 / 就地编辑 / 回滚 / 元素截图
+      pickStart: (guestId: number) => raw.preview.pickStart(guestId),
+      pickCancel: (guestId: number) => raw.preview.pickCancel(guestId),
+      elementContext: (guestId: number, selector: string) =>
+        raw.preview.elementContext(guestId, selector),
+      elementEdit: (
+        guestId: number,
+        selector: string,
+        edit: import('../../main/modules/preview/previewDomProbe').ElementEditOp,
+        scope: import('../../main/modules/preview/previewDomProbe').ElementEditScope = 'one',
+      ) => raw.preview.elementEdit(guestId, selector, edit, scope),
+      undoEdits: (guestId: number, mode: 'last' | 'all') => raw.preview.undoEdits(guestId, mode),
+      captureElement: (guestId: number, selector: string) =>
+        raw.preview.captureElement(guestId, selector),
     },
 
     // 剪贴板
@@ -1261,6 +1276,15 @@ function createGroupedAPI() {
       discardSession: (sessionId: string) => raw.onlyOffice.discardSession(sessionId),
       refreshSession: (payload: Parameters<typeof raw.onlyOffice.refreshSession>[0]) =>
         raw.onlyOffice.refreshSession(payload),
+      /** 绑定编辑器快捷键：拦截 webview 里的 Cmd/Ctrl+S 并回推事件 */
+      bindSaveShortcut: (guestId: number) => raw.onlyOffice.bindSaveShortcut({ guestId }),
+      /** 编辑器内按下 Cmd/Ctrl+S */
+      onSaveShortcut: (callback: () => void) => raw.onlyOffice.onSaveShortcut(callback),
+      /** 读取编辑器选中的文本 */
+      readSelection: (guestId: number) => raw.onlyOffice.readSelection(guestId),
+      /** 把文本粘贴进编辑器当前选区 */
+      replaceSelection: (guestId: number, text: string) =>
+        raw.onlyOffice.replaceSelection({ guestId, text }),
     },
 
     // ========================================

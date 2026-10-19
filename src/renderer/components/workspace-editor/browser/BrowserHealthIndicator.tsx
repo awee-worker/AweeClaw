@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from 'lucide-react'
 import type { PreviewHealthLevel, PreviewHealthSnapshot } from '@shared/protocols/previewProtocol'
+import { HintOverlay } from '@components/ui/HintOverlay'
 import { useStore } from '@store'
 import { t, type Language } from '@renderer/i18n'
 
@@ -138,22 +139,23 @@ export default function BrowserHealthIndicator({ health, onRecheck }: BrowserHea
 
   return (
     <div ref={containerRef} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={togglePanel}
-        className="h-8 flex items-center gap-1.5 px-2 rounded-lg hover:bg-text-primary/[0.05] transition-colors"
-        title={statusLabel}
-        aria-label={statusLabel}
-        aria-expanded={open}
-      >
-        <span
-          className={`w-2 h-2 rounded-full ${tracked ? style.dot : 'bg-text-muted/40'}`}
-          aria-hidden="true"
-        />
-        {tracked && issueCount > 0 && (
-          <span className={`text-[11px] tabular-nums ${style.text}`}>{issueCount}</span>
-        )}
-      </button>
+      <HintOverlay content={statusLabel}>
+        <button
+          type="button"
+          onClick={togglePanel}
+          className="h-8 flex items-center gap-1.5 px-2 rounded-lg hover:bg-text-primary/[0.05] transition-colors"
+          aria-label={statusLabel}
+          aria-expanded={open}
+        >
+          <span
+            className={`w-2 h-2 rounded-full ${tracked ? style.dot : 'bg-text-muted/40'}`}
+            aria-hidden="true"
+          />
+          {tracked && issueCount > 0 && (
+            <span className={`text-[11px] tabular-nums ${style.text}`}>{issueCount}</span>
+          )}
+        </button>
+      </HintOverlay>
 
       {open && (
         <div

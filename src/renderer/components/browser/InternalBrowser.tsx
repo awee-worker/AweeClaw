@@ -12,16 +12,20 @@
  *   service 的方法对未知 session 全部 no-op，无副作用）
  */
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, Loader2, RefreshCw, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, Loader2, RefreshCw, Sparkles, X } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { t, type Language } from '@renderer/i18n'
 import { api } from '@renderer/adapters/electronBridge'
 import type { PreviewSession } from '@shared/protocols/previewProtocol'
 import { useWebviewController } from '@components/workspace-editor/browser/hooks/useWebviewController'
+import { useElementPicker } from '@components/workspace-editor/browser/hooks/useElementPicker'
 import { useDeferredMount } from '@renderer/composables/useDeferredMount'
 import BrowserWebView from '@components/workspace-editor/browser/BrowserWebView'
+import AIEditPanel from '@components/workspace-editor/browser/AIEditPanel'
+import { BROWSER_AI_EDIT_EVENT, buildAIEditPrompt } from '@components/workspace-editor/browser/aiEditPrompt'
 import { sanitizeUrl } from '@components/workspace-editor/browser/hooks/usePreviewSessionSync'
+
 
 export default function InternalBrowser() {
   const { url, title, closeInternalBrowser, language } = useStore(
@@ -48,6 +52,23 @@ export default function InternalBrowser() {
   const [address, setAddress] = useState(url ?? '')
 
   const controller = useWebviewController(session)
+
+  // AI 修改：元素拾取（切换页面 / 关闭时会自动结束上一次拾取）
+  const { phase: pickPhase, picked, togglePick, clearPick, undoEdits } = useElementPicker(
+    controller.guestId,
+  )
+
+  /** 提交修改指令：经 window 事件交给 PluginHostBridge 发送到当前会话 */
+  const handleSubmitEdit = useCallback(
+    (instruction: string) => {
+      if (!picked) return
+      const pageUrl = session?.url || url || undefined
+      const prompt = buildAIEditPrompt(picked, instruction, pageUrl)
+      window.dispatchEvent(new CustomEvent(BROWSER_AI_EDIT_EVENT, { detail: { text: prompt } }))
+      clearPick()
+    },
+    [picked, clearPick, session?.url, url],
+  )
 
   /**
    * webview 挂载推迟两帧
@@ -155,6 +176,24 @@ export default function InternalBrowser() {
           </div>
         </div>
 
+        {/* AI 修改：点一次进入拾取，再点一次退出 */}
+        <button
+          onClick={togglePick}
+          disabled={controller.guestId === null}
+          title={
+            pickPhase === 'picking'
+              ? t('editor.browser.aiEditPicking', language as Language) || 'Picking an element…'
+              : t('editor.browser.aiEdit', language as Language) || 'AI Edit'
+          }
+          className={`w-7 h-7 rounded-md flex items-center justify-center disabled:opacity-30 transition-colors ${
+            pickPhase === 'picking'
+              ? 'text-accent bg-accent/10'
+              : 'text-text-muted enabled:hover:text-text-primary enabled:hover:bg-text-primary/[0.06]'
+          }`}
+        >
+          <Sparkles className="w-4 h-4" />
+        </button>
+
         {/* 外部打开 */}
         <button
           onClick={handleOpenExternal}
@@ -166,10 +205,21 @@ export default function InternalBrowser() {
       </div>
 
       {/* webview 主体（复用已有内置浏览器的 webview 容器） */}
-      <div className="flex-1 min-h-0 relative bg-background-editor">
+      {/* overflow-hidden：AI 修改浮层为绝对定位，拖动时不能撑出额外的滚动区域 */}
+      <div className="flex-1 min-h-0 relative overflow-hidden bg-background-editor">
         {/* key 用重建序号：刷新令牌推进时 React 重建 webview 元素，页面重新加载 */}
         {session && canMount && (
           <BrowserWebView key={controller.reloadNonce} session={session} controller={controller} />
+        )}
+
+        {/* AI 修改浮层：跟随选中元素定位，浮在页面之上 */}
+        {picked && (
+          <AIEditPanel
+            picked={picked}
+            onClose={clearPick}
+            onSubmit={handleSubmitEdit}
+            onUndo={() => void undoEdits('all')}
+          />
         )}
       </div>
     </div>

@@ -14,7 +14,7 @@ import {
   resolveDevice,
   type PreviewSession,
 } from '@shared/protocols/previewProtocol'
-import { ActionButton } from '@components/ui'
+import { ActionButton, HintOverlay } from '@components/ui'
 import { useStore } from '@store'
 import { t, type Language } from '@renderer/i18n'
 
@@ -86,17 +86,18 @@ export default function BrowserDeviceSelector({ session, onChange }: BrowserDevi
 
   return (
     <div ref={rootRef} className="relative shrink-0">
-      <ActionButton
-        variant="ghost"
-        size="icon"
-        className={`h-8 w-8 ${!isDesktop ? 'text-accent ring-2 ring-accent/30' : ''}`}
-        onClick={() => setOpen((value) => !value)}
-        title={title}
-        aria-label={t('editor.browser.device', language)}
-        aria-pressed={!isDesktop}
-      >
-        {isDesktop ? <Monitor className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
-      </ActionButton>
+      <HintOverlay content={title}>
+        <ActionButton
+          variant="ghost"
+          size="icon"
+          className={`h-8 w-8 ${!isDesktop ? 'text-accent ring-2 ring-accent/30' : ''}`}
+          onClick={() => setOpen((value) => !value)}
+          aria-label={t('editor.browser.device', language)}
+          aria-pressed={!isDesktop}
+        >
+          {isDesktop ? <Monitor className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
+        </ActionButton>
+      </HintOverlay>
 
       {open && (
         <div className="absolute right-0 top-full mt-1 w-60 z-50 rounded-xl border border-border/60 bg-surface/95 backdrop-blur-xl shadow-2xl shadow-black/25 overflow-hidden">

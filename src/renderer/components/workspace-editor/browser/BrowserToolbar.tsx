@@ -8,10 +8,10 @@
  * - 功能组：元素检查（DevTools toggle）、缩放（50%–300%，点击百分比重置）、
  *           设备模拟（移动 / 桌面档位切换）、外部打开（系统浏览器）、新建标签页
  */
-import { ArrowLeft, ArrowRight, RefreshCw, SquareDashedMousePointer, ZoomIn, ZoomOut, ExternalLink, Plus, Expand, Shrink } from 'lucide-react'
+import { ArrowLeft, ArrowRight, RefreshCw, Sparkles, SquareDashedMousePointer, ZoomIn, ZoomOut, ExternalLink, Plus, Expand, Shrink } from 'lucide-react'
 import type { PreviewHealthSnapshot, PreviewSession } from '@shared/protocols/previewProtocol'
 import { resolveDevice } from '@shared/protocols/previewProtocol'
-import { ActionButton } from '@components/ui'
+import { ActionButton, HintOverlay } from '@components/ui'
 import { useStore } from '@store'
 import { t, type Language } from '@renderer/i18n'
 import type { WebviewController } from './hooks/useWebviewController'
@@ -42,6 +42,10 @@ interface BrowserToolbarProps {
   deviceFitMode?: DeviceFitMode
   /** 切换设备档适配方式：缩放适配 ↔ 实际大小 */
   onToggleDeviceFit?: () => void
+  /** AI 修改：开始 / 结束元素拾取 */
+  onToggleAIPick?: () => void
+  /** 拾取进行中（按钮高亮，再次点击即取消） */
+  aiPickActive?: boolean
 }
 
 
@@ -59,6 +63,8 @@ export default function BrowserToolbar({
   onDeviceChange,
   deviceFitMode = 'fit',
   onToggleDeviceFit,
+  onToggleAIPick,
+  aiPickActive = false,
 }: BrowserToolbarProps) {
   const language = useStore((state) => state.language) as Language
   const { canGoBack, canGoForward, isLoading, devtoolsOpen, zoomFactor } = controller
@@ -73,42 +79,45 @@ export default function BrowserToolbar({
     <div className="h-11 border-b border-border/50 px-3 flex items-center gap-2">
       {/* 导航组 */}
       <div className="flex items-center gap-0.5 shrink-0">
-        <ActionButton
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={controller.goBack}
-          disabled={!canGoBack}
-          title={t('editor.browser.back', language)}
-          aria-label={t('editor.browser.back', language)}
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </ActionButton>
+        <HintOverlay content={t('editor.browser.back', language)}>
+          <ActionButton
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={controller.goBack}
+            disabled={!canGoBack}
+            aria-label={t('editor.browser.back', language)}
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </ActionButton>
+        </HintOverlay>
 
-        <ActionButton
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={controller.goForward}
-          disabled={!canGoForward}
-          title={t('editor.browser.forward', language)}
-          aria-label={t('editor.browser.forward', language)}
-        >
-          <ArrowRight className="w-4 h-4" />
-        </ActionButton>
+        <HintOverlay content={t('editor.browser.forward', language)}>
+          <ActionButton
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={controller.goForward}
+            disabled={!canGoForward}
+            aria-label={t('editor.browser.forward', language)}
+          >
+            <ArrowRight className="w-4 h-4" />
+          </ActionButton>
+        </HintOverlay>
 
         {/* 固定为刷新：加载态会随页面请求反复切换，若在这里切成「停止」，
             页面持续请求时按钮会长期停在停止态，用户点到的就不是刷新 */}
-        <ActionButton
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={controller.reload}
-          title={t('editor.browser.reload', language)}
-          aria-label={t('editor.browser.reload', language)}
-        >
-          <RefreshCw className="w-4 h-4" />
-        </ActionButton>
+        <HintOverlay content={t('editor.browser.reload', language)}>
+          <ActionButton
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={controller.reload}
+            aria-label={t('editor.browser.reload', language)}
+          >
+            <RefreshCw className="w-4 h-4" />
+          </ActionButton>
+        </HintOverlay>
       </div>
 
       {/* 页面健康指示灯（控制台错误 / 加载失败 / 白屏） */}
@@ -124,51 +133,84 @@ export default function BrowserToolbar({
       />
       {/* 功能组 */}
       <div className="flex items-center gap-0.5 shrink-0">
-        {/* 元素检查（DevTools toggle）：webview 未挂载时无目标，置灰避免点了没反馈 */}
-        <ActionButton
-          variant="ghost"
-          size="icon"
-          className={`h-8 w-8 ${devtoolsOpen ? 'text-accent ring-2 ring-accent/30' : ''}`}
-          onClick={controller.toggleDevtools}
-          disabled={!controller.webviewReady}
-          title={devtoolsOpen ? t('editor.browser.inspectActive', language) : t('editor.browser.inspect', language)}
-          aria-label={t('editor.browser.inspect', language)}
-          aria-pressed={devtoolsOpen}
+        <HintOverlay
+          content={
+            devtoolsOpen
+              ? t('editor.browser.inspectActive', language)
+              : t('editor.browser.inspect', language)
+          }
         >
-          <SquareDashedMousePointer className="w-4 h-4" />
-        </ActionButton>
+          <ActionButton
+            variant="ghost"
+            size="icon"
+            className={`h-8 w-8 ${devtoolsOpen ? 'text-accent ring-2 ring-accent/30' : ''}`}
+            onClick={controller.toggleDevtools}
+            disabled={!controller.webviewReady}
+            aria-label={t('editor.browser.inspect', language)}
+            aria-pressed={devtoolsOpen}
+          >
+            <SquareDashedMousePointer className="w-4 h-4" />
+          </ActionButton>
+        </HintOverlay>
+
+        {/* AI 修改：点一次进入拾取，再点一次退出 */}
+        {onToggleAIPick && (
+          <HintOverlay
+            content={
+              aiPickActive
+                ? t('editor.browser.aiEditPicking', language)
+                : t('editor.browser.aiEdit', language)
+            }
+          >
+            <ActionButton
+              variant="ghost"
+              size="icon"
+              className={`h-8 w-8 ${aiPickActive ? 'text-accent ring-2 ring-accent/30' : ''}`}
+              onClick={onToggleAIPick}
+              disabled={!controller.webviewReady}
+              aria-label={t('editor.browser.aiEdit', language)}
+              aria-pressed={aiPickActive}
+            >
+              <Sparkles className="w-4 h-4" />
+            </ActionButton>
+          </HintOverlay>
+        )}
 
         {/* 缩放：缩小 + 百分比(点击重置) + 放大 */}
-        <ActionButton
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={controller.zoomOut}
-          title={t('editor.browser.zoomOut', language)}
-          aria-label={t('editor.browser.zoomOut', language)}
-        >
-          <ZoomOut className="w-4 h-4" />
-        </ActionButton>
+        <HintOverlay content={t('editor.browser.zoomOut', language)}>
+          <ActionButton
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={controller.zoomOut}
+            aria-label={t('editor.browser.zoomOut', language)}
+          >
+            <ZoomOut className="w-4 h-4" />
+          </ActionButton>
+        </HintOverlay>
 
-        <button
-          type="button"
-          onClick={controller.resetZoom}
-          className="h-8 min-w-[3rem] px-1.5 text-xs tabular-nums text-text-secondary hover:text-text-primary rounded-lg hover:bg-text-primary/[0.05] transition-colors"
-          title={t('editor.browser.zoomReset', language)}
-        >
-          {t('editor.browser.zoomLabel', language, { percent: zoomPercent })}
-        </button>
+        <HintOverlay content={t('editor.browser.zoomReset', language)}>
+          <button
+            type="button"
+            onClick={controller.resetZoom}
+            className="h-8 min-w-[3rem] px-1.5 text-xs tabular-nums text-text-secondary hover:text-text-primary rounded-lg hover:bg-text-primary/[0.05] transition-colors"
+            aria-label={t('editor.browser.zoomReset', language)}
+          >
+            {t('editor.browser.zoomLabel', language, { percent: zoomPercent })}
+          </button>
+        </HintOverlay>
 
-        <ActionButton
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={controller.zoomIn}
-          title={t('editor.browser.zoomIn', language)}
-          aria-label={t('editor.browser.zoomIn', language)}
-        >
-          <ZoomIn className="w-4 h-4" />
-        </ActionButton>
+        <HintOverlay content={t('editor.browser.zoomIn', language)}>
+          <ActionButton
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={controller.zoomIn}
+            aria-label={t('editor.browser.zoomIn', language)}
+          >
+            <ZoomIn className="w-4 h-4" />
+          </ActionButton>
+        </HintOverlay>
 
         {/* 设备模拟：切换移动 / 桌面档位（手动入口，与 AI 工具共用同一状态源） */}
         {onDeviceChange && (
@@ -177,47 +219,52 @@ export default function BrowserToolbar({
 
         {/* 适配开关：设备档下在「缩放适配」与「实际大小（可滚动）」间切换 */}
         {inDeviceMode && onToggleDeviceFit && (
-          <ActionButton
-            variant="ghost"
-            size="icon"
-            className={`h-8 w-8 ${deviceFitMode === 'actual' ? 'text-accent ring-2 ring-accent/30' : ''}`}
-            onClick={onToggleDeviceFit}
-            title={
+          <HintOverlay
+            content={
               deviceFitMode === 'actual'
                 ? t('editor.browser.fitWindowSwitch', language)
                 : t('editor.browser.actualSizeSwitch', language)
             }
-            aria-label={t('editor.browser.deviceFit', language)}
-            aria-pressed={deviceFitMode === 'actual'}
           >
-            {deviceFitMode === 'actual' ? <Expand className="w-4 h-4" /> : <Shrink className="w-4 h-4" />}
-          </ActionButton>
+            <ActionButton
+              variant="ghost"
+              size="icon"
+              className={`h-8 w-8 ${deviceFitMode === 'actual' ? 'text-accent ring-2 ring-accent/30' : ''}`}
+              onClick={onToggleDeviceFit}
+              aria-label={t('editor.browser.deviceFit', language)}
+              aria-pressed={deviceFitMode === 'actual'}
+            >
+              {deviceFitMode === 'actual' ? <Expand className="w-4 h-4" /> : <Shrink className="w-4 h-4" />}
+            </ActionButton>
+          </HintOverlay>
         )}
 
 
         {/* 外部打开 */}
-        <ActionButton
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={onOpenExternal}
-          title={t('editor.browser.openExternal', language)}
-          aria-label={t('editor.browser.openExternal', language)}
-        >
-          <ExternalLink className="w-4 h-4" />
-        </ActionButton>
+        <HintOverlay content={t('editor.browser.openExternal', language)}>
+          <ActionButton
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={onOpenExternal}
+            aria-label={t('editor.browser.openExternal', language)}
+          >
+            <ExternalLink className="w-4 h-4" />
+          </ActionButton>
+        </HintOverlay>
 
         {/* 新建标签页 */}
-        <ActionButton
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={onNewTab}
-          title={t('editor.browser.newTab', language)}
-          aria-label={t('editor.browser.newTab', language)}
-        >
-          <Plus className="w-4 h-4" />
-        </ActionButton>
+        <HintOverlay content={t('editor.browser.newTab', language)}>
+          <ActionButton
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={onNewTab}
+            aria-label={t('editor.browser.newTab', language)}
+          >
+            <Plus className="w-4 h-4" />
+          </ActionButton>
+        </HintOverlay>
       </div>
     </div>
   )

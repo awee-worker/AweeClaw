@@ -15,16 +15,17 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as crypto from 'crypto'
+import { webContents } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import { safeIpcHandle } from '../../bridge/core/ipcGuard'
 import { getUserConfigDir } from '../configPath'
 import {
   OO_EDIT_CHANNELS,
   OO_EDITABLE_EXTENSIONS,
+  type OoSelectionResult,
   type OnlyOfficeEditSessionMeta,
   type OnlyOfficeServerSettings,
 } from '../../../shared/protocols/onlyOfficeProtocol'
-
 /** 会话记录（仅主进程持有，含源路径） */
 interface OoSessionRecord {
   sourcePath: string
@@ -41,6 +42,14 @@ const EXT_SET = new Set<string>(OO_EDITABLE_EXTENSIONS)
 /** force save + 下载整体超时（服务端 forceSaveAndWait 最长约 25s） */
 const REQUEST_TIMEOUT_MS = 90_000
 
+/** 按 id 取 guest（webview）的 webContents；已销毁或 id 无效时返回 null */
+function guestContentsOf(guestId: number) {
+  if (!Number.isFinite(guestId) || guestId <= 0) return null
+  const guest = webContents.fromId(guestId)
+  if (!guest || guest.isDestroyed()) return null
+  return guest
+}
+
 /** 归一化 basePath：保证以 / 开头、不以 / 结尾 */
 function normBasePath(p: string): string {
   let s = p.trim()
@@ -53,6 +62,9 @@ export class OoEditManager {
   private static instance: OoEditManager | null = null
 
   private readonly sessions = new Map<string, OoSessionRecord>()
+
+  /** 已绑定快捷键的 guest：guestId → 解绑函数 */
+  private readonly shortcutGuests = new Map<number, () => void>()
 
   private constructor() {
     this.registerIpc()
@@ -230,10 +242,18 @@ export class OoEditManager {
       }
       // 强制保存未生效（DS 报错且文件未被写回）：中止回写，避免用旧文件覆盖本地改动
       if (saveRes.changed === false && saveRes.cmdError) {
-        logger.system.warn(`[OnlyOffice] Force save not applied for ${record.remoteName}: ${saveRes.cmdError}`)
+        logger.system.warn(
+          `[OnlyOffice] Force save not applied for ${record.remoteName} (key=${saveRes.key || '-'}, mode=${saveRes.keyMode || '-'}): ${saveRes.cmdError}`,
+        )
+        // error=1/3/4：DS 侧已经没有这个 document.key 对应的编辑会话（key 漂移或
+        // 会话已被回收）。此时编辑器里的改动只在 DS 内存里，本地副本是上一次保存的
+        // 内容，回写只会用旧内容覆盖本地，所以必须中止。
+        const sessionGone = /error=[134]\b/.test(String(saveRes.cmdError))
         return {
           ok: false,
-          error: `强制保存未生效（${saveRes.cmdError}），已中止回写以免丢失改动。请在编辑器中再次点击「保存」后重试`,
+          error: sessionGone
+            ? `编辑器会话已失效（${saveRes.cmdError}）。本次改动没有写回本地——请点「刷新」重新载入后再改一遍，刷新后未保存的改动会丢失`
+            : `强制保存未生效（${saveRes.cmdError}），已中止回写以免丢失改动。请在编辑器中再次点击「保存」后重试`,
         }
       }
 
@@ -250,15 +270,12 @@ export class OoEditManager {
       await fs.promises.writeFile(tmpPath, dl.buffer)
       await fs.promises.rename(tmpPath, record.sourcePath)
 
-      // 4. 已回写本地 → 会话结束：删除远端副本（失败不阻塞，网关 TTL 会兜底回收）
-      this.sessions.delete(sessionId)
-      try {
-        const delUrl = `${gwBase}/files/${encodeURIComponent(record.remoteName)}`
-        await this.request('DELETE', delUrl)
-      } catch {
-        logger.system.warn('[OnlyOffice] Save cleanup delete remote failed (TTL will reclaim)')
-      }
-
+      // 4. 会话保持打开，不清理远端副本
+      //
+      // 保存只是把当前内容同步回本地，用户通常还要接着改，所以会话必须存活到
+      // 关闭 Tab（discard）为止。此前在这里删会话 + 删远端文件，导致第二次保存
+      // 直接报「会话不存在」；而网关的副本正是 DS 继续编辑的载体，删掉同样会断。
+      // 遗留副本由 discard 或网关 TTL 回收。
       logger.system.info(`[OnlyOffice] Session saved back: ${sessionId} ${record.remoteName} -> ${record.sourcePath} (${dl.buffer.length} bytes)`)
       return { ok: true, size: dl.buffer.length, sourcePath: record.sourcePath }
     } catch (err) {
@@ -292,6 +309,127 @@ export class OoEditManager {
     logger.system.info(`[OnlyOffice] Session discarded: ${sessionId} ${record.remoteName}`)
     return { ok: true }
   }
+
+  /* ------------------------------------------------------------------ */
+  /* 编辑器快捷键与选区交互                                            */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * 绑定编辑器里的 Cmd/Ctrl+S
+   *
+   * 窗口级 keydown 拿不到编辑器里的按键：文档编辑区跑在 webview 的独立
+   * 渲染进程里，按键事件不会冒泡到宿主页面。只有主进程的 before-input-event
+   * 能看到它们，所以快捷键必须在这里拦，再通过 IPC 让渲染层去保存。
+   */
+  bindSaveShortcut(guestId: number, hostId: number): { ok: boolean; error?: string } {
+    const previous = this.shortcutGuests.get(guestId)
+    if (previous) {
+      previous()
+      this.shortcutGuests.delete(guestId)
+    }
+
+    const guest = guestContentsOf(guestId)
+    if (!guest) return { ok: false, error: '编辑器未就绪' }
+
+    const handler = (event: Electron.Event, input: Electron.Input) => {
+      if (input.type !== 'keyDown') return
+      if (!(input.control || input.meta) || input.alt || input.shift) return
+      if (String(input.key).toLowerCase() !== 's') return
+
+      event.preventDefault()
+      const host = webContents.fromId(hostId)
+      if (host && !host.isDestroyed()) {
+        host.send(OO_EDIT_CHANNELS.SAVE_SHORTCUT)
+      }
+    }
+
+    guest.on('before-input-event', handler)
+    const off = () => {
+      try {
+        guest.removeListener('before-input-event', handler)
+      } catch {
+        // guest 已销毁：监听会随它一起消失
+      }
+    }
+    this.shortcutGuests.set(guestId, off)
+    guest.once('destroyed', () => {
+      this.shortcutGuests.delete(guestId)
+    })
+    return { ok: true }
+  }
+
+  /**
+   * 读取编辑器里的选中内容
+   *
+   * 走宿主页暴露的 __ooReadSelection，命令在编辑器内部执行，既不经过剪贴板，
+   * 也不依赖焦点停在哪个输入框上。剪贴板那套（copy 后读剪贴板）有两个死结：
+   * 面板抢走焦点后 copy 是空操作；粘贴后选区必然消失、回读必为空，于是
+   * 「成功路径必然失败」。
+   *
+   * 读取口径按文档类型分：
+   * - 文档：取文档对象的选中文字
+   * - 演示文稿：没有文档光标，用户选中的是形状，取选中形状里的文字
+   */
+  async readSelection(guestId: number): Promise<OoSelectionResult> {
+    const guest = guestContentsOf(guestId)
+    if (!guest) return { ok: false, error: '编辑器未就绪' }
+
+    try {
+      const res = await guest.executeJavaScript(
+        'window.__ooReadSelection ? window.__ooReadSelection() : Promise.resolve({ ok: false, error: "编辑器未就绪" })',
+        true,
+      )
+      if (!res || res.ok !== true) {
+        return { ok: false, error: (res && res.error) || '读取选中内容失败' }
+      }
+      // selected / editable 原本是为演示文稿加的：图形没有文字时 text 为空，
+      // 不带上这两个标记，调用方就分不清「选中了空图形」和「什么都没选中」
+      return {
+        ok: true,
+        text: typeof res.text === 'string' ? res.text : '',
+        selected: res.selected === true,
+        editable: res.editable === true,
+      }
+    } catch (err) {
+      return { ok: false, error: `读取选中内容失败: ${(err as Error)?.message || '未知错误'}` }
+    }
+  }
+
+  /**
+   * 用 text 替换编辑器里的当前选区
+   *
+   * 同样走 __ooReplaceSelection，在编辑器内部完成替换。编辑器用的是自己维护的
+   * 选区对象，所以宿主页上那层浮层面板怎么点都不会让选区失效——这是剪贴板
+   * 方案做不到的。
+   *
+   * 替换口径按文档类型分：
+   * - 文档：删除选区后在原光标位写入
+   * - 演示文稿：形状整体替换（清空该形状内容后写入），写完重新选中该形状，
+   *   让用户直接看到改动落在哪个框
+   */
+  async replaceSelection(guestId: number, text: string): Promise<OoSelectionResult> {
+    const guest = guestContentsOf(guestId)
+    if (!guest) return { ok: false, error: '编辑器未就绪' }
+    if (!text) return { ok: false, error: '替换内容为空' }
+
+    try {
+      const payload = JSON.stringify(text)
+      const res = await guest.executeJavaScript(
+        `window.__ooReplaceSelection ? window.__ooReplaceSelection(${payload}) : Promise.resolve({ ok: false, error: "编辑器未就绪" })`,
+        true,
+      )
+      if (!res || res.ok !== true) {
+        return { ok: false, error: (res && res.error) || '写回选区失败' }
+      }
+      logger.system.info(`[OnlyOffice] Selection replaced via connector: ${text.length} chars`)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: `写入选区失败: ${(err as Error)?.message || '未知错误'}` }
+    }
+  }
+
+
+
 
   /**
    * 刷新会话：本地源文件被外部改写（重新生成 / 其它程序保存）后，把最新内容重新上传。
@@ -405,6 +543,20 @@ export class OoEditManager {
       OO_EDIT_CHANNELS.REFRESH,
       async (_e, payload: { sessionId: string; sourcePath: string; title?: string }) =>
         this.refreshSession(payload || { sessionId: '', sourcePath: '' }),
+    )
+
+    safeIpcHandle(OO_EDIT_CHANNELS.BIND_SHORTCUT, async (event, payload: { guestId?: number }) => {
+      return this.bindSaveShortcut(Number(payload?.guestId) || 0, event.sender.id)
+    })
+
+    safeIpcHandle(OO_EDIT_CHANNELS.READ_SELECTION, async (_e, guestId: number) => {
+      return this.readSelection(Number(guestId) || 0)
+    })
+
+    safeIpcHandle(
+      OO_EDIT_CHANNELS.REPLACE_SELECTION,
+      async (_e, payload: { guestId?: number; text?: string }) =>
+        this.replaceSelection(Number(payload?.guestId) || 0, String(payload?.text ?? '')),
     )
   }
 }

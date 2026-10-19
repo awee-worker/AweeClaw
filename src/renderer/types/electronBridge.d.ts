@@ -1827,6 +1827,56 @@ export interface ElectronAPI {
     ) => Promise<{ success: boolean; error?: string }>
     /** 关闭内嵌 DevTools */
     closeDevTools: (guestId: number) => Promise<{ success: boolean; error?: string }>
+
+    /**
+     * 开始一次元素拾取
+     *
+     * 调用挂起直到用户点击元素、按 Esc 或超时。data.ok=false 表示用户取消
+     * 或超时，属于正常结束。
+     */
+    pickStart: (guestId: number) => Promise<{
+      success: boolean
+      data?: import('../../main/modules/preview/previewDomProbe').PickStartResult
+      error?: string
+    }>
+    /** 结束正在等待的拾取 */
+    pickCancel: (guestId: number) => Promise<{ success: boolean; error?: string }>
+    /** 按选择器读取元素快照 */
+    elementContext: (guestId: number, selector: string) => Promise<{
+      success: boolean
+      data?: import('../../main/modules/preview/previewDomProbe').ElementSnapshot
+      error?: string
+    }>
+    /**
+     * 就地修改元素（文案 / 样式 / 属性 / 结构 / 隐藏）
+     *
+     * scope=similar 时连同父级下的同类兄弟一起改。
+     */
+    elementEdit: (
+      guestId: number,
+      selector: string,
+      edit: import('../../main/modules/preview/previewDomProbe').ElementEditOp,
+      scope?: import('../../main/modules/preview/previewDomProbe').ElementEditScope,
+    ) => Promise<{
+      success: boolean
+      data?: import('../../main/modules/preview/previewDomProbe').ElementEditResult
+      error?: string
+    }>
+    /** 回滚就地修改（last=撤销最近一次，all=全部还原） */
+    undoEdits: (
+      guestId: number,
+      mode: 'last' | 'all',
+    ) => Promise<{
+      success: boolean
+      data?: import('../../main/modules/preview/previewDomProbe').UndoEditsResult
+      error?: string
+    }>
+    /** 截取单个元素的画面（base64 PNG） */
+    captureElement: (guestId: number, selector: string) => Promise<{
+      success: boolean
+      data?: import('../../main/modules/preview/previewDomProbe').ElementCapture
+      error?: string
+    }>
   }
 
   getClipboardFilePaths: () => Promise<string[]>
@@ -3276,6 +3326,25 @@ export interface ElectronAPI {
       ok: boolean
       error?: string
       session?: import('@protocols/onlyOfficeProtocol').OnlyOfficeEditSessionMeta
+    }>
+    /** 绑定编辑器 webview 的 Cmd/Ctrl+S（主进程拦截，宿主页面收不到 guest 的按键） */
+    bindSaveShortcut: (payload: { guestId: number }) => Promise<{ ok: boolean; error?: string }>
+    /** 编辑器内按下 Cmd/Ctrl+S 的通知订阅 */
+    onSaveShortcut: (callback: () => void) => () => void
+    /** 读取编辑器当前选中内容（空字符串表示没有选中） */
+    readSelection: (guestId: number) => Promise<{
+      ok: boolean
+      error?: string
+      text?: string
+      /** 是否选中了对象（演示文稿：形状；用于区分空图形与未选中） */
+      selected?: boolean
+      /** 选中的对象是否可写入文字（演示文稿；图片等为 false） */
+      editable?: boolean
+    }>
+    /** 把文本粘贴进编辑器当前选区 */
+    replaceSelection: (payload: { guestId: number; text: string }) => Promise<{
+      ok: boolean
+      error?: string
     }>
   }
 

@@ -29,6 +29,15 @@ import {
   type PreviewHealthSnapshot,
   type PreviewNetworkEntry,
 } from '../../../shared/protocols/previewProtocol'
+import type {
+  ElementCapture,
+  ElementEditOp,
+  ElementEditResult,
+  ElementEditScope,
+  ElementSnapshot,
+  PickStartResult,
+  UndoEditsResult,
+} from '../../modules/preview/previewDomProbe'
 
 /** 统一 IPC 响应格式 */
 interface PreviewIpcResponse<T = unknown> {
@@ -126,5 +135,53 @@ export function createPreviewApi() {
     /** 关闭内嵌 DevTools */
     closeDevTools: (guestId: number) =>
       invoke<PreviewIpcResponse>('preview:devtools-close')(guestId),
+
+    /**
+     * 开始一次元素拾取
+     *
+     * 调用会一直挂到用户点击元素、按 Esc 或超时。返回的 picked 里 ok=false
+     * 表示用户取消 / 超时，属于正常结束，调用方不必按错误处理。
+     */
+    pickStart: (guestId: number) =>
+      invoke<PreviewIpcResponse<PickStartResult>>('preview:pick-start')(guestId),
+
+    /** 结束正在等待的拾取 */
+    pickCancel: (guestId: number) =>
+      invoke<PreviewIpcResponse>('preview:pick-cancel')(guestId),
+
+    /** 按选择器读取元素快照（AI 修改的上下文来源） */
+    elementContext: (guestId: number, selector: string) =>
+      invoke<PreviewIpcResponse<ElementSnapshot>>('preview:element-context')(
+        guestId,
+        selector,
+      ),
+
+    /**
+     * 就地修改元素：文案 / 样式 / 属性 / 结构 / 隐藏
+     *
+     * scope=similar 时连同父级下的同类兄弟一起改（卡片、列表项等重复结构）。
+     */
+    elementEdit: (
+      guestId: number,
+      selector: string,
+      edit: ElementEditOp,
+      scope: ElementEditScope = 'one',
+    ) =>
+      invoke<PreviewIpcResponse<ElementEditResult>>('preview:element-edit')(guestId, {
+        selector,
+        edit,
+        scope,
+      }),
+
+    /** 回滚就地修改（last=撤销最近一次，all=全部还原） */
+    undoEdits: (guestId: number, mode: 'last' | 'all') =>
+      invoke<PreviewIpcResponse<UndoEditsResult>>('preview:undo-edits')(guestId, mode),
+
+    /** 截取单个元素的画面（base64 PNG，供 AI 判断视觉问题） */
+    captureElement: (guestId: number, selector: string) =>
+      invoke<PreviewIpcResponse<ElementCapture>>('preview:capture-element')(
+        guestId,
+        selector,
+      ),
   }
 }

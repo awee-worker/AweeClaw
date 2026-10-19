@@ -27,6 +27,7 @@ import {
   type PluginChatSendDetail,
   type PluginContextNoteDetail,
 } from './PluginHostApi'
+import { BROWSER_AI_EDIT_EVENT } from '@components/workspace-editor/browser/aiEditPrompt'
 import { closePluginDrawer } from './pluginDrawerStore'
 import { setPluginNotice } from './pluginNoticeStore'
 
@@ -126,6 +127,22 @@ export function PluginHostBridge() {
       }
     }
 
+    /**
+     * 处理内置浏览器的「AI 修改」请求
+     *
+     * 提示词里已经带上了元素选择器与处理要求，这里只负责发出去——与插件发消息
+     * 走同一条链路，AI 侧看到的是一条正常的用户消息，不引入旁路。
+     */
+    const handleBrowserAiEdit = async (event: Event) => {
+      const detail = (event as CustomEvent<{ text: string }>).detail
+      if (!detail?.text) return
+      try {
+        await sendMessage(detail.text)
+      } catch (err) {
+        logger.system.error('[PluginHostBridge] browser ai-edit failed:', err)
+      }
+    }
+
     /** 处理插件请求关闭抽屉 */
     const handleCloseDrawer = () => {
       closePluginDrawer()
@@ -160,6 +177,7 @@ export function PluginHostBridge() {
     window.addEventListener(PLUGIN_CLOSE_DRAWER_EVENT, handleCloseDrawer as EventListener)
     window.addEventListener(PLUGIN_CONTEXT_NOTE_EVENT, handleContextNote as EventListener)
     window.addEventListener(DEVICE_LINK_AI_TASK_EVENT, handleDeviceLinkAiTask as EventListener)
+    window.addEventListener(BROWSER_AI_EDIT_EVENT, handleBrowserAiEdit as EventListener)
     // 标记 bridge 就绪，供 PluginHostApi 检测
     ;(window as unknown as Record<string, unknown>)[READY_FLAG] = true
 
@@ -168,6 +186,7 @@ export function PluginHostBridge() {
       window.removeEventListener(PLUGIN_CLOSE_DRAWER_EVENT, handleCloseDrawer as EventListener)
       window.removeEventListener(PLUGIN_CONTEXT_NOTE_EVENT, handleContextNote as EventListener)
       window.removeEventListener(DEVICE_LINK_AI_TASK_EVENT, handleDeviceLinkAiTask as EventListener)
+      window.removeEventListener(BROWSER_AI_EDIT_EVENT, handleBrowserAiEdit as EventListener)
       delete (window as unknown as Record<string, unknown>)[READY_FLAG]
     }
   }, [sendMessage])

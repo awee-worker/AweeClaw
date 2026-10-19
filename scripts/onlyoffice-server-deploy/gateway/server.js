@@ -38,6 +38,16 @@ const DS_INTERNAL = (process.env.DS_INTERNAL || 'http://onlyoffice-document-serv
 const GW_ADMIN_KEY = process.env.GW_ADMIN_KEY || ''
 // 上传文档的 TTL 过期清理（小时）
 const TTL_HOURS = Number(process.env.TTL_HOURS || 24)
+// document.key 派生方式标记：随 /health 下发，用来确认线上跑的到底是哪一版
+// basename-v2 = 只由文件名派生（连续保存不会漂移）；basename-v1 及更早把
+// mtime/size 混进了 key，保存一次就漂移一次
+const KEY_MODE = 'basename-v2'
+const STARTED_AT = Date.now()
+
+// 1×1 透明 GIF：用作编辑器 logo 占位。customization.logo 不配置时 DS 会回退
+// 显示自带的 ONLYOFFICE 标志，配一张透明图才是真正的「没有 logo」。
+const BLANK_PIXEL =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
 
 // 文档类型白名单（防上传任意文件）
 const EXT_TYPE = {
@@ -96,9 +106,18 @@ function fileKey(file) {
     return `${file}:${s.size}:${Math.floor(s.mtimeMs)}`
   } catch { return `${file}:0` }
 }
-/** DS 会话 document.key：fileKey 的 sha1 十六进制摘要（渲染宿主页与 forcesave 命令必须使用同一值，否则强制保存找不到编辑会话） */
+/**
+ * DS 会话 document.key：只由网关文件名派生
+ *
+ * 文件名是上传时生成的 uuid，换文件必然换 key，DS 会重新加载；
+ * 而同一个文件被保存回写之后 key 保持不变，连续 force save 才能命中同一个
+ * 编辑会话。早先把 mtime/size 混进 key，保存一次 key 就漂移，
+ * 第二次强制保存必然报「文档未打开」。
+ *
+ * 渲染宿主页与 forcesave 命令必须用同一个值，否则同样找不到会话。
+ */
 function documentKeyOf(file) {
-  return crypto.createHash('sha1').update(fileKey(file)).digest('hex')
+  return crypto.createHash('sha1').update(path.basename(file)).digest('hex')
 }
 
 /* ---------------- JWT (HS256) 无依赖实现 ---------------- */
@@ -285,7 +304,13 @@ function renderDemo(file, displayTitle) {
         // 拼写错误，预览时满屏红色波浪下划线（文档本身并无下划线）。用户仍可在
         // 编辑器菜单里手动开启，这里只改默认状态。
         spellcheck: false,
-        logo: { image: 'https://aweeclaw.com/favicon.ico' }, // 缺失则回退内置品牌，可删除
+        // 品牌位：缺省会回退显示 ONLYOFFICE 自带的标志，这里换成 1×1 透明占位，
+        // 视觉上等于「没有 logo」。同时关掉 About / 反馈 / 帮助入口——这三处是
+        // 编辑器里仅剩的 ONLYOFFICE 字样出现位置。
+        logo: { image: BLANK_PIXEL, imageEmbedded: BLANK_PIXEL },
+        about: false,
+        feedback: false,
+        help: false,
       },
     },
   }
@@ -297,6 +322,9 @@ function renderDemo(file, displayTitle) {
     .replace('__CONFIG__', JSON.stringify(config).replace(/</g, '\\u003c'))
     .replace(/__META_TITLE__/g, escapeHtml(safeTitle))
     .replace(/__DOC_SERVER__/g, DOC_SERVER)
+    // 把本次下发的 document.key 写进页面注释：出「会话已失效」时直接 curl 这个
+    // 页面就能看到页面用的 key，与 /save 侧现算的 key 一比即可定位是谁不一致
+    .replace(/__DOC_KEY__/g, documentKeyOf(file))
 }
 
 /* ---------------- HTTP 路由 ---------------- */
@@ -360,7 +388,15 @@ const server = http.createServer(async (req, res) => {
       const full = path.join(DATA_DIR, file)
       if (!file || !fs.existsSync(full)) return sendJson(res, 404, { error: 'no file' })
       const st = fs.statSync(full)
-      return sendJson(res, 200, { name: file, size: st.size, mtime: st.mtimeMs, key: fileKey(file), ...docMetaOf(file) })
+      return sendJson(res, 200, {
+        name: file,
+        size: st.size,
+        mtime: st.mtimeMs,
+        key: fileKey(file),
+        documentKey: documentKeyOf(file),
+        keyMode: KEY_MODE,
+        ...docMetaOf(file),
+      })
     }
 
     // 上传（raw body + ?name=）
@@ -409,8 +445,9 @@ const server = http.createServer(async (req, res) => {
       if (!adminOk(req)) return sendJson(res, 403, { error: 'forbidden' })
       if (!fs.existsSync(path.join(DATA_DIR, file))) return sendJson(res, 404, { error: '文件不存在' })
       const r = await forceSaveAndWait(file)
-      log(`强制保存: ${file} changed=${r.changed}${r.cmdError ? ' (' + r.cmdError + ')' : ''}`)
-      return sendJson(res, 200, { ok: true, file, ...r })
+      const docKey = documentKeyOf(file)
+      log(`强制保存: ${file} key=${docKey} changed=${r.changed}${r.cmdError ? ' (' + r.cmdError + ')' : ''}`)
+      return sendJson(res, 200, { ok: true, file, key: docKey, keyMode: KEY_MODE, ...r })
     }
 
     // 删除服务端副本（客户端回写本地后清理会话文件）
@@ -425,9 +462,16 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, file })
     }
 
-    // 健康检查
+    // 健康检查：keyMode / startedAt 用来确认线上进程跑的是哪一版代码
     if (req.method === 'GET' && p === '/health') {
-      return sendJson(res, 200, { ok: true, files: fs.readdirSync(DATA_DIR).length, jwt: !!JWT_SECRET })
+      return sendJson(res, 200, {
+        ok: true,
+        files: fs.readdirSync(DATA_DIR).length,
+        jwt: !!JWT_SECRET,
+        keyMode: KEY_MODE,
+        startedAt: STARTED_AT,
+        uptimeSec: Math.round((Date.now() - STARTED_AT) / 1000),
+      })
     }
 
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })

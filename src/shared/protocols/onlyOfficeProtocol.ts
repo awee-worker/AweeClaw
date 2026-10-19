@@ -73,7 +73,32 @@ export const OO_EDIT_CHANNELS = {
   SAVE: 'oo-edit:save-session',
   /** 放弃会话：删除网关远端副本 */
   DISCARD: 'oo-edit:discard-session',
+  /** 绑定快捷键：主进程拦截编辑器里的 Cmd/Ctrl+S */
+  BIND_SHORTCUT: 'oo-edit:bind-shortcut',
+  /** 保存快捷键（主进程 → 渲染）：编辑器内按下 Cmd/Ctrl+S */
+  SAVE_SHORTCUT: 'oo-edit:save-shortcut',
+  /** 读取选区：复制编辑器当前选中内容并取回文本 */
+  READ_SELECTION: 'oo-edit:read-selection',
+  /** 替换选区：把文本粘贴进编辑器当前选区 */
+  REPLACE_SELECTION: 'oo-edit:replace-selection',
 } as const
+
+/** 读取选区结果 */
+export interface OoSelectionResult {
+  ok: boolean
+  error?: string
+  /** 选中的纯文本（ok=true 时有效；空字符串表示没有选中内容） */
+  text?: string
+  /**
+   * 是否选中了对象（仅演示文稿有意义）
+   *
+   * 演示文稿的选中单元是形状，图形本身没有文字时 text 为空，单看 text 无法
+   * 区分「选中了一个空图形」和「什么都没选中」，所以额外回传这个标记。
+   */
+  selected?: boolean
+  /** 选中的对象是否支持写入文字（仅演示文稿有意义；图片等为 false） */
+  editable?: boolean
+}
 
 /** ONLYOFFICE 可在线编辑的扩展名（主进程上传白名单 + 渲染层入口集合共用） */
 export const OO_EDITABLE_EXTENSIONS = ['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv'] as const

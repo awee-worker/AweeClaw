@@ -20,6 +20,15 @@ import { previewHealthMonitor } from '../../modules/preview/PreviewHealthMonitor
 import { previewAutoReload } from '../../modules/preview/PreviewAutoReload'
 import { previewDevTools, type DevToolsRect } from '../../modules/preview/PreviewDevTools'
 import { PREVIEW_DEVICE_CHANNEL, type PreviewDeviceRequest } from '@shared/protocols/previewProtocol'
+import {
+    PICKER_PROBE,
+    PICKER_CANCEL_PROBE,
+    buildElementContextProbe,
+    buildElementEditProbe,
+    buildUndoEditsProbe,
+    type ElementEditOp,
+} from '../../modules/preview/previewDomProbe'
+import { captureElementImage } from '../../modules/preview/previewElementCapture'
 
 /**
  * 校验 guest 确实由发起请求的窗口承载
@@ -356,6 +365,201 @@ export function registerPreviewHandlers(): void {
         previewDevTools.close(guestId)
         return { success: true }
     })
+
+    /**
+     * 开始一次元素拾取
+     *
+     * 页面脚本返回的 Promise 会一直挂到用户点击元素、按 Esc 或超时。
+     * 这正是「等待用户操作」的语义，不需要轮询页面状态。
+     *
+     * 主进程比页面脚本多等 2 秒才兜底超时：页面自身超时会先 resolve 成
+     * reason=timeout，那条路径能正常走到这里；只有脚本被页面 CSP 阻断或
+     * 文档中途被替换（Promise 永远不 resolve）时，才需要这层兜底。
+     */
+    safeIpcHandle('preview:pick-start', async (event, guestId: unknown) => {
+        const guest = resolveOwnedGuest(event, guestId)
+        if (!guest) {
+            return { success: false, error: 'Unknown preview guest' }
+        }
+
+        let timer: ReturnType<typeof setTimeout> | null = null
+        try {
+            const raw = await Promise.race([
+                guest.executeJavaScript(PICKER_PROBE, true),
+                new Promise<null>((resolve) => {
+                    timer = setTimeout(() => resolve(null), PICK_TIMEOUT_MS + 2_000)
+                }),
+            ])
+
+            if (raw === null) {
+                // 主进程兜底超时：页面里的拾取器还挂着，主动结束它，避免残留覆盖层
+                void guest.executeJavaScript(PICKER_CANCEL_PROBE, true).catch(() => undefined)
+                return { success: true, data: { ok: false, reason: 'timeout' } }
+            }
+            if (typeof raw !== 'string' || !raw) {
+                return { success: false, error: 'Picker returned unexpected data' }
+            }
+
+            return { success: true, data: JSON.parse(raw) }
+        } catch (error) {
+            return { success: false, error: (error as Error).message }
+        } finally {
+            if (timer) clearTimeout(timer)
+        }
+    })
+
+    /** 结束正在等待的拾取（用户按 Esc、切换标签页、页面导航时调用） */
+    safeIpcHandle('preview:pick-cancel', async (event, guestId: unknown) => {
+        const guest = resolveOwnedGuest(event, guestId)
+        if (!guest) {
+            return { success: false, error: 'Unknown preview guest' }
+        }
+
+        try {
+            await guest.executeJavaScript(PICKER_CANCEL_PROBE, true)
+            return { success: true }
+        } catch (error) {
+            return { success: false, error: (error as Error).message }
+        }
+    })
+
+    /** 按选择器读取元素快照（AI 侧 browser_element_context） */
+    safeIpcHandle('preview:element-context', async (event, guestId: unknown, selector: unknown) => {
+        const guest = resolveOwnedGuest(event, guestId)
+        if (!guest) {
+            return { success: false, error: 'Unknown preview guest' }
+        }
+        if (typeof selector !== 'string' || !selector.trim()) {
+            return { success: false, error: 'selector is required' }
+        }
+
+        const result = await runPreviewProbe(guest, buildElementContextProbe(selector.trim()))
+        return result.ok
+            ? { success: true, data: result.data }
+            : { success: false, error: result.error }
+    })
+
+    /**
+     * 就地修改元素
+     *
+     * 只接受固定的几种操作（文案/样式/属性/结构/隐藏），不接受任意脚本：
+     * 每次修改都记进页面的编辑账本，可以整体回滚。
+     */
+    safeIpcHandle('preview:element-edit', async (event, guestId: unknown, payload: unknown) => {
+        const guest = resolveOwnedGuest(event, guestId)
+        if (!guest) {
+            return { success: false, error: 'Unknown preview guest' }
+        }
+
+        const parsed = payload as { selector?: unknown; edit?: unknown; scope?: unknown } | null
+        const selector = typeof parsed?.selector === 'string' ? parsed.selector.trim() : ''
+        if (!selector) {
+            return { success: false, error: 'selector is required' }
+        }
+
+        const edit = normalizeElementEdit(parsed?.edit)
+        if (!edit) {
+            return { success: false, error: 'Unsupported edit payload' }
+        }
+
+        const scope = parsed?.scope === 'similar' ? 'similar' : 'one'
+        const result = await runPreviewProbe(guest, buildElementEditProbe(selector, edit, scope))
+        return result.ok
+            ? { success: true, data: result.data }
+            : { success: false, error: result.error }
+    })
+
+    /** 回滚就地修改（mode=last 撤销最近一次，mode=all 全部还原） */
+    safeIpcHandle('preview:undo-edits', async (event, guestId: unknown, mode: unknown) => {
+        const guest = resolveOwnedGuest(event, guestId)
+        if (!guest) {
+            return { success: false, error: 'Unknown preview guest' }
+        }
+
+        const resolvedMode = mode === 'last' ? 'last' : 'all'
+        const result = await runPreviewProbe(guest, buildUndoEditsProbe(resolvedMode))
+        return result.ok
+            ? { success: true, data: result.data }
+            : { success: false, error: result.error }
+    })
+
+    /**
+     * 截取单个元素的画面
+     *
+     * AI 判断「间距不对 / 配色脏」这类视觉问题时，看一张元素截图比读 computed
+     * style 准得多，成本也只是几十 KB 的 base64。截图前先把元素滚进视口，
+     * 视口外的区域 capturePage 只会给空白。
+     */
+    safeIpcHandle('preview:capture-element', async (event, guestId: unknown, selector: unknown) => {
+        const guest = resolveOwnedGuest(event, guestId)
+        if (!guest) {
+            return { success: false, error: 'Unknown preview guest' }
+        }
+        if (typeof selector !== 'string' || !selector.trim()) {
+            return { success: false, error: 'selector is required' }
+        }
+
+        const shot = await captureElementImage(guest, selector.trim())
+        if (!shot) {
+            return { success: false, error: 'Element is not visible or could not be captured' }
+        }
+
+        return { success: true, data: shot }
+    })
+}
+
+/** 拾取等待上限：与页面脚本内的超时保持一致 */
+const PICK_TIMEOUT_MS = 120_000
+
+/** 在页面里执行探测脚本并解析 JSON，失败统一转成错误字符串 */
+async function runPreviewProbe<T>(
+    guest: WebContents,
+    expression: string,
+): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+    try {
+        const raw = await guest.executeJavaScript(expression, true)
+        if (typeof raw !== 'string' || !raw) {
+            return { ok: false, error: 'Page probe returned unexpected data' }
+        }
+        const parsed = JSON.parse(raw) as T & { ok?: boolean; error?: string }
+        if (parsed && parsed.ok === false) {
+            return { ok: false, error: parsed.error || 'Page probe failed' }
+        }
+        return { ok: true, data: parsed }
+    } catch (error) {
+        return { ok: false, error: `Page probe failed: ${(error as Error).message}` }
+    }
+}
+
+/**
+ * 规整元素编辑指令
+ *
+ * 渲染进程与 MCP 工具都能发起编辑，这里做统一收敛：只放行固定操作类型，
+ * 其余一律拒绝。样式名与属性名会以 JSON 字符串形式注入页面脚本，
+ * 不做字符串拼接，因此不存在注入面。
+ */
+function normalizeElementEdit(raw: unknown): ElementEditOp | null {
+    if (!raw || typeof raw !== 'object') return null
+    const value = raw as Record<string, unknown>
+
+    if (value.op === 'hide') return { op: 'hide' }
+    if (value.op === 'text') {
+        return typeof value.value === 'string' ? { op: 'text', value: value.value } : null
+    }
+    if (value.op === 'html') {
+        return typeof value.value === 'string' ? { op: 'html', value: value.value } : null
+    }
+    if (value.op === 'style') {
+        if (typeof value.prop !== 'string' || !value.prop.trim()) return null
+        if (typeof value.value !== 'string') return null
+        return { op: 'style', prop: value.prop.trim(), value: value.value }
+    }
+    if (value.op === 'attr') {
+        if (typeof value.prop !== 'string' || !value.prop.trim()) return null
+        if (value.value !== null && typeof value.value !== 'string') return null
+        return { op: 'attr', prop: value.prop.trim(), value: value.value as string | null }
+    }
+    return null
 }
 
 /**

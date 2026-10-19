@@ -641,11 +641,16 @@ export class PreviewSessionService {
       session.deviceViewport?.height === fields.deviceViewport?.height
     if (unchanged) return
 
-    this.sessions.set(sessionId, {
-      ...session,
-      ...fields,
-      updatedAt: Date.now(),
-    })
+    const next: PreviewSession = { ...session, ...fields, updatedAt: Date.now() }
+
+    // 切回桌面档时 fields 是空对象，展开不会覆盖旧值：不清掉的话旧档位与旧视口
+    // 原样留在会话上，表现就是「点了桌面没有任何反应」。所以显式删除这两个字段。
+    if (fields.deviceId === undefined) {
+      delete next.deviceId
+      delete next.deviceViewport
+    }
+
+    this.sessions.set(sessionId, next)
     this.rebuildState()
     this.emit()
   }

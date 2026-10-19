@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Loader2,
   Globe,
+  Monitor,
   Terminal,
   Download,
   Upload,
@@ -28,6 +29,7 @@ import {
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
+import { openBuiltinPreview } from '@renderer/preview/openBuiltinPreview'
 import type { FileItem } from '@protocols'
 import { BRAND } from '@shared/brand'
 import {t, type Language} from '@renderer/i18n'
@@ -858,6 +860,14 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     }
   }, [language])
 
+  /** 在内置浏览器（预览标签页）打开本地页面 */
+  const handleOpenInBuiltinBrowser = useCallback(async (node: FlattenedNode) => {
+    const result = await openBuiltinPreview({ path: node.item.path, title: node.item.name })
+    if (!result.success) {
+      toast.error(result.error || t('failedToOpenInBrowser', language) || 'Failed to open in browser')
+    }
+  }, [language])
+
   const handleNewFile = useCallback((node: FlattenedNode) => {
     if (node.item.isDirectory) {
       expandFolder(node.item.path)
@@ -1200,9 +1210,10 @@ export const VirtualFileTree = memo(function VirtualFileTree({
 
     const items: ContextMenuItem[] = []
 
-    // 在浏览器中打开（HTML 文件）— 放在最前面
+    // 网页文件：内置浏览器 / 外部浏览器两个入口 — 放在最前面
     if (isHtmlFile) {
-      items.push({ id: 'openInBrowser', label: t('contextMenu.openInBrowser', contextMenuLanguage), icon: Globe, onClick: () => handleOpenInBrowser(node) })
+      items.push({ id: 'openInBuiltinBrowser', label: t('contextMenu.openInBuiltinBrowser', contextMenuLanguage), icon: Monitor, onClick: () => handleOpenInBuiltinBrowser(node) })
+      items.push({ id: 'openInExternalBrowser', label: t('contextMenu.openInExternalBrowser', contextMenuLanguage), icon: Globe, onClick: () => handleOpenInBrowser(node) })
       items.push({ id: 'sepHtml', label: '', separator: true })
     }
 
@@ -1248,7 +1259,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     items.push({ id: 'toggleHidden', label: showWorkspaceSystemDir ? t('contextMenu.hideWorkspaceSystemDir', contextMenuLanguage) : t('contextMenu.showWorkspaceSystemDir', contextMenuLanguage), icon: showWorkspaceSystemDir ? EyeOff : Eye, onClick: () => setShowWorkspaceSystemDir(!showWorkspaceSystemDir) })
 
     return items
-  }, [activeScenarioId, clipboardItems.length, selectedPaths, handleNewFile, handleNewFolder, handleOpenTerminalHere, handleCopyItem, handleCopyName, handlePasteForNode, handleRenameStart, handleDelete, handleCopyPath, handleCopyRelativePath, handleRevealInExplorer, handleOpenInBrowser, handleImportIntoFolder, handleExportFromNode, handleShareItem, handleRunProject, handleConvertFile, hasRunnableProject, showWorkspaceSystemDir, setShowWorkspaceSystemDir, language])
+  }, [activeScenarioId, clipboardItems.length, selectedPaths, handleNewFile, handleNewFolder, handleOpenTerminalHere, handleCopyItem, handleCopyName, handlePasteForNode, handleRenameStart, handleDelete, handleCopyPath, handleCopyRelativePath, handleRevealInExplorer, handleOpenInBrowser, handleOpenInBuiltinBrowser, handleImportIntoFolder, handleExportFromNode, handleShareItem, handleRunProject, handleConvertFile, hasRunnableProject, showWorkspaceSystemDir, setShowWorkspaceSystemDir, language])
 
   // 渲染单个节点
   const renderNode = (node: FlattenedNode, index: number) => {

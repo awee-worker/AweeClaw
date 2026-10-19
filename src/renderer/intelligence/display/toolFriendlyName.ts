@@ -97,6 +97,9 @@ const MCP_TOOL_ACTION_MAP_ZH: Record<string, string> = {
     browser_network_requests: '资源瀑布',
     browser_back: '后退页面',
     browser_set_device: '切换设备模式',
+    browser_element_context: '读取元素信息',
+    browser_edit_element: '修改页面元素',
+    browser_undo_edits: '撤销页面修改',
 }
 
 const MCP_TOOL_ACTION_MAP_EN: Record<string, string> = {
@@ -141,6 +144,9 @@ const MCP_TOOL_ACTION_MAP_EN: Record<string, string> = {
     browser_network_requests: 'Resource waterfall',
     browser_back: 'Going back',
     browser_set_device: 'Switching device mode',
+    browser_element_context: 'Reading element info',
+    browser_edit_element: 'Editing page element',
+    browser_undo_edits: 'Undoing page edits',
 }
 
 function guessMcpToolAction(toolName: string, language: Language): string | null {

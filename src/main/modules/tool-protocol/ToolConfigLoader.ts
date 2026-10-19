@@ -34,6 +34,7 @@ const BUILTIN_SERVER_DEFAULTS: McpBuiltinServerConfig[] = [
       'browser_console_messages',
       'browser_network_requests',
       'browser_take_screenshot',
+      'browser_element_context',
     ],
   },
 ]

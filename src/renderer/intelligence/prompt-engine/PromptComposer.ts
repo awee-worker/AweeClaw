@@ -395,9 +395,13 @@ const BROWSER_AUTOMATION_GUIDE = `## Built-in Browser Automation (PREFERRED for 
   - \`browser_console_messages\` / \`browser_network_requests\` — live console errors and resource waterfall of the tab.
   - \`browser_navigate\` / \`browser_back\` — load a new http/https URL in the tab, or go back.
   - \`browser_set_device\` — switch the tab into mobile emulation (or back to desktop) to check responsive layouts: pass a preset id (\`iphone-16\`, \`pixel-7\`, \`ipad-mini\`…), \`desktop\` to reset, or \`custom\` with width/height. The page re-renders at the device viewport width, so media queries fire correctly.
+  - \`browser_element_context\` — everything about ONE element: unique selector, tag/classes, text, outerHTML excerpt, viewport rect, whitelisted computed styles, ancestor chain and identical-sibling count. Add include_screenshot=true to also get a cropped image of that element — the reliable way to judge spacing, alignment and colour.
+  - \`browser_edit_element\` — change one element in place: text / style / attr / html / hide. Each change is recorded in a page-side edit log; pass scope="similar" to apply the same change to identical siblings (cards, list items).
+  - \`browser_undo_edits\` — roll back those runtime edits (mode="last" or "all").
+- Changing how a page LOOKS: when the page comes from the local workspace (dev server or local static preview), locate the source component and edit the CODE — that survives a reload and is what the user actually wants. Use \`browser_edit_element\` only when there is no local source to find, or to preview a change before touching code; reloading discards runtime edits. Never hand-write DOM mutations through \`browser_evaluate\` when these structural tools can do the job.
 - When the user asks to open a webpage and see what is on it ("看看这个页面有什么内容"), or to verify a rendered page: \`open_preview\` (if not open yet) then \`browser_snapshot\`. Do NOT fall back to the system browser, and do NOT rely on \`read_url\` for JS-rendered pages (it returns no DOM content).
 - Browser exclusivity: do not open the same page with the system browser while the built-in preview tab shows it. Prefer the built-in browser; switch to the system browser only when the built-in one cannot fulfill the request, and close the built-in tab when you do.
-- Read-only tools (snapshot / screenshot / console / network / list_tabs) are auto-approved; click / type / navigate / back / evaluate / set_device require user confirmation.`
+- Read-only tools (snapshot / screenshot / console / network / list_tabs / element_context) are auto-approved; click / type / navigate / back / evaluate / set_device / edit_element / undo_edits require user confirmation.`
 
 /** builtin-browser MCP 服务器当前是否已连接（决定自动化指引是否注入提示词） */
 function isBuiltinBrowserAutomationConnected(): boolean {

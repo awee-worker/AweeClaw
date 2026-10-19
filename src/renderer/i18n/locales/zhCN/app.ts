@@ -1016,6 +1016,8 @@ export const zh = {
   'contextMenu.deleteItems': '删除 {count} 项',
   'contextMenu.deletedItems': '已删除 {count} 项',
   'contextMenu.openInBrowser': '在浏览器中打开',
+  'contextMenu.openInBuiltinBrowser': '内置浏览器打开',
+  'contextMenu.openInExternalBrowser': '外部浏览器打开',
   'contextMenu.runProject': '运行项目',
   'contextMenu.noRunScriptDetected': '未检测到可运行的项目脚本',
   'contextMenu.convertToWord': '转换为 Word',

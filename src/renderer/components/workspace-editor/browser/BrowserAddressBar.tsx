@@ -9,6 +9,7 @@
  */
 import { Globe, X, RefreshCw } from 'lucide-react'
 import { useStore } from '@store'
+import { HintOverlay } from '@components/ui/HintOverlay'
 import { t, type Language } from '@renderer/i18n'
 
 interface BrowserAddressBarProps {
@@ -60,15 +61,16 @@ export default function BrowserAddressBar({
         autoComplete="off"
       />
       {value && (
-        <button
-          type="button"
-          onClick={() => onChange('')}
-          className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06] transition-colors"
-          title={t('editor.browser.clearAddress', language)}
-          aria-label={t('editor.browser.clearAddress', language)}
-        >
-          <X className="w-3 h-3" />
-        </button>
+        <HintOverlay content={t('editor.browser.clearAddress', language)}>
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06] transition-colors"
+            aria-label={t('editor.browser.clearAddress', language)}
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </HintOverlay>
       )}
     </div>
   )

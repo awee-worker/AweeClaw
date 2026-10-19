@@ -1007,6 +1007,8 @@ export const en = {
   'contextMenu.deleteItems': 'Delete {count} item(s)',
   'contextMenu.deletedItems': 'Deleted {count} item(s)',
   'contextMenu.openInBrowser': 'Open in Browser',
+  'contextMenu.openInBuiltinBrowser': 'Open in Built-in Browser',
+  'contextMenu.openInExternalBrowser': 'Open in External Browser',
   'contextMenu.runProject': 'Run Project',
   'contextMenu.noRunScriptDetected': 'No run script detected',
   'contextMenu.convertToWord': 'Convert to Word',

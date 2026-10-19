@@ -38,10 +38,19 @@ import {
   buildResolveProbe,
   buildTypeProbe,
   buildTextPresentProbe,
+  buildElementContextProbe,
+  buildElementEditProbe,
+  buildUndoEditsProbe,
   type SnapshotResult,
   type ResolvedElement,
   type ElementFilter,
+  type ElementSnapshot,
+  type ElementEditOp,
+  type ElementEditScope,
+  type ElementEditResult,
+  type UndoEditsResult,
 } from '../../preview/previewDomProbe'
+import { captureElementImage } from '../../preview/previewElementCapture'
 import type { TextContent, ImageContent, CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 
 /** 页面加载超时 */
@@ -242,6 +251,7 @@ export function createBuiltinBrowserMcpServer(): {
   registerTabTools(server)
   registerReadTools(server)
   registerInteractionTools(server)
+  registerElementTools(server)
   registerDeviceTool(server)
   registerDiagnosticsTools(server)
 
@@ -594,6 +604,230 @@ function registerInteractionTools(server: McpServer): void {
       }
 
       return err(`Timed out after ${args.timeout}s waiting for text: "${args.text}"`)
+    },
+  )
+}
+
+// ============ 元素修改工具 ============
+
+/**
+ * 格式化元素快照
+ *
+ * 按「先结论、后细节」排：选择器与尺寸在最前（决定怎么改），样式与 HTML 在后
+ * （决定改成什么）。
+ */
+function formatElementSnapshot(snapshot: ElementSnapshot): string {
+  const lines: string[] = []
+  lines.push(`Element: <${snapshot.tag}>`)
+  lines.push(`Selector: ${snapshot.selector}`)
+  if (snapshot.id) lines.push(`Id: ${snapshot.id}`)
+  if (snapshot.classes.length > 0) lines.push(`Classes: ${snapshot.classes.join(' ')}`)
+  lines.push(
+    `Rect: ${snapshot.rect.w}x${snapshot.rect.h} at (${snapshot.rect.x}, ${snapshot.rect.y}) ` +
+      `in viewport ${snapshot.viewport.w}x${snapshot.viewport.h}`,
+  )
+  if (snapshot.sameSiblings > 1) {
+    lines.push(
+      `Identical siblings: ${snapshot.sameSiblings} ` +
+        '(pass scope="similar" to browser_edit_element to change them together)',
+    )
+  }
+  if (snapshot.embeddedFrame) {
+    lines.push(
+      'Note: this element is an embedded frame. Its inner DOM is not reachable — only the container itself can be changed.',
+    )
+  }
+  if (snapshot.selectedText) {
+    lines.push('')
+    lines.push(`User selected this text: "${snapshot.selectedText}"`)
+  }
+
+  lines.push('')
+  lines.push(`Text: ${snapshot.text || '(empty)'}`)
+
+  lines.push('')
+  lines.push('Computed styles:')
+  const styleEntries = Object.entries(snapshot.styles)
+  if (styleEntries.length === 0) {
+    lines.push('(none)')
+  } else {
+    for (const [key, value] of styleEntries) lines.push(`  ${key}: ${value}`)
+  }
+
+  lines.push('')
+  lines.push(`Ancestors: ${snapshot.ancestors.length > 0 ? snapshot.ancestors.join(' < ') : '(none)'}`)
+
+  lines.push('')
+  lines.push('HTML:')
+  lines.push(snapshot.html || '(empty)')
+
+  return lines.join('\n')
+}
+
+/**
+ * 把工具参数收敛成页面侧编辑指令
+ *
+ * 校验失败返回错误字符串。op=style/attr 缺 prop 时必须在入口拦住：
+ * 页面脚本拿到空属性名不会报错，只会静默写一个无效内联样式，用户看到的是
+ * 「AI 说改好了，但页面没变」。
+ */
+function buildEditPayload(
+  op: 'text' | 'style' | 'attr' | 'html' | 'hide',
+  prop: string | undefined,
+  value: string | undefined,
+): ElementEditOp | string {
+  if (op === 'hide') return { op: 'hide' }
+
+  if (op === 'text' || op === 'html') {
+    if (typeof value !== 'string') return `op=${op} requires a value`
+    return { op, value }
+  }
+
+  const name = typeof prop === 'string' ? prop.trim() : ''
+  if (!name) {
+    return `op=${op} requires prop (a CSS property name for style, an attribute name for attr)`
+  }
+
+  if (op === 'style') {
+    if (typeof value !== 'string' || !value) return 'op=style requires a non-empty value'
+    return { op: 'style', prop: name, value }
+  }
+
+  // attr：空字符串表示移除该属性
+  if (value === undefined) {
+    return 'op=attr requires a value (pass an empty string to remove the attribute)'
+  }
+  return { op: 'attr', prop: name, value: value === '' ? null : value }
+}
+
+function registerElementTools(server: McpServer): void {
+  /** browser_element_context：读取单个元素的完整上下文 */
+  server.tool(
+    'browser_element_context',
+    'Read one element in a preview tab in full: unique CSS selector, tag/classes, text, outerHTML excerpt, viewport rect, ' +
+      'whitelisted computed styles, ancestor chain, and how many identical siblings it has. ' +
+      'Use it before editing a picked element, or to inspect an element located via browser_snapshot. ' +
+      'Set include_screenshot to also get a cropped image of the element — the reliable way to judge spacing, alignment and colour.',
+    {
+      session_id: z.string().optional().describe('Target preview session id (default: most recent tab)'),
+      url: z.string().optional().describe('Match tab by url substring instead'),
+      selector: z.string().min(1).describe('CSS selector of the target element'),
+      include_screenshot: z
+        .boolean()
+        .optional()
+        .describe('Also return a cropped screenshot of the element'),
+    },
+    async (args) => {
+      const target = await resolveTarget(args)
+      if (typeof target === 'string') return err(target)
+
+      const selector = args.selector.trim()
+      const result = await runProbe<ElementSnapshot>(
+        target.guest,
+        buildElementContextProbe(selector),
+      )
+      if (!result.ok) return err(result.error)
+
+      const items: Array<TextContent | ImageContent> = [text(formatElementSnapshot(result.data))]
+
+      if (args.include_screenshot) {
+        const shot = await captureElementImage(target.guest, selector)
+        if (shot) items.push(image(shot.base64, shot.mimeType))
+        else items.push(text('(screenshot unavailable: the element is outside the visible viewport)'))
+      }
+
+      return ok(...items)
+    },
+  )
+
+  /**
+   * browser_edit_element：就地修改元素
+   *
+   * 工具描述里明确要求「优先改源码」：本工具改的是运行时 DOM，刷新即失效；
+   * 页面来自本地项目时，改源码才是用户真正要的结果。
+   */
+  server.tool(
+    'browser_edit_element',
+    'Change one element in a preview tab at runtime: text, style, attribute, inner HTML, or hide it. ' +
+      'Every change is recorded in a page-side edit log so browser_undo_edits can roll it back; reloading the page discards all of them.\n' +
+      'PREFER EDITING THE SOURCE FILE when the page comes from the local project: search the workspace for the element text or class name, ' +
+      'edit the component there, and let HMR re-render. Use this runtime tool when there is no local source, or when the user wants to preview a change before touching code.\n' +
+      'scope="similar" applies the same change to identical siblings (cards, list items) instead of only the one element.',
+    {
+      session_id: z.string().optional().describe('Target preview session id (default: most recent tab)'),
+      url: z.string().optional().describe('Match tab by url substring instead'),
+      selector: z.string().min(1).describe('CSS selector of the target element'),
+      op: z.enum(['text', 'style', 'attr', 'html', 'hide']).describe('Operation to apply'),
+      prop: z
+        .string()
+        .optional()
+        .describe('CSS property name for op=style, attribute name for op=attr'),
+      value: z
+        .string()
+        .optional()
+        .describe('New value. Ignored for op=hide. For op=attr an empty string removes the attribute.'),
+      scope: z
+        .enum(['one', 'similar'])
+        .optional()
+        .describe('one (default) changes only this element, similar changes identical siblings too'),
+    },
+    async (args) => {
+      const target = await resolveTarget(args)
+      if (typeof target === 'string') return err(target)
+
+      const edit = buildEditPayload(args.op, args.prop, args.value)
+      if (typeof edit === 'string') return err(edit)
+
+      const scope: ElementEditScope = args.scope === 'similar' ? 'similar' : 'one'
+      const result = await runProbe<ElementEditResult>(
+        target.guest,
+        buildElementEditProbe(args.selector.trim(), edit, scope),
+      )
+      if (!result.ok) return err(result.error)
+
+      const data = result.data
+      return ok(
+        text(
+          `Applied "${data.op}" to ${data.affected} element(s). New value: ${data.applied || '(none)'}\n` +
+            `The edit log now holds ${data.editCount} entr${data.editCount === 1 ? 'y' : 'ies'} — call browser_undo_edits to roll back.`,
+        ),
+      )
+    },
+  )
+
+  /** browser_undo_edits：回滚运行时修改 */
+  server.tool(
+    'browser_undo_edits',
+    'Roll back runtime element edits made by browser_edit_element in a preview tab. ' +
+      'mode="last" undoes the most recent change, mode="all" (default) restores every change made since the page loaded.',
+    {
+      session_id: z.string().optional().describe('Target preview session id (default: most recent tab)'),
+      url: z.string().optional().describe('Match tab by url substring instead'),
+      mode: z
+        .enum(['last', 'all'])
+        .optional()
+        .describe('last = undo the most recent change, all = restore everything (default)'),
+    },
+    async (args) => {
+      const target = await resolveTarget(args)
+      if (typeof target === 'string') return err(target)
+
+      const mode = args.mode === 'last' ? 'last' : 'all'
+      const result = await runProbe<UndoEditsResult>(target.guest, buildUndoEditsProbe(mode))
+      if (!result.ok) return err(result.error)
+
+      const data = result.data
+      if (data.undone === 0 && data.skipped === 0) {
+        return ok(text('No runtime edits to roll back in this tab.'))
+      }
+
+      return ok(
+        text(
+          `Rolled back ${data.undone} edit(s).` +
+            (data.skipped > 0 ? ` ${data.skipped} skipped (their elements no longer exist).` : '') +
+            ` Remaining in the log: ${data.remaining}.`,
+        ),
+      )
     },
   )
 }

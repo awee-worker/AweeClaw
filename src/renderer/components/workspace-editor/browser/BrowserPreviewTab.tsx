@@ -13,10 +13,14 @@
  */
 import { useCallback, useState } from 'react'
 import type { OpenFile } from '@store'
+import { resolveDevice } from '@shared/protocols/previewProtocol'
 import { api } from '@renderer/adapters/electronBridge'
 import { previewSessionService } from '@renderer/preview/previewSessionManager'
 import { usePreviewSessionSync } from './hooks/usePreviewSessionSync'
 import { useWebviewController } from './hooks/useWebviewController'
+import { useElementPicker } from './hooks/useElementPicker'
+import AIEditPanel from './AIEditPanel'
+import { BROWSER_AI_EDIT_EVENT, buildAIEditPrompt } from './aiEditPrompt'
 import BrowserToolbar from './BrowserToolbar'
 import BrowserDeviceStage, { type DeviceFitMode } from './BrowserDeviceStage'
 import BrowserEmptyState from './BrowserEmptyState'
@@ -34,6 +38,32 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
   const controller = useWebviewController(session)
   // 取出稳定引用：重新检测的 useCallback 依赖它，不依赖每次渲染重建 controller 对象
   const { reportHealth } = controller
+
+  /**
+   * AI 修改：元素拾取
+   *
+   * 绑定当前标签页的 guest id——切换标签页时 hook 会自动结束上一次拾取，
+   * 不会出现「对着 A 页选、结果落到 B 页」。
+   */
+  const { phase: pickPhase, picked, togglePick, clearPick, undoEdits } = useElementPicker(
+    controller.guestId,
+  )
+
+  /**
+   * 提交修改指令
+   *
+   * 交给 PluginHostBridge 转发到当前会话，与插件发消息走同一条链路：
+   * 内置浏览器拿不到聊天面板的发送函数，事件是这里唯一的出口。
+   */
+  const handleSubmitEdit = useCallback(
+    (instruction: string) => {
+      if (!picked) return
+      const prompt = buildAIEditPrompt(picked, instruction, session?.url)
+      window.dispatchEvent(new CustomEvent(BROWSER_AI_EDIT_EVENT, { detail: { text: prompt } }))
+      clearPick()
+    },
+    [picked, clearPick, session?.url],
+  )
 
   // 设备档适配方式：纯视图偏好，只存活于当前标签页，不进会话协议
   const [deviceFitMode, setDeviceFitMode] = useState<DeviceFitMode>('fit')
@@ -115,10 +145,13 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
         onDeviceChange={handleDeviceChange}
         deviceFitMode={deviceFitMode}
         onToggleDeviceFit={toggleDeviceFit}
+        onToggleAIPick={togglePick}
+        aiPickActive={pickPhase === 'picking'}
       />
 
       <div className="flex-1 min-h-0 min-w-0 flex overflow-hidden">
-        <div className="flex-1 min-w-0 relative">
+        {/* overflow-hidden：AI 修改浮层是绝对定位，拖到边缘时不能把内容区撑出额外的滚动区域 */}
+        <div className="flex-1 min-w-0 relative overflow-hidden">
           {!session ? (
             <BrowserEmptyState />
           ) : (
@@ -138,6 +171,17 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
                 fitMode={deviceFitMode}
               />
               <BrowserStatusOverlay session={session} />
+
+              {/* AI 修改浮层：跟随选中元素定位，浮在页面之上 */}
+              {picked && (
+                <AIEditPanel
+                  picked={picked}
+                  onClose={clearPick}
+                  onSubmit={handleSubmitEdit}
+                  onUndo={() => void undoEdits('all')}
+                  pinToCorner={session ? !resolveDevice(session).isDesktop : false}
+                />
+              )}
             </>
           )}
         </div>
@@ -150,3 +194,4 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
     </div>
   )
 }
+

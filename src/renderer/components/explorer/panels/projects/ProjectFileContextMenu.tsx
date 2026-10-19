@@ -21,12 +21,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Copy, Clipboard, Edit2, Trash2, ExternalLink,
-  FilePlus, FolderPlus, Globe,
+  FilePlus, FolderPlus, Globe, Monitor,
 } from 'lucide-react'
 import type { ContextMenuItem } from '@renderer/components/ui'
 import { FloatingMenu } from '@renderer/components/ui'
 import { useStore } from '@store'
 import { api } from '@renderer/adapters/electronBridge'
+import { openBuiltinPreview } from '@renderer/preview/openBuiltinPreview'
 import { t, type Language } from '@renderer/i18n'
 import { toast } from '@components/foundation/NotificationProvider'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -206,12 +207,21 @@ export function ProjectFileContextMenu({
     onClose()
   }, [item.path, onClose])
 
-  // ─── 操作：在浏览器中打开（HTML） ─────────────────────
+  // ─── 操作：在外部浏览器打开（HTML） ───────────────────
   const handleOpenInBrowser = useCallback(async () => {
     const ok = await api.file.openInBrowser(item.path)
     if (!ok) toast.error(t('failedToOpenInBrowser', language) || '无法在浏览器中打开')
     onClose()
   }, [item.path, language, onClose])
+
+  // ─── 操作：在内置浏览器打开（HTML） ───────────────────
+  const handleOpenInBuiltinBrowser = useCallback(async () => {
+    const result = await openBuiltinPreview({ path: item.path, title: item.name })
+    if (!result.success) {
+      toast.error(result.error || t('failedToOpenInBrowser', language) || '无法在浏览器中打开')
+    }
+    onClose()
+  }, [item.path, item.name, language, onClose])
 
   // ─── 操作：新建文件 / 文件夹（inline 编辑，与工作空间一致） ────
   // 仅触发回调，实际创建逻辑（inline input + api 调用）由父组件 ProjectFilesTab 处理
@@ -250,7 +260,8 @@ export function ProjectFileContextMenu({
     const fileItems: ContextMenuItem[] = []
     if (isHtml) {
       fileItems.push(
-        { id: 'openInBrowser', label: t('contextMenu.openInBrowser', language), icon: Globe, onClick: handleOpenInBrowser },
+        { id: 'openInBuiltinBrowser', label: t('contextMenu.openInBuiltinBrowser', language), icon: Monitor, onClick: handleOpenInBuiltinBrowser },
+        { id: 'openInExternalBrowser', label: t('contextMenu.openInExternalBrowser', language), icon: Globe, onClick: handleOpenInBrowser },
         { id: 'sepHtml', label: '', separator: true },
       )
     }
@@ -270,7 +281,7 @@ export function ProjectFileContextMenu({
     item, language, clipboardEnabled,
     handleNewFile, handleNewFolder, handleCopy, handlePaste,
     handleRename, handleDelete, handleCopyPath, handleCopyRelativePath,
-    handleReveal, handleOpenInBrowser,
+    handleReveal, handleOpenInBrowser, handleOpenInBuiltinBrowser,
   ])
 
   return (
