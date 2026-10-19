@@ -25,7 +25,7 @@ export function sanitizeUrl(value: string): string {
 }
 
 /** 新标签页默认主页 */
-const NEW_TAB_HOMEPAGE = 'https://www.google.com'
+const NEW_TAB_HOMEPAGE = 'https://www.aweeclaw.com'
 
 export interface PreviewSessionSync {
   /** 当前会话（可能为 null，表示空状态） */
