@@ -85,6 +85,13 @@ export interface PluginContext {
   description?: string
   /** 插件连接对应的 MCP server id（如 plugin:3d-webpage-gen） */
   mcpServerId?: string
+  /**
+   * 插件侧写回的操作结果（如「当前默认模板：科技深色」）。
+   *
+   * 由插件调用 host.setContextNote 更新，随上下文注入给 AI，
+   * 使 AI 知道用户在插件界面里已经做过的选择，不必再问。
+   */
+  stateNote?: string
 }
 
 /** 上下文项联合类型 */

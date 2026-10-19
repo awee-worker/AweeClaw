@@ -19,7 +19,11 @@
  */
 const SHARED_DEPS_MAP: Record<string, string> = {
   'react': 'react',
-  'react-dom': 'reactDom',
+  // react-dom 与 react-dom/client 是两个不同的命名空间：
+  // createPortal / findDOMNode 只在 react-dom 上，render / createRoot 只在 client 上。
+  // 早前两者都指向 client，导致插件 `import { createPortal } from 'react-dom'`
+  // 拿到 undefined（运行时表现为 "xx is not a function"）。
+  'react-dom': 'reactDomCore',
   'react-dom/client': 'reactDom',
   'react/jsx-runtime': 'jsxRuntime',
   'zustand': 'zustand',

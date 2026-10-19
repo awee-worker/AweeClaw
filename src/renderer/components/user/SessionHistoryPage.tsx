@@ -52,6 +52,34 @@ interface SessionHistoryPageProps {
 
 const PAGE_SIZE = 20
 
+/** 页数较多时收拢中间页码，用省略号占位：首末页常驻，当前页左右各保留 sibling 页 */
+function buildPageItems(current: number, total: number, sibling = 2): Array<number | 'ellipsis'> {
+  if (total <= sibling * 2 + 5) {
+    return Array.from({ length: total }, (_, i) => i + 1)
+  }
+
+  const left = Math.max(2, current - sibling)
+  const right = Math.min(total - 1, current + sibling)
+  const items: Array<number | 'ellipsis'> = [1]
+
+  if (left === 3) {
+    items.push(2)
+  } else if (left > 3) {
+    items.push('ellipsis')
+  }
+
+  for (let p = left; p <= right; p += 1) items.push(p)
+
+  if (right === total - 2) {
+    items.push(total - 1)
+  } else if (right < total - 2) {
+    items.push('ellipsis')
+  }
+
+  items.push(total)
+  return items
+}
+
 function formatDate(timestamp: number, language: Language): string {
   const date = new Date(timestamp)
   const now = new Date()
@@ -479,21 +507,33 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`
-                    min-w-[28px] h-7 px-1.5 rounded-lg text-xs font-medium transition-colors
-                    ${page === currentPageSafe
-                      ? 'bg-accent text-white'
-                      : 'text-text-muted hover:bg-surface-hover hover:text-text-primary'
-                    }
-                  `}
-                >
-                  {page}
-                </button>
-              ))}
+              {buildPageItems(currentPageSafe, totalPages).map((item, index) => {
+                if (item === 'ellipsis') {
+                  return (
+                    <span
+                      key={`ellipsis-${index}`}
+                      className="min-w-[28px] h-7 px-1.5 flex items-center justify-center text-xs text-text-muted select-none"
+                    >
+                      …
+                    </span>
+                  )
+                }
+                return (
+                  <button
+                    key={item}
+                    onClick={() => setCurrentPage(item)}
+                    className={`
+                      min-w-[28px] h-7 px-1.5 rounded-lg text-xs font-medium transition-colors
+                      ${item === currentPageSafe
+                        ? 'bg-accent text-white'
+                        : 'text-text-muted hover:bg-surface-hover hover:text-text-primary'
+                      }
+                    `}
+                  >
+                    {item}
+                  </button>
+                )
+              })}
               <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPageSafe >= totalPages}

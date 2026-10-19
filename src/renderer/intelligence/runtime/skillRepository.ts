@@ -313,6 +313,47 @@ export interface SkillMarketMatch {
 // YAML Frontmatter 解析
 // ============================================
 
+/**
+ * 宽松解析 frontmatter
+ *
+ * 只在严格 YAML 解析失败时兜底使用。常见的失败原因是描述里出现 `": "`
+ * （如「Triggers on: xxx」）——这违反 YAML 的 plain scalar 规则，
+ * 但作者的意图是明确的，不该因为这种格式瑕疵让整个技能被丢弃。
+ *
+ * 只收顶层标量键值，遇到嵌套结构直接跳过：宽松模式不做猜测，
+ * 猜错比缺失更危险。
+ */
+function parseLooseFrontmatter(raw: string): Record<string, unknown> {
+    const result: Record<string, unknown> = {}
+
+    for (const line of raw.split(/\r?\n/)) {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.startsWith('#')) continue
+        // 缩进行属于上级键的子结构，宽松模式不处理
+        if (/^\s/.test(line)) continue
+
+        const match = line.match(/^([A-Za-z_][\w-]*)\s*:\s*(.*)$/)
+        if (!match) continue
+
+        let value = match[2].trim()
+        if (!value) continue
+        // 列表、块标量、行内对象这类结构交给严格解析，不走兜底
+        if (/^[|[>{*&!]/.test(value)) continue
+
+        // 去掉成对引号后取字面值
+        if (
+            (value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))
+        ) {
+            value = value.slice(1, -1)
+        }
+
+        result[match[1]] = value
+    }
+
+    return result
+}
+
 function parseSkillMd(raw: string): { frontmatter: Record<string, unknown>; body: string } | null {
     const match = raw.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/)
     if (!match) return null
@@ -324,8 +365,12 @@ function parseSkillMd(raw: string): { frontmatter: Record<string, unknown>; body
     try {
         frontmatter = parseYaml(frontmatterRaw) || {}
     } catch (e) {
-        logger.agent.warn('[SkillService] Failed to parse YAML frontmatter:', e)
-        return null
+        // 打印可读原因：直接打异常对象只会得到 "Array(1)"，看不出哪里写错了
+        const reason = e instanceof Error ? e.message : String(e)
+        logger.agent.warn(`[SkillService] YAML frontmatter parse failed, using loose parse: ${reason}`)
+
+        frontmatter = parseLooseFrontmatter(frontmatterRaw)
+        if (Object.keys(frontmatter).length === 0) return null
     }
 
     return { frontmatter, body }

@@ -120,6 +120,21 @@ class PluginUiRegistryImpl {
   }
 
   /**
+   * 计算一份 UI 贡献的签名，用于判断插件是否真的变了
+   *
+   * 只比版本号不够：插件可能在同一版本号下改了 contributes（例如后端重复发布
+   * 覆盖安装，或开发期本地重装），此时版本号没变，但 sidebarPanels 已经被删掉。
+   * 只按版本判断会导致旧的导航项永远留在左侧栏，直到重启客户端。
+   */
+  private signatureOf(contribution: PluginUiContribution): string {
+    return JSON.stringify({
+      version: contribution.version,
+      mcpServerId: contribution.mcpServerId ?? '',
+      contributes: contribution.contributes ?? {},
+    })
+  }
+
+  /**
    * 刷新：重新从主进程拉取所有已安装插件的 UI 贡献声明，并 diff 更新本地状态
    *
    * 适用场景：
@@ -149,21 +164,27 @@ class PluginUiRegistryImpl {
         this.unloadPlugin(key)
       }
 
-      // 2. 找出新增或变更的插件（远程有但本地没有，或版本不同）
+      // 2. 找出新增或变更的插件：版本变化，或同版本下 contributes 发生变化
       const changedKeys: string[] = []
       for (const c of contributions || []) {
         const existing = this.discovered.get(c.pluginKey)
-        if (!existing || existing.version !== c.version) {
-          // 版本变化：先卸载旧的（清理 PanelRegistry 等），再注册新的
-          if (existing) {
-            console.log(`[PluginUiRegistry] Plugin updated: ${c.pluginKey} (${existing.version} → ${c.version})`)
-            this.unloadPlugin(c.pluginKey)
-          } else {
-            console.log(`[PluginUiRegistry] Plugin added: ${c.pluginKey} v${c.version}`)
-          }
-          this.discovered.set(c.pluginKey, c)
-          changedKeys.push(c.pluginKey)
+        const unchanged = existing && this.signatureOf(existing) === this.signatureOf(c)
+        if (unchanged) continue
+
+        if (existing) {
+          // 先卸载旧的（清理 PanelRegistry 注册与已加载模块），再注册新的
+          const versionChanged = existing.version !== c.version
+          console.log(
+            versionChanged
+              ? `[PluginUiRegistry] Plugin updated: ${c.pluginKey} (${existing.version} → ${c.version})`
+              : `[PluginUiRegistry] Plugin contributions changed: ${c.pluginKey} v${c.version}`,
+          )
+          this.unloadPlugin(c.pluginKey)
+        } else {
+          console.log(`[PluginUiRegistry] Plugin added: ${c.pluginKey} v${c.version}`)
         }
+        this.discovered.set(c.pluginKey, c)
+        changedKeys.push(c.pluginKey)
       }
 
       // 3. 状态变更后通知订阅者（NavigationRail/PluginTopActions 会重新渲染）
@@ -205,6 +226,8 @@ class PluginUiRegistryImpl {
       const panels = contribution.contributes.sidebarPanels
       if (!panels) continue
       for (const panel of panels) {
+        // hidden 面板只注册组件供抽屉打开，不进导航栏
+        if (panel.hidden) continue
         items.push(contributionToSidebarItem(panel))
       }
     }
@@ -455,7 +478,8 @@ class PluginUiRegistryImpl {
             // 这里做类型转换（运行时无影响，仅类型层面）
             // 同时传入 host，供 AdaptivePanelView 渲染时作为 props.host 传入插件组件
             registerPanelComponent(panel.id, comp as unknown as ComponentType<unknown>, panelHost)
-            sidebarItems.push(contributionToSidebarItem(panel))
+            // hidden 面板不参与导航，仍注册组件供抽屉使用
+            if (!panel.hidden) sidebarItems.push(contributionToSidebarItem(panel))
             console.log(`[PluginUiRegistry] Registered panel "${panel.id}" (component: ${panel.component}) for ${pluginKey}`)
           } else {
             console.error(

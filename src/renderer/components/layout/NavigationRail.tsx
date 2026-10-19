@@ -598,6 +598,27 @@ export default function NavigationRail() {
   const { sidebarItems: pluginSidebarItems } = usePluginExtensions()
   const sidebarItems = [...scenarioSidebarItems, ...pluginSidebarItems]
 
+  /**
+   * 插件更新可能删掉它原先贡献的导航项，此时该项对应的面板组件已在
+   * PluginUiRegistry 里注销。若用户正停在那块面板上，主区域会渲染出空白，
+   * 且左侧找不到任何可点的入口回到正常视图。
+   *
+   * 只处理「上一轮属于插件面板、这一轮消失了」的情况：场景面板会随场景切换
+   * 增删，不能套用同一条规则，否则切场景时会被误判成面板失效。
+   */
+  const prevPluginPanelIdsRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const currentIds = new Set(pluginSidebarItems.map(item => item.id))
+    const previousIds = prevPluginPanelIdsRef.current
+    prevPluginPanelIdsRef.current = currentIds
+
+    if (!activeSidePanel) return
+    if (!previousIds.has(activeSidePanel)) return
+    if (currentIds.has(activeSidePanel)) return
+
+    setActiveSidePanel(null)
+  }, [pluginSidebarItems, activeSidePanel, setActiveSidePanel])
+
   // 场景工具入口按场景显隐：通用助手场景不展示该导航项
   const showSceneToolsEntry = SHOW_SCENE_TOOLS_ENTRY && !SCENE_TOOLS_HIDDEN_SCENARIOS.includes(activeScenarioId)
 

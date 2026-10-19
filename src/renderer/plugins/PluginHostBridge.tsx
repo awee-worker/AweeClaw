@@ -20,7 +20,15 @@ import { useAgentCommands } from '@hooks/useAgent'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
-import { PLUGIN_CHAT_SEND_EVENT, type PluginChatSendDetail } from './PluginHostApi'
+import {
+  PLUGIN_CHAT_SEND_EVENT,
+  PLUGIN_CLOSE_DRAWER_EVENT,
+  PLUGIN_CONTEXT_NOTE_EVENT,
+  type PluginChatSendDetail,
+  type PluginContextNoteDetail,
+} from './PluginHostApi'
+import { closePluginDrawer } from './pluginDrawerStore'
+import { setPluginNotice } from './pluginNoticeStore'
 
 /** window 上标记 bridge 就绪的全局字段名 */
 const READY_FLAG = '__AWEECLAW_PLUGIN_HOST_READY__'
@@ -118,13 +126,43 @@ export function PluginHostBridge() {
       }
     }
 
+    /** 处理插件请求关闭抽屉 */
+    const handleCloseDrawer = () => {
+      closePluginDrawer()
+    }
+
+    /**
+     * 处理插件写回的操作结果。
+     *
+     * 两件事：写进会话上下文让 AI 知道（不触发对话），
+     * 同时在输入框上方弹一条短提示，让用户看到操作确实生效了。
+     */
+    const handleContextNote = (event: Event) => {
+      const detail = (event as CustomEvent<PluginContextNoteDetail>).detail
+      if (!detail?.text || !detail.pluginKey) return
+      try {
+        useAgentStore.getState().setPluginStateNote(detail.pluginKey, detail.text, detail.displayName)
+        // 上下文用完整说明，界面用短标签；插件没给标签时退回完整说明
+        setPluginNotice({ text: detail.label || detail.text, pluginKey: detail.pluginKey })
+      } catch (err) {
+        logger.system.error(
+          `[PluginHostBridge] setContextNote failed (plugin=${detail.pluginKey}):`,
+          err,
+        )
+      }
+    }
+
     window.addEventListener(PLUGIN_CHAT_SEND_EVENT, handleChatSend as EventListener)
+    window.addEventListener(PLUGIN_CLOSE_DRAWER_EVENT, handleCloseDrawer as EventListener)
+    window.addEventListener(PLUGIN_CONTEXT_NOTE_EVENT, handleContextNote as EventListener)
     window.addEventListener(DEVICE_LINK_AI_TASK_EVENT, handleDeviceLinkAiTask as EventListener)
     // 标记 bridge 就绪，供 PluginHostApi 检测
     ;(window as unknown as Record<string, unknown>)[READY_FLAG] = true
 
     return () => {
       window.removeEventListener(PLUGIN_CHAT_SEND_EVENT, handleChatSend as EventListener)
+      window.removeEventListener(PLUGIN_CLOSE_DRAWER_EVENT, handleCloseDrawer as EventListener)
+      window.removeEventListener(PLUGIN_CONTEXT_NOTE_EVENT, handleContextNote as EventListener)
       window.removeEventListener(DEVICE_LINK_AI_TASK_EVENT, handleDeviceLinkAiTask as EventListener)
       delete (window as unknown as Record<string, unknown>)[READY_FLAG]
     }

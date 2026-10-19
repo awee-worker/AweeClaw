@@ -53,6 +53,7 @@ import type { VoiceDialogState } from '../../composables/voice/useVoiceDialog'
 import VoiceVisualizer from '../voice/VoiceVisualizer'
 import { VOICE_STATE_STYLE, voiceStateLabel } from '../voice/voiceDialogTheme'
 import { ContextItem, FileContext } from '@intelligence/providerTypes'
+import { usePluginNotice, clearPluginNotice } from '@renderer/plugins/pluginNoticeStore'
 import { api } from '../../adapters/electronBridge'
 import { getEffectiveLLMConfig } from '@services/modelConfigHelper'
 import { toast } from '@components/foundation/NotificationProvider'
@@ -166,6 +167,9 @@ const ChatInput = memo(function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isFocused, setIsFocused] = useState(false)
   const [isOptimizing, setIsOptimizing] = useState(false)
+
+  // 插件在抽屉里做完选择后写回的状态标签：随已选标签一起显示，被下一次选择替换
+  const pluginNotice = usePluginNotice()
 
   /** 长按麦克风后弹出的语音对话面板：先确认是否播报，再进入对话 */
   const [voiceMenuOpen, setVoiceMenuOpen] = useState(false)
@@ -716,7 +720,7 @@ const ChatInput = memo(function ChatInput({
         )}
 
         {/* Context Display Area (Top) */}
-        {(contextItems.length > 0 || hasCodebaseRef || hasSymbolsRef || hasGitRef || hasTerminalRef || hasWebRef || fileRefs.length > 0 || (activeFilePath && onAddFile && !contextItems.some(i => i.type === 'File' && (i as FileContext).uri === activeFilePath))) && (
+        {(contextItems.length > 0 || pluginNotice || hasCodebaseRef || hasSymbolsRef || hasGitRef || hasTerminalRef || hasWebRef || fileRefs.length > 0 || (activeFilePath && onAddFile && !contextItems.some(i => i.type === 'File' && (i as FileContext).uri === activeFilePath))) && (
           <div className="flex flex-wrap items-center gap-1.5 px-2 pt-2 pb-1 border-b border-border/10">
             <AnimatePresence>
               {/* Active File Suggestion */}
@@ -791,7 +795,11 @@ const ChatInput = memo(function ChatInput({
                     {ContextIcon && <ContextIcon className="w-3 h-3 opacity-70" />}
                     <span className="max-w-[120px] truncate">{label}</span>
                     <button
-                      onClick={() => onRemoveContextItem(item)}
+                      onClick={() => {
+                        // 移除插件上下文即取消这次选择，对应的状态说明也要一起消失
+                        if (item.type === 'Plugin') clearPluginNotice()
+                        onRemoveContextItem(item)
+                      }}
                       className="ml-0.5 p-0.5 rounded-full hover:bg-black/20 text-current hover:text-red-400 opacity-60 group-hover/chip:opacity-100 transition-all"
                     >
                       <X className="w-3 h-3" />
@@ -807,6 +815,17 @@ const ChatInput = memo(function ChatInput({
             {hasGitRef && <ContextChip icon={GitBranch} label="@git" color="orange" />}
             {hasTerminalRef && <ContextChip icon={Terminal} label="@terminal" color="cyan" />}
             {hasWebRef && <ContextChip icon={Globe} label="@web" color="blue" />}
+
+            {/* 插件操作结果：弱化的行内状态文字，与上方药丸标签区分开，不抢视觉 */}
+            {pluginNotice && (
+              <span
+                className="inline-flex items-center gap-1.5 px-1 text-[11px] text-text-muted select-none"
+                title={pluginNotice.text}
+              >
+                <span aria-hidden className="w-1 h-1 rounded-full bg-accent/70 shrink-0" />
+                <span className="max-w-[240px] truncate">{pluginNotice.text}</span>
+              </span>
+            )}
           </div>
         )}
 

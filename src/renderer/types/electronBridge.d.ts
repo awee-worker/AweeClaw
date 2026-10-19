@@ -2585,6 +2585,8 @@ export interface ElectronAPI {
         component: string
         position?: number
         wideMode?: boolean
+        /** 隐藏导航项：面板仍注册，可经 openPluginDrawer 打开 */
+        hidden?: boolean
       }>
       topActions?: Array<{
         id: string

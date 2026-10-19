@@ -459,6 +459,12 @@ export async function installPluginFromMarketplace(
 async function refreshPluginUiRegistry(): Promise<void> {
   const { pluginUiRegistry } = await import('@renderer/plugins/PluginUiRegistry')
   await pluginUiRegistry.refresh()
+
+  // 技能栏的插件条目直接读 manifest.subSkills，插件增删改后必须广播一次：
+  // 只刷新 UI 扩展点的话，用户装完/升级完看到的仍是旧的二级项集合，
+  // 得重启应用才更新。
+  const { notifySkillsChanged } = await import('@renderer/intelligence/runtime/skillRepository')
+  notifySkillsChanged()
 }
 
 /**

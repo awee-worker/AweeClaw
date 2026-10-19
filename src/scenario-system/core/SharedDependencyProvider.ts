@@ -22,7 +22,10 @@ export interface SharedDependencyMeta {
 
 export interface SharedDependencyRegistry {
   react: typeof React
+  /** react-dom/client：createRoot / hydrateRoot */
   reactDom: typeof import('react-dom/client')
+  /** react-dom：createPortal / findDOMNode 等非 client 入口的 API */
+  reactDomCore: typeof import('react-dom')
   jsxRuntime: typeof import('react/jsx-runtime')
   zustand: typeof import('zustand')
   lucideReact: typeof import('lucide-react')
@@ -151,9 +154,10 @@ export async function injectSharedDependencies(): Promise<void> {
   if (sharedDependencyProvider.isInjected()) return
 
   try {
-    const [react, reactDom, jsxRuntime, zustand, lucideReact, xyflow, framerMotion] = await Promise.all([
+    const [react, reactDom, reactDomCore, jsxRuntime, zustand, lucideReact, xyflow, framerMotion] = await Promise.all([
       import('react'),
       import('react-dom/client'),
+      import('react-dom'),
       import('react/jsx-runtime'),
       import('zustand'),
       import('lucide-react'),
@@ -164,6 +168,7 @@ export async function injectSharedDependencies(): Promise<void> {
     const modules: Partial<SharedDependencyRegistry> = {
       react: react.default || react,
       reactDom: reactDom,
+      reactDomCore: reactDomCore,
       jsxRuntime: jsxRuntime,
       zustand: zustand,
       lucideReact: lucideReact,
@@ -173,7 +178,8 @@ export async function injectSharedDependencies(): Promise<void> {
 
     const meta: Record<string, SharedDependencyMeta> = {
       react: { version: react.version || '18.0.0', moduleName: 'react' },
-      reactDom: { version: '18.0.0', moduleName: 'react-dom' },
+      reactDom: { version: '18.0.0', moduleName: 'react-dom/client' },
+      reactDomCore: { version: '18.0.0', moduleName: 'react-dom' },
       jsxRuntime: { version: react.version || '18.0.0', moduleName: 'react/jsx-runtime' },
       zustand: { version: '5.0.0', moduleName: 'zustand' },
       lucideReact: { version: '0.400.0', moduleName: 'lucide-react' },

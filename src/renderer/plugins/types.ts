@@ -89,6 +89,22 @@ export interface PluginHostApi {
    * @param text 用户消息文本
    */
   sendChatMessage: (text: string) => Promise<void>
+  /**
+   * 把一次操作的结果告知 AI，但不触发新的一轮对话。
+   *
+   * 结果记在当前会话里该插件的上下文项上，之后每条消息都会带上这段状态说明，
+   * 因此 AI 知道「用户已经选了哪套模板」这类事实，而不必重新询问。
+   * 插件上下文尚未挂载时会自动挂上。
+   * @param text 结果说明，如「当前默认模板：科技深色（tech-dark）」
+   */
+  setContextNote: (text: string) => void
+  /**
+   * 关闭当前插件抽屉。
+   *
+   * 用于「选完即完成」的操作（如点选一个模板），省掉用户再点一次关闭。
+   * 宿主未提供该方法时（旧版本客户端）插件应做存在性判断。
+   */
+  closeDrawer: () => void
   /** 当前界面语言 */
   language: 'zh' | 'en'
   /** 受控日志（前缀 [Plugin:pluginKey]） */

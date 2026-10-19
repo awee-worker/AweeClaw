@@ -37,6 +37,7 @@ import {
 import { runSubSkillAction } from '@intelligence/runtime/subSkillActions'
 import { useAgentStore, selectContextItems } from '@intelligence/state/IntelligenceStore'
 import { resolveLucideIcon, isImageIcon } from '@components/plugin/pluginIconResolver'
+import { clearPluginNotice } from '@renderer/plugins/pluginNoticeStore'
 import type { LucideIcon } from 'lucide-react'
 import {
   getClickStatsVersion,
@@ -441,6 +442,13 @@ export default function SkillSuggestionBar() {
    */
   const handleEntryClick = useCallback((entry: BarEntry) => {
     const subSkills = entry.kind === 'skill' ? entry.skill.subSkills : entry.plugin.subSkills
+
+    // 一旦换了一级条目，上一条目在二级项里做的选择就失效了：
+    // 界面那条状态标签与写进上下文的说明必须一起清掉，
+    // 否则 AI 会拿着旧条目的选择继续作答（用户已切到别的技能，却说「用深色模板」）。
+    useAgentStore.getState().clearPluginStateNotes()
+    clearPluginNotice()
+
     if (entry.kind === 'skill') {
       recordSkillClick(entry.skill.name)
       attachSkill(entry.skill)
@@ -649,7 +657,10 @@ export default function SkillSuggestionBar() {
             {orderedSubSkills.map(sub => {
               const active = openSelect?.entryKey === openEntry.key && openSelect.sub.label === sub.label
               const subLabel = isZh ? sub.label : (sub.labelEn || sub.label)
-              const SubIcon = sub.type === 'select' ? ChevronDown : sub.type === 'action' ? Zap : Sparkles
+              // 插件可在 subSkills[].icon 里指定图标；未声明时按交互类型回退
+              const SubIcon =
+                resolveLucideIcon(sub.icon) ||
+                (sub.type === 'select' ? ChevronDown : sub.type === 'action' ? Zap : Sparkles)
               return (
                 <button
                   key={sub.label}
@@ -715,7 +726,9 @@ export default function SkillSuggestionBar() {
           plugins={plugins}
           isZh={isZh}
           selectedPluginId={selectedPluginId}
-          onSelect={attachPlugin}
+          // 走 handleEntryClick 而非 attachPlugin：面板里的点击与技能栏一致，
+          // 有二级项时同样需要展开二级行，否则从「更多技能」选插件就没有下一步可选
+          onSelect={plugin => handleEntryClick(toPluginEntry(plugin))}
           onDeselect={handlePluginDeselect}
           onClose={() => setPluginPanelOpen(false)}
         />

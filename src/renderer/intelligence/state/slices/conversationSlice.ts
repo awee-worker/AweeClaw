@@ -108,6 +108,21 @@ export interface MessageActions {
     /** 标记助手消息命中的场景角色（角色徽章展示） */
     addSceneRoleToMessage: (messageId: string, role: { id: string; nameZh: string; icon: string }, targetThreadId?: string) => void
     addContextItem: (item: ContextItem, targetThreadId?: string) => void
+    /**
+     * 写入插件侧的操作结果说明（如「当前默认模板：科技深色」）。
+     *
+     * 只更新该插件上下文项的 stateNote，不发消息、不触发 AI；
+     * 该插件尚未挂载为上下文时自动挂上，保证下一次提问 AI 就能看到。
+     */
+    setPluginStateNote: (pluginId: string, note: string, displayName?: string) => void
+    /**
+     * 清空所有插件上下文里的操作结果说明。
+     *
+     * 二级项的选择只对本次挂载有效：用户换了一级条目，上一条目留下的说明
+     * 就成了过期状态，继续带给 AI 会让它按旧选择作答。
+     * 只清说明、保留插件挂载本身，因为「用过哪个插件」这件事依然成立。
+     */
+    clearPluginStateNotes: () => void
     removeContextItem: (index: number, targetThreadId?: string) => void
     clearContextItems: (targetThreadId?: string) => void
 
@@ -1634,6 +1649,84 @@ export const createMessageSlice: StateCreator<
         })
     },
 
+
+    // 写入插件侧的操作结果说明：只改上下文，不触发 AI
+    setPluginStateNote: (pluginId, note, displayName) => {
+        if (!pluginId || !note) return
+
+        let threadId = get().currentThreadId
+        if (!threadId || !get().threads[threadId]) {
+            threadId = get().createThread()
+        }
+        if (!threadId) return
+
+        const thread = get().threads[threadId]
+        const mounted = thread?.contextItems.some(
+            item => item.type === 'Plugin' && item.pluginId === pluginId,
+        )
+
+        // 插件尚未挂载时补挂：用户已经在该插件里做了选择，上下文里理应带上它
+        if (!mounted) {
+            get().addContextItem({
+                type: 'Plugin',
+                pluginId,
+                name: pluginId,
+                displayName,
+                stateNote: note,
+            })
+            return
+        }
+
+        const tid = threadId
+        set(state => {
+            const target = state.threads[tid]
+            if (!target) return state
+            return {
+                threads: {
+                    ...state.threads,
+                    [tid]: {
+                        ...target,
+                        contextItems: target.contextItems.map(item =>
+                            item.type === 'Plugin' && item.pluginId === pluginId
+                                ? { ...item, stateNote: note }
+                                : item,
+                        ),
+                    },
+                },
+            }
+        })
+    },
+
+    // 清空插件侧的操作结果说明：换了一级条目后，旧二级项的选择不再有效
+    clearPluginStateNotes: () => {
+        const threadId = get().currentThreadId
+        if (!threadId) return
+
+        set(state => {
+            const thread = state.threads[threadId]
+            if (!thread) return state
+
+            // 没有任何说明时直接返回原 state，避免无意义的对象重建引起重渲染
+            const hasNote = thread.contextItems.some(
+                item => item.type === 'Plugin' && item.stateNote,
+            )
+            if (!hasNote) return state
+
+            return {
+                threads: {
+                    ...state.threads,
+                    [threadId]: {
+                        ...thread,
+                        contextItems: thread.contextItems.map(item =>
+                            item.type === 'Plugin' && item.stateNote
+                                ? { ...item, stateNote: undefined }
+                                : item,
+                        ),
+                    },
+                },
+            }
+        })
+    },
 
     // 移除上下文项
     removeContextItem: (index) => {

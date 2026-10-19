@@ -29,6 +29,36 @@ export interface PluginChatSendDetail {
 }
 
 /**
+ * 插件 → 宿主「关闭插件抽屉」事件的 CustomEvent 名称。
+ *
+ * 同样是解耦：抽屉状态由 pluginDrawerStore 持有，插件不应直接 import 它。
+ */
+export const PLUGIN_CLOSE_DRAWER_EVENT = 'aweeclaw:plugin-close-drawer'
+
+/**
+ * 插件 → 宿主「记录操作结果到会话上下文」事件的 CustomEvent 名称。
+ *
+ * 与 sendChatMessage 的区别：只更新上下文，不发送消息、不触发 AI 回复。
+ */
+export const PLUGIN_CONTEXT_NOTE_EVENT = 'aweeclaw:plugin-context-note'
+
+/** 操作结果说明事件的 detail 载荷 */
+export interface PluginContextNoteDetail {
+  /** 完整说明：写入会话上下文，供 AI 理解，可以写长 */
+  text: string
+  pluginKey: string
+  /** 插件展示名（中文界面），用于插件上下文尚未挂载时补建时展示 */
+  displayName?: string
+  /**
+   * 界面短标签（可选）
+   *
+   * 输入框上方展示的是「当前选中了什么」，一句话足够；
+   * 不传时回退用 text，但长句会把标签撑开，能省则省。
+   */
+  label?: string
+}
+
+/**
  * 创建插件宿主 API
  *
  * @param opts.pluginKey 插件唯一标识
@@ -114,6 +144,33 @@ export function createPluginHostApi(opts: {
           reject(err)
         }
       })
+    },
+
+    setContextNote: (text: string, label?: string) => {
+      if (!text) return
+      // 与 sendChatMessage 同为事件解耦：真正写入会话上下文的是 PluginHostBridge，
+      // 这里只负责把「结果说明」交给宿主，不触发任何 AI 调用。
+      try {
+        window.dispatchEvent(
+          new CustomEvent<PluginContextNoteDetail>(PLUGIN_CONTEXT_NOTE_EVENT, {
+            detail: { text, pluginKey, label },
+          }),
+        )
+      } catch (err) {
+        console.warn(`[PluginHostApi] setContextNote failed (plugin=${pluginKey}):`, err)
+      }
+    },
+
+    closeDrawer: () => {
+      try {
+        window.dispatchEvent(
+          new CustomEvent<{ pluginKey: string }>(PLUGIN_CLOSE_DRAWER_EVENT, {
+            detail: { pluginKey },
+          }),
+        )
+      } catch (err) {
+        console.warn(`[PluginHostApi] closeDrawer failed (plugin=${pluginKey}):`, err)
+      }
     },
 
     log: {

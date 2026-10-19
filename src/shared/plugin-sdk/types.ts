@@ -560,6 +560,13 @@ export interface PluginSidebarPanelContribution {
   position?: number
   /** 是否宽模式（面板在主内容区全屏展示） */
   wideMode?: boolean
+  /**
+   * 是否隐藏导航项
+   *
+   * 面板组件照常注册，可用 openPluginDrawer 这类二级选项动作以抽屉形式打开，
+   * 只是不在导航栏占一个入口。适合已经有聊天内二级选项的重交互面板。
+   */
+  hidden?: boolean
 }
 
 /**
