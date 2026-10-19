@@ -72,7 +72,6 @@ class UpdateService {
   }
 
   private mainWindow: BrowserWindow | null = null
-  private updateCheckInterval: NodeJS.Timeout | null = null
   /** 自定义下载的安装包路径（后端来源更新，非 electron-updater 下载） */
   private downloadedInstallerPath: string | null = null
   /** 当前正在进行的下载请求（用于取消） */
@@ -154,13 +153,10 @@ class UpdateService {
 
     this.setupAutoUpdaterEvents()
 
+    // 启动后延迟检查一次；周期性检查由渲染层的更新管理器按场景频率驱动
     setTimeout(() => {
       void this.checkForUpdates()
     }, 30 * 1000)
-
-    this.updateCheckInterval = setInterval(() => {
-      void this.checkForUpdates()
-    }, 4 * 60 * 60 * 1000)
   }
 
   /**
@@ -226,14 +222,14 @@ class UpdateService {
     })
   }
 
+  /**
+   * 手动下载模式：启动后只检查一次。
+   * 周期性检查由渲染层的更新管理器负责，主进程不再单独轮询。
+   */
   private setupManualDownloadUpdater(): void {
     setTimeout(() => {
       void this.checkForUpdatesViaGitHub()
     }, 30 * 1000)
-
-    this.updateCheckInterval = setInterval(() => {
-      void this.checkForUpdatesViaGitHub()
-    }, 4 * 60 * 60 * 1000)
   }
 
   async checkForUpdates(): Promise<UpdateStatus> {
@@ -872,10 +868,6 @@ class UpdateService {
   }
 
   destroy(): void {
-    if (this.updateCheckInterval) {
-      clearInterval(this.updateCheckInterval)
-      this.updateCheckInterval = null
-    }
     // 取消正在进行的下载
     if (this.currentDownloadRequest) {
       this.currentDownloadRequest.destroy()
