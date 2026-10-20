@@ -28,6 +28,7 @@ import { voiceApi } from '../services/voiceApi';
 import { resolveVoiceRoute } from '../services/localVoiceEngine';
 import { encodePcmChunksToWavBlob } from '../utils/audioConverter';
 import { toast } from '@components/foundation/NotificationProvider';
+import { ensureMicAccess, showMicPermissionGuide, isMicPermissionError } from '../services/mediaPermission';
 import { tryRefreshToken, getAccessToken } from '../adapters/backendApi';
 
 export type RecordingState = 'idle' | 'requesting' | 'recording' | 'processing';
@@ -409,6 +410,15 @@ export function useVoiceInput(options?: UseVoiceInputOptions): UseVoiceInputRetu
         }
       }
 
+      // 麦克风授权：系统未授权时先弹授权框或给出「去系统设置」的引导，
+      // 否则 getUserMedia 会直接失败，用户看到的只是「点了没反应」
+      const micAllowed = await ensureMicAccess();
+      if (!micAllowed) {
+        setState('idle');
+        optionsRef.current?.onError?.(new Error('Microphone permission denied'));
+        return;
+      }
+
       // 探测走离线还是云端：离线引擎段级识别代价低，预览可以更密；
       // 云端按音频时长计费，预览降频（段落提交频率不受影响）
       try {
@@ -463,12 +473,16 @@ export function useVoiceInput(options?: UseVoiceInputOptions): UseVoiceInputRetu
     } catch (err) {
       cleanup();
       setState('idle');
+      if (isMicPermissionError(err)) {
+        // 采集阶段才被拒（例如用户正好在系统设置里关掉了开关）→ 同样给出引导
+        showMicPermissionGuide('denied');
+        optionsRef.current?.onError?.(new Error('Microphone permission denied'));
+        return;
+      }
       const msg =
-        err instanceof DOMException && err.name === 'NotAllowedError'
-          ? 'Microphone permission denied'
-          : err instanceof Error
-            ? err.message
-            : 'Failed to start recording';
+        err instanceof Error
+          ? err.message
+          : 'Failed to start recording';
       toast.error(msg);
       optionsRef.current?.onError?.(new Error(msg));
     } finally {

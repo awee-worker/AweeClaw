@@ -38,6 +38,11 @@ import type { PendingToolApproval, StreamState } from '@intelligence/types/dialo
 import { isIrreversibleTool, isRiskyCommand } from '@intelligence/decision/approvalEscalation'
 import { StorageService } from '@shared/toolkit/StorageService'
 import { toast } from '@components/foundation/NotificationProvider'
+import {
+  ensureMicAccess,
+  showMicPermissionGuide,
+  isMicPermissionError,
+} from '../../services/mediaPermission'
 
 /** 语音对话界面状态 */
 export type VoiceDialogState =
@@ -854,6 +859,14 @@ export function useVoiceDialog(options: UseVoiceDialogOptions): UseVoiceDialogRe
     setNotice(null)
 
     try {
+      // 麦克风授权：未授权时先弹系统授权框，被拒后引导去系统设置，
+      // 而不是让 getUserMedia 静默失败
+      const micAllowed = await ensureMicAccess()
+      if (!micAllowed) {
+        setState('idle')
+        return
+      }
+
       const ctx = new AudioContext({ sampleRate: SAMPLE_RATE })
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -901,7 +914,12 @@ export function useVoiceDialog(options: UseVoiceDialogOptions): UseVoiceDialogRe
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       console.warn('[useVoiceDialog] 启动麦克风失败:', msg)
-      toast.warning(`无法开启语音对话：${msg}`, 5000)
+      if (isMicPermissionError(err)) {
+        // 采集阶段被拒（例如 Enter 之后用户刚好关掉了系统开关）→ 引导而非报原始错误
+        showMicPermissionGuide('denied')
+      } else {
+        toast.warning(`无法开启语音对话：${msg}`, 5000)
+      }
       setState('error')
       setTimeout(() => {
         if (!activeRef.current) setState('idle')

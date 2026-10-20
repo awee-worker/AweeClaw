@@ -10,5 +10,8 @@
   <true/>
   <key>com.apple.security.inherit</key>
   <true/>
+  <!-- 子进程（渲染进程 / helper）继承麦克风采集授权 -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
 </dict>
 </plist>

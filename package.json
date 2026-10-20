@@ -1,6 +1,6 @@
 {
   "name": "aweeclaw",
-  "version": "2.9.6",
+  "version": "2.9.7",
   "description": "AweeClaw - Connect AI to Your World",
   "productName": "AweeClaw",
   "author": "Awee Lee <aweelee@qq.com>",
@@ -270,6 +270,10 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "AweeClaw 需要访问麦克风，用于语音输入、语音对话与会议纪要的实时录音。",
+        "NSCameraUsageDescription": "AweeClaw 需要访问摄像头，用于视觉感知与视频通话功能。"
+      },
       "notarize": {
         "teamId": "FH932N63S6"
       }

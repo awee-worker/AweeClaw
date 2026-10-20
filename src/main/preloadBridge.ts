@@ -82,6 +82,7 @@ import { createPowerGuardApi } from './preload/api/powerGuard'
 import { createSandboxApi } from './preload/api/sandbox'
 import { createVmcApi } from './preload/api/vmc'
 import { createLocalVoiceApi } from './preload/api/localVoice'
+import { createMediaPermissionApi } from './preload/api/mediaPermission'
 import { createCapabilityGuardApi } from './preload/api/capabilityGuard'
 import { createCharacterCardApi } from './preload/api/characterCard'
 import { createEmotionApi } from './preload/api/emotion'
@@ -142,6 +143,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     sandbox: createSandboxApi(),
     vmc: createVmcApi(),
     localVoice: createLocalVoiceApi(),
+    mediaPermission: createMediaPermissionApi(),
     // 套餐能力一致性收敛（渲染层提供授权快照，主进程落地关闭）
     capabilityGuard: createCapabilityGuardApi(),
     perfTrace: createPerfTraceApi(),

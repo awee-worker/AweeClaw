@@ -34,6 +34,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { convertBlobToWav } from '../utils/audioConverter'
 import { voiceApi } from '../services/voiceApi'
 import { matchWakeWord } from '../utils/voiceTextUtils'
+import { ensureMicAccess } from '../services/mediaPermission'
 import { logger } from '@shared/toolkit/LogEngine'
 
 // ============================================
@@ -355,6 +356,16 @@ export function useWakeWordEngine(options: WakeWordEngineOptions): WakeWordEngin
     if (!enabled || paused) return
 
     try {
+      // 唤醒词常驻监听同样需要麦克风授权：未授权时先引导，避免开关打开了却毫无反应
+      const micAllowed = await ensureMicAccess()
+      if (!micAllowed) {
+        const msg = '麦克风未授权，语音唤醒无法监听'
+        setError(msg)
+        onErrorRef.current?.(msg)
+        setRunning(false)
+        return
+      }
+
       // 创建 AudioContext + 获取麦克风
       audioContextRef.current = new AudioContext({ sampleRate: SAMPLE_RATE })
       mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({

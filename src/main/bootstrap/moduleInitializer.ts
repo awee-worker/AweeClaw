@@ -63,6 +63,7 @@ import { initSandboxModule } from '../modules/security/sandbox'
 import { GroupMemoryManager } from '../modules/memory-db/GroupMemoryManager'
 import { registerGroupMemoryIpcHandlers } from '../modules/memory-db/GroupMemoryIpc'
 import { initializeLocalVoiceModule } from '../modules/local-voice'
+import { initializeMediaPermissionModule } from '../modules/media-permission'
 import { initializeCharacterCardModule } from '../modules/character-card'
 import { initializeEmotionModule } from '../modules/emotion'
 import { SettingsDb } from '../modules/settings-db/SettingsDb'
@@ -239,6 +240,9 @@ function bootModules(firstWin: BrowserWindow): ModuleManifest[] {
     { id: 'OoEditModule', phase: 'boot', init: initOoEditModule },
     // 邮件收件 IPC（IMAP 账户 / 同步 / 邮件读取）
     { id: 'MailIpc', phase: 'boot', init: registerMailIpc },
+    // 媒体设备权限（麦克风授权查询 / 请求 / 跳转系统设置）
+    // 必须早于任何语音入口可被调用：渲染层点语音按钮时会先问权限
+    { id: 'MediaPermissionIpc', phase: 'boot', init: initializeMediaPermissionModule },
   ]
 }
 

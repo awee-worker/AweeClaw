@@ -11,5 +11,13 @@
   <!-- 允许传递 DYLD 环境变量（部分原生模块加载需要） -->
   <key>com.apple.security.cs.allow-dyld-environment-variables</key>
   <true/>
+  <!--
+    麦克风采集授权。
+    当前构建未开启 App Sandbox，TCC 主要依赖 Info.plist 的
+    NSMicrophoneUsageDescription；此处显式声明 audio-input 是为了让
+    硬运行时下 getUserMedia 的音频采集走正常授权路径，同时为后续开启沙盒预留。
+  -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
 </dict>
 </plist>

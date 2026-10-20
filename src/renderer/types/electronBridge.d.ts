@@ -520,6 +520,21 @@ export interface CapabilityConvergeReport {
 // Electron API 接口
 // ============================================
 
+/**
+ * 麦克风授权状态
+ *
+ * not-determined 是唯一还能弹系统授权框的状态；denied / restricted 只能
+ * 由用户手动去系统设置里改，因此这两者要走「引导 + 跳转」而不是再次请求。
+ * unsupported 表示当前平台无从查询（Linux），交给 getUserMedia 自行处理。
+ */
+export type MicAccessStatus =
+  | 'granted'
+  | 'denied'
+  | 'restricted'
+  | 'not-determined'
+  | 'unknown'
+  | 'unsupported'
+
 export interface ElectronAPI {
   // App
   appReady: () => void
@@ -4161,6 +4176,28 @@ export interface ElectronAPI {
     }>
     /** 订阅下载进度 */
     onDownloadProgress: (callback: (progress: unknown) => void) => () => void
+  }
+
+  /** 媒体设备权限（麦克风授权查询 / 请求 / 跳转系统设置） */
+  mediaPermission: {
+    /** 查询麦克风授权状态（只读，不弹系统框） */
+    getMicStatus: () => Promise<{
+      success: boolean
+      data?: { status: MicAccessStatus; granted: boolean; platform: string }
+      error?: string
+    }>
+    /** 请求麦克风授权（macOS 会弹系统授权框） */
+    requestMic: () => Promise<{
+      success: boolean
+      data?: { status: MicAccessStatus; granted: boolean; platform: string }
+      error?: string
+    }>
+    /** 打开系统麦克风隐私设置页 */
+    openMicSettings: () => Promise<{
+      success: boolean
+      data?: { opened: boolean; error?: string }
+      error?: string
+    }>
   }
 
   /**
