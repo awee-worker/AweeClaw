@@ -18,6 +18,7 @@ import {
   resolveOpenAICompatibilityProfile,
 } from '@configuration/aiProviders'
 import { REASONING_EFFORT_VALUES } from '@configuration/modelPersistence'
+import { resolveFixedTemperature } from '@configuration/modelConstraints'
 import { LLM_DEFAULTS } from '@configuration/defaultProfile'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { toast } from '@components/foundation/NotificationProvider'
@@ -324,15 +325,19 @@ const FetchModelsButton = memo(function FetchModelsButton({
   protocol?: string;
   language: 'en' | 'zh';
   existingModels?: string[];
-  onModelsFetched: (models: string[]) => void;
-  onModelRemoved?: (model: string) => void;
-  onBatchRemoved?: (models: string[]) => void;
+  onModelsFetched: (models: string[], providerId?: string) => void;
+  onModelRemoved?: (model: string, providerId?: string) => void;
+  onBatchRemoved?: (models: string[], providerId?: string) => void;
 }) {
   const [fetching, setFetching] = useState(false)
   const [showList, setShowList] = useState(false)
   const [fetchedModels, setFetchedModels] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 })
+  // 拉取结果 + 已添加列表在「拉取那一刻」的归属服务商快照：
+  // 弹窗是 portal，用户可能在弹窗打开期间切走服务商，此时不能再拿实时的 provider
+  // 落点，否则 B 服务商拉到的模型会被写进 A 服务商。
+  const [fetchTarget, setFetchTarget] = useState<{ provider: string; existingModels: string[] } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
 
@@ -358,6 +363,8 @@ const FetchModelsButton = memo(function FetchModelsButton({
       const { fetchModelsCall } = await import('@services/providerHealthAdapter')
       const result = await fetchModelsCall(provider, apiKey, baseUrl, protocol)
       if (result.success && result.models) {
+        // 绑定归属服务商：后续「添加 / 移除」都以这次拉取的服务商为准
+        setFetchTarget({ provider, existingModels })
         setFetchedModels(result.models)
         setShowList(true)
         if (result.models.length === 0) {
@@ -415,6 +422,10 @@ const FetchModelsButton = memo(function FetchModelsButton({
     ? fetchedModels.filter(m => m.toLowerCase().includes(searchQuery.toLowerCase()))
     : fetchedModels
 
+  // 落点以拉取时的快照为准，弹窗打开期间切走服务商也不会串台
+  const targetProvider = fetchTarget?.provider ?? provider
+  const targetExistingModels = fetchTarget?.existingModels ?? existingModels
+
   const dropdownMenu = showList && fetchedModels.length > 0 && createPortal(
     <div
       id="fetch-models-portal"
@@ -445,8 +456,8 @@ const FetchModelsButton = memo(function FetchModelsButton({
           <div className="flex items-center gap-1">
             <button
               onClick={() => {
-                const toAdd = filteredModels.filter(m => !existingModels.includes(m))
-                if (toAdd.length > 0) onModelsFetched(toAdd)
+                const toAdd = filteredModels.filter(m => !targetExistingModels.includes(m))
+                if (toAdd.length > 0) onModelsFetched(toAdd, targetProvider)
               }}
               className="text-[10px] text-accent hover:text-accent-hover px-1.5 py-0.5 rounded hover:bg-accent/10 transition-colors"
             >
@@ -454,8 +465,8 @@ const FetchModelsButton = memo(function FetchModelsButton({
             </button>
             <button
               onClick={() => {
-                const toRemove = filteredModels.filter(m => existingModels.includes(m))
-                if (toRemove.length > 0) onBatchRemoved?.(toRemove)
+                const toRemove = filteredModels.filter(m => targetExistingModels.includes(m))
+                if (toRemove.length > 0) onBatchRemoved?.(toRemove, targetProvider)
               }}
               className="text-[10px] text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded hover:bg-red-400/10 transition-colors"
             >
@@ -466,15 +477,15 @@ const FetchModelsButton = memo(function FetchModelsButton({
       </div>
       <div className="overflow-y-auto flex-1 p-1 custom-scrollbar">
         {filteredModels.map(model => {
-          const isAdded = existingModels.includes(model)
+          const isAdded = targetExistingModels.includes(model)
           return (
             <button
               key={model}
               onClick={() => {
                 if (isAdded) {
-                  onModelRemoved?.(model)
+                  onModelRemoved?.(model, targetProvider)
                 } else {
-                  onModelsFetched([model])
+                  onModelsFetched([model], targetProvider)
                 }
               }}
               className={`w-full text-left px-3 py-1.5 text-[12px] rounded-lg transition-all flex items-center justify-between group mb-0.5 ${isAdded
@@ -495,9 +506,9 @@ const FetchModelsButton = memo(function FetchModelsButton({
       <div className="p-1.5 border-t border-border bg-background/50 flex-shrink-0 flex gap-2">
         <button
           onClick={() => {
-            const addedModels = fetchedModels.filter(m => existingModels.includes(m))
+            const addedModels = fetchedModels.filter(m => targetExistingModels.includes(m))
             if (addedModels.length > 0) {
-              onBatchRemoved?.(addedModels)
+              onBatchRemoved?.(addedModels, targetProvider)
             }
             setShowList(false)
           }}
@@ -508,9 +519,9 @@ const FetchModelsButton = memo(function FetchModelsButton({
         </button>
         <button
           onClick={() => {
-            const toAdd = fetchedModels.filter(m => !existingModels.includes(m))
+            const toAdd = fetchedModels.filter(m => !targetExistingModels.includes(m))
             if (toAdd.length > 0) {
-              onModelsFetched(toAdd)
+              onModelsFetched(toAdd, targetProvider)
             }
             setShowList(false)
           }}
@@ -929,6 +940,10 @@ export function ModelProviderPanel({
   // 0 表示「不限制」：不向 Provider 下发输出上限，由模型自身决定
   const maxTokensValue = localConfig.maxTokens ?? LLM_DEFAULTS.maxTokens
 
+  // 模型把温度锁死时（如 Moonshot Kimi K2 系列只能取 1），滑块按实际下发值展示并禁用，
+  // 否则用户在这里调完后请求会被网关以 400 拒绝，表现为会话直接不可用。
+  const forcedTemperature = useMemo(() => resolveFixedTemperature(localConfig.model), [localConfig.model])
+
   const selectedReasoningEffort = useMemo(() => {
     const currentValue = localConfig.reasoningEffort ?? 'medium'
     const preferredFallback = reasoningEffortOptions.find(option => option.value === 'medium')?.value
@@ -1014,10 +1029,13 @@ export function ModelProviderPanel({
   }
 
   // 批量添加模型
-  const handleBatchAddModels = useCallback((models: string[], displayName?: string) => {
+  const handleBatchAddModels = useCallback((models: string[], displayName?: string, providerId?: string) => {
     if (models.length === 0) return
 
-    const currentConfig = localProviderConfigs[localConfig.provider] || {}
+    // 落点服务商由调用方指定（例如「获取模型」弹窗绑定的服务商），缺省才回落到当前选中项，
+    // 避免弹窗打开期间切换服务商导致模型被写进另一个服务商。
+    const targetProvider = providerId || localConfig.provider
+    const currentConfig = localProviderConfigs[targetProvider] || {}
     const currentModels = currentConfig.customModels || []
 
     // 过滤掉已存在的
@@ -1047,7 +1065,7 @@ export function ModelProviderPanel({
 
     const updatedConfigs = {
       ...localProviderConfigs,
-      [localConfig.provider]: {
+      [targetProvider]: {
         ...currentConfig,
         // 服务商本身也必须处于启用态，否则模型依旧不会进聊天界面的模型选择器
         enabled: true,
@@ -1064,19 +1082,20 @@ export function ModelProviderPanel({
   }, [commitConfigs, language, localConfig.provider, localProviderConfigs, setLocalProviderConfigs])
 
   // 删除模型从本地配置
-  const handleRemoveModel = async (model: string) => {
+  const handleRemoveModel = async (model: string, providerId?: string) => {
     const confirmed = await globalConfirm({
       title: t('provider.removedModel', language as Language, { name: model }),
       message: t('provider.deleteProviderMessage', language as Language, { name: model }),
       variant: 'danger',
     })
     if (!confirmed) return
-    handleBatchRemoveModels([model])
+    handleBatchRemoveModels([model], providerId)
   }
 
   // 批量删除模型
-  const handleBatchRemoveModels = useCallback((models: string[]) => {
-    const currentConfig = localProviderConfigs[localConfig.provider]
+  const handleBatchRemoveModels = useCallback((models: string[], providerId?: string) => {
+    const targetProvider = providerId || localConfig.provider
+    const currentConfig = localProviderConfigs[targetProvider]
     if (!currentConfig) return
 
     const updatedModelConfigs = { ...(currentConfig.modelConfigs || {}) }
@@ -1086,7 +1105,7 @@ export function ModelProviderPanel({
 
     const updatedConfigs = {
       ...localProviderConfigs,
-      [localConfig.provider]: {
+      [targetProvider]: {
         ...currentConfig,
         customModels: (currentConfig.customModels || []).filter(m => !models.includes(m)),
         modelConfigs: updatedModelConfigs,
@@ -1097,8 +1116,11 @@ export function ModelProviderPanel({
 
     // 删除的正好是当前选中的模型时，把当前模型一并切走，
     // 否则持久化后 providerConfigs 里还挂着已被删除的模型名。
+    // 删除的正好是当前服务商正在使用的模型时，把当前模型一并切走，
+    // 否则持久化后 providerConfigs 里还挂着已被删除的模型名。
+    // 目标是其它服务商时不能动 localConfig，否则会把当前面板的选中模型改掉。
     let nextLlmConfig: LLMConfig | undefined
-    if (models.includes(localConfig.model || '')) {
+    if (targetProvider === localConfig.provider && models.includes(localConfig.model || '')) {
       const remaining = (currentConfig.customModels || []).filter(m => !models.includes(m))
       nextLlmConfig = {
         ...localConfig,
@@ -1733,11 +1755,11 @@ export function ModelProviderPanel({
                   protocol={isCustomSelected ? selectedCustomConfig?.protocol : localConfig.protocol}
                   language={language}
                   existingModels={availableModels}
-                  onModelsFetched={(models) => {
-                    handleBatchAddModels(models)
+                  onModelsFetched={(models, providerId) => {
+                    handleBatchAddModels(models, undefined, providerId)
                   }}
-                  onModelRemoved={(m) => handleRemoveModel(m)}
-                  onBatchRemoved={(models) => handleBatchRemoveModels(models)}
+                  onModelRemoved={(m, providerId) => handleRemoveModel(m, providerId)}
+                  onBatchRemoved={(models, providerId) => handleBatchRemoveModels(models, providerId)}
                 />
                 )}
               </div>
@@ -1884,7 +1906,7 @@ export function ModelProviderPanel({
                         {t('provider.temperature', language as Language)}
                       </label>
                       <span className="text-xs font-mono bg-background/50 px-1.5 py-0.5 rounded text-accent">
-                        {(localConfig.temperature ?? LLM_DEFAULTS.temperature).toFixed(1)}
+                        {(forcedTemperature ?? localConfig.temperature ?? LLM_DEFAULTS.temperature).toFixed(1)}
                       </span>
                     </div>
                     <input
@@ -1892,17 +1914,23 @@ export function ModelProviderPanel({
                       min={0}
                       max={2}
                       step={0.1}
-                      value={localConfig.temperature ?? LLM_DEFAULTS.temperature}
+                      value={forcedTemperature ?? localConfig.temperature ?? LLM_DEFAULTS.temperature}
+                      disabled={forcedTemperature !== undefined}
                       onChange={(e) => setLocalConfig({
                         ...localConfig,
                         temperature: parseFloat(e.target.value)
                       })}
-                      className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent hover:accent-accent-hover"
+                      className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent hover:accent-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
                     />
                     <div className="flex justify-between text-[11px] text-text-muted px-1">
                       <span>{t('provider.precise', language as Language)}</span>
                       <span>{t('provider.creative', language as Language)}</span>
                     </div>
+                    {forcedTemperature !== undefined && (
+                      <p className="text-[11px] text-text-muted">
+                        {t('provider.temperatureFixed', language as Language)}
+                      </p>
+                    )}
                   </div>
 
                   {/* Top P */}

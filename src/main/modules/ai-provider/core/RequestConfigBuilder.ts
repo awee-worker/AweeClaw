@@ -1,5 +1,6 @@
 import type { LLMConfig } from '@protocols'
 import { logger } from '@shared/toolkit/LogEngine'
+import { resolveFixedTemperature } from '@shared/configuration/modelConstraints'
 import { resolveHeaderPlaceholders } from '../modelRegistry'
 import { resolveCacheProtocol } from './cacheProtocolSpec'
 
@@ -69,12 +70,17 @@ function supportsOpenAIReasoningSampling(config: LLMConfig): boolean {
 }
 
 export function buildGenerationSettings(config: LLMConfig): GenerationSettings {
+  const fixedTemperature = resolveFixedTemperature(config.model)
   const supportsOpenAIReasoningExtras = supportsOpenAIReasoningSampling(config)
+  // 温度被模型锁死的场景（如 Moonshot Kimi K2）不再下发任何采样参数，
+  // 由服务端按模型自身默认值处理。
+  const allowsSamplingParams = fixedTemperature === undefined
   const protocol = resolveCacheProtocol(config.protocol, config.provider)
   const isOpenAIReasoningRoute =
     (protocol === 'openai' || protocol === 'openai-responses') &&
     isOpenAIReasoningModel(config.model)
   const supportsFrequencyPenalties =
+    allowsSamplingParams &&
     protocol !== 'openai-responses' &&
     !isOpenAIReasoningRoute
 
@@ -105,11 +111,20 @@ export function buildGenerationSettings(config: LLMConfig): GenerationSettings {
     })
   }
 
+  if (fixedTemperature !== undefined && config.temperature !== fixedTemperature) {
+    logger.llm.info('[RequestConfig] 模型强制固定温度，已忽略配置值', {
+      provider: config.provider,
+      model: config.model,
+      configured: config.temperature ?? null,
+      applied: fixedTemperature,
+    })
+  }
+
   return {
     maxOutputTokens,
-    temperature: supportsOpenAIReasoningExtras ? config.temperature : undefined,
-    topP: supportsOpenAIReasoningExtras ? config.topP : undefined,
-    topK: normalizeTopK(config.topK),
+    temperature: fixedTemperature ?? (supportsOpenAIReasoningExtras ? config.temperature : undefined),
+    topP: allowsSamplingParams && supportsOpenAIReasoningExtras ? config.topP : undefined,
+    topK: allowsSamplingParams ? normalizeTopK(config.topK) : undefined,
     frequencyPenalty: supportsFrequencyPenalties ? config.frequencyPenalty : undefined,
     presencePenalty: supportsFrequencyPenalties ? config.presencePenalty : undefined,
     stopSequences: config.stopSequences?.length ? config.stopSequences : undefined,

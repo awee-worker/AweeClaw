@@ -281,37 +281,63 @@ export function useSettingsLocalState(embedded: boolean) {
     return () => { cancelled = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 同步 store 变化到本地状态
-  useEffect(() => {
-    if (dbLoadedRef.current) {
-      dbLoadedRef.current = false
-      return
-    }
-    dispatch({
-      type: 'SYNC_FROM_STORE',
-      payload: {
-        localConfig: llmConfig,
-        localLanguage: language,
-        localAutoApprove: autoApprove,
-        localPromptTemplateId: promptTemplateId,
-        localAgentConfig: agentConfig,
-        localProviderConfigs: providerConfigs,
-        localAiInstructions: aiInstructions,
-        localWebSearchConfig: webSearchConfig,
-        localMcpConfig: mcpConfig,
-        localEmailConfig: emailConfig,
-        localEnableFileLogging: enableFileLogging,
-        localSecuritySettings: securitySettings,
-        localPrivacySettings: privacySettings,
-        editorSettings: toEditorSettingsState(editorConfig),
-        advancedEditorConfig: editorConfig,
-      },
-    })
-  }, [
+  // store 快照：用于判断本次到底是哪些字段真的变了
+  const buildStoreSnapshot = useCallback(() => ({
+    localConfig: llmConfig,
+    localLanguage: language,
+    localAutoApprove: autoApprove,
+    localPromptTemplateId: promptTemplateId,
+    localAgentConfig: agentConfig,
+    localProviderConfigs: providerConfigs,
+    localAiInstructions: aiInstructions,
+    localWebSearchConfig: webSearchConfig,
+    localMcpConfig: mcpConfig,
+    localEmailConfig: emailConfig,
+    localEnableFileLogging: enableFileLogging,
+    localSecuritySettings: securitySettings,
+    localPrivacySettings: privacySettings,
+    editorSettings: toEditorSettingsState(editorConfig),
+    advancedEditorConfig: editorConfig,
+  }), [
     agentConfig, aiInstructions, autoApprove, editorConfig, emailConfig,
     enableFileLogging, language, llmConfig, mcpConfig, promptTemplateId,
     providerConfigs, securitySettings, privacySettings, webSearchConfig,
   ])
+
+  const storeSnapshotRef = useRef<Partial<SettingsLocalState> | null>(null)
+
+  /**
+   * 同步 store 变化到本地状态
+   *
+   * 只同步本次真正变化的字段。此前是整包覆盖：任何一处 store 更新（例如添加模型后
+   * 落库 providerConfigs）都会把用户正在编辑、尚未保存的 content 一起回滚 ——
+   * 典型表现是切到服务商 B 配置到一半，面板突然跳回服务商 A。
+   */
+  useEffect(() => {
+    if (dbLoadedRef.current) {
+      dbLoadedRef.current = false
+      storeSnapshotRef.current = buildStoreSnapshot()
+      return
+    }
+
+    const nextSnapshot = buildStoreSnapshot()
+    const prevSnapshot = storeSnapshotRef.current
+    storeSnapshotRef.current = nextSnapshot
+
+    // 首次渲染没有可比对的基线，本地状态已经是 store 的初值
+    if (!prevSnapshot) return
+
+    const payload: Partial<SettingsLocalState> = {}
+    let hasChange = false
+    for (const key of Object.keys(nextSnapshot) as (keyof SettingsLocalState)[]) {
+      if (serializeComparable(prevSnapshot[key]) === serializeComparable(nextSnapshot[key])) continue
+      ;(payload as Record<string, unknown>)[key] = nextSnapshot[key]
+      hasChange = true
+    }
+
+    if (!hasChange) return
+    dispatch({ type: 'SYNC_FROM_STORE', payload })
+  }, [buildStoreSnapshot]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 初始 tab 同步
   useEffect(() => {

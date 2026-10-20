@@ -765,6 +765,7 @@ export const zh = {
   'provider.maxTokensDesc': '单次响应的输出上限。推理模型的思考 token 与正文共享此额度，设置过小会导致思考占满额度、正文无输出；拉到「不限」则不限制，由模型自身决定',
   'provider.maxTokensUnlimited': '不限',
   'provider.temperature': '随机性 (Temperature)',
+  'provider.temperatureFixed': '该模型固定 temperature=1，此处设置不会生效',
   'provider.precise': '精确',
   'provider.creative': '创意',
   'provider.topPDesc': '核采样：仅考虑累积概率达到 P 的 Token 集合',
