@@ -895,6 +895,7 @@ function MiniChatPanelImpl({
         isOpen={permissionGuideOpen}
         onClose={() => setPermissionGuideOpen(false)}
         language={language}
+        onRetry={() => void handleScreenshot()}
       />
     </div>
   )

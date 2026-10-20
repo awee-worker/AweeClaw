@@ -1159,6 +1159,8 @@ function createGroupedAPI() {
         raw.screenshot.onResult(callback),
       /** 打开 macOS 屏幕录制权限系统设置（权限引导弹窗按钮） */
       openPermissionSettings: () => raw.screenshot.openPermissionSettings(),
+      /** 重新检测屏幕录制权限（权限引导弹窗「已开启，重新检测」按钮） */
+      probePermission: () => raw.screenshot.probePermission(),
     },
 
     // 会议纪要窗口（独立常驻窗口）

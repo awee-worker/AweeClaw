@@ -21,9 +21,9 @@ import {
   type ScreenshotResultPayload,
 } from '../floating-avatar/ScreenshotAskManager'
 import {
-  getScreenPermissionStatus,
-  isScreenPermissionGranted,
+  logAppIdentity,
   openScreenPermissionSettings,
+  resolveScreenPermission,
   SCREEN_PERMISSION_DENIED,
 } from './screenPermission'
 
@@ -52,6 +52,21 @@ export function registerMainWindowScreenshotHandlers(
   })
 
   /**
+   * 重新检测屏幕录制权限（权限引导弹窗的「已开启，重新检测」按钮调用）
+   *
+   * 用户在系统设置里开启权限后无需重启应用：这里强制做一次真实抓取探测，
+   * 探测通过即视为已授权，渲染层随即关闭弹窗并继续截图流程。
+   */
+  safeIpcHandle('screenshot:probe-permission', async () => {
+    const permission = await resolveScreenPermission('guide recheck', true)
+    return {
+      success: true,
+      granted: permission.granted,
+      screenPermission: permission.status,
+    }
+  })
+
+  /**
    * 启动截图（主窗口→main）
    *
    * 渲染进程通过 api.screenshot.start(options) 调用，
@@ -67,12 +82,14 @@ export function registerMainWindowScreenshotHandlers(
    * 直接返回 SCREEN_PERMISSION_DENIED，由渲染层弹出引导弹窗（而非静默失败）。
    */
   safeIpcHandle('screenshot:start-for-main-window', async (event, options?: { hideWindow?: boolean }) => {
-    const permission = getScreenPermissionStatus()
-    if (!isScreenPermissionGranted()) {
+    // 判定以真实抓取为准：TCC 状态可能因进程内缓存或签名变更与真实能力不符
+    const permission = await resolveScreenPermission('main-window screenshot')
+    if (!permission.granted) {
       logger.system.warn(
-        `[MainWindowScreenshot] Screen recording permission not granted (${permission}), guiding user`,
+        `[MainWindowScreenshot] Screen recording permission not granted (${permission.status}), guiding user`,
       )
-      return { success: false, error: SCREEN_PERMISSION_DENIED, screenPermission: permission }
+      logAppIdentity('main-window screenshot denied')
+      return { success: false, error: SCREEN_PERMISSION_DENIED, screenPermission: permission.status }
     }
 
     try {

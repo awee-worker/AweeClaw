@@ -1,4 +1,13 @@
 /**
+ * 【已废弃，不再被加载】截图覆盖窗口 React 实现
+ *
+ * 覆盖窗口实际由 public/screenshot-overlay.html + public/screenshot-overlay.js 提供：
+ * 打包后 React vendor chunk 与 agent/ui-core 共享 chunk 形成循环依赖，
+ * 覆盖窗口加载时序会触发 ui-core 执行时 React.forwardRef 为 undefined，
+ * 导致本组件无法挂载。故改为纯原生 JS 实现，界面调整请改 public/screenshot-overlay.js。
+ *
+ * 本文件及其依赖（AnnotationEditor / annotationDrawing / annotationTypes）保留仅作参考。
+ *
  * 截图覆盖窗口组件（透明窗口方案）
  *
  * 覆盖窗口本身透明，用户透过窗口看到真实桌面：
@@ -9,13 +18,17 @@
  * - ESC → 取消
  * - Enter → 确认（有选区确认选区，无选区截全屏）
  *
- * 确认后主进程会先隐藏本窗口再截图，本组件不展示截图，杜绝像素对齐/重影问题。
+ * 确认后主进程会先隐藏本窗口再截图，裁剪结果回填到本窗口的选区原位：
+ * 渲染层把截图铺在框选区域，并在其上叠加标注（矩形/椭圆/箭头/画笔/高亮/马赛克/文字），
+ * 用户点「完成」才落盘并推送给发起截图窗口，避免产生未标注的中间文件。
  *
  * 注意：contextIsolation: true 下不能直接 import electron，
  * 通过 window.electronAPI.screenshotOverlay 调用 preload 暴露的 IPC API
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AnnotationEditor } from './AnnotationEditor'
+import type { EditImagePayload } from './annotationTypes'
 
 interface SelectionRect {
   x: number
@@ -34,7 +47,14 @@ interface SetupPayload {
   workAreaHeight: number
 }
 
-type DragState = 'idle' | 'dragging' | 'selected'
+type DragState = 'idle' | 'dragging' | 'capturing' | 'editing'
+
+/** 标注收尾动作提交的图片 */
+interface AnnotatedImagePayload {
+  base64: string
+  width: number
+  height: number
+}
 
 /** preload 暴露的截图覆盖窗口 API（通过 contextBridge） */
 const screenshotApi = (window as unknown as {
@@ -42,7 +62,10 @@ const screenshotApi = (window as unknown as {
     screenshotOverlay: {
       requestSetup: () => Promise<SetupPayload | null>
       sendCancel: () => void
-      sendConfirm: (rect: SelectionRect) => void
+      requestCapture: (rect: SelectionRect) => Promise<EditImagePayload | null>
+      sendAnnotateSave: (payload: AnnotatedImagePayload) => void
+      sendAnnotateCopy: (payload: AnnotatedImagePayload) => void
+      sendAnnotateDownload: (payload: AnnotatedImagePayload) => void
     }
   }
 }).electronAPI.screenshotOverlay
@@ -56,9 +79,15 @@ export function ScreenshotOverlay() {
   const [workAreaBottom, setWorkAreaBottom] = useState(0)
   // 屏幕完整高度（含菜单栏 + Dock），用于计算 bottom 定位
   const [screenHeight, setScreenHeight] = useState(0)
+  // 主进程回传的待标注截图（非空即处于标注编辑态）
+  const [editImage, setEditImage] = useState<EditImagePayload | null>(null)
+  // 截图失败提示
+  const [captureError, setCaptureError] = useState('')
 
   // 拖拽起始点（用于计算选区）
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
+  // 是否已提交选区：截图需要几百毫秒，期间重复拖拽会重复触发
+  const submittedRef = useRef(false)
 
   // 组件挂载后请求屏幕信息（用于 Enter 截全屏时计算全屏选区 + 按钮定位）
   useEffect(() => {
@@ -85,33 +114,63 @@ export function ScreenshotOverlay() {
     screenshotApi.sendCancel()
   }, [])
 
-  // 确认选区（有选区时确认选区，无选区时确认全屏）
+  /**
+   * 提交选区给主进程截图，拿到图片后进入标注态
+   *
+   * 用 await 等主进程完成「隐藏窗口 → 截屏 → 裁剪 → 恢复窗口」：
+   * 截图必须隐藏覆盖窗口才不会截到遮罩，而窗口隐藏期间渲染进程会被节流，
+   * 靠事件回填会与恢复时机竞争。请求-响应模式让时序由 Promise 保证。
+   */
+  const submitSelection = useCallback(async (rect: SelectionRect) => {
+    if (submittedRef.current) return
+    submittedRef.current = true
+    setCaptureError('')
+    setSelection(rect)
+    setDragState('capturing')
+
+    try {
+      const payload = await screenshotApi.requestCapture(rect)
+      if (!payload) {
+        // 主进程侧已结束流程（截图失败或窗口已关闭），这里不再改动界面
+        return
+      }
+      setEditImage(payload)
+      setDragState('editing')
+    } catch (err) {
+      console.error('[ScreenshotOverlay] Capture failed:', err)
+      submittedRef.current = false
+      setDragState('idle')
+      setSelection(null)
+      setCaptureError('截图失败，请重新框选')
+    }
+  }, [])
+  // 无选区时确认全屏截图
   const handleConfirm = useCallback(() => {
-    if (selection && selection.width >= 10 && selection.height >= 10) {
-      screenshotApi.sendConfirm(selection)
+    if (screenSize.width <= 0 || screenSize.height <= 0) {
+      handleCancel()
       return
     }
-    if (screenSize.width > 0 && screenSize.height > 0) {
-      screenshotApi.sendConfirm({
-        x: 0,
-        y: 0,
-        width: screenSize.width,
-        height: screenSize.height,
-      })
-      return
-    }
-    handleCancel()
-  }, [selection, screenSize, handleCancel])
+    submitSelection({
+      x: 0,
+      y: 0,
+      width: screenSize.width,
+      height: screenSize.height,
+    })
+  }, [screenSize, submitSelection, handleCancel])
 
   // 鼠标按下：开始框选
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // 点击按钮时不触发框选
-    if ((e.target as HTMLElement).closest('[data-overlay-control]')) return
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      // 标注编辑态与截图进行中不响应框选
+      if (dragState === 'editing' || dragState === 'capturing') return
+      if ((e.target as HTMLElement).closest('[data-overlay-control]')) return
 
-    dragStartRef.current = { x: e.clientX, y: e.clientY }
-    setDragState('dragging')
-    setSelection({ x: e.clientX, y: e.clientY, width: 0, height: 0 })
-  }, [])
+      dragStartRef.current = { x: e.clientX, y: e.clientY }
+      setDragState('dragging')
+      setSelection({ x: e.clientX, y: e.clientY, width: 0, height: 0 })
+    },
+    [dragState],
+  )
 
   // 鼠标移动：更新选区
   const handleMouseMove = useCallback(
@@ -127,37 +186,34 @@ export function ScreenshotOverlay() {
     [dragState],
   )
 
-  // 鼠标松开：完成框选
+  // 鼠标松开：框选完成即提交截图，直接进入标注态
   const handleMouseUp = useCallback(() => {
     if (dragState !== 'dragging') return
     dragStartRef.current = null
-    if (selection && (selection.width < 10 || selection.height < 10)) {
+    // 误触产生的极小选区直接丢弃，回到待框选状态
+    if (!selection || selection.width < 10 || selection.height < 10) {
       setSelection(null)
       setDragState('idle')
-    } else {
-      setDragState('selected')
+      return
     }
-  }, [dragState, selection])
+    void submitSelection(selection)
+  }, [dragState, selection, submitSelection])
 
   // 键盘快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 标注编辑态的快捷键（Enter 完成、Esc 取消、撤销）由 AnnotationEditor 处理
+      if (dragState === 'editing') return
       if (e.key === 'Escape') {
         handleCancel()
-      } else if (e.key === 'Enter') {
-        if (dragState === 'selected' || dragState === 'idle') {
-          handleConfirm()
-        }
+      } else if (e.key === 'Enter' && dragState === 'idle') {
+        // 无选区时 Enter 截全屏
+        handleConfirm()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [dragState, handleCancel, handleConfirm])
-
-  // 双击选区确认
-  const handleDoubleClick = useCallback(() => {
-    if (dragState === 'selected') handleConfirm()
-  }, [dragState, handleConfirm])
 
   if (!ready) {
     // 透明 loading（不绘制遮罩，避免 ready 前遮挡桌面）
@@ -170,7 +226,6 @@ export function ScreenshotOverlay() {
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onDoubleClick={handleDoubleClick}
     >
       {/*
         半透明遮罩：选区外区域暗化，选区内透明（露出真实桌面）。
@@ -239,8 +294,38 @@ export function ScreenshotOverlay() {
         />
       )}
 
+      {/* 标注编辑层：截图回填到选区原位，叠加标注画布与工具条 */}
+      {dragState === 'editing' && editImage && selection && (
+        <AnnotationEditor
+          image={editImage}
+          rect={selection}
+          screenWidth={screenSize.width}
+          workAreaBottom={workAreaBottom}
+          onSave={(base64, width, height) => {
+            screenshotApi.sendAnnotateSave({ base64, width, height })
+          }}
+          onCopy={(base64) => {
+            screenshotApi.sendAnnotateCopy({
+              base64,
+              width: editImage.width,
+              height: editImage.height,
+            })
+          }}
+          onDownload={(base64) => {
+            screenshotApi.sendAnnotateDownload({
+              base64,
+              width: editImage.width,
+              height: editImage.height,
+            })
+          }}
+          onCancel={() => {
+            screenshotApi.sendCancel()
+          }}
+        />
+      )}
+
       {/* 选区尺寸提示 */}
-      {selection && selection.width > 10 && selection.height > 10 && (
+      {dragState !== 'editing' && selection && selection.width > 10 && selection.height > 10 && (
         <div
           style={{
             ...sizeLabelStyle,
@@ -252,35 +337,45 @@ export function ScreenshotOverlay() {
         </div>
       )}
 
-      {/* 确认/取消按钮（仅在选区完成后显示） */}
-      {dragState === 'selected' && selection && (
+      {/* 截图进行中提示（主进程截屏 + 裁剪通常 200~400ms） */}
+      {dragState === 'capturing' && (
         <div
           data-overlay-control
           style={{
             ...toolbarStyle,
-            left: Math.min(selection.x + selection.width - 180, screenSize.width - 190),
-            // 优先在选区下方显示；若超出 workArea 底部（被 Dock 遮挡），则改在选区上方显示
-            top:
-              selection.y + selection.height + 44 <= workAreaBottom
+            left: selection
+              ? Math.max(8, Math.min(selection.x, screenSize.width - 140))
+              : screenSize.width / 2 - 70,
+            top: selection
+              ? selection.y + selection.height + 8 <= workAreaBottom
                 ? selection.y + selection.height + 8
-                : Math.max(selection.y - 40, 8),
+                : Math.max(selection.y - 40, 8)
+              : 40,
           }}
         >
-          <button style={cancelBtnStyle} onClick={handleCancel}>
-            取消 (ESC)
-          </button>
-          <button style={confirmBtnStyle} onClick={handleConfirm}>
-            确认 (Enter)
-          </button>
+          <span
+            style={{
+              padding: '6px 14px',
+              fontSize: '13px',
+              color: '#fff',
+              background: 'rgba(0, 0, 0, 0.75)',
+              borderRadius: 6,
+              fontFamily: '-apple-system, "PingFang SC", sans-serif',
+            }}
+          >
+            正在截图…
+          </span>
         </div>
       )}
 
-      {/* 顶部提示（idle + dragging 状态显示操作引导） */}
-      {dragState !== 'selected' && (
+      {/* 顶部提示（idle + dragging 显示引导，超时失败时显示错误） */}
+      {(dragState === 'idle' || dragState === 'dragging') && (
         <div style={hintStyle}>
-          {dragState === 'idle'
-            ? '拖拽选择区域 · Enter 截全屏 · ESC 取消'
-            : '松开鼠标完成框选 · ESC 取消'}
+          {captureError
+            ? captureError
+            : dragState === 'idle'
+              ? '拖拽选择区域 · Enter 截全屏 · ESC 取消'
+              : '松开鼠标即进入标注 · ESC 取消'}
         </div>
       )}
 

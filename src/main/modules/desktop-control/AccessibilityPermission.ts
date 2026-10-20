@@ -19,6 +19,7 @@
 import { exec } from 'node:child_process'
 import { shell, systemPreferences } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
+import { resolveScreenPermission } from '../screenshot/screenPermission'
 
 /** 权限类型 */
 export type AccessibilityPermissionType =
@@ -242,9 +243,10 @@ export class AccessibilityPermissionService {
       }
 
       if (type === 'screenCapture') {
-        const status = systemPreferences.getMediaAccessStatus('screen')
-        // 'not-determined' | 'granted' | 'denied' | 'restricted'
-        return status as AccessibilityPermissionStatus
+        // 与截图链路使用同一判定口径：TCC 状态可能与真实抓取能力不一致，
+        // 以一次真实抓取探测的结果为准，避免"系统里已开启却仍被判定为未授权"
+        const permission = await resolveScreenPermission('accessibility check')
+        return (permission.granted ? 'granted' : permission.status) as AccessibilityPermissionStatus
       }
     } catch (err) {
       logger.desktop.error('[AccessibilityPermission] Check failed on darwin:', err)

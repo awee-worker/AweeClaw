@@ -444,9 +444,13 @@ const ChatInput = memo(function ChatInput({
   // 截图提问：触发主进程全屏区域选择 → 截图 → 作为附件注入输入框
   // 点击 = 普通截图；长按 = 隐藏窗口截图（截到真实桌面而非本应用窗口）
   // --------------------------------------------
+  /** 上一次截图的模式（权限引导弹窗「重新检测」通过后按同样模式继续截图） */
+  const lastShotHideWindowRef = useRef(false)
+
   const handleScreenshot = useCallback(
     async (hideWindow = false) => {
       if (isStreaming) return
+      lastShotHideWindowRef.current = hideWindow
       try {
         const res = await api.screenshot.start({ hideWindow })
         // 主进程权限前置检查：未授予 macOS 屏幕录制权限 → 弹出引导弹窗
@@ -1240,6 +1244,7 @@ const ChatInput = memo(function ChatInput({
         isOpen={permissionGuideOpen}
         onClose={() => setPermissionGuideOpen(false)}
         language={language}
+        onRetry={() => void handleScreenshot(lastShotHideWindowRef.current)}
       />
     </div>
   )

@@ -7,8 +7,8 @@
  * 主窗口聊天输入框（ConversationInput）与悬浮球迷你聊天（MiniChatPanel）共用。
  * 权限开启后需完全退出并重新启动应用才能生效（macOS TCC 行为）。
  */
-import React, { memo, useCallback } from 'react'
-import { MonitorUp, Check } from 'lucide-react'
+import React, { memo, useCallback, useState } from 'react'
+import { MonitorUp, Check, Loader2 } from 'lucide-react'
 import { OverlayDialog } from './OverlayDialog'
 import { api } from '../../adapters/electronBridge'
 
@@ -16,26 +16,56 @@ interface ScreenPermissionGuideProps {
   isOpen: boolean
   onClose: () => void
   language?: 'zh' | 'en'
+  /** 检测到权限已生效后重新发起截图（可选，未提供时仅关闭弹窗） */
+  onRetry?: () => void
 }
 
 export const ScreenPermissionGuide: React.FC<ScreenPermissionGuideProps> = memo(
-  function ScreenPermissionGuide({ isOpen, onClose, language = 'zh' }) {
+  function ScreenPermissionGuide({ isOpen, onClose, language = 'zh', onRetry }) {
     const isZh = language === 'zh'
+    /** 重新检测进行中 */
+    const [checking, setChecking] = useState(false)
+    /** 重新检测后仍未通过 */
+    const [stillDenied, setStillDenied] = useState(false)
 
     const handleOpenSettings = useCallback(() => {
       void api.screenshot.openPermissionSettings()
     }, [])
 
+    /**
+     * 重新检测权限：主进程强制做一次真实抓取探测，
+     * 已授权则直接关闭弹窗并继续截图，无需重启应用
+     */
+    const handleRecheck = useCallback(async () => {
+      if (checking) return
+      setChecking(true)
+      setStillDenied(false)
+      try {
+        const res = await api.screenshot.probePermission()
+        if (res?.granted) {
+          onClose()
+          onRetry?.()
+          return
+        }
+        setStillDenied(true)
+      } catch (err) {
+        console.error('[ScreenPermissionGuide] Recheck failed:', err)
+        setStillDenied(true)
+      } finally {
+        setChecking(false)
+      }
+    }, [checking, onClose, onRetry])
+
     const steps = isZh
       ? [
           '点击下方「打开系统设置」按钮',
           '在「隐私与安全性 → 屏幕录制」中勾选 AweeClaw（若列表中未显示，点击 + 号添加）',
-          '完全退出并重新启动 AweeClaw，权限即生效',
+          '回到本窗口点击「已开启，重新检测」；若仍提示未授权，再完全退出并重新启动 AweeClaw',
         ]
       : [
           'Click "Open System Settings" below',
           'In "Privacy & Security → Screen Recording", check AweeClaw (click + to add if not listed)',
-          'Fully quit and restart AweeClaw for the permission to take effect',
+          'Come back and click "Recheck"; if it still fails, fully quit and restart AweeClaw',
         ]
 
     return (
@@ -53,8 +83,8 @@ export const ScreenPermissionGuide: React.FC<ScreenPermissionGuideProps> = memo(
             </div>
             <p className="text-[13px] leading-relaxed text-text-secondary">
               {isZh
-                ? '截图功能需要 macOS「屏幕录制」权限。未授权时截图会显示黑屏或无法截取。开启后请重启应用。'
-                : 'Screenshots require the macOS "Screen Recording" permission. Without it, captures appear black or fail. Please restart the app after granting.'}
+                ? '截图功能需要 macOS「屏幕录制」权限。未授权时截图会显示黑屏或无法截取。开启后点击「已开启，重新检测」即可生效。'
+                : 'Screenshots require the macOS "Screen Recording" permission. Without it, captures appear black or fail. After granting, click "Recheck Permission" to continue.'}
             </p>
           </div>
 
@@ -73,9 +103,18 @@ export const ScreenPermissionGuide: React.FC<ScreenPermissionGuideProps> = memo(
           {/* 终端运行提示 */}
           <p className="text-[12px] leading-relaxed text-text-muted">
             {isZh
-              ? '提示：通过终端（Trae / VS Code 等）运行 npm run dev 时，权限归属终端应用；独立启动 AweeClaw 时需为 AweeClaw 本体授权。'
-              : 'Note: when running via a terminal (Trae / VS Code), the permission belongs to the terminal app; when running AweeClaw standalone, grant permission to AweeClaw itself.'}
+              ? '提示：通过终端（Trae / VS Code 等）运行 npm run dev 时，权限归属终端应用；独立启动 AweeClaw 时需为 AweeClaw 本体授权。系统设置列表中若存在多条 AweeClaw 记录，请确认勾选的是当前运行的这个应用。'
+              : 'Note: when running via a terminal (Trae / VS Code), the permission belongs to the terminal app; when running AweeClaw standalone, grant it to AweeClaw itself. If several AweeClaw entries exist in System Settings, make sure the one for the currently running app is enabled.'}
           </p>
+
+          {/* 重新检测结果提示 */}
+          {stillDenied && (
+            <p className="text-[12px] leading-relaxed text-warning">
+              {isZh
+                ? '仍未检测到可用的屏幕录制权限：请确认列表中 AweeClaw 已勾选，若系统弹出「退出并重新打开」请点击确认。'
+                : 'Screen recording permission still unavailable: make sure AweeClaw is checked in the list, and confirm the system prompt to quit and reopen if shown.'}
+            </p>
+          )}
 
           {/* 操作按钮 */}
           <div className="flex items-center justify-end gap-2 pt-1">
@@ -84,6 +123,14 @@ export const ScreenPermissionGuide: React.FC<ScreenPermissionGuideProps> = memo(
               className="px-4 py-2 rounded-xl text-[13px] font-medium text-text-secondary hover:bg-surface-active hover:text-text-primary transition-all"
             >
               {isZh ? '取消' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleRecheck}
+              disabled={checking}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium border border-border/60 text-text-primary hover:bg-surface-active transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {checking && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {isZh ? '已开启，重新检测' : 'Recheck Permission'}
             </button>
             <button
               onClick={handleOpenSettings}

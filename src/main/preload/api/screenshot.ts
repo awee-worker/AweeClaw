@@ -63,5 +63,15 @@ export function createScreenshotApi() {
     /** 打开 macOS「隐私与安全性 → 屏幕录制」系统设置（权限引导弹窗按钮调用） */
     openPermissionSettings: () =>
       ipcRenderer.invoke('screenshot:open-permission-settings') as Promise<IpcResponse>,
+    /**
+     * 重新检测屏幕录制权限（权限引导弹窗的「已开启，重新检测」按钮调用）
+     * 主进程强制做一次真实抓取探测，授权后无需重启应用即可继续截图
+     */
+    probePermission: () =>
+      ipcRenderer.invoke('screenshot:probe-permission') as Promise<{
+        success: boolean
+        granted?: boolean
+        screenPermission?: string
+      }>,
   }
 }

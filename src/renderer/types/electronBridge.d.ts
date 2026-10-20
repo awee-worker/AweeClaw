@@ -2860,6 +2860,8 @@ export interface ElectronAPI {
     onResult: (callback: (payload: { base64: string; mediaType: string; width: number; height: number; filePath: string; fileName: string }) => void) => () => void
     /** 打开 macOS「隐私与安全性 → 屏幕录制」系统设置（权限引导弹窗按钮调用） */
     openPermissionSettings: () => Promise<{ success: boolean; error?: string }>
+    /** 重新检测屏幕录制权限（强制真实抓取探测，授权后无需重启应用） */
+    probePermission: () => Promise<{ success: boolean; granted?: boolean; screenPermission?: string }>
   }
 
   // Proactive（主动式助手 - 阶段10 s10-02）
