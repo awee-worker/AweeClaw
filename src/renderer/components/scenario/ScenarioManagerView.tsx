@@ -456,6 +456,30 @@ export function ScenarioManagerView() {
         setInstallState({ phase: 'idle', sourceDir: null, config: null, scenarioId: null, error: null })
     }, [])
 
+    /**
+     * 安装完成后直接进入场景
+     *
+     * 安装只把场景写进注册表，不会自动切换当前场景。此时左侧导航仍是旧场景的菜单，
+     * 用户关掉弹窗后找不到新场景的入口，会以为「装了但没生效」。
+     * 这里复用切换逻辑（切换场景 + 注册面板 + 落到第一块面板），并关掉全屏页，
+     * 让用户装完立刻看到新场景的导航与首屏面板。
+     */
+    const handleEnterInstalled = useCallback(() => {
+        const scenarioId = installState.scenarioId
+        if (!scenarioId) return
+
+        const scenario = scenarioRegistry.get(scenarioId)
+        if (!scenario) {
+            toast.error(t('menu.scenario.switchFailed', language as Language))
+            handleCloseInstall()
+            return
+        }
+
+        handleSwitch(scenario)
+        handleCloseInstall()
+        useStore.getState().closeAllFullPages()
+    }, [installState.scenarioId, handleSwitch, handleCloseInstall, language])
+
     const handleRollback = useCallback(async (scenarioId: string) => {
         setIsRollingBack(true)
         try {
@@ -825,9 +849,17 @@ export function ScenarioManagerView() {
                             <p className="text-sm text-text-secondary">
                                 {t('scenario.installedsuccessfully', language as Language)}
                             </p>
-                            <ActionButton variant="primary" size="sm" onClick={handleCloseInstall}>
-                                {t('scenario.done', language as Language)}
-                            </ActionButton>
+                            <p className="text-[12px] text-text-muted max-w-md text-center">
+                                {t('scenario.installedsuccesshint', language as Language)}
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <ActionButton variant="ghost" size="sm" onClick={handleCloseInstall}>
+                                    {t('scenario.done', language as Language)}
+                                </ActionButton>
+                                <ActionButton variant="primary" size="sm" onClick={handleEnterInstalled}>
+                                    {t('scenario.enternow', language as Language)}
+                                </ActionButton>
+                            </div>
                         </div>
                     )}
                     {installState.phase === 'error' && (

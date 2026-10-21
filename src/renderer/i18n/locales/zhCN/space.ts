@@ -47,6 +47,8 @@ export const zh = {
   'scenario.install': '确认安装',
   'scenario.installingscenario': '正在安装场景...',
   'scenario.installedsuccessfully': '安装成功！',
+  'scenario.installedsuccesshint': '进入场景后，左侧会显示该场景的操作入口',
+  'scenario.enternow': '立即进入',
   'scenario.done': '完成',
   'scenario.installationfailed': '安装失败',
   'scenario.close2': '关闭',

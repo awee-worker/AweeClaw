@@ -404,7 +404,13 @@ class ShellComposerClass {
 
 
   getLayoutConfig(scenario: ScenarioPlugin): LayoutConfig {
-    const cacheKey = `${scenario.id}:${scenario.ui.layout}`
+    // 缓存 key 必须带上 ui 指纹：场景重装 / 热更新后 id 与 layout 都不变，
+    // 但 sidebarItems 可能整体换掉。只看 id:layout 会命中旧配置，
+    // 表现为「装好了新版本，宽模式面板、隐藏聊天等声明还是旧的」。
+    const uiSignature = (scenario.ui.sidebarItems ?? [])
+      .map(item => `${item.id}${item.wideMode ? 'W' : ''}${item.hideChat ? 'H' : ''}`)
+      .join(',')
+    const cacheKey = `${scenario.id}:${scenario.ui.layout}:${uiSignature}`
     const cached = this.cache.get(cacheKey)
 
     if (cached && Date.now() - cached.createdAt <= this.ttlMs) {

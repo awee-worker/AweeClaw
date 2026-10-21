@@ -213,26 +213,33 @@ async function registerProgrammaticScenario(
     throw new Error(`Failed to load programmatic scenario: ${loadResult.error}`)
   }
 
+  // bundle 加载成功不等于模块已注册：ScenarioLoader.register() 在 minAppVersion
+  // 高于当前客户端版本时会直接 return（只打日志，不抛错）。此时后续所有读取都会
+  // 拿到 undefined，若继续兜底注册，会把空 ui（sidebarItems=[]）持久化进 localStorage，
+  // 左侧导航因此回退到默认菜单，而界面仍显示「安装成功」——用户完全无从判断。
+  // 这里必须显式失败，把真实原因交给 UI。
+  if (!scenarioLoader.has(scenarioId)) {
+    throw new Error(
+      `场景未能注册：它要求客户端版本不低于 ${config.minAppVersion || '未声明'}，` +
+        `当前客户端版本较低。请升级客户端后重试。`,
+    )
+  }
+
   // 从 scenarioLoader 获取完整的 plugin 配置
   // ProgrammaticScenarioModule.getPlugin() 会合并 bundle 的 getPlugin() 返回值
   const fullPlugin = scenarioLoader.getPlugin(scenarioId)
-  if (fullPlugin) {
-    // 加载成功，注册完整 plugin（含 bundle 提供的 sidebarItems、systemPrompt 等）
-    const plugin: ScenarioPlugin = {
-      ...fullPlugin,
-      source,
-      version: config.version || version || '1.0.0',
-    }
-    scenarioRegistry.registerAndPersist(plugin)
-    logger.scenario.info(
-      `[ScenarioInstall] Registered programmatic scenario "${scenarioId}" with ${plugin.ui?.sidebarItems?.length || 0} sidebar items`
-    )
-  } else {
-    // bundle 加载成功但 scenarioLoader 中没有 plugin 配置，使用基础配置作为兜底
-    const basePlugin = buildBasePlugin(config, scenarioId, source, version)
-    scenarioRegistry.registerAndPersist(basePlugin)
-    logger.scenario.warn(
-      `[ScenarioInstall] Programmatic scenario "${scenarioId}" loaded but no plugin config found, using base config`
-    )
+  if (!fullPlugin) {
+    throw new Error(`场景 "${scenarioId}" 已加载但未取到插件配置，安装中止`)
   }
+
+  // 注册完整 plugin（含 bundle 提供的 sidebarItems、systemPrompt 等）
+  const plugin: ScenarioPlugin = {
+    ...fullPlugin,
+    source,
+    version: config.version || version || '1.0.0',
+  }
+  scenarioRegistry.registerAndPersist(plugin)
+  logger.scenario.info(
+    `[ScenarioInstall] Registered programmatic scenario "${scenarioId}" with ${plugin.ui?.sidebarItems?.length || 0} sidebar items`
+  )
 }

@@ -47,6 +47,8 @@ export const en = {
   'scenario.install': 'Install',
   'scenario.installingscenario': 'Installing scenario...',
   'scenario.installedsuccessfully': 'Installed successfully!',
+  'scenario.installedsuccesshint': 'Left navigation will show this scenario\'s entries once you enter it',
+  'scenario.enternow': 'Open now',
   'scenario.done': 'Done',
   'scenario.installationfailed': 'Installation Failed',
   'scenario.close2': 'Close',

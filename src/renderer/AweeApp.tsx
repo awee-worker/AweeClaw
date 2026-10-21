@@ -52,7 +52,22 @@ registerBuiltinScenarios()
 setExternalScenarioLoadFunctions(
   (scenarioId: string) => api.scenarioInstall.loadScenarioFiles(scenarioId),
 )
-loadExternalScenarios().catch(() => {})
+
+/**
+ * 外部场景是异步加载的：bundle 要走 scenario-bundle:// 协议 fetch + 动态 import，
+ * 比首屏渲染慢。加载完成后会更新 scenarioRegistry 里的 ui 配置（sidebarItems 等），
+ * 但 registry 不是响应式的，React 收不到通知 —— 结果就是「场景已装好、菜单没出现」，
+ * 用户必须手动切一次场景才能刷出来。加载结束后主动递增配置版本号，强制重算布局。
+ */
+loadExternalScenarios()
+  .then((loaded) => {
+    if (loaded > 0) {
+      useStore.getState().incrementScenarioConfigVersion()
+    }
+  })
+  .catch(() => {
+    /* 单个场景加载失败已在 loader 内部记录，不阻断首屏 */
+  })
 
 function ToastInitializer() {
   const toastContext = useToast()

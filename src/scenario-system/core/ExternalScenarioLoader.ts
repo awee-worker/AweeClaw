@@ -119,12 +119,24 @@ export async function loadExternalScenarios(): Promise<number> {
           logger.agent.warn(
             `[ExternalScenarioLoader] Failed to load programmatic scenario "${scenario.id}": ${loadResult.error}`
           )
-          // 加载失败时从 scenarioRegistry 中移除该场景，清理历史损坏数据。
-          // 若不移除，scenarioRegistry 中残留的空配置（sidebarItems=[]）会导致：
-          // 1. NavigationRail 回退到 DEFAULT_ITEMS，显示错误的菜单
-          // 2. scenarioLoader 中没有该场景的 entry，onActivate 不被调用，场景功能失效
-          // 移除后用户可在场景管理界面重新安装该场景。
-          scenarioRegistry.unregister(scenario.id)
+          // 加载失败时是否移除注册记录，取决于记录本身是否有有效 UI 配置：
+          //
+          // - 空配置（sidebarItems=[]）必须移除。NavigationRail 对空配置会回退到
+          //   DEFAULT_ITEMS，用户看到的是「工作空间 / 知识库」这类默认菜单，
+          //   会误以为装的场景坏了；移除后至少状态一致。
+          // - 有完整配置时保留。此时菜单能正常渲染，只是 bundle 里的组件未加载，
+          //   点进去 DynamicPanelView 会给出明确的未注册提示。保留记录的同时
+          //   也保留了用户的安装信息，重启后还会自动重试加载 —— 直接 unregister
+          //   会把整条记录从 localStorage 抹掉，用户下次连入口都找不到，只能
+          //   重新本地安装。
+          const hasUsableUi = (scenario.ui?.sidebarItems?.length ?? 0) > 0
+          if (hasUsableUi) {
+            logger.agent.warn(
+              `[ExternalScenarioLoader] 保留场景 "${scenario.id}" 的注册记录（UI 配置完整），仅 bundle 未加载`
+            )
+          } else {
+            scenarioRegistry.unregister(scenario.id)
+          }
           continue
         }
 

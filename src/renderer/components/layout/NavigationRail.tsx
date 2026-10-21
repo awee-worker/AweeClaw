@@ -70,8 +70,13 @@ const TODO_HUB_ITEM_ID = 'todo-hub'
 // 这里只控制导航项：通用助手场景不展示该入口。
 const SHOW_SCENE_TOOLS_ENTRY = true
 
-/** 不展示「场景工具」导航项的场景 */
-const SCENE_TOOLS_HIDDEN_SCENARIOS = ['general-assistant']
+/**
+ * 不展示「场景工具」导航项的场景
+ *
+ * 场景工具面板本身是通用工具台，对已经声明了完整 sidebarItems 的垂直场景来说
+ * 只是噪声：这些场景的导航应当完全由自己的面板组成。
+ */
+const SCENE_TOOLS_HIDDEN_SCENARIOS = ['general-assistant', 'miniprogram-studio']
 
 /**
  * 菜单项未读角标
