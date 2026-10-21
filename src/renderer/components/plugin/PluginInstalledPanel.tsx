@@ -250,13 +250,18 @@ export function PluginInstalledPanel() {
     }
   }
 
+  /** 取插件展示名（中文优先，回退 pluginKey） */
+  function resolvePluginName(plugin: InstalledPlugin): string {
+    const manifest = plugin.manifest as Record<string, unknown>
+    return language === 'zh'
+      ? (manifest.nameZh as string) || (manifest.name as string) || plugin.pluginKey
+      : (manifest.name as string) || plugin.pluginKey
+  }
+
   /** 升级插件到最新版本（保留用户原有配置） */
   async function handleUpdate(plugin: InstalledPlugin, latestVersion: string) {
     setUpdatingKey(plugin.pluginKey)
-    const displayName =
-      language === 'zh'
-        ? (plugin.manifest.nameZh as string) || (plugin.manifest.name as string) || plugin.pluginKey
-        : (plugin.manifest.name as string) || plugin.pluginKey
+    const displayName = resolvePluginName(plugin)
     try {
       const result = await updatePlugin(plugin.pluginId, latestVersion)
       if (result.success) {
@@ -300,7 +305,12 @@ export function PluginInstalledPanel() {
     }
   }
 
-  /** 检查所有插件更新 */
+  /**
+   * 检查所有插件更新，发现新版本时直接自动升级
+   *
+   * 升级串行执行：多个插件并发写运行时目录会相互影响，且 MCP 重连也会互相打断。
+   * 单个插件升级失败不中断整体流程，最后统一汇总成一条提示。
+   */
   async function handleCheckAllUpdates() {
     if (plugins.length === 0) return
 
@@ -318,15 +328,110 @@ export function PluginInstalledPanel() {
       )
       setUpdates(results)
 
-      const hasUpdateCount = Object.values(results).filter((r) => r.hasUpdate).length
-      if (hasUpdateCount > 0) {
-        toast.success(
-          language === 'zh'
-            ? `发现 ${hasUpdateCount} 个可更新插件`
-            : `${hasUpdateCount} plugins have updates`,
-        )
-      } else {
+      const pending = plugins.filter((p) => results[p.pluginKey]?.hasUpdate)
+      if (pending.length === 0) {
         toast.success(language === 'zh' ? '所有插件均为最新版本' : 'All plugins are up to date')
+        return
+      }
+
+      const updated: string[] = []
+      const failed: string[] = []
+      const reconnectFailed: string[] = []
+      const skipped: string[] = []
+
+      for (const plugin of pending) {
+        const displayName = resolvePluginName(plugin)
+        const latestVersion = results[plugin.pluginKey]?.latestVersion
+        if (!latestVersion) {
+          skipped.push(displayName)
+          continue
+        }
+
+        setUpdatingKey(plugin.pluginKey)
+        try {
+          const result = await updatePlugin(plugin.pluginId, latestVersion)
+          if (result.success) {
+            updated.push(`${displayName} v${latestVersion}`)
+            if (result.mcpConnectError) reconnectFailed.push(displayName)
+            // 清除该插件的更新标记
+            setUpdates((prev) => {
+              const next = { ...prev }
+              delete next[plugin.pluginKey]
+              return next
+            })
+          } else {
+            failed.push(`${displayName}：${result.error || 'Unknown error'}`)
+          }
+        } catch (err) {
+          failed.push(`${displayName}：${err instanceof Error ? err.message : String(err)}`)
+        } finally {
+          setUpdatingKey(null)
+        }
+      }
+
+      // 版本变化会影响卡片展示与技能来源，统一刷新一次列表
+      await loadPlugins()
+
+      if (failed.length > 0 || reconnectFailed.length > 0) {
+        const parts: string[] = []
+        if (updated.length > 0) {
+          parts.push(
+            language === 'zh'
+              ? `已更新 ${updated.length} 个：${updated.join('、')}`
+              : `${updated.length} updated: ${updated.join(', ')}`,
+          )
+        }
+        if (reconnectFailed.length > 0) {
+          parts.push(
+            language === 'zh'
+              ? `${reconnectFailed.join('、')} 已更新但 MCP 服务未连上，可在设置里重连`
+              : `${reconnectFailed.join(', ')} updated but the MCP service failed to connect. Reconnect in Settings.`,
+          )
+        }
+        if (failed.length > 0) {
+          parts.push(
+            language === 'zh'
+              ? `失败 ${failed.length} 个：${failed.join('；')}`
+              : `${failed.length} failed: ${failed.join('; ')}`,
+          )
+        }
+        if (skipped.length > 0) {
+          parts.push(
+            language === 'zh'
+              ? `${skipped.join('、')} 未取到目标版本，已跳过`
+              : `${skipped.join(', ')} skipped: target version unavailable`,
+          )
+        }
+
+        const cardTitle =
+          failed.length > 0
+            ? language === 'zh'
+              ? '部分插件自动更新失败'
+              : 'Some plugins failed to update'
+            : language === 'zh'
+              ? '已自动更新，需重连服务'
+              : 'Updated, reconnect required'
+
+        toast.card({
+          type: failed.length > 0 ? 'error' : 'warning',
+          title: cardTitle,
+          message: parts.join('；'),
+          duration: 10000,
+          source: 'PluginInstalled',
+        })
+      } else {
+        // 成功时同样要交代清楚更新了哪些插件、到哪个版本：
+        // 只报数量的话，用户无法确认自己关心的那个插件到底有没有升上去
+        toast.card({
+          type: 'success',
+          title:
+            language === 'zh'
+              ? `${updated.length} 个插件已自动更新`
+              : `${updated.length} plugin(s) updated automatically`,
+          message: updated.join(language === 'zh' ? '、' : ', '),
+          duration: 8000,
+          source: 'PluginInstalled',
+        })
       }
     } finally {
       setOperating(null)

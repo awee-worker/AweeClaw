@@ -21,9 +21,6 @@ import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
  */
 export const STREAM_TICK_MS = FRAME_TICK_MS
 
-/** 收尾动画每帧推进间隔（毫秒） */
-const CATCH_UP_TICK_MS = 50
-
 /** 间距小于等于此值时一次性补齐，避免逐字符抖动 */
 const DIRECT_FINISH_GAP = 3
 
@@ -36,9 +33,6 @@ const DIRECT_FINISH_GAP = 3
  * 改成固定速率后，积压无论多少，单位时间推进量都落在可控区间内，才是连续的流式效果。
  */
 const BASE_CHARS_PER_SECOND = 40
-
-/** 收尾阶段基础速率（字符/秒），略快于流式以减少等待 */
-const CATCH_UP_CHARS_PER_SECOND = 120
 
 /**
  * 积压每增加这么多字符，推进速率提升一档
@@ -54,21 +48,6 @@ const BACKLOG_CHARS_PER_SECOND = 40
 
 /** 流式阶段速率上限：避免积压过大时一帧跳出整段文本 */
 const MAX_CHARS_PER_SECOND = 300
-
-/** 收尾阶段速率上限 */
-const CATCH_UP_MAX_CHARS_PER_SECOND = 600
-
-/**
- * 收尾阶段的目标补齐时长（毫秒）
- *
- * 输出结束后用户已在等待结果，剩余文本需要有一个可预期的补齐时间，
- * 不能按基础速率慢慢推进。这里按预算反推每帧最小推进量，
- * 再与单帧上限取小，兼顾补齐速度与画面连续性。
- */
-const CATCH_UP_BUDGET_MS = 600
-
-/** 收尾阶段单帧推进上限：上限越高补齐越快，一次跳出的文本越多 */
-const CATCH_UP_MAX_STEP_CHARS = 36
 
 /**
  * 按积压量解算推进速率（字符/秒）
@@ -88,8 +67,8 @@ function resolveCharsPerSecond(
 /**
  * 按内容规模解析推进间隔
  *
- * 只用于收尾补齐与场景策略版（useSmoothStreamImpl）：这两条路径走独立定时器或
- * 场景配置，不参与共享帧调度器的合帧，因此按内容规模放宽间隔没有副作用。
+ * 只用于场景策略版（useSmoothStreamImpl）：它走独立定时器与场景配置，
+ * 不参与共享帧调度器的合帧，因此按内容规模放宽间隔没有副作用。
  *
  * 流式主路径**不得**调用本函数 —— 它与缓冲刷写必须同节拍，见 STREAM_TICK_MS。
  */
@@ -121,39 +100,6 @@ function advance(
   return { nextLen, slice: content.slice(0, nextLen) }
 }
 
-/**
- * 收尾阶段的推进
- *
- * 与流式阶段的差异：这里有一个明确的补齐预算，剩余文本要在预算内显示完，
- * 否则「内容已经生成完、画面还在慢慢出字」的观感比一次补齐更糟。
- * 因此取「速率推进量」与「预算反推量」的较大者，再受单帧上限约束。
- */
-function advanceCatchUp(
-  content: string,
-  currentLen: number,
-  rateScale: number,
-  tickMs: number,
-  directGap: number,
-): { nextLen: number; slice: string } | null {
-  const target = content.length
-  if (currentLen >= target) return null
-
-  const gap = target - currentLen
-  if (gap <= directGap) return { nextLen: target, slice: content }
-
-  const rate = resolveCharsPerSecond(
-    gap,
-    CATCH_UP_CHARS_PER_SECOND * rateScale,
-    CATCH_UP_MAX_CHARS_PER_SECOND * rateScale,
-  )
-  const rateStep = Math.round((rate * tickMs) / 1000)
-  const budgetSteps = Math.max(1, Math.round(CATCH_UP_BUDGET_MS / tickMs))
-  const budgetStep = Math.ceil(gap / budgetSteps)
-
-  const step = Math.min(gap, CATCH_UP_MAX_STEP_CHARS, Math.max(1, rateStep, budgetStep))
-  const nextLen = currentLen + step
-  return { nextLen, slice: content.slice(0, nextLen) }
-}
 
 export interface UseSmoothStreamOptions {
   /**
@@ -170,8 +116,8 @@ export interface UseSmoothStreamOptions {
 /**
  * 平滑流式文本插值器
  *
- * 在流式输出期间按固定速率推进显示长度，收尾时以更高速率补齐剩余内容，
- * 避免内容突变造成的视觉跳动。
+ * 只在真正处于流式输出期间按固定速率推进显示长度。挂载时即以全文呈现，
+ * 一旦离开流式（历史会话、已输出完毕的消息）立即补齐到全文，不重播打字效果。
  */
 export function useSmoothStream(
   content: string,
@@ -180,22 +126,19 @@ export function useSmoothStream(
   options: UseSmoothStreamOptions = {},
 ): { displayedContent: string } {
   const { immediate = false } = options
-  const [displayedContent, setDisplayedContent] = useState(() =>
-    isStreaming && !immediate ? '' : content,
-  )
+  /**
+   * 挂载即全文
+   *
+   * 历史会话、以及当前会话里已经输出完毕的内容，都必须一次显示完整：这类内容
+   * 没有增量可等，重播打字效果只会让用户再等一遍。只有挂载之后真正到达的新增量
+   * 才交给下面的推进循环平滑展开。
+   */
+  const [displayedContent, setDisplayedContent] = useState(content)
   const contentRef = useRef(content)
-  const displayedLenRef = useRef(isStreaming && !immediate ? 0 : content.length)
-  const catchUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const displayedLenRef = useRef(content.length)
   const speedMultiplierRef = useRef(speedMultiplier)
   speedMultiplierRef.current = speedMultiplier
 
-  /** 清理收尾动画定时器 */
-  const clearCatchUp = () => {
-    if (catchUpTimerRef.current !== null) {
-      clearTimeout(catchUpTimerRef.current)
-      catchUpTimerRef.current = null
-    }
-  }
 
   /**
    * 流式推进任务
@@ -235,7 +178,7 @@ export function useSmoothStream(
     }
   }
 
-  // 同步内容引用，并处理内容回退、定型补全或收尾动画
+  // 同步内容引用，并处理内容回退、定型补全与流式结束
   useEffect(() => {
     contentRef.current = content
 
@@ -245,9 +188,8 @@ export function useSmoothStream(
       return
     }
 
-    // 已定型的内容单元：立即补齐，并终止可能正在跑的收尾推进
-    if (immediate) {
-      clearCatchUp()
+    // 已定型的内容单元，或已经不在流式中：立即全量显示，不逐字补齐
+    if (immediate || !isStreaming) {
       if (displayedLenRef.current !== content.length) {
         displayedLenRef.current = content.length
         setDisplayedContent(content)
@@ -255,42 +197,12 @@ export function useSmoothStream(
       return
     }
 
-    if (isStreaming) {
-      // 有新积压就唤醒推进循环：循环追上内容后会自行停止，这里负责把它重新拉起
-      const tick = streamTickRef.current
-      if (tick && displayedLenRef.current < content.length) {
-        scheduleFrameTask(tick, STREAM_TICK_MS)
-      }
-      return
+    // 有新积压就唤醒推进循环：循环追上内容后会自行停止，这里负责把它重新拉起
+    const tick = streamTickRef.current
+    if (tick && displayedLenRef.current < content.length) {
+      scheduleFrameTask(tick, STREAM_TICK_MS)
     }
-
-    if (displayedLenRef.current < content.length && catchUpTimerRef.current === null) {
-      const runCatchUp = () => {
-        const tickMs = resolveTickMs(CATCH_UP_TICK_MS, contentRef.current.length)
-        const advanced = advanceCatchUp(
-          contentRef.current,
-          displayedLenRef.current,
-          speedMultiplier,
-          tickMs,
-          DIRECT_FINISH_GAP,
-        )
-        if (!advanced) {
-          catchUpTimerRef.current = null
-          return
-        }
-        displayedLenRef.current = advanced.nextLen
-        setDisplayedContent(advanced.slice)
-        catchUpTimerRef.current = setTimeout(runCatchUp, tickMs)
-      }
-      catchUpTimerRef.current = setTimeout(
-        runCatchUp,
-        resolveTickMs(CATCH_UP_TICK_MS, contentRef.current.length),
-      )
-    } else if (displayedLenRef.current >= content.length) {
-      setDisplayedContent(content)
-      displayedLenRef.current = content.length
-    }
-  }, [content, isStreaming, speedMultiplier, immediate])
+  }, [content, isStreaming, immediate])
 
   // 流式期间推进循环
   //
@@ -299,8 +211,6 @@ export function useSmoothStream(
   // 时段里，调度器里没有本任务，也不会每 66ms 醒一次。
   useEffect(() => {
     if (!isStreaming || immediate) return
-
-    clearCatchUp()
 
     const tick = streamTickRef.current
     if (tick && displayedLenRef.current < contentRef.current.length) {
@@ -314,8 +224,6 @@ export function useSmoothStream(
     }
   }, [isStreaming, speedMultiplier, immediate])
 
-  // 卸载时清理收尾动画定时器（流式推进任务由上面的 effect 自行取消）
-  useEffect(() => () => clearCatchUp(), [])
 
   return { displayedContent }
 }
@@ -331,11 +239,11 @@ export interface ScenarioStreamRenderPolicy {
   domain: ScenarioDomain
   /** 流式每帧推进间隔（毫秒） */
   streamTickMs: number
-  /** 收尾每帧推进间隔（毫秒） */
+  /** 收尾每帧推进间隔（毫秒）；收尾动画已移除，仅保留字段以兼容既有策略表 */
   catchUpTickMs: number
   /** 流式速率倍率（1 为标准速率） */
   streamFactor: number
-  /** 收尾速率倍率 */
+  /** 收尾速率倍率；收尾动画已移除，仅保留字段以兼容既有策略表 */
   catchUpFactor: number
   /** 是否启用平滑动画（医疗场景可能禁用以确保完整显示） */
   enableSmoothAnimation: boolean
@@ -441,19 +349,11 @@ function useSmoothStreamImpl(
   speedMultiplier: number,
   policy: ScenarioStreamRenderPolicy,
 ): { displayedContent: string } {
-  const [displayedContent, setDisplayedContent] = useState(() =>
-    isStreaming ? '' : content,
-  )
+  // 与 useSmoothStream 一致：挂载即全文，只有挂载后的新增量才平滑展开
+  const [displayedContent, setDisplayedContent] = useState(content)
   const contentRef = useRef(content)
-  const displayedLenRef = useRef(isStreaming ? 0 : content.length)
-  const catchUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const displayedLenRef = useRef(content.length)
 
-  const clearCatchUp = () => {
-    if (catchUpTimerRef.current !== null) {
-      clearTimeout(catchUpTimerRef.current)
-      catchUpTimerRef.current = null
-    }
-  }
 
   useEffect(() => {
     contentRef.current = content
@@ -464,42 +364,19 @@ function useSmoothStreamImpl(
       return
     }
 
-    if (isStreaming) return
-
-    if (displayedLenRef.current < content.length && catchUpTimerRef.current === null) {
-      const rateScale = policy.catchUpFactor * speedMultiplier
-      const runCatchUp = () => {
-        const tickMs = resolveTickMs(policy.catchUpTickMs, contentRef.current.length)
-        const advanced = advance(
-          contentRef.current,
-          displayedLenRef.current,
-          CATCH_UP_CHARS_PER_SECOND * rateScale,
-          CATCH_UP_MAX_CHARS_PER_SECOND * rateScale,
-          tickMs,
-          policy.directFinishGap,
-        )
-        if (!advanced) {
-          catchUpTimerRef.current = null
-          return
-        }
-        displayedLenRef.current = advanced.nextLen
-        setDisplayedContent(advanced.slice)
-        catchUpTimerRef.current = setTimeout(runCatchUp, tickMs)
+    if (!isStreaming) {
+      if (displayedLenRef.current !== content.length) {
+        displayedLenRef.current = content.length
+        setDisplayedContent(content)
       }
-      catchUpTimerRef.current = setTimeout(
-        runCatchUp,
-        resolveTickMs(policy.catchUpTickMs, contentRef.current.length),
-      )
-    } else if (displayedLenRef.current >= content.length) {
-      setDisplayedContent(content)
-      displayedLenRef.current = content.length
+      return
     }
-  }, [content, isStreaming, speedMultiplier, policy])
+
+    // 流式推进由下方 effect 的帧循环自行续期，这里无需唤醒
+  }, [content, isStreaming, policy])
 
   useEffect(() => {
     if (!isStreaming) return
-
-    clearCatchUp()
 
     const rateScale = policy.streamFactor * speedMultiplier
     const runStream = () => {
@@ -524,9 +401,6 @@ function useSmoothStreamImpl(
 
     return () => cancelFrameTask(runStream)
   }, [isStreaming, speedMultiplier, policy])
-
-  useEffect(() => () => clearCatchUp(), [])
-
 
   return { displayedContent }
 }

@@ -75,21 +75,39 @@ function convertNamedImportToDestructure(item: string): string {
 }
 
 /**
+ * 生成「取模块 default 导出」的表达式
+ *
+ * 注入端（SharedDependencyProvider）对部分模块做过一次 CJS 互操作解包
+ * （如 `react: react.default || react`），此时模块对象上已经没有 default 属性；
+ * 而 bundle 是按 ESM 语义产出的（`import React from "react"`）。
+ * 若照搬 ESM 语义写成 `const { default: React } = modules.react`，
+ * React 会拿到 undefined，场景代码一使用 `React.memo` / `React.useState`
+ * 就抛 "Cannot read properties of undefined"，且错误信息完全指不到共享依赖。
+ * 因此统一按「有 default 取 default，否则取模块对象本身」解析，两种注入形态都成立。
+ */
+function resolveDefaultExpr(owner: string): string {
+  return `${owner}.default ?? ${owner}`
+}
+
+/**
  * 重写 ESM bundle 中的 bare specifier import 语句
  *
  * 把 `import React from "react"` 等 bare specifier import
  * 重写为从 `window.__AWEECLAW_SHARED__` 读取的 const 声明。
  *
  * 支持的 import 格式（含跨行）：
- * 1. import D from "spec";        → const { default: D } = __shared__.modules.spec;
+ * 1. import D from "spec";        → const D = __shared__.modules.spec.default ?? __shared__.modules.spec;
  * 2. import { a, b as c } from "spec";  → const { a, b: c } = __shared__.modules.spec;
- * 3. import D, { a, b as c } from "spec"; → const { default: D, a, b: c } = __shared__.modules.spec;
+ * 3. import D, { a, b as c } from "spec"; → 先取模块对象，再分别解析 default 与具名导出;
  * 4. import * as N from "spec";   → const N = __shared__.modules.spec;
  * 5. import "spec";               → （移除，共享依赖无 side-effect）
  *
  * 只处理在 SHARED_DEPS_MAP 中的 bare specifier，其他 import 保持原样。
  */
 export function rewriteBareSpecifiers(code: string): string {
+  // 混合导入（default + named）需要先把模块对象存进临时变量，
+  // 序号保证同一 bundle 内多次重写不会产生重名声明。
+  let tempSeq = 0
   // 1. 处理 side-effect import: import "spec";（共享依赖无 side-effect，直接移除）
   // 用 \bimport\s* 而非 import\s+：esbuild 压缩后会移除 import 与后续 token 之间的空格
   // （如 import"react"），\s* 兼容零空格和有空格两种形式；\b 防止匹配 myimport 等标识符。
@@ -127,34 +145,34 @@ export function rewriteBareSpecifiers(code: string): string {
         return `const ${name} = ${sharedExpr};`
       }
 
-      const destructureParts: string[] = []
-
-      // default + named: import D, { a, b as c } from "spec";
-      if (defaultWithNamedImp) {
-        destructureParts.push(`default: ${defaultWithNamedImp}`)
-        if (namedWithDefault) {
-          const named = namedWithDefault.split(',').map((s) => s.trim()).filter(Boolean)
-          for (const item of named) {
-            destructureParts.push(convertNamedImportToDestructure(item))
-          }
+      const defaultName = defaultOnlyImp || defaultWithNamedImp
+      const namedRaw = namedOnlyImp || namedWithDefault
+      const namedParts: string[] = []
+      if (namedRaw) {
+        const named = namedRaw.split(',').map((s) => s.trim()).filter(Boolean)
+        for (const item of named) {
+          namedParts.push(convertNamedImportToDestructure(item))
         }
       }
 
       // default only: import D from "spec";
-      if (defaultOnlyImp) {
-        destructureParts.push(`default: ${defaultOnlyImp}`)
+      if (defaultName && namedParts.length === 0) {
+        return `const ${defaultName} = ${resolveDefaultExpr(sharedExpr)};`
       }
 
       // named only: import { a, b as c } from "spec";
-      if (namedOnlyImp) {
-        const named = namedOnlyImp.split(',').map((s) => s.trim()).filter(Boolean)
-        for (const item of named) {
-          destructureParts.push(convertNamedImportToDestructure(item))
-        }
+      if (!defaultName && namedParts.length > 0) {
+        return `const { ${namedParts.join(', ')} } = ${sharedExpr};`
       }
 
-      if (destructureParts.length > 0) {
-        return `const { ${destructureParts.join(', ')} } = ${sharedExpr};`
+      // default + named: import D, { a, b as c } from "spec";
+      if (defaultName && namedParts.length > 0) {
+        const owner = `__shared${tempSeq++}`
+        return (
+          `const ${owner} = ${sharedExpr};` +
+          ` const ${defaultName} = ${resolveDefaultExpr(owner)};` +
+          ` const { ${namedParts.join(', ')} } = ${owner};`
+        )
       }
 
       return match
