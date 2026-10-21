@@ -70,6 +70,8 @@ import { createOnlyOfficeApi } from './preload/api/onlyOffice'
 import { createProjectExecutionApi } from './preload/api/projectExecution'
 import { createVideoTranscodeApi } from './preload/api/videoTranscode'
 import { createEnvironmentApi } from './preload/api/environment'
+import { createJavaApi } from './preload/api/java'
+import { createGoApi } from './preload/api/go'
 import { createDeviceLinkApi } from './preload/api/deviceLink'
 import { createExternalAgentApi } from './preload/api/externalAgent'
 import { createVrmCompanionApi } from './preload/api/vrmCompanion'
@@ -131,6 +133,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   projectExecution: createProjectExecutionApi(),
   videoTranscode: createVideoTranscodeApi(),
   environment: createEnvironmentApi(),
+  ...createJavaApi(),
+  ...createGoApi(),
     deviceLink: createDeviceLinkApi(),
     externalAgent: createExternalAgentApi(),
     vrmCompanion: createVrmCompanionApi(),

@@ -69,6 +69,8 @@ import { registerEmailHandlers } from '../messaging/emailService'
 import { registerDoctorHandlers } from '../system/doctor'
 import { registerPythonHandlers } from '../system/python'
 import { registerNodeHandlers } from '../system/node'
+import { registerJavaHandlers } from '../system/java'
+import { registerGoHandlers } from '../system/go'
 import { registerEnvironmentHandlers } from '../system/environmentBridge'
 import { registerDataIpcHandlers } from '../system/data'
 import { registerDesktopControlHandlers } from '../system/desktopControl'
@@ -282,6 +284,12 @@ export function registerAllHandlers(context: IPCContext) {
 
   // Node.js 环境
   registerOnce('node', () => registerNodeHandlers())
+
+  // Java 环境
+  registerOnce('java', () => registerJavaHandlers())
+
+  // Go 环境
+  registerOnce('go', () => registerGoHandlers())
 
   // 运行时环境检测与安装（Python/uv/Node 统一编排）
   registerOnce('environment', () => registerEnvironmentHandlers())

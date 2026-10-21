@@ -802,6 +802,12 @@ function createGroupedAPI() {
     // Node.js 运行时（自动分组：nodeXxx → node.xxx）
     node: createGroup(raw, 'node'),
 
+    // Java 运行时（自动分组：javaXxx → java.xxx）
+    java: createGroup(raw, 'java'),
+
+    // Go 运行时（自动分组：goXxx → go.xxx）
+    go: createGroup(raw, 'go'),
+
     // 数据分析（自动分组：dataXxx → data.xxx）
     data: createGroup(raw, 'data'),
 

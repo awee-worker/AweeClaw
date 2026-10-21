@@ -589,6 +589,393 @@ function NodeEnvSection({ language }: { language: Language }) {
     )
 }
 
+/** Java 运行时状态（与主进程 JavaStatus 对齐） */
+interface JavaRuntimeStatus {
+    ready: boolean
+    javaPath: string | null
+    javacPath: string | null
+    javaHome: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    isJdk: boolean
+    javaHomeEnv: string | null
+    error?: string
+}
+
+function JavaEnvSection({ language }: { language: Language }) {
+    const [javaStatus, setJavaStatus] = useState<JavaRuntimeStatus | null>(null)
+    const [isReinstalling, setIsReinstalling] = useState(false)
+    const [isChecking, setIsChecking] = useState(true)
+
+    const refreshStatus = async (force = false) => {
+        setIsChecking(true)
+        try {
+            const status = force ? await api.java.redetect() : await api.java.getStatus()
+            setJavaStatus(status)
+        } catch (err) {
+            logger.settings.warn('Failed to check java status:', err)
+        } finally {
+            setIsChecking(false)
+        }
+    }
+
+    useEffect(() => {
+        void refreshStatus()
+    }, [])
+
+    const handleReinstall = async () => {
+        setIsReinstalling(true)
+        try {
+            const status = await api.java.reinstall()
+            setJavaStatus(status)
+            if (status.ready) {
+                toast.success(language === 'zh' ? 'Java 环境已重新安装' : 'Java environment reinstalled')
+            } else {
+                toast.error(language === 'zh' ? 'Java 环境安装失败，请查看日志排查' : 'Java installation failed, check logs')
+            }
+        } catch (err) {
+            toast.error(language === 'zh' ? 'Java 环境安装失败' : 'Java installation failed')
+        } finally {
+            setIsReinstalling(false)
+        }
+    }
+
+    const handleSetCustomPath = async () => {
+        const result = await api.file.selectFolder()
+        if (!result) return
+        const res = await api.java.setCustomPath(result)
+        setJavaStatus(res.status)
+        if (res.success) {
+            toast.success(language === 'zh' ? 'Java 路径已更新' : 'Java path updated')
+        } else {
+            toast.error(
+                res.status.error
+                    || (language === 'zh' ? '指定的目录下未找到 java，可执行文件' : 'No java executable found in the selected folder')
+            )
+        }
+    }
+
+    return (
+        <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-4 shadow-sm">
+            <div className="flex items-center justify-between">
+                <div>
+                    <div className="text-sm font-bold text-text-primary flex items-center gap-2">
+                        <Terminal className="w-4 h-4 text-accent" />
+                        {t('settings.javaruntime', language as Language) || 'Java Runtime'}
+                    </div>
+                    <div className="text-xs text-text-muted mt-1 opacity-70 ml-6">
+                        {t('settings.aiagentscriptexecutionjava', language as Language) || 'Java 编译与运行（MCP Java 工具、脚本任务）依赖 JDK 环境'}
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${isChecking ? 'bg-yellow-500' : javaStatus?.ready ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span className="text-xs font-medium text-text-secondary">
+                        {isChecking
+                            ? (language === 'zh' ? '检测中' : 'Checking')
+                            : javaStatus?.ready
+                                ? (t('settings.ready', language as Language))
+                                : (t('settings.notready', language as Language))}
+                    </span>
+                </div>
+            </div>
+
+            {javaStatus && (
+                <div className="space-y-2 p-4 bg-background/50 rounded-xl border border-border shadow-inner">
+                    {javaStatus.version && (
+                        <div className="flex items-center gap-2 text-xs flex-wrap">
+                            <span className="text-text-muted w-20">Java:</span>
+                            <span className="text-text-secondary font-mono">{javaStatus.version}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-text-muted border border-border">
+                                {javaStatus.source === 'system'
+                                    ? (t('settings.system2', language as Language))
+                                    : (t('settings.managed', language as Language) || 'Managed')}
+                            </span>
+                            {javaStatus.ready && (
+                                <span
+                                    className={`text-[10px] px-1.5 py-0.5 rounded border ${javaStatus.isJdk
+                                        ? 'bg-green-500/10 text-green-500 border-green-500/20'
+                                        : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'}`}
+                                >
+                                    {javaStatus.isJdk ? 'JDK' : 'JRE（缺少 javac）'}
+                                </span>
+                            )}
+                        </div>
+                    )}
+                    {javaStatus.javaPath && (
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="text-text-muted w-20">{t('settings.path', language as Language)}</span>
+                            <span className="text-text-secondary font-mono break-all">{javaStatus.javaPath}</span>
+                        </div>
+                    )}
+                    {javaStatus.javaHome && (
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="text-text-muted w-20">JAVA_HOME</span>
+                            <span className="text-text-secondary font-mono break-all">{javaStatus.javaHome}</span>
+                        </div>
+                    )}
+                    {javaStatus.javacPath && (
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="text-text-muted w-20">javac:</span>
+                            <span className="text-text-secondary font-mono break-all">{javaStatus.javacPath}</span>
+                        </div>
+                    )}
+                    {javaStatus.javaHomeEnv && javaStatus.javaHome &&
+                        javaStatus.javaHomeEnv !== javaStatus.javaHome && (
+                            <div className="flex items-start gap-2 text-[11px] text-text-muted">
+                                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 opacity-70" />
+                                <span className="break-all">
+                                    系统 JAVA_HOME 为 {javaStatus.javaHomeEnv}，与应用当前使用的 JDK 不一致，AI 执行的 Java 任务以应用内路径为准。
+                                </span>
+                            </div>
+                        )}
+                    {javaStatus.error && (
+                        <div className="flex items-start gap-2 text-xs text-red-400 mt-2">
+                            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                            <span>{javaStatus.error}</span>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {javaStatus && !javaStatus.ready && !isChecking && (
+                <div className="flex items-start gap-2 text-[12px] font-medium text-yellow-500 bg-yellow-500/10 px-3 py-2 rounded-lg border border-yellow-500/20">
+                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                    <div>
+                        {t('settings.javaisnotavailableai', language as Language)
+                            || 'Java 环境不可用，依赖 JDK 的 Java 编译与运行任务将无法执行。点击"重新安装"自动下载 Temurin JDK。'}
+                    </div>
+                </div>
+            )}
+
+            <div className="flex gap-3">
+                <ActionButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleReinstall}
+                    disabled={isReinstalling || isChecking}
+                    className="rounded-xl px-4"
+                >
+                    {isReinstalling
+                        ? (t('settings.installing', language as Language))
+                        : (t('settings.reinstall', language as Language))}
+                </ActionButton>
+                <ActionButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void refreshStatus(true)}
+                    disabled={isReinstalling || isChecking}
+                    className="rounded-xl px-4"
+                >
+                    {isChecking
+                        ? (language === 'zh' ? '检测中...' : 'Checking...')
+                        : (language === 'zh' ? '重新检测' : 'Re-detect')}
+                </ActionButton>
+                <ActionButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleSetCustomPath}
+                    className="rounded-xl px-4"
+                >
+                    {t('settings.setjavapath', language as Language) || '指定 Java 路径'}
+                </ActionButton>
+            </div>
+        </div>
+    )
+}
+
+/** Go 运行时状态（与主进程 GoStatus 对齐） */
+interface GoRuntimeStatus {
+    ready: boolean
+    goPath: string | null
+    gofmtPath: string | null
+    goRoot: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    goRootEnv: string | null
+    error?: string
+}
+
+function GoEnvSection({ language }: { language: Language }) {
+    const [goStatus, setGoStatus] = useState<GoRuntimeStatus | null>(null)
+    const [isReinstalling, setIsReinstalling] = useState(false)
+    const [isChecking, setIsChecking] = useState(true)
+
+    const refreshStatus = async (force = false) => {
+        setIsChecking(true)
+        try {
+            const status = force ? await api.go.redetect() : await api.go.getStatus()
+            setGoStatus(status)
+        } catch (err) {
+            logger.settings.warn('Failed to check go status:', err)
+        } finally {
+            setIsChecking(false)
+        }
+    }
+
+    useEffect(() => {
+        void refreshStatus()
+    }, [])
+
+    const handleReinstall = async () => {
+        setIsReinstalling(true)
+        try {
+            const status = await api.go.reinstall()
+            setGoStatus(status)
+            if (status.ready) {
+                toast.success(language === 'zh' ? 'Go 环境已重新安装' : 'Go environment reinstalled')
+            } else {
+                toast.error(language === 'zh' ? 'Go 环境安装失败，请查看日志排查' : 'Go installation failed, check logs')
+            }
+        } catch (err) {
+            toast.error(language === 'zh' ? 'Go 环境安装失败' : 'Go installation failed')
+        } finally {
+            setIsReinstalling(false)
+        }
+    }
+
+    const handleSetCustomPath = async () => {
+        const result = await api.file.selectFolder()
+        if (!result) return
+        const res = await api.go.setCustomPath(result)
+        setGoStatus(res.status)
+        if (res.success) {
+            toast.success(language === 'zh' ? 'Go 路径已更新' : 'Go path updated')
+        } else {
+            toast.error(
+                res.status.error
+                    || (language === 'zh' ? '指定的目录下未找到 go 可执行文件' : 'No go executable found in the selected folder')
+            )
+        }
+    }
+
+    return (
+        <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-4 shadow-sm">
+            <div className="flex items-center justify-between">
+                <div>
+                    <div className="text-sm font-bold text-text-primary flex items-center gap-2">
+                        <Terminal className="w-4 h-4 text-accent" />
+                        {t('settings.goruntime', language as Language) || 'Go Runtime'}
+                    </div>
+                    <div className="text-xs text-text-muted mt-1 opacity-70 ml-6">
+                        {t('settings.aiagentscriptexecutiongo', language as Language) || 'Go 编译与运行（代码生成、脚本任务）依赖 Go 工具链'}
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${isChecking ? 'bg-yellow-500' : goStatus?.ready ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span className="text-xs font-medium text-text-secondary">
+                        {isChecking
+                            ? (language === 'zh' ? '检测中' : 'Checking')
+                            : goStatus?.ready
+                                ? (t('settings.ready', language as Language))
+                                : (t('settings.notready', language as Language))}
+                    </span>
+                </div>
+            </div>
+
+            {goStatus && (
+                <div className="space-y-2 p-4 bg-background/50 rounded-xl border border-border shadow-inner">
+                    {goStatus.version && (
+                        <div className="flex items-center gap-2 text-xs flex-wrap">
+                            <span className="text-text-muted w-20">Go:</span>
+                            <span className="text-text-secondary font-mono">{goStatus.version}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-text-muted border border-border">
+                                {goStatus.source === 'system'
+                                    ? (t('settings.system2', language as Language))
+                                    : (t('settings.managed', language as Language) || 'Managed')}
+                            </span>
+                            {goStatus.ready && (
+                                <span
+                                    className={`text-[10px] px-1.5 py-0.5 rounded border ${goStatus.gofmtPath
+                                        ? 'bg-green-500/10 text-green-500 border-green-500/20'
+                                        : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'}`}
+                                >
+                                    {goStatus.gofmtPath ? 'Toolchain' : '缺少 gofmt'}
+                                </span>
+                            )}
+                        </div>
+                    )}
+                    {goStatus.goPath && (
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="text-text-muted w-20">{t('settings.path', language as Language)}</span>
+                            <span className="text-text-secondary font-mono break-all">{goStatus.goPath}</span>
+                        </div>
+                    )}
+                    {goStatus.goRoot && (
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="text-text-muted w-20">{t('settings.goroot', language as Language) || 'GOROOT'}</span>
+                            <span className="text-text-secondary font-mono break-all">{goStatus.goRoot}</span>
+                        </div>
+                    )}
+                    {goStatus.gofmtPath && (
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="text-text-muted w-20">gofmt:</span>
+                            <span className="text-text-secondary font-mono break-all">{goStatus.gofmtPath}</span>
+                        </div>
+                    )}
+                    {goStatus.goRootEnv && goStatus.goRoot &&
+                        goStatus.goRootEnv !== goStatus.goRoot && (
+                            <div className="flex items-start gap-2 text-[11px] text-text-muted">
+                                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 opacity-70" />
+                                <span className="break-all">
+                                    系统 GOROOT 为 {goStatus.goRootEnv}，与应用当前使用的 Go 不一致，AI 执行的 Go 任务以应用内路径为准。
+                                </span>
+                            </div>
+                        )}
+                    {goStatus.error && (
+                        <div className="flex items-start gap-2 text-xs text-red-400 mt-2">
+                            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                            <span>{goStatus.error}</span>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {goStatus && !goStatus.ready && !isChecking && (
+                <div className="flex items-start gap-2 text-[12px] font-medium text-yellow-500 bg-yellow-500/10 px-3 py-2 rounded-lg border border-yellow-500/20">
+                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                    <div>
+                        {t('settings.goisnotavailableai', language as Language)
+                            || 'Go 环境不可用，依赖 Go 工具链的编译与运行任务将无法执行。点击"重新安装"自动下载 Go。'}
+                    </div>
+                </div>
+            )}
+
+            <div className="flex gap-3">
+                <ActionButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleReinstall}
+                    disabled={isReinstalling || isChecking}
+                    className="rounded-xl px-4"
+                >
+                    {isReinstalling
+                        ? (t('settings.installing', language as Language))
+                        : (t('settings.reinstall', language as Language))}
+                </ActionButton>
+                <ActionButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void refreshStatus(true)}
+                    disabled={isReinstalling || isChecking}
+                    className="rounded-xl px-4"
+                >
+                    {isChecking
+                        ? (language === 'zh' ? '检测中...' : 'Checking...')
+                        : (language === 'zh' ? '重新检测' : 'Re-detect')}
+                </ActionButton>
+                <ActionButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleSetCustomPath}
+                    className="rounded-xl px-4"
+                >
+                    {t('settings.setgopath', language as Language) || '指定 Go 路径'}
+                </ActionButton>
+            </div>
+        </div>
+    )
+}
+
 export function SystemPreferencesPanel({ language, enableFileLogging, setEnableFileLogging }: SystemSettingsProps) {
     const [isClearing, setIsClearing] = useState(false)
     const [includeApiKeys, setIncludeApiKeys] = useState(false)
@@ -857,7 +1244,7 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
                 </div>
             </section>
 
-            {/* 环境管理（Python / uv / Node.js 三项核心运行时） */}
+            {/* 环境管理（Python / uv / Node.js / Java / Go 核心运行时） */}
             <section>
                 <div className="flex items-center gap-2 mb-5 ml-1">
                     <Terminal className="w-4 h-4 text-accent" />
@@ -869,6 +1256,8 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
                     <UvEnvSection language={language} />
                     <PythonEnvSection language={language} />
                     <NodeEnvSection language={language} />
+                    <JavaEnvSection language={language} />
+                    <GoEnvSection language={language} />
                 </div>
             </section>
 

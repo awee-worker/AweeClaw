@@ -3553,6 +3553,127 @@ export interface ElectronAPI {
     ) => () => void
   }
 
+  /** Java 环境（扁平方法，渲染层经 createGroup 归组为 api.java.*） */
+  javaGetStatus: () => Promise<{
+    ready: boolean
+    javaPath: string | null
+    javacPath: string | null
+    javaHome: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    isJdk: boolean
+    javaHomeEnv: string | null
+    error?: string
+  }>
+  javaRedetect: () => Promise<{
+    ready: boolean
+    javaPath: string | null
+    javacPath: string | null
+    javaHome: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    isJdk: boolean
+    javaHomeEnv: string | null
+    error?: string
+  }>
+  javaGetPath: () => Promise<string | null>
+  javaGetJavacPath: () => Promise<string | null>
+  javaGetHome: () => Promise<string | null>
+  javaEnsureReady: () => Promise<{
+    ready: boolean
+    javaPath: string | null
+    javacPath: string | null
+    javaHome: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    isJdk: boolean
+    javaHomeEnv: string | null
+    error?: string
+  }>
+  javaReinstall: () => Promise<{
+    ready: boolean
+    javaPath: string | null
+    javacPath: string | null
+    javaHome: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    isJdk: boolean
+    javaHomeEnv: string | null
+    error?: string
+  }>
+  javaSetCustomPath: (customPath: string | null) => Promise<{
+    success: boolean
+    status: {
+      ready: boolean
+      javaPath: string | null
+      javacPath: string | null
+      javaHome: string | null
+      source: 'system' | 'managed' | 'none'
+      version: string | null
+      isJdk: boolean
+      javaHomeEnv: string | null
+      error?: string
+    }
+  }>
+
+  /** Go 环境（扁平方法，渲染层经 createGroup 归组为 api.go.*） */
+  goGetStatus: () => Promise<{
+    ready: boolean
+    goPath: string | null
+    gofmtPath: string | null
+    goRoot: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    goRootEnv: string | null
+    error?: string
+  }>
+  goRedetect: () => Promise<{
+    ready: boolean
+    goPath: string | null
+    gofmtPath: string | null
+    goRoot: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    goRootEnv: string | null
+    error?: string
+  }>
+  goGetPath: () => Promise<string | null>
+  goGetGofmtPath: () => Promise<string | null>
+  goGetRoot: () => Promise<string | null>
+  goEnsureReady: () => Promise<{
+    ready: boolean
+    goPath: string | null
+    gofmtPath: string | null
+    goRoot: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    goRootEnv: string | null
+    error?: string
+  }>
+  goReinstall: () => Promise<{
+    ready: boolean
+    goPath: string | null
+    gofmtPath: string | null
+    goRoot: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    goRootEnv: string | null
+    error?: string
+  }>
+  goSetCustomPath: (customPath: string | null) => Promise<{
+    success: boolean
+    status: {
+      ready: boolean
+      goPath: string | null
+      gofmtPath: string | null
+      goRoot: string | null
+      source: 'system' | 'managed' | 'none'
+      version: string | null
+      goRootEnv: string | null
+      error?: string
+    }
+  }>
+
   /** 设备联动（移动端 ↔ 桌面端）API */
   deviceLink: {
     /** 推送登录凭据，触发或重置 WebSocket 连接 */
