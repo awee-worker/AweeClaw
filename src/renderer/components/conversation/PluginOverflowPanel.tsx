@@ -1,12 +1,13 @@
 /**
- * 插件溢出面板
+ * 技能栏溢出面板
  *
- * 技能建议栏里的已安装插件超过内联上限（见 SkillSuggestionBar 的 MAX_INLINE_PLUGINS）后，
- * 行尾会出现「更多插件」按钮，点击在按钮正上方弹出本面板：
- * - 顶部搜索框：插件多时靠它定位，而不是横向滚动里一个个找
+ * 技能建议栏的横向单行展示不了全部条目时，行尾会出现「更多技能」按钮，点击在按钮正上方弹出本面板：
+ * - 顶部搜索框：条目多时靠它定位，而不是横向滚动里一个个找
  * - 主体网格：图标 + 名称 + 描述，超出高度在面板内部滚动，不顶开输入区
- * - 选中态：插件是单选上下文（见 conversationSlice.addContextItem），因此点选即替换，
- *   与技能行的单选语义保持一致；再点已选项则取消
+ * - 技能与插件混排：两者在技能栏里本就是同一种条目（见 SkillSuggestionBar 的 BarEntry）。
+ *   面板若只列插件，声明为 skill 型的插件会被归并成技能条目，在这里就彻底找不到，
+ *   与「更多技能」的字面语义不符
+ * - 选中态：技能与插件都是单选上下文，点选即替换，再点已选项则取消
  *
  * 定位用 fixed + portal 到 body，而不是 absolute：
  * 技能栏所在容器带 overflow-y-auto，absolute 向上弹出会被裁剪。
@@ -14,9 +15,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Puzzle, Search, X } from 'lucide-react'
+import { Check, Puzzle, Search, Wrench, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { PluginListEntry } from '@intelligence/runtime/skillRepository'
 import { resolveLucideIcon, isImageIcon } from '@components/plugin/pluginIconResolver'
 
 /** 面板纵向最大高度：超出后在面板内部滚动，不影响下方输入区布局 */
@@ -26,11 +26,28 @@ const PANEL_GAP = 8
 /** 网格列数，方向键上下移动的步长与它对齐 */
 const GRID_COLUMNS = 3
 
-function PluginIcon({ icon }: { icon?: string }) {
+/**
+ * 面板条目
+ *
+ * 只保留渲染与搜索需要的字段：条目是技能还是插件，只影响配色与点击语义，
+ * 由调用方在 onSelect 里区分，面板本身不需要认识技能/插件的数据结构。
+ */
+export interface OverflowEntryItem {
+  /** 稳定标识，同时用作 React key 与键盘高亮定位 */
+  key: string
+  kind: 'skill' | 'plugin'
+  label: string
+  description: string
+  icon?: string
+  /** 已挂在当前输入上下文里，用于打勾 */
+  selected: boolean
+}
+
+function EntryIcon({ icon, kind }: { icon?: string; kind: 'skill' | 'plugin' }) {
   if (isImageIcon(icon)) {
     return <img src={icon} alt="" className="w-5 h-5 rounded object-contain" />
   }
-  const Icon: LucideIcon = resolveLucideIcon(icon) || Puzzle
+  const Icon: LucideIcon = resolveLucideIcon(icon) || (kind === 'skill' ? Wrench : Puzzle)
   return <Icon className="w-5 h-5" strokeWidth={1.5} />
 }
 
@@ -42,23 +59,20 @@ interface PluginOverflowPanelProps {
    * 触发按钮只有百来像素宽，直接按它定宽会把面板挤成一条，因此宽度另取容器。
    */
   alignEl?: HTMLElement | null
-  /** 全部已安装插件（含行内已展示的前 N 个，便于统一搜索） */
-  plugins: PluginListEntry[]
+  /** 全部条目：技能在前、插件在后，含行内已展示的部分，便于统一搜索 */
+  items: OverflowEntryItem[]
   isZh: boolean
-  /** 当前已选插件 id，用于打勾 */
-  selectedPluginId?: string
-  onSelect: (plugin: PluginListEntry) => void
-  /** 取消当前已选插件 */
-  onDeselect: () => void
+  onSelect: (item: OverflowEntryItem) => void
+  /** 取消当前已选条目 */
+  onDeselect: (item: OverflowEntryItem) => void
   onClose: () => void
 }
 
 export default function PluginOverflowPanel({
   anchorEl,
   alignEl,
-  plugins,
+  items,
   isZh,
-  selectedPluginId,
   onSelect,
   onDeselect,
   onClose,
@@ -69,25 +83,15 @@ export default function PluginOverflowPanel({
   const [activeIndex, setActiveIndex] = useState(0)
   const [placement, setPlacement] = useState<{ left: number; width: number; bottom: number } | null>(null)
 
-  const getPluginLabel = useCallback(
-    (plugin: PluginListEntry) => (isZh ? plugin.nameZh || plugin.name : plugin.name),
-    [isZh],
-  )
-
-  const getPluginDesc = useCallback(
-    (plugin: PluginListEntry) => (isZh && plugin.descriptionZh) || plugin.description || '',
-    [isZh],
-  )
-
-  /** 中文名、英文名、标识、中英描述都参与匹配，中文界面下也能用英文搜到 */
+  /** 名称与描述都参与匹配，中文界面下也能用英文搜到 */
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase()
-    if (!keyword) return plugins
-    return plugins.filter(plugin => (
-      [plugin.nameZh, plugin.name, plugin.pluginKey, plugin.descriptionZh, plugin.description]
+    if (!keyword) return items
+    return items.filter(item => (
+      [item.label, item.description]
         .some(field => typeof field === 'string' && field.toLowerCase().includes(keyword))
     ))
-  }, [plugins, query])
+  }, [items, query])
 
   // 贴着触发按钮上方展开：底边对齐按钮顶部，左右与宽度跟整条技能栏保持一致
   useLayoutEffect(() => {
@@ -162,10 +166,12 @@ export default function PluginOverflowPanel({
       setActiveIndex(i => Math.max(i - GRID_COLUMNS, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      const plugin = filtered[activeIndex]
-      if (plugin) onSelect(plugin)
+      const item = filtered[activeIndex]
+      if (!item) return
+      if (item.selected) onDeselect(item)
+      else onSelect(item)
     }
-  }, [filtered, activeIndex, onSelect])
+  }, [filtered, activeIndex, onSelect, onDeselect])
 
   if (!placement) return null
 
@@ -173,7 +179,7 @@ export default function PluginOverflowPanel({
     <div
       ref={panelRef}
       role="dialog"
-      aria-label={isZh ? '全部插件' : 'All plugins'}
+      aria-label={isZh ? '全部技能与插件' : 'All skills and plugins'}
       style={{
         left: placement.left,
         width: placement.width,
@@ -191,7 +197,7 @@ export default function PluginOverflowPanel({
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isZh ? '搜索插件…' : 'Search plugins…'}
+            placeholder={isZh ? '搜索技能与插件…' : 'Search skills and plugins…'}
             className="w-full bg-transparent text-xs text-text-primary outline-none placeholder:text-text-muted"
           />
           {query && (
@@ -206,47 +212,65 @@ export default function PluginOverflowPanel({
           )}
         </div>
         <span className="shrink-0 text-[11px] tabular-nums text-text-muted">
-          {filtered.length}/{plugins.length}
+          {filtered.length}/{items.length}
         </span>
       </div>
 
-      {/* 插件网格 */}
+      {/* 条目网格 */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
         {filtered.length === 0 ? (
           <div className="py-6 text-center text-xs text-text-muted">
-            {isZh ? '没有匹配的插件' : 'No matching plugins'}
+            {isZh ? '没有匹配的技能或插件' : 'No matching skills or plugins'}
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-            {filtered.map((plugin, index) => {
-              const selected = plugin.pluginKey === selectedPluginId
+            {filtered.map((item, index) => {
+              const selected = item.selected
               return (
                 <button
-                  key={plugin.pluginKey}
+                  key={item.key}
                   type="button"
                   onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => (selected ? onDeselect() : onSelect(plugin))}
-                  title={getPluginDesc(plugin)}
+                  onClick={() => (selected ? onDeselect(item) : onSelect(item))}
+                  title={item.description}
                   className={[
                     'group relative flex items-start gap-2 rounded-lg border px-2 py-1.5 text-left transition-all duration-150',
-                    selected
-                      ? 'border-purple-500/60 bg-purple-500/10'
-                      : 'border-transparent hover:border-purple-500/30 hover:bg-purple-500/5',
-                    index === activeIndex ? 'ring-1 ring-purple-500/40' : '',
+                    item.kind === 'skill'
+                      ? (selected
+                        ? 'border-accent/60 bg-accent/10'
+                        : 'border-transparent hover:border-accent/30 hover:bg-accent/5')
+                      : (selected
+                        ? 'border-purple-500/60 bg-purple-500/10'
+                        : 'border-transparent hover:border-purple-500/30 hover:bg-purple-500/5'),
+                    index === activeIndex
+                      ? (item.kind === 'skill' ? 'ring-1 ring-accent/40' : 'ring-1 ring-purple-500/40')
+                      : '',
                   ].join(' ')}
                 >
-                  <span className={selected ? 'mt-0.5 text-purple-400' : 'mt-0.5 text-text-muted'}>
-                    <PluginIcon icon={plugin.icon} />
+                  <span className={
+                    selected
+                      ? (item.kind === 'skill' ? 'mt-0.5 text-accent' : 'mt-0.5 text-purple-400')
+                      : 'mt-0.5 text-text-muted'
+                  }>
+                    <EntryIcon icon={item.icon} kind={item.kind} />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-medium text-text-primary">
-                      {getPluginLabel(plugin)}
+                      {item.label}
                     </span>
                     <span className="mt-0.5 block truncate text-[11px] text-text-muted">
-                      {getPluginDesc(plugin)}
+                      {item.description}
                     </span>
                   </span>
-                  {selected && <Check className="mt-0.5 w-3.5 h-3.5 shrink-0 text-purple-400" />}
+                  {selected && (
+                    <Check
+                      className={[
+                        'mt-0.5 w-3.5 h-3.5 shrink-0',
+                        item.kind === 'skill' ? 'text-accent' : 'text-purple-400',
+                      ].join(' ')}
+                      strokeWidth={2}
+                    />
+                  )}
                 </button>
               )
             })}
@@ -257,7 +281,7 @@ export default function PluginOverflowPanel({
       {/* 底部说明 */}
       <div className="flex shrink-0 items-center justify-between border-t border-border/50 px-3 py-1.5">
         <span className="text-[11px] text-text-muted">
-          {isZh ? '插件为单选，点选即替换当前插件' : 'One plugin at a time — selecting replaces the current one'}
+          {isZh ? '技能与插件均为单选，点选即替换' : 'One skill or plugin at a time — selecting replaces the current one'}
         </span>
         <button
           type="button"

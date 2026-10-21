@@ -6,9 +6,10 @@
  * - 点击带二级选项的技能后整行切换为二级选项，并提供返回入口
  * - 每行固定单行横向滚动，溢出时隐藏滚动条；左右滚动按钮以渐变遮罩悬浮在列表两端，
  *   只有那一侧还存在未展示内容时才淡入，因不占布局所以显隐不会引起列表抖动
- * - 插件只内联展示前 MAX_INLINE_PLUGINS 个，其余收进行尾固定的「更多技能」按钮，
- *   点击在按钮上方弹出可搜索的面板（PluginOverflowPanel）。按钮不参与横向滚动，
- *   否则技能一多就得先滚到最右才看得见，等于没解决问题
+ * - 技能与插件各只内联前若干个（MAX_INLINE_SKILLS / MAX_INLINE_PLUGINS），其余收进行尾
+ *   固定的「更多技能」按钮，点击在按钮上方弹出可搜索的面板（PluginOverflowPanel）。
+ *   面板里技能与插件混排：声明为 skill 型的插件会归并成技能条目，只列插件会让它无处可寻
+ * - 按钮不参与横向滚动，否则条目一多就得先滚到最右才看得见，等于没解决问题
  */
 
 import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react'
@@ -23,7 +24,7 @@ import {
   Wrench,
   Zap,
 } from 'lucide-react'
-import PluginOverflowPanel from './PluginOverflowPanel'
+import PluginOverflowPanel, { type OverflowEntryItem } from './PluginOverflowPanel'
 import { useStore } from '@store'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import {
@@ -60,6 +61,15 @@ import {
 
 /** 插件内联展示上限：超出部分收进「更多技能」面板，避免长列表把所有插件的图标一次性挂载 */
 const MAX_INLINE_PLUGINS = 10
+
+/**
+ * 技能内联展示上限
+ *
+ * 技能此前全部内联，一行放不下只能靠横向滚动去翻，末尾那几个等于藏了起来；
+ * 声明为 skill 型的插件又被归并成技能条目，在「更多技能」面板里同样找不到，
+ * 用户装完插件以为没生效。技能与插件共用同一套超出逻辑，面板才是完整入口。
+ */
+const MAX_INLINE_SKILLS = 8
 
 /** select 下拉菜单与触发按钮之间的间距 */
 const MENU_GAP = 6
@@ -663,12 +673,22 @@ export default function SkillSuggestionBar() {
     [plugins, pinnedKeySet],
   )
 
+  // 其余技能内联前 MAX_INLINE_SKILLS 个，其余收进「更多技能」面板
+  const visibleRestSkills = useMemo(
+    () => restSkills.slice(0, MAX_INLINE_SKILLS),
+    [restSkills],
+  )
+  const hiddenSkillCount = restSkills.length - visibleRestSkills.length
+
   // 插件内联只展示前 MAX_INLINE_PLUGINS 个，其余收进「更多技能」面板
   const visibleRestPlugins = useMemo(
     () => restPlugins.slice(0, MAX_INLINE_PLUGINS),
     [restPlugins],
   )
   const hiddenPluginCount = restPlugins.length - visibleRestPlugins.length
+
+  /** 面板入口的展示条件：技能与插件任一侧有溢出就需要它 */
+  const hiddenEntryCount = hiddenSkillCount + hiddenPluginCount
 
   // 插件是单选上下文（contextItems 里最多一个 Plugin）：取它作为行内按钮与面板的选中态
   const contextItems = useAgentStore(selectContextItems)
@@ -711,6 +731,63 @@ export default function SkillSuggestionBar() {
     if (selectedPluginIndex < 0) return
     useAgentStore.getState().removeContextItem(selectedPluginIndex)
   }, [selectedPluginIndex])
+
+  /**
+   * 「更多技能」面板的条目集合
+   *
+   * 传全量而不是只有溢出的那几个：面板本身就是「横向滚动翻不动时的检索入口」，
+   * 带上全部条目才能用搜索一次性定位，否则还得先判断目标在行内还是在面板里。
+   */
+  const overflowItems = useMemo<OverflowEntryItem[]>(() => {
+    const selectedSkillIds = new Set(
+      contextItems
+        .filter(item => item.type === 'Skill')
+        .map(item => item.skillId),
+    )
+    return [
+      ...orderedSkills.map(skill => ({
+        key: `skill:${skill.name}`,
+        kind: 'skill' as const,
+        label: getSkillLabel(skill),
+        description: skill.description || '',
+        icon: skill.metadata?.icon,
+        selected: selectedSkillIds.has(skill.name.toLowerCase()),
+      })),
+      ...plugins.map(plugin => ({
+        key: `plugin:${plugin.pluginKey}`,
+        kind: 'plugin' as const,
+        label: getPluginLabel(plugin),
+        description: (isZh && plugin.descriptionZh) || plugin.description || '',
+        icon: plugin.icon,
+        selected: plugin.pluginKey === selectedPluginId,
+      })),
+    ]
+  }, [contextItems, orderedSkills, plugins, selectedPluginId, getSkillLabel, getPluginLabel, isZh])
+
+  /** 面板选中/取消：技能与插件分别回落到各自的一级点击语义 */
+  const handleOverflowSelect = useCallback((item: OverflowEntryItem) => {
+    if (item.kind === 'skill') {
+      const name = item.key.slice('skill:'.length)
+      const skill = skills.find(candidate => candidate.name === name)
+      if (skill) handleEntryClick(toSkillEntry(skill))
+      return
+    }
+    const pluginKey = item.key.slice('plugin:'.length)
+    const plugin = plugins.find(candidate => candidate.pluginKey === pluginKey)
+    if (plugin) handleEntryClick(toPluginEntry(plugin))
+  }, [handleEntryClick, skills, plugins])
+
+  const handleOverflowDeselect = useCallback((item: OverflowEntryItem) => {
+    if (item.kind === 'plugin') {
+      handlePluginDeselect()
+      return
+    }
+    const skillId = item.key.slice('skill:'.length).toLowerCase()
+    const index = contextItems.findIndex(candidate => (
+      candidate.type === 'Skill' && candidate.skillId === skillId
+    ))
+    if (index >= 0) useAgentStore.getState().removeContextItem(index)
+  }, [contextItems, handlePluginDeselect])
 
   /**
    * 渲染单个条目
@@ -788,10 +865,10 @@ export default function SkillSuggestionBar() {
     return labels
   }, [contextItems, openEntry])
 
-  // 切到二级行、或插件数量回落到上限内时收起面板，避免面板失去锚点后悬空
+  // 切到二级行、或条目数量回落到上限内时收起面板，避免面板失去锚点后悬空
   useEffect(() => {
-    if (openEntry || hiddenPluginCount <= 0) setPluginPanelOpen(false)
-  }, [openEntry, hiddenPluginCount])
+    if (openEntry || hiddenEntryCount <= 0) setPluginPanelOpen(false)
+  }, [openEntry, hiddenEntryCount])
 
   if (skills.length === 0 && plugins.length === 0) return null
 
@@ -865,14 +942,14 @@ export default function SkillSuggestionBar() {
       ) : (
         <ScrollRow
           trailing={
-            hiddenPluginCount > 0 ? (
+            hiddenEntryCount > 0 ? (
               <div ref={pluginMoreRef} className="shrink-0">
                 <button
                   type="button"
                   onClick={() => setPluginPanelOpen(open => !open)}
                   aria-expanded={pluginPanelOpen}
                   aria-haspopup="dialog"
-                  title={isZh ? `还有 ${hiddenPluginCount} 个技能` : `${hiddenPluginCount} more skills`}
+                  title={isZh ? `还有 ${hiddenEntryCount} 个技能` : `${hiddenEntryCount} more skills`}
                   className="flex items-center px-2.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 transition-all duration-200 border border-border/60 bg-surface/80 text-text-secondary hover:text-text-primary hover:border-accent/40 hover:bg-accent/10"
                 >
                   <span>{isZh ? '更多技能' : 'More skills'}</span>
@@ -884,25 +961,25 @@ export default function SkillSuggestionBar() {
           {/* 常用置顶：技能与插件按常用分数混排，因此常用插件会排在场景内置技能之前 */}
           {pinnedEntries.map(renderEntry)}
           {/* 其余技能：已被置顶的条目不再重复出现，顺序仍遵循当前排序方式 */}
-          {restSkills.map(skill => renderEntry(toSkillEntry(skill)))}
+          {visibleRestSkills.map(skill => renderEntry(toSkillEntry(skill)))}
           {/* 其余插件：内联前 MAX_INLINE_PLUGINS 个，其余收进「更多技能」面板 */}
           {visibleRestPlugins.map(plugin => renderEntry(toPluginEntry(plugin)))}
         </ScrollRow>
       )}
-      {pluginPanelOpen && hiddenPluginCount > 0 && (
+      {pluginPanelOpen && hiddenEntryCount > 0 && (
         <PluginOverflowPanel
           anchorEl={pluginMoreRef.current}
           alignEl={barRef.current}
-          plugins={plugins}
+          items={overflowItems}
           isZh={isZh}
-          selectedPluginId={selectedPluginId}
-          // 走 handleEntryClick 而非 attachPlugin：面板里的点击与技能栏一致，
-          // 有二级项时同样需要展开二级行，否则从「更多技能」选插件就没有下一步可选
-          onSelect={plugin => handleEntryClick(toPluginEntry(plugin))}
-          onDeselect={handlePluginDeselect}
+          // 走 handleEntryClick 而非 attachSkill/attachPlugin：面板里的点击与技能栏一致，
+          // 有二级项时同样需要展开二级行，否则从「更多技能」选条目就没有下一步可选
+          onSelect={handleOverflowSelect}
+          onDeselect={handleOverflowDeselect}
           onClose={() => setPluginPanelOpen(false)}
         />
       )}
+
     </div>
   )
 }
