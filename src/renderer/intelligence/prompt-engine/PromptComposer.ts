@@ -1173,9 +1173,11 @@ export async function buildAgentSystemPrompt(
   }
 
   const autoSkills = allSkills.filter(skill => skill.type === 'auto' && skill.enabled)
-  const mentionedManualSkills = mentionedSkills?.length
+  // 显式点选技能：用户已经做出明确决定，就该与「关键词自动命中」并列，完整注入正文。
+  // 早前这里只认 type=manual，点选 auto 技能时只会走上下文摘要（name + description），
+  // 用户以为技能已加载，模型却还得再 apply_skill 一轮，弱模型还可能直接漏掉。
+  const explicitlySelectedSkills = mentionedSkills?.length
     ? allSkills.filter(skill =>
-        skill.type === 'manual' &&
         skill.enabled &&
         mentionedSkills.includes(skill.name.toLowerCase())
       )
@@ -1188,7 +1190,7 @@ export async function buildAgentSystemPrompt(
   const fullInjectionSkills: typeof allSkills = []
   const fullInjectionNames = new Set<string>()
 
-  for (const skill of [...mentionedManualSkills, ...keywordMatchedSkills]) {
+  for (const skill of [...explicitlySelectedSkills, ...keywordMatchedSkills]) {
     if (!fullInjectionNames.has(skill.name)) {
       fullInjectionNames.add(skill.name)
       fullInjectionSkills.push(skill)

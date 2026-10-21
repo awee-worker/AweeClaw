@@ -343,7 +343,9 @@ export class AgentClass {
       // 仅将"关键词匹配触发完整注入"的技能追加到 assistant message（排除已 @mention 的）
       // 注意：所有 auto 技能的 name+description 索引都会注入系统提示词，但只有匹配的才显示"已应用"
       const mentionedSet = new Set(mentionedSkills)
-      const autoSelectedSkills = appliedSkills.filter(s => !mentionedSet.has(s.name))
+      // skillId 统一小写，appliedSkills 保留原始大小写，比对前需归一，
+      // 否则显式选中的技能会在消息上同时出现「技能标签」与「已应用技能」两处
+      const autoSelectedSkills = appliedSkills.filter(s => !mentionedSet.has(s.name.toLowerCase()))
       if (autoSelectedSkills.length > 0) {
         store.addSkillsToMessage(assistantId, autoSelectedSkills, threadId)
       }
