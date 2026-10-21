@@ -666,64 +666,7 @@ const ChatInput = memo(function ChatInput({
           }
         `}
       >
-        {/* Attachment Previews */}
-        {images.length > 0 && (
-          <div className="flex gap-2 px-4 pt-4 overflow-x-auto custom-scrollbar">
-            {images.map((att) => (
-              <div
-                key={att.id}
-                className="relative group/att flex-shrink-0 rounded-xl overflow-hidden border border-border shadow-sm"
-              >
-                {att.isImage && att.previewUrl ? (
-                  <div className="w-16 h-16 relative">
-                    <img src={att.previewUrl} alt="preview" className="w-full h-full object-cover" />
-                    {att.analyzeMode && (
-                      <div className="absolute inset-0 bg-accent/20 flex items-center justify-center">
-                        <Eye className="w-4 h-4 text-accent" />
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-surface/50 min-w-[120px] max-w-[180px]">
-                    {getFileIcon(att.file.name, att.file.type)}
-                    <span className="text-[12px] text-text-secondary truncate max-w-[100px]">{att.file.name}</span>
-                  </div>
-                )}
-                {att.isImage && (
-                  <div className="absolute top-1 left-1 z-10">
-                    <HintOverlay content={att.analyzeMode
-                      ? t('app.visualanalysisonai', language as Language)
-                      : t('app.clicktoenablevisual', language as Language)
-                    }>
-                      <button
-                        onClick={() => toggleAnalyzeMode(att.id)}
-                        className={`p-1 backdrop-blur rounded-full transition-all opacity-0 group-hover/att:opacity-100 scale-90 hover:scale-100 ${
-                          att.analyzeMode
-                            ? 'bg-accent/80 text-white'
-                            : 'bg-black/50 text-white/70 hover:text-white'
-                        }`}
-                      >
-                        {att.analyzeMode ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                      </button>
-                    </HintOverlay>
-                  </div>
-                )}
-                <div className="absolute top-1 right-1 z-10">
-                  <HintOverlay content={lt('移除附件', 'Remove attachment')}>
-                    <button
-                      onClick={() => removeAttachment(att.id)}
-                      className="p-1 bg-black/60 backdrop-blur rounded-full text-white hover:bg-red-500 transition-all opacity-0 group-hover/att:opacity-100 scale-90 hover:scale-100"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </HintOverlay>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Context Display Area (Top) */}
+        {/* Context Display Area (Top) — 已选技能/上下文在上，上传附件在下 */}
         {(contextItems.length > 0 || pluginNotice || hasCodebaseRef || hasSymbolsRef || hasGitRef || hasTerminalRef || hasWebRef || fileRefs.length > 0 || (activeFilePath && onAddFile && !contextItems.some(i => i.type === 'File' && (i as FileContext).uri === activeFilePath))) && (
           <div className="flex flex-wrap items-center gap-1.5 px-2 pt-2 pb-1 border-b border-border/10">
             <AnimatePresence>
@@ -745,7 +688,14 @@ const ChatInput = memo(function ChatInput({
               )}
 
               {/* Context Items */}
-              {contextItems.filter(item => ['File', 'Folder', 'CodeSelection', 'Skill', 'Plugin'].includes(item.type)).map((item, i) => {
+              {contextItems
+                .filter(item => ['File', 'Folder', 'CodeSelection', 'Skill', 'Plugin'].includes(item.type))
+                // 技能/插件排在文件类之前：本次要用什么能力比引用了哪些文件更靠前
+                .sort((a, b) => {
+                  const rank = (type: string) => (type === 'Skill' || type === 'Plugin' ? 0 : 1)
+                  return rank(a.type) - rank(b.type)
+                })
+                .map((item, i) => {
                 const getContextStyle = (type: string) => {
                   switch (type) {
                     case 'File': return { bg: 'bg-text-primary/[0.04]', text: 'text-text-secondary', border: 'border-transparent', Icon: FileText }
@@ -851,6 +801,63 @@ const ChatInput = memo(function ChatInput({
             )}
           </div>
         )}
+
+        {/* Attachment Previews（上传文件放在技能/上下文下方，与上方能力选择区分开） */}
+        {images.length > 0 && (
+          <div className="flex gap-2 px-4 pt-3 pb-1 overflow-x-auto custom-scrollbar">
+            {images.map((att) => (
+              <div
+                key={att.id}
+                className="relative group/att flex-shrink-0 rounded-xl overflow-hidden border border-border shadow-sm"
+              >
+                {att.isImage && att.previewUrl ? (
+                  <div className="w-16 h-16 relative">
+                    <img src={att.previewUrl} alt="preview" className="w-full h-full object-cover" />
+                    {att.analyzeMode && (
+                      <div className="absolute inset-0 bg-accent/20 flex items-center justify-center">
+                        <Eye className="w-4 h-4 text-accent" />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-surface/50 min-w-[120px] max-w-[180px]">
+                    {getFileIcon(att.file.name, att.file.type)}
+                    <span className="text-[12px] text-text-secondary truncate max-w-[100px]">{att.file.name}</span>
+                  </div>
+                )}
+                {att.isImage && (
+                  <div className="absolute top-1 left-1 z-10">
+                    <HintOverlay content={att.analyzeMode
+                      ? t('app.visualanalysisonai', language as Language)
+                      : t('app.clicktoenablevisual', language as Language)
+                    }>
+                      <button
+                        onClick={() => toggleAnalyzeMode(att.id)}
+                        className={`p-1 backdrop-blur rounded-full transition-all opacity-0 group-hover/att:opacity-100 scale-90 hover:scale-100 ${att.analyzeMode
+                          ? 'bg-accent/80 text-white'
+                          : 'bg-black/50 text-white/70 hover:text-white'
+                          }`}
+                      >
+                        {att.analyzeMode ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                      </button>
+                    </HintOverlay>
+                  </div>
+                )}
+                <div className="absolute top-1 right-1 z-10">
+                  <HintOverlay content={lt('移除附件', 'Remove attachment')}>
+                    <button
+                      onClick={() => removeAttachment(att.id)}
+                      className="p-1 bg-black/60 backdrop-blur rounded-full text-white hover:bg-red-500 transition-all opacity-0 group-hover/att:opacity-100 scale-90 hover:scale-100"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </HintOverlay>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
 
         {/* TextField Area */}
         <div className="flex flex-col px-4 pb-3 pt-2">

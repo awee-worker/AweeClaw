@@ -41,6 +41,10 @@ export interface OverflowEntryItem {
   icon?: string
   /** 已挂在当前输入上下文里，用于打勾 */
   selected: boolean
+  /** 当前智能体未启用来源插件：条目保留可点，但只用来弹出提示 */
+  disabled?: boolean
+  /** 禁用原因，作为悬停提示，缺省回落到 description */
+  hint?: string
 }
 
 function EntryIcon({ icon, kind }: { icon?: string; kind: 'skill' | 'plugin' }) {
@@ -232,23 +236,26 @@ export default function PluginOverflowPanel({
                   type="button"
                   onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => (selected ? onDeselect(item) : onSelect(item))}
-                  title={item.description}
+                  title={item.hint ?? item.description}
+                  aria-disabled={item.disabled}
                   className={[
                     'group relative flex items-start gap-2 rounded-lg border px-2 py-1.5 text-left transition-all duration-150',
-                    item.kind === 'skill'
-                      ? (selected
-                        ? 'border-accent/60 bg-accent/10'
-                        : 'border-transparent hover:border-accent/30 hover:bg-accent/5')
-                      : (selected
-                        ? 'border-purple-500/60 bg-purple-500/10'
-                        : 'border-transparent hover:border-purple-500/30 hover:bg-purple-500/5'),
-                    index === activeIndex
+                    item.disabled
+                      ? 'border-transparent opacity-60 hover:border-border/60'
+                      : item.kind === 'skill'
+                        ? (selected
+                          ? 'border-accent/60 bg-accent/10'
+                          : 'border-transparent hover:border-accent/30 hover:bg-accent/5')
+                        : (selected
+                          ? 'border-purple-500/60 bg-purple-500/10'
+                          : 'border-transparent hover:border-purple-500/30 hover:bg-purple-500/5'),
+                    index === activeIndex && !item.disabled
                       ? (item.kind === 'skill' ? 'ring-1 ring-accent/40' : 'ring-1 ring-purple-500/40')
                       : '',
                   ].join(' ')}
                 >
                   <span className={
-                    selected
+                    selected && !item.disabled
                       ? (item.kind === 'skill' ? 'mt-0.5 text-accent' : 'mt-0.5 text-purple-400')
                       : 'mt-0.5 text-text-muted'
                   }>
@@ -259,10 +266,10 @@ export default function PluginOverflowPanel({
                       {item.label}
                     </span>
                     <span className="mt-0.5 block truncate text-[11px] text-text-muted">
-                      {item.description}
+                      {item.disabled ? (item.hint ?? item.description) : item.description}
                     </span>
                   </span>
-                  {selected && (
+                  {selected && !item.disabled && (
                     <Check
                       className={[
                         'mt-0.5 w-3.5 h-3.5 shrink-0',

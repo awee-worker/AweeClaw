@@ -43,7 +43,15 @@ import {
 } from '@intelligence/runtime/subSelection'
 import type { SubSelectionEntry } from '@intelligence/types/contextModel'
 import { useAgentStore, selectContextItems } from '@intelligence/state/IntelligenceStore'
+import {
+  buildPluginServerIndex,
+  isPluginIdentityAllowed,
+  resolveAgentPluginScope,
+  unavailableInAgentTip,
+} from '@intelligence/runtime/agentSkillAvailability'
 import { resolveLucideIcon, isImageIcon } from '@components/plugin/pluginIconResolver'
+import { getInstalledPlugins } from '@services/pluginService'
+import { toast } from '@components/foundation/NotificationProvider'
 import { clearPluginNotice } from '@renderer/plugins/pluginNoticeStore'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -361,6 +369,8 @@ export default function SkillSuggestionBar() {
   const [skills, setSkills] = useState<SkillItem[]>([])
   // 已安装插件：技能之后紧跟同一条目行展示，点击后按插件上下文下发
   const [plugins, setPlugins] = useState<PluginListEntry[]>([])
+  // 插件 key → MCP 服务 id：技能条目只带 pluginKey，需借此回溯到智能体的插件授权项
+  const [pluginServerIndex, setPluginServerIndex] = useState<Map<string, string | undefined>>(new Map())
   // 展开二级行的条目：技能与插件共用同一套二级机制，因此记录整条目而不是单个技能
   const [openEntry, setOpenEntry] = useState<BarEntry | null>(null)
   // 展开中的 select 下拉：带 entryKey 防止菜单串到其他条目上，anchorEl 供菜单定位
@@ -385,11 +395,14 @@ export default function SkillSuggestionBar() {
       void Promise.all([
         skillService.getVisibleSkills(),
         skillService.getSkillListPlugins(),
+        // 插件安装记录单独兜底：读取失败只影响可用性判断的精确度，不应让技能栏整条加载失败
+        getInstalledPlugins().catch(() => []),
       ])
-        .then(([skillList, pluginList]) => {
+        .then(([skillList, pluginList, installedPlugins]) => {
           if (cancelled) return
           setSkills(skillList)
           setPlugins(pluginList)
+          setPluginServerIndex(buildPluginServerIndex(installedPlugins))
         })
         .catch(() => {
           if (cancelled) return
@@ -472,6 +485,35 @@ export default function SkillSuggestionBar() {
   ), [isZh])
 
   /**
+   * 当前智能体授权的插件范围
+   *
+   * 未选择智能体或智能体未配置插件（旧数据）时返回 null，表示不限制；
+   * 返回空集合表示智能体明确未启用任何插件。
+   */
+  const agentConfig = useStore(s => s.agentConfig)
+  const pluginScope = useMemo(() => {
+    const activeId = agentConfig?.activeCustomAgentId
+    if (!activeId) return null
+    const profile = agentConfig?.customAgentProfiles?.find(p => p.id === activeId && p.enabled) ?? null
+    return resolveAgentPluginScope(profile)
+  }, [agentConfig])
+
+  /** 条目在当前智能体中是否可用：技能按来源插件回溯，插件直接取自身 MCP 服务 id */
+  const isEntryAvailable = useCallback((entry: BarEntry) => {
+    if (entry.kind === 'plugin') {
+      return isPluginIdentityAllowed(
+        { pluginKey: entry.plugin.pluginKey, mcpServerId: entry.plugin.mcpServerId },
+        pluginScope,
+      )
+    }
+    const pluginKey = entry.skill.pluginKey
+    return isPluginIdentityAllowed(
+      { pluginKey, mcpServerId: pluginKey ? pluginServerIndex.get(pluginKey) : undefined },
+      pluginScope,
+    )
+  }, [pluginScope, pluginServerIndex])
+
+  /**
    * 点击插件：写入插件上下文
    *
    * 插件没有 SKILL.md 正文，不能走技能上下文；按插件上下文下发后，
@@ -528,6 +570,13 @@ export default function SkillSuggestionBar() {
    * 没有二级项时保持原有「点一下即选中」的行为。
    */
   const handleEntryClick = useCallback((entry: BarEntry) => {
+    // 智能体未启用该插件时，技能/插件在执行层同样用不了：
+    // 这里直接拦下并说明去向，而不是先挂上上下文、发送后才失败
+    if (!isEntryAvailable(entry)) {
+      toast.warning(unavailableInAgentTip(entry.kind, isZh))
+      return
+    }
+
     const subSkills = entry.kind === 'skill' ? entry.skill.subSkills : entry.plugin.subSkills
 
     // 一旦换了一级条目，上一条目在二级项里做的选择就失效了：
@@ -550,7 +599,7 @@ export default function SkillSuggestionBar() {
     }
     setOpenSelect(null)
     setOpenEntry(subSkills && subSkills.length > 0 ? entry : null)
-  }, [attachPlugin, attachSkill])
+  }, [attachPlugin, attachSkill, isEntryAvailable, isZh])
 
   /**
    * 点击二级选项
@@ -745,24 +794,35 @@ export default function SkillSuggestionBar() {
         .map(item => item.skillId),
     )
     return [
-      ...orderedSkills.map(skill => ({
-        key: `skill:${skill.name}`,
-        kind: 'skill' as const,
-        label: getSkillLabel(skill),
-        description: skill.description || '',
-        icon: skill.metadata?.icon,
-        selected: selectedSkillIds.has(skill.name.toLowerCase()),
-      })),
-      ...plugins.map(plugin => ({
-        key: `plugin:${plugin.pluginKey}`,
-        kind: 'plugin' as const,
-        label: getPluginLabel(plugin),
-        description: (isZh && plugin.descriptionZh) || plugin.description || '',
-        icon: plugin.icon,
-        selected: plugin.pluginKey === selectedPluginId,
-      })),
+      ...orderedSkills.map(skill => {
+        const available = isEntryAvailable(toSkillEntry(skill))
+        return {
+          key: `skill:${skill.name}`,
+          kind: 'skill' as const,
+          label: getSkillLabel(skill),
+          description: skill.description || '',
+          icon: skill.metadata?.icon,
+          selected: selectedSkillIds.has(skill.name.toLowerCase()),
+          // 面板里保留条目：用户需要看见「装了但当前智能体没启用」，直接筛掉会被当成技能丢失
+          disabled: !available,
+          hint: available ? undefined : unavailableInAgentTip('skill', isZh),
+        }
+      }),
+      ...plugins.map(plugin => {
+        const available = isEntryAvailable(toPluginEntry(plugin))
+        return {
+          key: `plugin:${plugin.pluginKey}`,
+          kind: 'plugin' as const,
+          label: getPluginLabel(plugin),
+          description: (isZh && plugin.descriptionZh) || plugin.description || '',
+          icon: plugin.icon,
+          selected: plugin.pluginKey === selectedPluginId,
+          disabled: !available,
+          hint: available ? undefined : unavailableInAgentTip('plugin', isZh),
+        }
+      }),
     ]
-  }, [contextItems, orderedSkills, plugins, selectedPluginId, getSkillLabel, getPluginLabel, isZh])
+  }, [contextItems, orderedSkills, plugins, selectedPluginId, getSkillLabel, getPluginLabel, isZh, isEntryAvailable])
 
   /** 面板选中/取消：技能与插件分别回落到各自的一级点击语义 */
   const handleOverflowSelect = useCallback((item: OverflowEntryItem) => {
@@ -799,6 +859,9 @@ export default function SkillSuggestionBar() {
     // 有二级选项的条目在末尾多一个箭头，明确提示点开还有下一层
     const subSkills = entry.kind === 'skill' ? entry.skill.subSkills : entry.plugin.subSkills
     const hasSub = Boolean(subSkills && subSkills.length > 0)
+    // 智能体未启用来源插件时条目仍然展示，只做灰化并用悬停提示说明原因，避免点了没反应
+    const available = isEntryAvailable(entry)
+    const unavailableTip = available ? undefined : unavailableInAgentTip(entry.kind, isZh)
 
     if (entry.kind === 'skill') {
       return (
@@ -806,8 +869,14 @@ export default function SkillSuggestionBar() {
           key={entry.key}
           type="button"
           onClick={() => handleEntryClick(entry)}
-          title={entry.skill.description}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-accent/20 bg-accent/5 text-text-secondary hover:text-text-primary hover:border-accent/50 hover:bg-accent/10 whitespace-nowrap shrink-0 transition-all duration-200"
+          title={unavailableTip ?? entry.skill.description}
+          aria-disabled={!available}
+          className={[
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap shrink-0 transition-all duration-200',
+            available
+              ? 'border-accent/20 bg-accent/5 text-text-secondary hover:text-text-primary hover:border-accent/50 hover:bg-accent/10'
+              : 'border-border/40 bg-surface/60 text-text-muted/70 opacity-60',
+          ].join(' ')}
         >
           <SkillIcon icon={entry.skill.metadata?.icon} />
           <span>{getSkillLabel(entry.skill)}</span>
@@ -823,17 +892,20 @@ export default function SkillSuggestionBar() {
         key={entry.key}
         type="button"
         onClick={() => handleEntryClick(entry)}
-        title={(isZh && plugin.descriptionZh) || plugin.description}
+        title={unavailableTip ?? ((isZh && plugin.descriptionZh) || plugin.description)}
+        aria-disabled={!available}
         className={[
           'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 transition-all duration-200 border',
-          selected
-            ? 'border-purple-500/60 bg-purple-500/15 text-text-primary'
-            : 'border-purple-500/20 bg-purple-500/5 text-text-secondary hover:text-text-primary hover:border-purple-500/50 hover:bg-purple-500/10',
+          !available
+            ? 'border-border/40 bg-surface/60 text-text-muted/70 opacity-60'
+            : selected
+              ? 'border-purple-500/60 bg-purple-500/15 text-text-primary'
+              : 'border-purple-500/20 bg-purple-500/5 text-text-secondary hover:text-text-primary hover:border-purple-500/50 hover:bg-purple-500/10',
         ].join(' ')}
       >
         <SkillIcon icon={plugin.icon} fallback={Puzzle} />
         <span>{getPluginLabel(plugin)}</span>
-        {selected && <Check className="w-3 h-3 text-purple-400" strokeWidth={2} />}
+        {selected && available && <Check className="w-3 h-3 text-purple-400" strokeWidth={2} />}
         {hasSub && <ChevronRight className="w-3 h-3 opacity-60" strokeWidth={1.5} />}
       </button>
     )

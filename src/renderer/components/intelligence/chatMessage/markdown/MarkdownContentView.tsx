@@ -17,6 +17,7 @@ import { decorateStreamingChildren } from './streamingDecorator'
 import { EmotionRenderer } from './EmotionRenderer'
 import { IncrementalBlockSplitter } from './markdownBlocks'
 import { IncrementalTextCleaner } from './incrementalTextCleaner'
+import { linkifyArtifactPaths, looksLikeFilePath } from './artifactLinks'
 import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter'
 import { PERF_TRACE_COUNTERS } from '@shared/protocols/perfTraceProtocol'
 
@@ -58,6 +59,8 @@ const MarkdownBlock = React.memo(function MarkdownBlock({
   // 一起看：次数少但单体巨大，解析开销同样会随块长线性上升。
   perfTrace.bump(PERF_TRACE_COUNTERS.blockParses)
   perfTrace.bump(PERF_TRACE_COUNTERS.blockChars, content.length)
+  // 正文里写出来的产物路径包成行内代码，交给 code 渲染器做成可点链接
+  const linkedContent = useMemo(() => linkifyArtifactPaths(content), [content])
   return (
     <ReactMarkdown
       className="prose prose-invert max-w-none"
@@ -66,10 +69,11 @@ const MarkdownBlock = React.memo(function MarkdownBlock({
       components={components}
       skipHtml
     >
-      {content}
+      {linkedContent}
     </ReactMarkdown>
   )
 })
+
 MarkdownBlock.displayName = 'MarkdownBlock'
 
 /**
@@ -212,11 +216,7 @@ function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, i
       // 两者都要可点，但目标不同：网址进浏览器，路径进编辑器。
       const isInlineUrl = isInline && /^https?:\/\//i.test(codeContent)
 
-      const looksLikePath = !isInlineUrl && isInline && (
-        codeContent.includes('/') ||
-        codeContent.includes('\\') ||
-        codeContent.match(/\.(ts|tsx|js|jsx|vue|uvue|md|json|css|scss|less|html|go|rs|py|java|c|cpp|h|hpp)$/i)
-      ) && !codeContent.includes(' ') && codeContent.length > 2
+      const looksLikePath = !isInlineUrl && isInline && looksLikeFilePath(codeContent)
 
       if (isInline && (looksLikePath || isInlineUrl)) {
         return (

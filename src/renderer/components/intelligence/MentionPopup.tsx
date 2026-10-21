@@ -7,6 +7,8 @@ import { useMemo } from 'react'
 import { Search } from 'lucide-react'
 import { t } from '@renderer/i18n'
 import { MentionCandidate } from '@intelligence/utils/mentionDecoder'
+import { unavailableInAgentTip } from '@intelligence/runtime/agentSkillAvailability'
+import { toast } from '@components/foundation/NotificationProvider'
 import { useStore } from '@store'
 import { InputPopup, InputPopupItem } from '@components/foundation/QuickInputDialog'
 
@@ -45,7 +47,14 @@ export default function MentionPopup({
         }))
     }, [candidates])
 
+    const isZh = language === 'zh'
+
     const handleSelect = (item: MentionItem) => {
+        // 不可用项照常可点，但只提示原因：智能体没启用来源插件时，写进上下文也执行不了
+        if (item.candidate.unavailable) {
+            toast.warning(unavailableInAgentTip(item.candidate.type === 'plugin' ? 'plugin' : 'skill', isZh))
+            return
+        }
         onSelect(item.candidate)
     }
 
@@ -55,16 +64,19 @@ export default function MentionPopup({
         const candidate = item.candidate
         const isToolType = candidate.type === 'skill' || candidate.type === 'plugin'
         // 中文界面优先显示中文名称/描述（技能、插件有中文名时）
-        const isZh = language === 'zh'
         const displayLabel = isZh ? (candidate.labelZh || item.label) : item.label
-        const displayDescription = isZh ? (candidate.descriptionZh || item.description) : item.description
+        // 不可用条目把描述换成原因，用户不用点下去才知道用不了
+        const displayDescription = candidate.unavailable
+            ? unavailableInAgentTip(candidate.type === 'plugin' ? 'plugin' : 'skill', isZh)
+            : (isZh ? (candidate.descriptionZh || item.description) : item.description)
         // 图标：字符串表示图片 URL，其余为图标组件
         const isImageIcon = typeof Icon === 'string'
         return (
             <div
                 key={item.id}
                 onClick={() => handleSelect(item)}
-                className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${isSelected ? 'bg-accent/20 text-text-primary' : 'hover:bg-surface-hover text-text-secondary'}`}
+                aria-disabled={candidate.unavailable}
+                className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${isSelected ? 'bg-accent/20 text-text-primary' : 'hover:bg-surface-hover text-text-secondary'} ${candidate.unavailable ? 'opacity-60' : ''}`}
             >
                 {Icon && (isImageIcon ? (
                     <img src={Icon} alt="" className="w-4 h-4 flex-shrink-0 rounded object-cover" />

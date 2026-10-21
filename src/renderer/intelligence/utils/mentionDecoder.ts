@@ -4,11 +4,18 @@
  */
 
 import { api } from '../../adapters/electronBridge'
+import { getInstalledPlugins } from '../../adapters/pluginService'
 import { logger } from '@toolkit/LogEngine'
 import { FileText, Folder, Wrench, Puzzle } from 'lucide-react'
 import { skillService } from '@intelligence/runtime/skillRepository'
 import { BRAND } from '@shared/brand'
 import { resolveLucideIcon, isImageIcon } from '@components/plugin/pluginIconResolver'
+import {
+    buildPluginServerIndex,
+    isPluginIdentityAllowed,
+    resolveAgentPluginScope,
+} from '@intelligence/runtime/agentSkillAvailability'
+import { getActiveCustomAgent } from '@renderer-configuration/customAgentTools'
 export type MentionType = 'file' | 'folder' | 'skill' | 'plugin'
 export interface MentionCandidate {
     id: string
@@ -22,6 +29,8 @@ export interface MentionCandidate {
     icon?: any
     data?: any
     score?: number
+    /** 当前智能体未启用其来源插件：候选项照常展示，但选中时要说明原因 */
+    unavailable?: boolean
 }
 
 export interface MentionParseResult {
@@ -68,6 +77,17 @@ export class MentionParser {
         const lowerQuery = query.toLowerCase()
         const suggestions: MentionCandidate[] = []
 
+        // 已安装插件先取一次：技能条目只带 pluginKey，需要借助它回溯来源插件的 MCP 服务 id；
+        // 插件条目本身也要据此判断在当前智能体里是否被授权
+        let installedPlugins: Awaited<ReturnType<typeof getInstalledPlugins>> = []
+        try {
+            installedPlugins = await getInstalledPlugins()
+        } catch (err) {
+            logger.agent.error('Error fetching plugins for mention:', err)
+        }
+        const pluginServerIndex = buildPluginServerIndex(installedPlugins)
+        const agentScope = resolveAgentPluginScope(getActiveCustomAgent())
+
         // 1. 匹配已安装的 Skills
         try {
             const skills = await skillService.getSkills()
@@ -87,6 +107,12 @@ export class MentionParser {
                     } else {
                         skillIcon = resolveLucideIcon(rawIcon) || Wrench
                     }
+                    // 技能来自插件时，智能体没启用该插件就用不了：标记出来由弹窗提示去向
+                    const pluginKey = skill.pluginKey
+                    const available = isPluginIdentityAllowed(
+                        { pluginKey, mcpServerId: pluginKey ? pluginServerIndex.get(pluginKey) : undefined },
+                        agentScope,
+                    )
                     suggestions.push({
                         id: `skill-${skill.filePath}`,
                         type: 'skill',
@@ -95,9 +121,11 @@ export class MentionParser {
                         description: skill.description || 'Custom Skill',
                         descriptionZh: skill.metadata?.descriptionZh,
                         icon: skillIcon,
+                        unavailable: !available,
                         data: {
                             skillId: skill.name.toLowerCase(),
-                            name: skill.name
+                            name: skill.name,
+                            pluginKey,
                         }
                     })
                 }
@@ -108,9 +136,7 @@ export class MentionParser {
 
         // 2. 匹配已安装的 Plugins
         try {
-            const { getInstalledPlugins } = await import('../../adapters/pluginService')
-            const plugins = await getInstalledPlugins()
-            const enabledPlugins = plugins.filter(p => p.enabled)
+            const enabledPlugins = installedPlugins.filter(p => p.enabled)
 
             for (const plugin of enabledPlugins) {
                 const manifest = plugin.manifest || {}
@@ -136,6 +162,10 @@ export class MentionParser {
                         description: (manifest.description as string) || `Plugin v${plugin.version}`,
                         descriptionZh: manifest.descriptionZh as string | undefined,
                         icon: pluginIcon,
+                        unavailable: !isPluginIdentityAllowed(
+                            { pluginKey: plugin.pluginKey, mcpServerId: plugin.mcpServerId },
+                            agentScope,
+                        ),
                         data: {
                             pluginKey: plugin.pluginKey,
                             pluginId: plugin.pluginId,
