@@ -46,6 +46,8 @@ export interface MenuCommandContext {
   setActiveSidePanel: (panel: SidePanel) => void
   toggleSidebar: () => void
   toggleTerminal: () => void
+  /** 新建终端：必要时先让编辑器区域可见，再创建终端 */
+  newTerminal: () => void
   setChatVisible: (v: boolean) => void
   clearMessages: () => void
   clearCheckpoints: () => void
@@ -124,6 +126,9 @@ export function dispatchMenuCommand(
         break
       case 'toggle-terminal':
         ctx.toggleTerminal()
+        break
+      case 'new-terminal':
+        ctx.newTerminal()
         break
       case 'toggle-ai-panel':
         ctx.setChatVisible(true)

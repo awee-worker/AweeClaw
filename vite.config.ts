@@ -98,6 +98,10 @@ const aliases = {
   '@renderer-configuration': path.resolve(__dirname, './src/renderer/configuration'),
   '@scenario-system': path.resolve(__dirname, './src/scenario-system'),
   '@scenarios': path.resolve(__dirname, './src/scenarios'),
+   // 场景 SDK：直接指向同仓源码，避免客户端为了一个 React context 引入一次
+   // 额外的包发布流程。子路径必须排在根路径之前，否则会被根别名吞掉。
+   '@aweeclaw/scenario-sdk/react': path.resolve(__dirname, '../aweeclaw-scenario-sdk/src/react.ts'),
+   '@aweeclaw/scenario-sdk': path.resolve(__dirname, '../aweeclaw-scenario-sdk/src/index.ts'),
    'vscode-nls': path.resolve(__dirname, './node_modules/monaco-editor-nls'),
    // x-data-spreadsheet 是 UMD 包，源码有 ESM 兼容性问题和 LESS 依赖，
    // 通过别名强制指向 dist 预构建 JS 文件（注意：alias value 不带 .js，Vite 会自动补全）

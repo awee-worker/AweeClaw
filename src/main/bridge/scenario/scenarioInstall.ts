@@ -54,6 +54,9 @@ interface ScenarioConfigFile {
   description?: string
   descriptionZh?: string
   version?: string
+  type?: string
+  entryPoint?: string
+  styleFile?: string
   author?: string
   category?: string
   tags?: string[]
@@ -66,6 +69,8 @@ interface ScenarioConfigFile {
   dataSources?: Record<string, unknown>
   permissions?: string[]
   dependencies?: Array<{ id: string; versionRange?: string; required?: boolean }>
+  /** 打包形态，与 type 同义但出现在较早的场景配置里 */
+  packageType?: string
   minAppVersion?: string
   homepage?: string
   license?: string
@@ -83,18 +88,208 @@ interface MarketplaceInstallParams {
   packageType: string
 }
 
-function readScenarioConfig(sourceDir: string): ScenarioConfigFile | null {
-  const configPath = path.join(sourceDir, 'config', 'scenario.json')
-  if (!fs.existsSync(configPath)) {
-    return null
+/** 场景配置的规范相对路径，运行时与已安装目录扫描统一按此读取 */
+const CANONICAL_CONFIG_REL = 'config/scenario.json'
+
+/**
+ * 场景配置的候选相对路径
+ *
+ * 磁盘上存在多种落盘结构，都要认：
+ * - config/scenario.json：构建产物、已安装场景的规范位置
+ * - scenario.json：市场分发包、早期手工场景的扁平结构
+ * - src/config/scenario.json：尚未迁移到根 config 的工程
+ *
+ * 返回配置内容与命中的相对路径，安装时据此把非规范结构归一化。
+ */
+const CONFIG_CANDIDATE_RELS = [CANONICAL_CONFIG_REL, 'scenario.json', 'src/config/scenario.json']
+
+function readScenarioConfigFile(
+  dir: string
+): { config: ScenarioConfigFile; configRel: string } | null {
+  for (const rel of CONFIG_CANDIDATE_RELS) {
+    const configPath = path.join(dir, rel)
+    if (!fs.existsSync(configPath)) continue
+    try {
+      const raw = fs.readFileSync(configPath, 'utf-8')
+      const parsed = JSON.parse(raw) as ScenarioConfigFile
+      // 同目录下的 package.json 之类不会被当成场景配置
+      if (!parsed || typeof parsed !== 'object' || typeof parsed.id !== 'string' || !parsed.id) continue
+      return { config: parsed, configRel: rel }
+    } catch {
+      continue
+    }
   }
-  try {
-    const raw = fs.readFileSync(configPath, 'utf-8')
-    return JSON.parse(raw) as ScenarioConfigFile
-  } catch {
-    return null
-  }
+  return null
 }
+
+function readScenarioConfig(sourceDir: string): ScenarioConfigFile | null {
+  return readScenarioConfigFile(sourceDir)?.config ?? null
+}
+
+/** 探测子目录时跳过与场景产物无关的目录，避免把 prompts/、db/ 之类误判成场景根 */
+const SOURCE_PROBE_SKIP_DIRS = new Set([
+  'node_modules', '.git', '.history', 'src', 'dist', 'config',
+  'prompts', 'scripts', 'db', 'assets', 'docs', 'test',
+])
+
+/** 选中产物目录（而非工程根）时允许向上回溯的目录名 */
+const PRODUCT_DIR_NAMES = new Set(['dist', 'build', 'out', 'lib'])
+
+interface ResolvedScenarioSource {
+  dir: string
+  config: ScenarioConfigFile
+  configRel: string
+}
+
+/**
+ * 安装源解析结果
+ *
+ * 失败时区分三种原因，因为对应的修复动作完全不同：
+ * - none     ：目录里确实没有任何场景配置，用户选错了目录
+ * - ambiguous：命中了多个场景（选了场景集合的父目录），需要选具体场景
+ * - not-built：配置存在但 entryPoint 产物缺失，需要先执行构建
+ */
+type ResolveInstallResult =
+  | { ok: true; source: ResolvedScenarioSource }
+  | { ok: false; reason: 'none' | 'ambiguous' | 'not-built'; candidates: string[] }
+
+/** 场景是否为声明式（仅配置驱动，不依赖 entryPoint 产物） */
+function isDeclarativeScenario(config: ScenarioConfigFile): boolean {
+  return config.type === 'declarative' || config.packageType === 'declarative'
+}
+
+/**
+ * 解析本地安装的实际源目录
+ *
+ * 用户在「安装本地场景」时选中的目录可能是五种形态：
+ * - 构建产物目录：本身就有 config/scenario.json（正常情况）
+ * - 场景工程根目录：config/scenario.json 指向 dist/index.js，需整体复制工程根
+ * - 扁平场景包：scenario.json 直接在根目录（市场分发包形态）
+ * - 外层目录 / 产物子目录：真正的场景目录在其子目录或上一级
+ * - 场景集合目录：下面有多个场景，无法自动判定，需要用户选具体目录
+ *
+ * 判定依据不是「有没有 dist」而是「哪个目录能让 entryPoint 落地」：
+ * - 根目录的 config/scenario.json 里 entryPoint 常写成 dist/index.js，需整体复制工程根；
+ * - dist/config/scenario.json 只在 dist 自身承载运行时代码时才可选，否则会指向不存在的路径。
+ */
+function resolveInstallSource(sourceDir: string): ResolveInstallResult {
+  const entryExists = (dir: string, entry?: string): boolean => {
+    if (!entry) return false
+    const rel = entry.replace(/^\.\//, '')
+    // 绝对路径与回溯路径不参与判定，交由默认分支处理
+    if (!rel || path.isAbsolute(rel) || rel.includes('..')) return false
+    return fs.existsSync(path.join(dir, rel))
+  }
+
+  /**
+   * 判断解析出的目录是否能让场景真正加载：
+   * 编程式场景要求 entryPoint（及 styleFile）在该目录下存在，
+   * 声明式场景由配置文件驱动，entryPoint 不参与加载，无需校验。
+   */
+  const isRuntimeComplete = (hit: ResolvedScenarioSource): boolean => {
+    if (isDeclarativeScenario(hit.config)) return true
+    const { entryPoint, styleFile } = hit.config
+    if (entryPoint && !entryExists(hit.dir, entryPoint)) return false
+    if (styleFile && !entryExists(hit.dir, styleFile)) return false
+    return true
+  }
+
+  const probe = (dir: string): ResolvedScenarioSource | null => {
+    const distDir = path.join(dir, 'dist')
+    const distHit = readScenarioConfigFile(distDir)
+    const selfHit = readScenarioConfigFile(dir)
+
+    if (distHit && entryExists(distDir, distHit.config.entryPoint)) {
+      return { dir: distDir, ...distHit }
+    }
+    if (selfHit && entryExists(dir, selfHit.config.entryPoint)) {
+      return { dir, ...selfHit }
+    }
+    // 声明式场景的 entryPoint 不指向可执行文件，此时以配置所在的目录为准
+    if (selfHit) return { dir, ...selfHit }
+    if (distHit) return { dir: distDir, ...distHit }
+
+    return null
+  }
+
+  /** 向下探测子目录（最多两层），命中运行时完整的场景根后不再继续深入 */
+  const probeSubdirs = (root: string, maxDepth = 2): ResolvedScenarioSource[] => {
+    const hits: ResolvedScenarioSource[] = []
+    const walk = (dir: string, depth: number): void => {
+      if (depth > maxDepth) return
+      let entries: fs.Dirent[]
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true })
+      } catch {
+        return
+      }
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        if (entry.name.startsWith('.') || SOURCE_PROBE_SKIP_DIRS.has(entry.name)) continue
+        const child = path.join(dir, entry.name)
+        const hit = probe(child)
+        if (hit && isRuntimeComplete(hit)) {
+          hits.push(hit)
+          continue
+        }
+        walk(child, depth + 1)
+      }
+    }
+    walk(root, 1)
+    return hits
+  }
+
+  const direct = probe(sourceDir)
+  if (direct && isRuntimeComplete(direct)) return { ok: true, source: direct }
+
+  // 选中的是产物子目录（dist/build/…）时，回退到上一级工程目录，
+  // 整体复制后 entryPoint 才能落地
+  const isProductDir = PRODUCT_DIR_NAMES.has(path.basename(sourceDir).toLowerCase())
+  if (!direct || isProductDir) {
+    const parent = probe(path.dirname(sourceDir))
+    if (parent && isRuntimeComplete(parent)) return { ok: true, source: parent }
+  }
+
+  // 配置存在但产物缺失：这是「还没构建」，不是「选错目录」，必须分开告诉用户
+  if (direct) return { ok: false, reason: 'not-built', candidates: [direct.dir] }
+
+  // 外层目录：命中恰好一个场景才认定，命中多个说明用户选了场景集合目录
+  const hits = probeSubdirs(sourceDir)
+  if (hits.length === 1) return { ok: true, source: hits[0] }
+  if (hits.length > 1) {
+    return { ok: false, reason: 'ambiguous', candidates: hits.map((hit) => hit.dir) }
+  }
+
+  return { ok: false, reason: 'none', candidates: [] }
+}
+
+/** 把解析失败的原因转成用户能直接照做的提示 */
+function describeResolveFailure(
+  sourceDir: string,
+  result: Extract<ResolveInstallResult, { ok: false }>
+): string {
+  if (result.reason === 'ambiguous') {
+    const list = result.candidates.map((dir) => `- ${dir}`).join('\n')
+    return (
+      `Multiple scenarios found under ${sourceDir}. Select the directory of a single scenario instead:\n${list}`
+    )
+  }
+
+  if (result.reason === 'not-built') {
+    return (
+      `Scenario configuration found in ${result.candidates[0]}, but its entryPoint is not built yet. ` +
+      'Run "npm run build" in the scenario project, then select the project root (or the dist directory) again.'
+    )
+  }
+
+  return (
+    `No scenario configuration found in ${sourceDir}. ` +
+    'Expected one of: config/scenario.json, scenario.json, src/config/scenario.json, or dist/config/scenario.json. ' +
+    'Select the scenario project root, the dist directory, or a packaged scenario directory.'
+  )
+}
+
+
 
 /**
  * 递归复制场景目录
@@ -391,27 +586,54 @@ export function registerScenarioInstallIpcHandlers(
   })
 
   safeIpcHandle('scenario:readScenarioConfig', async (_event, sourceDir: string) => {
-    const config = readScenarioConfig(sourceDir)
-    if (!config) {
-      return { success: false, error: 'No scenario.json found in config directory' }
+    const result = resolveInstallSource(sourceDir)
+    if (!result.ok) {
+      return { success: false, error: describeResolveFailure(sourceDir, result) }
     }
 
+    const { config, dir } = result.source
     if (!config.id || !config.name) {
       return { success: false, error: 'Invalid scenario config: missing id or name' }
     }
 
-    return { success: true, config }
+    return { success: true, config, resolvedDir: dir }
   })
 
   safeIpcHandle('scenario:installFromLocal', async (_event, sourceDir: string) => {
     try {
-      const config = readScenarioConfig(sourceDir)
-      if (!config) {
-        return { success: false, error: 'No valid scenario.json found in config directory' }
+      const result = resolveInstallSource(sourceDir)
+      if (!result.ok) {
+        return { success: false, error: describeResolveFailure(sourceDir, result) }
       }
 
+      const resolved = result.source
+      const { config, configRel } = resolved
       if (!config.id || !config.name) {
         return { success: false, error: 'Invalid scenario config: missing id or name' }
+      }
+
+      // 编程式场景必须携带可执行的 entryPoint 产物：
+      // 未构建（entryPoint 指向不存在文件）或入口落在安装时被排除的源码目录，
+      // 都会导致安装成功但运行时无法加载，这里提前拦下并给出可执行的修复指引
+      const entryRel = (config.entryPoint || '').replace(/^\.\//, '')
+      if (!isDeclarativeScenario(config) && entryRel) {
+        if (!fs.existsSync(path.join(resolved.dir, entryRel))) {
+          return {
+            success: false,
+            error:
+              `entryPoint "${config.entryPoint}" does not exist in ${resolved.dir}. ` +
+              'Run "npm run build" and select the project root or the dist directory again.',
+          }
+        }
+        const entryTopDir = entryRel.split(/[\\/]/)[0]
+        if (COPY_EXCLUDE_DIRS.has(entryTopDir)) {
+          return {
+            success: false,
+            error:
+              `entryPoint "${config.entryPoint}" points into the source directory, which is excluded from installation. ` +
+              'Run "npm run build" and select the project root containing dist/, or the dist directory itself.',
+          }
+        }
       }
 
       const scenarioId = config.id
@@ -423,9 +645,27 @@ export function registerScenarioInstallIpcHandlers(
 
       fs.mkdirSync(targetDir, { recursive: true })
 
-      copyDirRecursive(sourceDir, targetDir)
+      // 复制解析后的目录（工程根目录会被解析到 dist），避免产物层级错位
+      copyDirRecursive(resolved.dir, targetDir)
 
-      logger.agent.info(`[ScenarioInstall] Copied scenario "${scenarioId}" to ${targetDir}`)
+      // 扁平包（scenario.json 在根）归一化为 config/scenario.json，
+      // 否则 getInstalledScenarioDirs / loadScenarioFiles 按规范路径读不到配置
+      if (configRel !== CANONICAL_CONFIG_REL) {
+        const canonicalPath = path.join(targetDir, CANONICAL_CONFIG_REL)
+        if (!fs.existsSync(canonicalPath)) {
+          fs.mkdirSync(path.dirname(canonicalPath), { recursive: true })
+          // 直接落解析后的配置而不复制源文件：配置可能位于 src/ 等被排除的目录，
+          // 复制会因源文件未随安装一起拷贝而失败
+          fs.writeFileSync(canonicalPath, JSON.stringify(config, null, 2), 'utf-8')
+          logger.agent.info(
+            `[ScenarioInstall] Normalized "${configRel}" to "${CANONICAL_CONFIG_REL}" for "${scenarioId}"`
+          )
+        }
+      }
+
+      logger.agent.info(
+        `[ScenarioInstall] Copied scenario "${scenarioId}" from ${resolved.dir} to ${targetDir}`
+      )
 
       return {
         success: true,

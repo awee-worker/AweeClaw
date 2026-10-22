@@ -14,6 +14,7 @@
 import type { WorkMode } from '@protocols/workModeProtocol'
 import { BRAND } from '@shared/brand'
 import { StorageService } from '@shared/toolkit/StorageService'
+import type { RegionNode, ScenarioShellMode } from './scenario-regions'
 
 // ============================================
 // 场景身份定义
@@ -153,6 +154,55 @@ export interface WelcomeTitleConfig {
   subtitleZh: string
 }
 
+/**
+ * 主区域组件声明
+ *
+ * 用于「主内容区不展示编辑器/通用看板，而是展示场景自己的组件」这类需求。
+ * 组件通过场景模块的 getComponents() 以 component 键名注册。
+ */
+export interface PrimaryViewDescriptor {
+  /** 组件键名，对应场景模块 getComponents() 返回的 key */
+  component: string
+  /**
+   * 用户打开文件时是否优先显示编辑器。
+   *
+   * 缺省 true，与现有场景布局行为一致（有文件看文件，无文件看场景主视图）。
+   * 置为 false 表示主区域始终由该组件占据，用户可以另开窗口查看文件。
+   */
+  preferEditor?: boolean
+}
+
+/**
+ * 外壳元素显隐配置
+ *
+ * 场景接管整个工作区后，宿主通用入口（新建任务、工作空间切换、语音对话等）
+ * 往往与场景自身的流程重复。这里按场景关掉，避免用户在场景里看到两套入口。
+ *
+ * 全部缺省为 false（显示），保持现有场景行为不变。
+ */
+export interface ScenarioChromeConfig {
+  /** 导航栏顶部「仪表盘」入口 */
+  hideDashboard?: boolean
+  /** 导航栏「新建任务」入口 */
+  hideNewTask?: boolean
+  /** 导航栏「场景工具」入口 */
+  hideSceneTools?: boolean
+  /** 顶部工作空间选择器 */
+  hideWorkspaceSelector?: boolean
+  /** 顶部快速搜索入口 */
+  hideSearch?: boolean
+  /** 顶部「显示 / 隐藏侧边栏」按钮 */
+  hideSidebarToggle?: boolean
+  /** 顶部「显示 / 隐藏 AI 助手」按钮 */
+  hideChatToggle?: boolean
+  /** 顶部语音对话入口 */
+  hideVoiceConversation?: boolean
+  /** 顶部桌面伴侣开关 */
+  hideDesktopCompanion?: boolean
+  /** 导航栏历史会话列表 */
+  hideChatHistory?: boolean
+}
+
 export interface ScenarioUI {
   layout: UILayout
   panels: PanelDescriptor[]
@@ -165,6 +215,60 @@ export interface ScenarioUI {
   welcomeSuggestions?: WelcomeSuggestionItem[]
   welcomeTitle?: WelcomeTitleConfig
   widgetCards?: ScenarioWidgetCardContribution[]
+
+  /**
+   * 主区域组件
+   *
+   * 声明后主内容区在没有文件时渲染该组件，替代通用的数据看板。
+   * 未声明时回退到客户端内置的兼容映射与通用看板。
+   */
+  primaryView?: PrimaryViewDescriptor
+
+  /**
+   * 外壳元素显隐
+   *
+   * 控制宿主通用入口（新建任务、场景工具、工作空间选择器、语音对话等）的显示，
+   * 场景可据此把工作区收敛成自己的一套导航与操作入口。
+   */
+  chrome?: ScenarioChromeConfig
+
+  /**
+   * 外壳放权档位
+   *
+   * - chrome  ：宿主排壳，场景用 chrome.hideXxx 逐个关元素（缺省）
+   * - regions ：场景摆位，宿主提供内容
+   * - full    ：场景接管整壳，只保留 scene-switcher / window-controls /
+   *             drag-region 三项不可移除的部件
+   *
+   * 缺省按现状推断：声明了 regions 视为 'regions'，否则 'chrome'。
+   */
+  shellMode?: ScenarioShellMode
+
+  /**
+   * 外壳区域树覆盖
+   *
+   * 声明后整棵外壳布局由场景决定，而非 layout 预设：槽位（rail / titlebar /
+   * sidebar / main / statusbar）可以重新排列、嵌套、按比例分栏。未声明时使用
+   * layout 预设生成的默认结构。
+   *
+   * 约束（违反时整棵树被拒绝并回退宿主默认布局）：
+   * - 每个槽位 / 每个部件最多引用一次，挂载两份会让会话流与编辑器状态各走一套
+   * - 槽位只能引用上面五个外壳槽位，chat / editor 归主内容区自己管理
+   * - 部件节点（part）与占位节点（spacer）需要 regionsSchemaVersion 2
+   * - 嵌套深度：full 档位 12 层，其余档位 8 层；ratio 长度需与子节点数量一致
+   * - full 档位必须存在保留集三项，且 rail 缺省时要提供可达的面板入口
+   */
+  regions?: RegionNode
+
+  /**
+   * regions 契约版本
+   *
+   * 场景声明自己按哪一版契约编写。客户端在支持的版本范围内取最高兼容版本，
+   * 高于自身支持的版本时整棵树被忽略并回退默认布局，避免新场景在老客户端上渲染成乱版。
+   *
+   * 缺省视为 1；升到 2 才允许 part / spacer 节点，任何 shellMode 都可用。
+   */
+  regionsSchemaVersion?: number
 }
 
 // ============================================

@@ -519,6 +519,54 @@ export interface PluginUiEntry {
 }
 
 /**
+ * 插件侧区域节点
+ *
+ * 与场景的区域树结构一致，但**不含 slot 变体**：插件是第三方代码，
+ * 只能决定自己面板内部怎么排布，不能引用或替换外壳的导航栏、侧边栏、
+ * 标题栏等宿主区域。运行时还会再做一次结构校验，类型层面先挡一层。
+ */
+export type PluginRegionNode = PluginRegionSplit | PluginRegionPanel | PluginRegionSandbox
+
+/** 容器：按行或列排布子区域 */
+export interface PluginRegionSplit {
+  type: 'split'
+  dir: 'row' | 'col'
+  /** 子区域比例，长度需与 children 一致 */
+  ratio?: number[]
+  /** 子区域间距（像素） */
+  gap?: number
+  /** 容器样式（Tailwind 类名） */
+  className?: string
+  children: PluginRegionNode[]
+}
+
+/** 面板：引用本插件 sidebarPanels 中声明过的面板 id */
+export interface PluginRegionPanel {
+  type: 'panel'
+  /** contributes.sidebarPanels[].id */
+  id: string
+  className?: string
+}
+
+/**
+ * 沙箱：在隔离 webview 里加载插件自带的页面
+ *
+ * src 写相对插件根目录的路径（如 "sandbox/dashboard.html"），
+ * 宿主会解析为 plugin-bundle:// 地址。页面跑在独立渲染进程里，
+ * 拿不到主应用的 store 与 IPC。
+ */
+export interface PluginRegionSandbox {
+  type: 'sandbox'
+  /** 唯一标识，用于 React key 与调试 */
+  id: string
+  /** 相对插件根目录的 html 路径 */
+  src: string
+  /** 顶栏标题 */
+  title?: string
+  className?: string
+}
+
+/**
  * 插件 UI 贡献声明
  *
  * 插件通过 manifest.contributes 声明要注入到客户端的 UI 元素。
@@ -535,6 +583,28 @@ export interface PluginContributes {
   settingsTabs?: PluginSettingsTabContribution[]
   /** 工作台卡片贡献（插件数据卡片，展示在工作台） */
   widgetCards?: PluginWidgetCardContribution[]
+
+  /**
+   * 主区域组件
+   *
+   * 该插件的宽模式面板打开时，用这个组件占据主区域，替代默认的面板视图。
+   * component 取自 ui.js 的 components 映射。
+   */
+  primaryView?: PluginPrimaryViewContribution
+
+  /**
+   * 面板区域树
+   *
+   * 与 primaryView 二选一，能力更强：可以自定义主区域内部的分栏与嵌套，
+   * 每一格挂一个面板或沙箱页面。两种都声明时 regions 优先。
+   */
+  regions?: PluginRegionNode
+}
+
+/** 插件主区域组件声明 */
+export interface PluginPrimaryViewContribution {
+  /** ui.js 中 components 映射的键名 */
+  component: string
 }
 
 /**

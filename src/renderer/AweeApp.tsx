@@ -31,6 +31,28 @@ import { PluginHostBridge } from '@renderer/plugins/PluginHostBridge'
 import PluginDrawerHost from '@renderer/plugins/PluginDrawerHost'
 import { TodoHubCollector } from '@components/todo-hub/TodoHubCollector'
 import { initRenderBudget, subscribeRenderBudget } from './services/renderBudget'
+import { RegionRenderer } from './shell/RegionRenderer'
+import { ScenarioRenderBridge } from './shell/ScenarioRenderBridge'
+import { registerDefaultHostParts } from './shell/parts'
+import { REGION_MAX_DEPTH_FULL, buildDefaultShellRegions } from '@shared/protocols/scenario-regions'
+import type { RegionNode, RegionSlotMap } from '@shared/protocols/scenario-regions'
+
+/**
+ * 区域树里是否声明了 chat 部件
+ *
+ * 声明了就意味着对话的摆放与初值都由场景自己交代（presentation / defaultOpen），
+ * 宿主再做默认处理只会和它打架。
+ */
+function regionsDeclareChat(node: RegionNode | undefined): boolean {
+  if (!node) return false
+  if (node.type === 'part') return node.id === 'chat'
+  if (node.type !== 'split') return false
+  return node.children.some(regionsDeclareChat)
+}
+
+// 宿主部件注册：与 AweeApp 同 chunk 执行，早于首次渲染，
+// 因此区域树里的 part 节点不会先渲染成空白
+registerDefaultHostParts()
 
 startupMetrics.mark('app-module-loaded')
 
@@ -171,6 +193,19 @@ function AppContent() {
     return () => window.removeEventListener('aweeclaw:scene-panel-open', handler)
   }, [setActiveSidePanel])
 
+  // 监听场景请求显隐 AI 助手面板
+  //
+  // 面板声明 hideChat 后对话默认隐藏，场景内「把问题交给 AI」这类动作
+  // 需要先把对话唤出来，否则消息进了会话用户也看不见。
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ visible?: boolean }>).detail
+      useStore.getState().setChatVisible(detail?.visible !== false)
+    }
+    window.addEventListener('aweeclaw:chat-visible', handler)
+    return () => window.removeEventListener('aweeclaw:chat-visible', handler)
+  }, [])
+
   // 监听 AI Agent 写入通讯录：自动打开通讯录页面
   useEffect(() => {
     const handler = () => useStore.getState().setShowContactsPage(true)
@@ -252,6 +287,32 @@ function AppContent() {
   // autoHiddenChatRef 记录"这次隐藏是面板自动触发的"，离开该面板时据此恢复；
   // 若隐藏是用户手动所为，则不恢复，避免覆盖用户的选择。
   const autoHiddenChatRef = useRef(false)
+
+  /**
+   * 场景切换时重算对话初值
+   *
+   * 两个问题都在这里收口：
+   * - 上一场景的「自动隐藏」标记会被带到新场景，离开该面板时把抽屉重新顶开，
+   *   表现为刚切进一个对话默认收起的场景，抽屉却是展开的；
+   * - 声明了区域树的场景由自己的 chat 部件（defaultOpen）决定初值，宿主不应插手。
+   *
+   * 因此切换时先清掉标记，再分别处理：场景自带 chat 部件就交给部件；当前面板
+   * 仍需要自动收起就保持收起；其余情况只在上一场景确实自动收起过时恢复可见，
+   * 用户自己关掉的对话不会被强行打开。
+   */
+  const prevChatScenarioRef = useRef(activeScenarioId)
+  useEffect(() => {
+    if (prevChatScenarioRef.current === activeScenarioId) return
+    prevChatScenarioRef.current = activeScenarioId
+
+    const wasAutoHidden = autoHiddenChatRef.current
+    autoHiddenChatRef.current = false
+
+    if (regionsDeclareChat(layoutConfig.regions)) return
+    if (activeSidePanel && layoutConfig.autoHideChatPanelIds.includes(activeSidePanel)) return
+    if (wasAutoHidden) setChatVisible(true)
+  }, [activeScenarioId, layoutConfig, activeSidePanel, setChatVisible])
+
   useEffect(() => {
     if (activeSidePanel && layoutConfig.autoHideChatPanelIds.includes(activeSidePanel)) {
       if (useStore.getState().chatVisible) {
@@ -271,6 +332,20 @@ function AppContent() {
     if (activeSidePanel === 'scenarios') return true
     return layoutConfig.wideModePanelIds.includes(activeSidePanel)
   }, [activeSidePanel, layoutConfig.wideModePanelIds])
+
+  /**
+   * 宽模式面板渲染在全屏页之前，一旦有全屏页（欢迎页 / 设置页等）残留，
+   * 界面显示的是面板、导航却按「未选中」渲染，点击会被误判成「打开」。
+   * 这里保证面板激活时全屏页一定被清掉，两者状态始终一致。
+   */
+  useEffect(() => {
+    if (!isWideModePanel) return
+    const store = useStore.getState()
+    if (store.showWelcomePage || store.showSettingsPage || store.showUserProfilePage
+      || store.showBillingCenterPage || store.showSessionHistoryPage || store.showPluginCenterPage) {
+      store.closeAllFullPages()
+    }
+  }, [isWideModePanel])
 
   const scenarioWelcomeComponent = useMemo(() => {
     if (!activeScenarioId) return null
@@ -332,6 +407,34 @@ function AppContent() {
     return false
   }, [layoutConfig.showSidebar, layoutConfig.chatPosition, activeSidePanel, isWideModePanel, isShellStudioActive, showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage, showScenarioPage])
 
+  // 外壳区域树：场景声明了 regions 就用场景的，否则用默认结构。
+  //
+  // 场景树在 ShellComposer 里已经过校验（契约版本 / 槽位越界 / 重复引用 / 结构非法），
+  // 走到这里的一定是可渲染的树；校验未通过的场景已经在那边回退到默认布局。
+  const shellRegions = useMemo(
+    () => layoutConfig.regions ?? buildDefaultShellRegions({
+      showActivityBar: layoutConfig.showActivityBar,
+      showStatusBar: layoutConfig.showStatusBar,
+      animateClass: layoutAnimating ? 'opacity-0' : 'opacity-100',
+    }),
+    [layoutConfig.regions, layoutConfig.showActivityBar, layoutConfig.showStatusBar, layoutAnimating],
+  )
+
+  // 槽位内容：渲染器只负责摆放，每个槽位挂什么由这里决定
+  const shellSlots = useMemo<RegionSlotMap>(() => ({
+    rail: <NavigationRail />,
+    titlebar: <AppTitleBar />,
+    sidebar: <SidebarSection hidden={sidebarHidden} />,
+    main: (
+      <MainContentArea
+        layoutConfig={layoutConfig}
+        isWideModePanel={isWideModePanel}
+        scenarioWelcomeComponent={scenarioWelcomeComponent}
+      />
+    ),
+    statusbar: <WorkspaceStatusBar />,
+  }), [sidebarHidden, layoutConfig, isWideModePanel, scenarioWelcomeComponent])
+
   return (
     <div className="h-screen flex bg-background overflow-hidden text-text-primary selection:bg-accent/30 selection:text-white relative">
 
@@ -371,27 +474,14 @@ function AppContent() {
               </ErrorBoundary>
             </div>
           ) : (
-            <div className={`flex h-full w-full overflow-hidden transition-opacity duration-300 ${layoutAnimating ? 'opacity-0' : 'opacity-100'}`}>
-              {layoutConfig.showActivityBar && <NavigationRail />}
-
-              <div className="flex-1 flex flex-col min-w-0">
-                <AppTitleBar />
-
-                <div className="flex-1 flex min-w-0 overflow-hidden">
-                  <SidebarSection hidden={sidebarHidden} />
-
-                  <div className="flex-1 flex min-w-0 bg-background relative">
-                    <MainContentArea
-                      layoutConfig={layoutConfig}
-                      isWideModePanel={isWideModePanel}
-                      scenarioWelcomeComponent={scenarioWelcomeComponent}
-                    />
-                  </div>
-                </div>
-
-                {layoutConfig.showStatusBar && <WorkspaceStatusBar />}
-              </div>
-            </div>
+            <ScenarioRenderBridge slots={shellSlots} shellMode={layoutConfig.shellMode}>
+              <RegionRenderer
+                root={shellRegions}
+                slots={shellSlots}
+                // 接管整壳的场景可用更深的嵌套，与校验层的档位上限保持一致
+                maxDepth={layoutConfig.shellMode === 'full' ? REGION_MAX_DEPTH_FULL : undefined}
+              />
+            </ScenarioRenderBridge>
           )
         )}
       </div>

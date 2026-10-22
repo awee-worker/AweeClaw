@@ -209,7 +209,7 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
 
   scenarioGetScenariosDir: () => Promise<string>
   scenarioSelectScenarioDir: () => Promise<string | null>
-  scenarioReadScenarioConfig: (sourceDir: string) => Promise<{ success: boolean; config?: Record<string, unknown>; error?: string }>
+  scenarioReadScenarioConfig: (sourceDir: string) => Promise<{ success: boolean; config?: Record<string, unknown>; resolvedDir?: string; error?: string }>
   scenarioInstallFromLocal: (sourceDir: string) => Promise<{ success: boolean; scenarioId?: string; targetDir?: string; config?: Record<string, unknown>; error?: string }>
   scenarioGetInstalledScenarioDirs: () => Promise<Array<{ scenarioId: string; dir: string; config: Record<string, unknown> | null }>>
   scenarioDeleteScenarioDir: (scenarioId: string) => Promise<{ success: boolean; error?: string }>

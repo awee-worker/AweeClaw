@@ -12,9 +12,10 @@
  * 命令清单参见 src/main/menu/menuItems/*.ts 中的 commandId
  */
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useStore } from '@store'
 import { api } from '../adapters/electronBridge'
+import { terminalManager } from '@services/TerminalAdapter'
 import { useAgentHistoryActions } from './useAgent'
 import {
   dispatchMenuCommand,
@@ -38,6 +39,7 @@ type MenuCommandId =
   | 'workbench.action.showCommands'
   | 'workbench.action.quickOpen'
   | 'toggle-terminal'
+  | 'new-terminal'
   | 'toggle-ai-panel'
   | 'workbench.action.toggleSidebar'
   | 'workbench.action.toggleDevTools'
@@ -67,6 +69,33 @@ export function useMenuBridge(): void {
   const toggleTerminal = useStore((s) => s.toggleTerminal)
   const setChatVisible = useStore((s) => s.setChatVisible)
 
+  /**
+   * 新建终端
+   *
+   * 终端面板挂在编辑器区域内部，编辑器区域不渲染时终端无处可显示。
+   * 因此先切到底部面板的终端页，编辑器当前没有打开文件时由
+   * WorkspaceEditor 的空状态同时渲染欢迎页与面板，无需先造一个文件。
+   */
+  const newTerminal = useCallback(() => {
+    const state = useStore.getState()
+    // 终端随编辑器区域渲染：全屏页（欢迎页 / 设置页 / 个人中心等）会顶掉编辑器，
+    // 先收起这些页面，否则点了新建终端也看不到面板
+    state.setShowWelcomePage(false)
+    state.setShowSettingsPage(false)
+    state.setShowUserProfilePage(false)
+    state.setShowBillingCenterPage(false)
+    state.setShowSessionHistoryPage(false)
+    state.setShowPluginCenterPage(false)
+    state.setTerminalVisible(true)
+
+    const cwd = state.workspacePath || state.workspace?.roots?.[0] || ''
+    if (!cwd) return
+
+    void terminalManager.createTerminal({ name: 'Terminal', cwd }).then((terminalId) => {
+      terminalManager.setActiveTerminal(terminalId)
+    })
+  }, [])
+
   const { clearMessages, clearCheckpoints } = useAgentHistoryActions()
 
   // 通过 ref 保持最新值，避免重新订阅 IPC
@@ -79,6 +108,7 @@ export function useMenuBridge(): void {
     setActiveSidePanel,
     toggleSidebar,
     toggleTerminal,
+    newTerminal,
     setChatVisible,
     clearMessages,
     clearCheckpoints,
@@ -92,6 +122,7 @@ export function useMenuBridge(): void {
     setActiveSidePanel,
     toggleSidebar,
     toggleTerminal,
+    newTerminal,
     setChatVisible,
     clearMessages,
     clearCheckpoints,

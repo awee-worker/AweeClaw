@@ -258,6 +258,11 @@ export class DeclarativeScenarioModule implements ScenarioModule {
       statusBarItems: [],
       welcomeComponent: ui?.welcomeComponent,
       wideModeHidesChat: ui?.wideModeHidesChat,
+      // primaryView / regions 同样透传：声明式场景不写代码，
+      // 布局能力必须能从配置里表达出来，否则只能靠改客户端。
+      primaryView: ui?.primaryView,
+      regions: ui?.regions as ScenarioUI['regions'],
+      regionsSchemaVersion: ui?.regionsSchemaVersion,
     }
 
     const scenarioDataSources: ScenarioDataSources = {

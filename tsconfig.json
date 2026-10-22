@@ -41,7 +41,9 @@
       "@scenario-system/*": ["src/scenario-system/*"],
       "@scenarios/*": ["src/scenarios/*"],
       "@shared/exceptions": ["src/shared/exceptions"],
-      "@shared/exceptions/*": ["src/shared/exceptions/*"]
+      "@shared/exceptions/*": ["src/shared/exceptions/*"],
+      "@aweeclaw/scenario-sdk/react": ["../aweeclaw-scenario-sdk/src/react.ts"],
+      "@aweeclaw/scenario-sdk": ["../aweeclaw-scenario-sdk/src/index.ts"]
     }
   },
   "include": ["src/**/*", "src/renderer/vite-env.d.ts","tests/**/*"],

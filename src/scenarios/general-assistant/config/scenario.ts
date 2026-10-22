@@ -153,8 +153,8 @@ const GENERAL_ASSISTANT_DATA_SOURCES: ScenarioDataSources = {
 
 export const generalAssistantScenario: ScenarioPlugin = {
   id: 'general-assistant',
-  name: 'General Assistant',
-  nameZh: '通用助手',
+  name: 'Default Workbench',
+  nameZh: '默认工作台',
   icon: 'Sparkles',
   description: 'Versatile AI assistant for any task - Q&A, research, planning, and more',
   descriptionZh: '通用 AI 助手，适用于任何任务 - 问答、研究、规划等',

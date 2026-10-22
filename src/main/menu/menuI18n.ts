@@ -127,9 +127,9 @@ const zh: Record<MenuKey, string> = {
 
   commandPalette: '命令面板...',
   gotoFile: '转到文件...',
-  toggleTerminal: '切换终端',
+  toggleTerminal: '新建终端',
   toggleAiPanel: '切换 AI 面板',
-  toggleSidebar: '切换侧边栏',
+  toggleSidebar: '切换工作空间面板',
   zoomIn: '放大',
   zoomOut: '缩小',
   resetZoom: '重置缩放',
@@ -207,9 +207,9 @@ const en: Record<MenuKey, string> = {
 
   commandPalette: 'Command Palette...',
   gotoFile: 'Go to File...',
-  toggleTerminal: 'Toggle Terminal',
+  toggleTerminal: 'New Terminal',
   toggleAiPanel: 'Toggle AI Panel',
-  toggleSidebar: 'Toggle Sidebar',
+  toggleSidebar: 'Toggle Workspace Panel',
   zoomIn: 'Zoom In',
   zoomOut: 'Zoom Out',
   resetZoom: 'Reset Zoom',

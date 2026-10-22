@@ -282,7 +282,9 @@ export function useSettingsLocalState(embedded: boolean) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // store 快照：用于判断本次到底是哪些字段真的变了
-  const buildStoreSnapshot = useCallback(() => ({
+  // 返回类型标成 Partial<SettingsLocalState>，这样按 key 比对时可以用 store 的字段联合类型索引；
+  // 快照本身不包含 activeTab 这类只属于本地 UI 的字段。
+  const buildStoreSnapshot = useCallback((): Partial<SettingsLocalState> => ({
     localConfig: llmConfig,
     localLanguage: language,
     localAutoApprove: autoApprove,

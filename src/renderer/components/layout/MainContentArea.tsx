@@ -16,7 +16,18 @@ import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { EditorSkeleton, PanelSkeleton, FullScreenLoading, InlineSettingsSkeleton } from '@components/ui/ProgressIndicator'
 import type { LayoutConfig } from '@renderer/shell/ShellComposer'
 import { getScenarioComponent } from '@components/scenario/ScenarioComponentResolver'
+import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
+import { RegionRenderer } from '@renderer/shell/RegionRenderer'
+import type { RegionSlotMap } from '@shared/protocols/scenario-regions'
 import ChatSection from './ChatSection'
+
+/**
+ * 插件区域树不引用外壳槽位，所以 slot 映射恒为空。
+ *
+ * 提到模块级是为了保持引用稳定：每次渲染新建 `{}` 会让 RegionRenderer
+ * 的 props 恒变，白白多跑一轮递归。
+ */
+const NO_SLOTS: RegionSlotMap = {}
 
 const Editor = lazy(() => import('@components/workspace-editor/WorkspaceEditor'))
 const TerminalStudio = lazy(() => import('@renderer/shell/components/TerminalStudio'))
@@ -76,7 +87,7 @@ function PanelSlot({ children }: { children: React.ReactNode }) {
 function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaProps) {
   const { chatVisible, hasOpenFiles, activeFilePath,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage,
-    activeSidePanel, internalBrowserUrl } = useStore(useShallow((s) => ({
+    activeSidePanel, internalBrowserUrl, dockPanelVisible } = useStore(useShallow((s) => ({
     chatVisible: s.chatVisible,
     // 只订阅「是否存在打开的文件」这一布尔量：openFiles 数组会随编辑内容逐键重建，
     // 直接订阅数组会让主内容区（连同编辑器与对话区）在打字时全程重渲染。
@@ -90,6 +101,8 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
     showPluginCenterPage: s.showPluginCenterPage,
     activeSidePanel: s.activeSidePanel,
     internalBrowserUrl: s.internalBrowserUrl,
+    // 底部面板（终端等）挂在编辑器区域内：面板可见时即使没有打开文件也要渲染编辑器
+    dockPanelVisible: s.dockPanelVisible,
   })))
 
   /**
@@ -105,12 +118,19 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
   // 未声明的场景沿用默认 true，面板独占主区域。
   if (isWideModePanel && activeSidePanel) {
     const hideChat = layoutConfig.wideModeHidesChat && !layoutConfig.keepChatPanelIds.includes(activeSidePanel)
+    // 插件声明了主区域布局时，用它的区域树替代默认的面板视图
+    const panelRegions = pluginUiRegistry.getPanelRegions(activeSidePanel)
+
     return (
       <>
         <FullPageSlot>
-          <PanelSlot>
-            <DynamicPanelView panelId={activeSidePanel} />
-          </PanelSlot>
+          {panelRegions ? (
+            <RegionRenderer root={panelRegions} slots={NO_SLOTS} />
+          ) : (
+            <PanelSlot>
+              <DynamicPanelView panelId={activeSidePanel} />
+            </PanelSlot>
+          )}
         </FullPageSlot>
         {layoutConfig.showChat && !hideChat && chatVisible && <ChatSection visible mode="secondary" />}
       </>
@@ -144,12 +164,15 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
   // 一起卸载重建，而它携带整段消息 DOM、虚拟列表与滚动状态，重建一次就是主窗口
   // 卡顿并伴随画面跳动的直接原因。
   const hasFile = hasOpenFiles && activeFilePath !== null
-  const hasWorkspace = hasFile || showInternalBrowser
+  // 底部面板（终端等）挂在编辑器区域内部：面板可见时即使没有打开文件，
+  // 编辑器区域也要渲染（WorkspaceEditor 无文件时渲染 EditorWelcome + DockPanel），
+  // 否则菜单「新建终端」只改了状态，界面上什么都不会出现。
+  const hasWorkspace = hasFile || showInternalBrowser || dockPanelVisible
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden">
       {showInternalBrowser ? (
         <InternalBrowserSlot key="internal-browser" />
-      ) : hasFile ? (
+      ) : hasFile || dockPanelVisible ? (
         <EditorSlot key="editor" />
       ) : null}
       <ChatSection
@@ -167,7 +190,7 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
 function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeComponent }: MainContentAreaProps) {
   const { chatVisible, hasOpenFiles, activeFilePath,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage,
-    activeSidePanel, internalBrowserUrl } = useStore(useShallow((s) => ({
+    activeSidePanel, internalBrowserUrl, dockPanelVisible } = useStore(useShallow((s) => ({
     chatVisible: s.chatVisible,
     // 只订阅「是否存在打开的文件」这一布尔量：openFiles 数组会随编辑内容逐键重建，
     // 直接订阅数组会让主内容区（连同编辑器与对话区）在打字时全程重渲染。
@@ -178,9 +201,10 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     showUserProfilePage: s.showUserProfilePage,
     showBillingCenterPage: s.showBillingCenterPage,
     showSessionHistoryPage: s.showSessionHistoryPage,
-    showPluginCenterPage: s.showPluginCenterPage,
     activeSidePanel: s.activeSidePanel,
     internalBrowserUrl: s.internalBrowserUrl,
+    // 与 Primary 布局一致：面板可见时需要有编辑器区域承载
+    dockPanelVisible: s.dockPanelVisible,
   })))
 
   const isShellStudioActive = activeSidePanel === 'shell'
@@ -192,8 +216,9 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     const items = layoutConfig.sidebarItems
     if (!items || items.length === 0) return false
     const item = items.find(it => it.id === activeSidePanel)
-    return item?.hideEditor === true
-  }, [activeSidePanel, layoutConfig.sidebarItems])
+    // 底部面板可见时不隐藏编辑器：终端等面板挂在编辑器区域内，隐藏编辑器等于把面板一起藏掉
+    return item?.hideEditor === true && !dockPanelVisible
+  }, [activeSidePanel, layoutConfig.sidebarItems, dockPanelVisible])
 
   // 是否隐藏 Chat
   // hideChat 面板由 AweeApp 中的 useEffect 自动设置 chatVisible=false（默认隐藏）
@@ -211,6 +236,20 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     if (scenarioWelcomeComponent && !layoutConfig.showEditor && activeSidePanel === 'explorer' && !(hasOpenFiles && activeFilePath)) return true
     return false
   }, [chatVisible, isWideModePanel, activeSidePanel, layoutConfig.wideModeHidesChat, layoutConfig.keepChatPanelIds, layoutConfig.showEditor, scenarioWelcomeComponent, hasOpenFiles, activeFilePath])
+
+  /**
+   * 场景主区域组件
+   *
+   * 由场景声明 ui.primaryView 决定（ShellComposer 已合并历史兼容映射），
+   * 这里只负责按 scenarioId + component 键名从场景模块取组件。
+   * 解析不到时返回 null，由各布局回退到自己的通用组件——场景被卸载或组件改名
+   * 都不该让主内容区变成空白。
+   */
+  const PrimaryViewComponent = useMemo(() => {
+    const declared = layoutConfig.primaryView
+    if (!declared) return null
+    return getScenarioComponent(layoutConfig.scenarioId, declared.component) ?? null
+  }, [layoutConfig.primaryView, layoutConfig.scenarioId])
 
   /**
    * 内置浏览器（自定义菜单）：只顶掉左侧工作区，右侧 ChatSection 原位保留
@@ -234,12 +273,19 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
 
   // 宽模式面板
   if (isWideModePanel && activeSidePanel) {
+    // 插件声明了主区域布局时，用它的区域树替代默认的面板视图
+    const panelRegions = pluginUiRegistry.getPanelRegions(activeSidePanel)
+
     return (
       <>
         <FullPageSlot>
-          <PanelSlot>
-            <DynamicPanelView panelId={activeSidePanel} />
-          </PanelSlot>
+          {panelRegions ? (
+            <RegionRenderer root={panelRegions} slots={NO_SLOTS} />
+          ) : (
+            <PanelSlot>
+              <DynamicPanelView panelId={activeSidePanel} />
+            </PanelSlot>
+          )}
         </FullPageSlot>
         {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
       </>
@@ -298,13 +344,14 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
   const layout = layoutConfig.layout
 
   if (layout === 'dashboard-centric') {
+    const Dashboard = PrimaryViewComponent ?? DataDashboard
     return (
       <>
         <FullPageSlot>
           {hasOpenFiles && activeFilePath ? (
             <PanelSlot><Editor /></PanelSlot>
           ) : (
-            <PanelSlot><DataDashboard /></PanelSlot>
+            <PanelSlot><Dashboard /></PanelSlot>
           )}
         </FullPageSlot>
         {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
@@ -327,6 +374,8 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
         <FullPageSlot>
           {hasOpenFiles && activeFilePath ? (
             <PanelSlot><Editor /></PanelSlot>
+          ) : PrimaryViewComponent ? (
+            <PanelSlot><PrimaryViewComponent /></PanelSlot>
           ) : scenarioWelcomeComponent ? (
             <PanelSlot>{(() => { const W = scenarioWelcomeComponent; return <W /> })()}</PanelSlot>
           ) : (
@@ -339,15 +388,16 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
   }
 
   if (layout === 'analytics-centric') {
-    // 动态解析场景组件：store-diagnosis 场景被删除时回退到通用数据看板
-    const ScenarioDashboard = getScenarioComponent('store-diagnosis', 'StoreDiagnosisDashboard') ?? DataDashboard
+    // 主区域组件由场景自述（ui.primaryView）。此前这里硬编码 `store-diagnosis`，
+    // 任何其他场景声明 analytics-centric 都会渲染出门店诊断的看板。
+    const AnalyticsView = PrimaryViewComponent ?? DataDashboard
     return (
       <>
         <FullPageSlot>
           {hasOpenFiles && activeFilePath ? (
             <PanelSlot><Editor /></PanelSlot>
           ) : (
-            <PanelSlot><ScenarioDashboard /></PanelSlot>
+            <PanelSlot><AnalyticsView /></PanelSlot>
           )}
         </FullPageSlot>
         {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}

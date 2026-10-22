@@ -914,7 +914,18 @@ export default function Editor() {
     if (scenarioId === 'creative-writer') {
       return <WritingWorkspace />
     }
-    return <EditorWelcome />
+    // 没有任何打开的文件时仍然保留底部面板：终端挂在编辑器区域内，
+    // 若空状态只渲染欢迎页，从菜单「新建终端」进来会看不到任何终端。
+    return (
+      <div className="h-full flex flex-col bg-background-editor relative overflow-hidden">
+        <div className="flex-1 min-h-0 relative overflow-hidden">
+          <EditorWelcome />
+        </div>
+        <Suspense fallback={null}>
+          <DockPanel />
+        </Suspense>
+      </div>
+    )
   }
 
   return (

@@ -1,7 +1,7 @@
 /**
  * 视图菜单定义
  *
- * 包含：命令面板、转到文件、切换终端/AI面板/侧边栏、缩放、全屏、重载、DevTools
+ * 包含：命令面板、转到文件、新建终端/AI面板/工作空间面板、缩放、全屏、重载、DevTools
  */
 
 import type { BrowserWindow, MenuItemConstructorOptions } from 'electron'
@@ -35,8 +35,8 @@ export function buildViewMenu(ctx: ViewMenuContext): MenuItemConstructorOptions 
       { type: 'separator' },
       {
         label: t(lang, 'toggleTerminal'),
-        accelerator: 'CmdOrCtrl+`',
-        click: createCommandSender(getWin, 'toggle-terminal'),
+        accelerator: 'CmdOrCtrl+Shift+`',
+        click: createCommandSender(getWin, 'new-terminal'),
       },
       {
         label: t(lang, 'toggleAiPanel'),

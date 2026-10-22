@@ -1,41 +1,29 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { createPortal } from 'react-dom'
-import { Settings, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, MessageSquarePlus, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle, Blocks, PackageOpen, GraduationCap, BookUser } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { MessageSquarePlus, Plus, Blocks, Trash2 } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getLucideIcon } from '../foundation/IconMap'
 import { Logo } from '../foundation/BrandMark'
-import { UserAccountPopover } from './UserAccountPopover'
-import { UpdateModal } from './UpdateModal'
-import { QuickSettingsMenu } from './QuickSettingsMenu'
-import { updaterService, type UpdateStatus } from '@services/updateAdapter'
-import { useAgentStore } from '@intelligence/state/IntelligenceStore'
-import { useAgentActions, useAllThreads } from '@hooks/useAgent'
-import { getThreadDisplayTitle, getMessageText } from '@intelligence/providerTypes'
-import type { ChatThread } from '@intelligence/providerTypes'
+import { useAgentActions } from '@hooks/useAgent'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
 import type { SidePanel } from '@store/slices'
 import { BRAND } from '@shared/brand'
-import { formatUserDisplayName } from '@shared/toolkit/formatHelper'
 import { t, type Language } from '@renderer/i18n'
 import { usePluginExtensions } from '@renderer/plugins/usePluginExtensions'
 import AddCustomMenuDialog from '../browser/AddCustomMenuDialog'
 import { useMailUnreadCount } from '@renderer/hooks/useMailUnreadCount'
 import { useTodoHubStore } from '../todo-hub/todoHubStore'
-
-import {
-  useUserNotificationStore,
-  SCENARIO_NOTIFICATION_TYPES,
-  PLUGIN_NOTIFICATION_TYPES,
-  SUBSCRIPTION_NOTIFICATION_TYPES,
-} from '@store/userNotificationStore'
+import ChatHistoryPart from '@renderer/shell/parts/ChatHistoryPart'
+import RailUserPart from '@renderer/shell/parts/RailUserPart'
 
 const isMac = typeof navigator !== 'undefined' && (
   navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
   ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toUpperCase().indexOf('MAC') ?? -1) >= 0
 )
+
+
 
 /**
  * 场景未声明 sidebarItems 时的兜底菜单。
@@ -78,6 +66,20 @@ const SHOW_SCENE_TOOLS_ENTRY = true
  */
 const SCENE_TOOLS_HIDDEN_SCENARIOS = ['general-assistant', 'miniprogram-studio']
 
+
+function NavPill({ active }: { active: boolean }) {
+  return (
+    <div
+      className={`
+        absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full
+        hover:bg-text-primary/[0.06]
+        transition-all duration-300 ease-out
+        ${active ? 'h-5 bg-accent shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)]' : 'h-0 bg-transparent'}
+      `}
+    />
+  )
+}
+
 /**
  * 菜单项未读角标
  *
@@ -96,494 +98,64 @@ function MenuBadge({ count, title }: { count: number; title?: string }) {
   )
 }
 
-function NavPill({ active }: { active: boolean }) {
-  return (
-    <div
-      className={`
-        absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full
-        hover:bg-text-primary/[0.06]
-        transition-all duration-300 ease-out
-        ${active ? 'h-5 bg-accent shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)]' : 'h-0 bg-transparent'}
-      `}
-    />
-  )
-}
+/* 用户菜单已移至 shell/parts/RailUserPart.tsx */
 
-function UserMenuDropdown({
-  isOpen,
-  onClose,
-  language,
-  onSettingsClick,
-    onExploreClick,
-    // onWorkflowClick 见类型声明；工作流菜单暂隐藏（见 featureItems 注释），恢复时在此重新解构
-    onScheduleClick,
-    onPluginCenterClick,
-    onExpertLibraryClick,
-  onUserInfoClick,
-  onBillingCenterClick,
-  onSessionHistoryClick,
-  onContactsClick,
-  onCheckUpdate,
-  onAbout,
-  onLogout,
-  isAuthenticated,
-  cloudUser,
-  anchorRef,
-  hasUpdateAvailable,
-}: {
-  isOpen: boolean
-  onClose: () => void
-  language: Language
-  onSettingsClick: () => void
-  onExploreClick: () => void
-  onWorkflowClick: () => void
-  onScheduleClick: () => void
-  onPluginCenterClick: () => void
-  onExpertLibraryClick: () => void
-  onUserInfoClick: () => void
-  onBillingCenterClick: () => void
-  onSessionHistoryClick: () => void
-  onContactsClick: () => void
-  onCheckUpdate: () => void
-  onAbout: () => void
-  onLogout: () => void
-  isAuthenticated: boolean
-  cloudUser: { username?: string; email: string; avatarUrl?: string; planId: string; phone?: string } | null
-  anchorRef: React.RefObject<HTMLDivElement | null>
-  hasUpdateAvailable: boolean
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
-  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({})
+/* 历史会话列表项已移至 shell/parts/ChatHistoryPart.tsx */
 
-  useEffect(() => {
-    if (!isOpen) { setShowLogoutConfirm(false); return }
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose()
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [isOpen, onClose])
-
-  useEffect(() => {
-    if (!isOpen || !anchorRef.current) return
-    const anchor = anchorRef.current
-    const rect = anchor.getBoundingClientRect()
-    setMenuStyle({
-      position: 'fixed',
-      left: rect.left,
-      bottom: window.innerHeight - rect.top + 4,
-      width: 200,
-    })
-  }, [isOpen, anchorRef])
-
-  // 入口角标：按通知类型区分归属，避免把「插件到期」误标到场景入口上。
-  // 必须放在提前 return 之前 —— 否则菜单开关时会触发 hooks 数量不一致的运行时错误。
-  const scenarioBadge = useUserNotificationStore(
-    s => s.items.filter(i => !i.isRead && SCENARIO_NOTIFICATION_TYPES.includes(i.type)).length,
-  )
-  const pluginBadge = useUserNotificationStore(
-    s => s.items.filter(i => !i.isRead && PLUGIN_NOTIFICATION_TYPES.includes(i.type)).length,
-  )
-  const billingBadge = useUserNotificationStore(
-    s => s.items.filter(i => !i.isRead && SUBSCRIPTION_NOTIFICATION_TYPES.includes(i.type)).length,
-  )
-
-  if (!isOpen) return null
-
-  const planLabel = cloudUser?.planId === 'ENTERPRISE'
-    ? (t('layout.enterprise', language as Language))
-    : cloudUser?.planId === 'PRO'
-      ? (t('layout.pro', language as Language))
-      : cloudUser?.planId === 'TEAM'
-        ? (t('layout.team', language as Language))
-        : t('layout.free', language as Language)
-
-  const initial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
-  const displayName = formatUserDisplayName(cloudUser?.username || cloudUser?.email || cloudUser?.phone || '')
-
-  const badgeHint = (zh: string, en: string) => (language === 'zh' ? zh : en)
-
-  const featureItems = [
-    {
-      icon: Compass,
-      label: t('layout.workscenes', language as Language),
-      onClick: onExploreClick,
-      badge: scenarioBadge,
-      badgeTitle: badgeHint('有场景即将到期或已到期', 'Paid scenarios expiring or expired'),
-    },
-    {
-      icon: Puzzle,
-      label: t('layout.pluginsandskills', language as Language),
-      onClick: onPluginCenterClick,
-      badge: pluginBadge,
-      badgeTitle: badgeHint('有插件即将到期或已到期', 'Paid plugins expiring or expired'),
-    },
-    {
-      icon: GraduationCap,
-      label: language === 'zh' ? '专家库' : 'Expert Library',
-      onClick: onExpertLibraryClick,
-      badge: 0,
-      badgeTitle: '',
-    },
-    {
-      icon: Clock,
-      label: t('layout.schedule', language as Language),
-      onClick: onScheduleClick,
-      badge: 0,
-      badgeTitle: '',
-    },
-    // 工作流菜单暂时隐藏，后续版本恢复
-    // { icon: Workflow, label: t('layout.workflow', language as Language), onClick: onWorkflowClick },
-  ]
-
-  const systemItems = [
-    { icon: Settings, label: t('layout.settings', language as Language), onClick: onSettingsClick, hasBadge: false },
-    { icon: CloudSync, label: t('layout.checkforupdates', language as Language), onClick: onCheckUpdate, hasBadge: hasUpdateAvailable },
-    { icon: Info, label: t('layout.aboutaweeclaw', language as Language), onClick: onAbout, hasBadge: false },
-  ]
-
-  return createPortal(
-    <div
-      ref={ref}
-      style={menuStyle}
-      className="py-1 rounded-xl bg-surface/95 backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-[9999]"
-    >
-      {isAuthenticated && (
-        <button
-          onClick={() => { onUserInfoClick(); onClose() }}
-          className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-text-primary/[0.06] transition-colors"
-        >
-          {cloudUser?.avatarUrl ? (
-            <img src={cloudUser.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover border border-border/40 flex-shrink-0" />
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-sm shadow-accent/20">
-              {initial}
-            </div>
-          )}
-          <div className="flex-1 min-w-0 text-left">
-            <p className="text-[13px] font-medium text-text-primary truncate">{displayName}</p>
-            <p className="text-[11px] text-text-muted">{planLabel}</p>
-          </div>
-        </button>
-      )}
-
-      {isAuthenticated && <div className="h-px bg-border/50 my-1 mx-2" />}
-
-      {/* 快速设置：界面语言 / 界面主题（hover 显示二级菜单） */}
-      <QuickSettingsMenu language={language as Language} onClose={onClose} />
-
-      <div className="h-px bg-border/50 my-1 mx-2" />
-
-      {isAuthenticated && (
-        <>
-          <button
-            onClick={() => { onUserInfoClick(); onClose() }}
-            className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
-          >
-            <UserCircle className="w-[16px] h-[16px]" strokeWidth={1.5} />
-            <span>{t('layout.account', language as Language)}</span>
-          </button>
-          <button
-            onClick={() => { onBillingCenterClick(); onClose() }}
-            className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
-          >
-            <Wallet className="w-[16px] h-[16px]" strokeWidth={1.5} />
-            <span>{t('layout.billing', language as Language)}</span>
-            <MenuBadge
-              count={billingBadge}
-              title={
-                language === 'zh'
-                  ? '套餐即将到期或已到期'
-                  : 'Subscription expiring or expired'
-            }
-          />
-          </button>
-          <button
-            onClick={() => { onSessionHistoryClick(); onClose() }}
-            className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
-          >
-            <History className="w-[16px] h-[16px]" strokeWidth={1.5} />
-            <span>{t('layout.sessionhistory', language as Language)}</span>
-          </button>
-          <button
-            onClick={() => { onContactsClick(); onClose() }}
-            className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
-          >
-            <BookUser className="w-[16px] h-[16px]" strokeWidth={1.5} />
-            <span>{t('layout.contacts', language as Language)}</span>
-          </button>
-        </>
-      )}
-
-      {isAuthenticated && <div className="h-px bg-border/50 my-1 mx-2" />}
-
-      {featureItems.map((item) => (
-        <button
-          key={item.label}
-          onClick={() => { item.onClick(); onClose() }}
-          className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
-        >
-          <item.icon className="w-[16px] h-[16px]" strokeWidth={1.5} />
-          <span>{item.label}</span>
-          <MenuBadge count={item.badge} title={item.badgeTitle} />
-        </button>
-      ))}
-
-      <div className="h-px bg-border/50 my-1 mx-2" />
-
-      {systemItems.map((item) => (
-        <button
-          key={item.label}
-          onClick={() => { item.onClick(); onClose() }}
-          className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
-        >
-          <item.icon className="w-[16px] h-[16px]" strokeWidth={1.5} />
-          <span>{item.label}</span>
-          {item.hasBadge && (
-            <span className="ml-auto w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-          )}
-        </button>
-      ))}
-
-      {isAuthenticated && (
-        <>
-          <div className="h-px bg-border/50 my-1 mx-2" />
-          {showLogoutConfirm ? (
-            <div className="px-3 py-2 space-y-2">
-              <p className="text-[12px] text-text-secondary">{t('layout.areyousureyouwant', language as Language)}</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowLogoutConfirm(false)}
-                  className="flex-1 h-7 rounded-md text-[12px] font-medium border border-border/50 text-text-secondary hover:bg-surface-hover transition-colors"
-                >
-                  {t('layout.cancel', language as Language)}
-                </button>
-                <button
-                  onClick={() => { onLogout(); onClose() }}
-                  className="flex-1 h-7 rounded-md text-[12px] font-medium bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
-                >
-                  {t('layout.signout', language as Language)}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowLogoutConfirm(true)}
-              className="w-full h-8 flex items-center gap-2.5 px-3 text-red-500 hover:bg-red-500/5 transition-colors text-[13px]"
-            >
-              <LogOut className="w-[16px] h-[16px]" strokeWidth={1.5} />
-              <span>{t('layout.signout2', language as Language)}</span>
-            </button>
-          )}
-        </>
-      )}
-    </div>,
-    document.body
-  )
-}
-
-function ThreadListItem({
-  thread,
-  isActive,
-  language,
-  onSelect,
-  onDelete,
-  onRename,
-}: {
-  thread: ChatThread
-  isActive: boolean
-  language: Language
-  onSelect: () => void
-  onDelete: () => void
-  onRename: (threadId: string) => void
-}) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const menuBtnRef = useRef<HTMLButtonElement>(null)
-  const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
-
-  const title = useMemo(() => {
-    if (thread.title?.trim()) return thread.title.trim()
-    const firstUserMsg = thread.messages.find(m => m.role === 'user')
-    if (firstUserMsg) return getMessageText(firstUserMsg.content).slice(0, 42)
-    return getThreadDisplayTitle(thread)
-  }, [thread])
-
-  useEffect(() => {
-    if (!menuOpen) return
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [menuOpen])
-
-  useEffect(() => {
-    if (menuOpen && menuBtnRef.current) {
-      const rect = menuBtnRef.current.getBoundingClientRect()
-      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
-    }
-  }, [menuOpen])
-
-  return (
-    <div
-      className={`group relative flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer hover:bg-text-primary/[0.06] transition-all ${
-        isActive
-          ? 'bg-accent/8 text-accent'
-          : 'aweeclaw-thread-item hover:bg-surface-hover/50'
-      } ${menuOpen ? 'z-30 bg-surface-hover/50' : 'z-0'}`}
-      onClick={onSelect}
-    >
-      <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-50" strokeWidth={1.5} />
-      <div className="flex-1 min-w-0 group-hover:pr-5 transition-all">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <div className="text-[13px] font-medium truncate leading-snug" title={title}>{title}</div>
-          {thread.mountedTask && (
-            <span
-              className="shrink-0 flex items-center text-accent opacity-80"
-              title={t('mt.badge', language as Language)}
-            >
-              <PackageOpen className="w-3 h-3" strokeWidth={1.5} />
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
-        <button
-          ref={menuBtnRef}
-          onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
-          className="p-0.5 rounded hover:opacity-100 transition-all"
-        >
-          <MoreHorizontal className="w-3.5 h-3.5" />
-        </button>
-      </div>
-      {menuOpen && createPortal(
-        <div
-          ref={menuRef}
-          className="fixed py-1 rounded-lg bg-surface/95 backdrop-blur-xl border border-border/50 shadow-lg shadow-black/15 z-[9999] min-w-[120px]"
-          style={{ top: menuPos.top, right: menuPos.right }}
-        >
-          <button
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onRename(thread.id) }}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-text-primary/[0.06] transition-colors"
-          >
-            <Edit2 className="w-3 h-3" strokeWidth={1.5} />
-            {t('layout.rename', language as Language)}
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete() }}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:text-red-500 hover:bg-red-500/5 transition-colors"
-          >
-            <Trash2 className="w-3 h-3" strokeWidth={1.5} />
-            {t('layout.delete', language as Language)}
-          </button>
-        </div>,
-        document.body
-      )}
-    </div>
-  )
-}
 
 export default function NavigationRail() {
   const {
     activeSidePanel,
     setActiveSidePanel,
     language,
-    setShowSettingsPage,
     setShowWorkflow,
     activeScenarioId,
     navRailExpanded,
     showSettingsPage,
     showWelcomePage,
-    showUserProfilePage,
-    isAuthenticated,
-    cloudUser,
-    setShowAbout,
     setShowWelcomePage,
-    setShowUserProfilePage,
-    setShowBillingCenterPage,
-    setShowSessionHistoryPage,
-    setShowContactsPage,
-    setShowPluginCenterPage,
-    setShowScenarioPage,
     closeAllFullPages,
-    logout,
     customMenus,
     removeCustomMenu,
     openInternalBrowser,
     activeCustomMenuId,
     closeInternalBrowser,
     setChatVisible,
-    setSettingsIntent,
   } = useStore(useShallow(s => ({
     activeSidePanel: s.activeSidePanel,
     setActiveSidePanel: s.setActiveSidePanel,
     language: s.language,
-    setShowSettingsPage: s.setShowSettingsPage,
     setShowWorkflow: s.setShowWorkflow,
     activeScenarioId: s.activeScenarioId,
     navRailExpanded: s.navRailExpanded,
     showSettingsPage: s.showSettingsPage,
     showWelcomePage: s.showWelcomePage,
-    showUserProfilePage: s.showUserProfilePage,
-    isAuthenticated: s.isAuthenticated,
-    cloudUser: s.cloudUser,
-    setShowAbout: s.setShowAbout,
     setShowWelcomePage: s.setShowWelcomePage,
-    setShowUserProfilePage: s.setShowUserProfilePage,
-    setShowBillingCenterPage: s.setShowBillingCenterPage,
-    setShowSessionHistoryPage: s.setShowSessionHistoryPage,
-    setShowContactsPage: s.setShowContactsPage,
-    setShowPluginCenterPage: s.setShowPluginCenterPage,
-    setShowScenarioPage: s.setShowScenarioPage,
     closeAllFullPages: s.closeAllFullPages,
-    logout: s.logout,
     customMenus: s.customMenus,
     removeCustomMenu: s.removeCustomMenu,
     openInternalBrowser: s.openInternalBrowser,
     activeCustomMenuId: s.activeCustomMenuId,
     closeInternalBrowser: s.closeInternalBrowser,
     setChatVisible: s.setChatVisible,
-    setSettingsIntent: s.setSettingsIntent,
   })))
 
-  const currentThreadId = useAgentStore(state => state.currentThreadId)
-  const allThreads = useAllThreads()
-  const { switchThread, deleteThread, renameThread, createThread } = useAgentActions()
+  /**
+   * 用户资料页状态
+   *
+   * 该页占满主区域时左侧面板实际上已不可见，导航项不应继续高亮；
+   * 这里单独订阅，避免为一个布尔值把账号相关的整组动作塞进上面的解构里。
+   */
+  const showUserProfilePage = useStore(s => s.showUserProfilePage)
 
-  const [showUserMenu, setShowUserMenu] = useState(false)
-  const [showLoginModal, setShowLoginModal] = useState(false)
-  const [showUpdateModal, setShowUpdateModal] = useState(false)
+  const { createThread } = useAgentActions()
+
   const [showAddCustomMenu, setShowAddCustomMenu] = useState(false)
-  const userAreaRef = useRef<HTMLDivElement>(null)
-  const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
 
-  // 订阅更新状态变化，自动检测版本更新并显示徽章提示
-  useEffect(() => {
-    const unsubscribe = updaterService.subscribe(setUpdateStatus)
-    void updaterService.getStatus().then(setUpdateStatus)
-    return () => unsubscribe()
-  }, [])
-
-  // 登录弹窗由本组件持有，其他面板（如未登录的后端数据面板）通过事件请求打开，
-  // 避免各面板重复实现一套登录入口。
-  useEffect(() => {
-    const handler = () => setShowLoginModal(true)
-    window.addEventListener('aweeclaw:open-login', handler)
-    return () => window.removeEventListener('aweeclaw:open-login', handler)
-  }, [])
-
-  const hasUpdateAvailable = updateStatus?.status === 'available' || updateStatus?.status === 'downloaded'
   const mailUnread = useMailUnreadCount()
   /** 未完成待办数量：用于待办入口的「待办（N）」显示与角标 */
   const pendingTodoCount = useTodoHubStore(s => s.items.filter(i => i.status !== 'done').length)
+
 
 
   const scenario = scenarioRegistry.get(activeScenarioId)
@@ -624,12 +196,45 @@ export default function NavigationRail() {
     setActiveSidePanel(null)
   }, [pluginSidebarItems, activeSidePanel, setActiveSidePanel])
 
-  // 场景工具入口按场景显隐：通用助手场景不展示该导航项
-  const showSceneToolsEntry = SHOW_SCENE_TOOLS_ENTRY && !SCENE_TOOLS_HIDDEN_SCENARIOS.includes(activeScenarioId)
+  // 场景工具入口按场景显隐：由场景声明（ui.chrome.hideSceneTools）或内置黑名单决定
+  const scenarioChrome = scenario?.ui?.chrome
+  const showSceneToolsEntry = SHOW_SCENE_TOOLS_ENTRY
+    && !SCENE_TOOLS_HIDDEN_SCENARIOS.includes(activeScenarioId)
+    && scenarioChrome?.hideSceneTools !== true
+
+  // 新建任务入口：场景自带完整导航时可由场景关掉，避免与场景自身的创建流程重复
+  const showNewTaskEntry = scenarioChrome?.hideNewTask !== true
+
+  // 仪表盘入口：场景以自己的首屏取代宿主仪表盘时收起
+  const showDashboardEntry = scenarioChrome?.hideDashboard !== true
+
+  // 历史会话：场景以自己的项目列表 / 素材列表取代会话历史时收起
+  const hideChatHistory = scenarioChrome?.hideChatHistory === true
 
   const p = BRAND.cssPrefix
 
+  /**
+   * 场景是否自带完整导航
+   *
+   * 自带导航的场景里，这些菜单是「工作区视图切换器」：每一项都是一个可停留的
+   * 独立工作台，不存在「未选中」的等价视图。取消选中后主区域会回落到编辑器空态
+   * 与对话区，用户看到的就是一个欢迎页加聊天窗口，像是点错了地方。
+   *
+   * 因此这类场景点击已激活项应当是幂等的；想要收起侧边栏仍有顶部开关可用。
+   * 未声明导航的场景（通用助手等）保留开合语义，那个面板本身可以收起来。
+   */
+  const scenarioOwnsNav = (scenario?.ui?.sidebarItems?.length ?? 0) > 0
+
   const handleMenuItemClick = (itemId: string, isActive: boolean) => {
+    // 判定用 activeSidePanel 而非渲染层的 isActive：后者带 !showWelcomePage 等
+    // 条件，欢迎页残留时界面显示的其实是面板、isActive 却是 false。
+    if (scenarioOwnsNav && activeSidePanel === itemId) {
+      // 顺手清掉可能残留的欢迎页 / 设置页，避免它们压在面板下面
+      closeAllFullPages()
+      closeInternalBrowser()
+      return
+    }
+
     setActiveSidePanel(isActive ? null : (itemId as SidePanel))
     closeAllFullPages()
     // 点击侧边栏面板时自动关闭内部浏览器
@@ -683,63 +288,11 @@ export default function NavigationRail() {
   // 仪表盘（欢迎页）选中态
   const isDashboardActive = showWelcomePage
 
-  /**
-   * 声明了 hideChat 的侧边栏面板：激活时会接管主内容区并隐藏对话窗口，
-   * 此时用户已经离开会话视图，历史会话列表不应再保持选中高亮；
-   * 点击历史会话时也据此退出该面板、恢复对话窗口（见 handleSelectThread）。
-   */
-  const hideChatPanelIds = useMemo(() => {
-    const items = scenarioRegistry.get(activeScenarioId)?.ui?.sidebarItems ?? []
-    return new Set(items.filter(item => item.hideChat).map(item => item.id))
-  }, [activeScenarioId])
-
-  /**
-   * 宽模式面板（接管主区域，如待办中心 / 邮件中心）id。
-   * 点击历史会话时同样退出这些面板，露出会话视图，
-   * 避免用户点了会话却仍停在待办等面板上。
-   */
-  const wideModePanelIds = useMemo(() => {
-    const items = scenarioRegistry.get(activeScenarioId)?.ui?.sidebarItems ?? []
-    return new Set(items.filter(item => item.wideMode).map(item => item.id))
-  }, [activeScenarioId])
-
-  // 仪表盘界面、或停留在接管主区域的 hideChat 面板时，不显示历史会话的高亮选中
-  //（用户未实际处于某个会话中，避免"界面已切走、但历史列表某条仍被高亮"的误选感）
-  const threadHighlightEnabled = !showWelcomePage
-    && !(activeSidePanel && hideChatPanelIds.has(activeSidePanel))
-
   // 新建任务不参与高亮：它是动作入口（打开工作空间文件面板 + 新建会话），
-  // 当前会话的选中态统一由下方历史会话列表体现（currentThreadId === thread.id）。
+  // 当前会话的选中态统一由历史会话列表体现（见 ChatHistoryPart）。
   // 若绑定 activeSidePanel === 'explorer'，会导致仅打开工作空间面板时误高亮。
   const newTaskActive = false
 
-  const handleSettingsClick = useCallback(() => {
-    setActiveSidePanel(null)
-    setShowSettingsPage(true)
-    setShowWorkflow(false)
-    closeInternalBrowser()
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWorkflow, closeInternalBrowser])
-
-  const handleExploreClick = useCallback(() => {
-    setActiveSidePanel(null)
-    setShowScenarioPage(true)
-    setShowWorkflow(false)
-    closeInternalBrowser()
-  }, [setActiveSidePanel, setShowScenarioPage, setShowWorkflow, closeInternalBrowser])
-
-  const handleWorkflowClick = useCallback(() => {
-    setActiveSidePanel(null)
-    closeAllFullPages()
-    setShowWorkflow(true)
-    closeInternalBrowser()
-  }, [setActiveSidePanel, closeAllFullPages, setShowWorkflow, closeInternalBrowser])
-
-  const handleScheduleClick = useCallback(() => {
-    closeAllFullPages()
-    setShowWorkflow(false)
-    setActiveSidePanel(activeSidePanel === 'schedule' ? null : 'schedule')
-    closeInternalBrowser()
-  }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow, closeInternalBrowser])
 
   const handleSceneToolsClick = useCallback(() => {
     closeAllFullPages()
@@ -748,92 +301,6 @@ export default function NavigationRail() {
     closeInternalBrowser()
   }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow, closeInternalBrowser])
 
-  const handlePluginCenterClick = useCallback(() => {
-    setActiveSidePanel(null)
-    setShowPluginCenterPage(true)
-    setShowWorkflow(false)
-    closeInternalBrowser()
-  }, [setActiveSidePanel, setShowPluginCenterPage, setShowWorkflow, closeInternalBrowser])
-
-  const handleExpertLibraryClick = useCallback(() => {
-    setActiveSidePanel(null)
-    setSettingsIntent({ tab: 'roleLibrary' })
-    setShowSettingsPage(true)
-    setShowWorkflow(false)
-    closeInternalBrowser()
-  }, [setActiveSidePanel, setSettingsIntent, setShowSettingsPage, setShowWorkflow, closeInternalBrowser])
-
-  const handleUserInfoClick = useCallback(() => {
-    setActiveSidePanel(null)
-    setShowUserProfilePage(true)
-    setShowWorkflow(false)
-    closeInternalBrowser()
-  }, [setActiveSidePanel, setShowUserProfilePage, setShowWorkflow, closeInternalBrowser])
-
-  const handleBillingCenterClick = useCallback(() => {
-    setActiveSidePanel(null)
-    setShowBillingCenterPage(true)
-    setShowWorkflow(false)
-    closeInternalBrowser()
-  }, [setActiveSidePanel, setShowBillingCenterPage, setShowWorkflow, closeInternalBrowser])
-
-  const handleSessionHistoryClick = useCallback(() => {
-    setActiveSidePanel(null)
-    setShowSessionHistoryPage(true)
-    setShowWorkflow(false)
-    closeInternalBrowser()
-  }, [setActiveSidePanel, setShowSessionHistoryPage, setShowWorkflow, closeInternalBrowser])
-
-  const handleContactsClick = useCallback(() => {
-    setActiveSidePanel(null)
-    setShowContactsPage(true)
-    setShowWorkflow(false)
-    closeInternalBrowser()
-  }, [setActiveSidePanel, setShowContactsPage, setShowWorkflow, closeInternalBrowser])
-
-  const handleLogout = useCallback(() => {
-    logout()
-    setShowUserMenu(false)
-  }, [logout])
-
-  const handleCheckUpdate = useCallback(() => {
-    setShowUpdateModal(true)
-  }, [])
-
-  const handleAbout = useCallback(() => {
-    setShowAbout(true)
-  }, [setShowAbout])
-
-  const handleRenameThread = useCallback((threadId: string) => {
-    const thread = useAgentStore.getState().threads[threadId]
-    if (thread) {
-      setRenamingThreadId(threadId)
-      setRenameValue(getThreadDisplayTitle(thread))
-    }
-  }, [])
-
-  const handleRenameSubmit = useCallback(() => {
-    if (renamingThreadId && renameValue.trim()) {
-      renameThread(renamingThreadId, renameValue.trim())
-    }
-    setRenamingThreadId(null)
-  }, [renamingThreadId, renameValue, renameThread])
-
-  // 点击历史会话：若当前停留在接管主区域的 hideChat 面板或宽模式面板
-  //（如插件与技能市场 / 待办中心 / 邮件中心），先退出该面板并恢复对话窗口，
-  // 再切换会话，确保用户真正回到会话界面
-  const handleSelectThread = useCallback((threadId: string) => {
-    const panel = activeSidePanel
-    if (panel && (hideChatPanelIds.has(panel) || wideModePanelIds.has(panel))) {
-      setActiveSidePanel(null)
-      setChatVisible(true)
-    }
-    void switchThread(threadId)
-  }, [activeSidePanel, hideChatPanelIds, wideModePanelIds, setActiveSidePanel, setChatVisible, switchThread])
-
-  const userInitial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
-  const userDisplayName = formatUserDisplayName(cloudUser?.username || cloudUser?.email || cloudUser?.phone || '')
-  const showUserInfo = isAuthenticated && !!cloudUser
 
   return (
     <div className={`${p}-nav-rail`} data-expanded={navRailExpanded} data-mac={isMac}>
@@ -1099,7 +566,8 @@ export default function NavigationRail() {
         }
       `}</style>
 
-      {navRailExpanded ? (
+      {/* 仪表盘入口：场景用它自己的第一屏取代宿主仪表盘时可关闭 */}
+      {showDashboardEntry && (navRailExpanded ? (
         <div className={`${p}-nav-rail-brand`} data-active={isDashboardActive} onClick={handleBrandClick}>
           <div className={`${p}-nav-rail-brand-icon`}>
             <Logo className="w-full h-full" />
@@ -1112,10 +580,10 @@ export default function NavigationRail() {
             <Logo className="w-full h-full" />
           </div>
         </div>
-      )}
+      ))}
 
-      {/* 新建任务：所有场景共有的固定入口，点击进入新对话并打开工作空间面板 */}
-      {navRailExpanded ? (
+      {/* 新建任务：默认所有场景共有的固定入口，场景可通过 ui.chrome.hideNewTask 关闭 */}
+      {showNewTaskEntry && (navRailExpanded ? (
         <button
           onClick={handleNewTask}
           className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
@@ -1143,7 +611,7 @@ export default function NavigationRail() {
             />
           </button>
         </HintOverlay>
-      )}
+      ))}
 
       <div className="flex-shrink-0 w-full flex flex-col gap-0.5">
         {sidebarItems.map((item) => {
@@ -1319,182 +787,24 @@ export default function NavigationRail() {
         )
       })()}
 
-      <div className={`${p}-nav-rail-divider`} style={{ marginTop: 20, marginBottom: 20 }} />
-
-      {navRailExpanded ? (
-        <div className="flex-1 flex flex-col min-h-0 w-full">
-          <div className={`${p}-nav-rail-history-header`}>
-            <span className={`${p}-nav-rail-history-title`}>
-              {t('layout.chathistory', language as Language)}
-            </span>
-          </div>
-          <div className="flex-1 overflow-y-auto no-scrollbar">
-            {allThreads.length === 0 ? (
-              <div className="px-2 py-4 text-[11px] text-text-muted opacity-40 text-center">
-                {t('layout.nochatsyet', language as Language)}
-              </div>
-            ) : (
-              <div className="flex flex-col gap-0.5">
-                {allThreads.slice(0, 34).map(thread => (
-                  renamingThreadId === thread.id ? (
-                    <div key={thread.id} className="flex items-center gap-1 px-2 py-1.5">
-                      <input
-                        autoFocus
-                        value={renameValue}
-                        onChange={e => setRenameValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') handleRenameSubmit()
-                          if (e.key === 'Escape') setRenamingThreadId(null)
-                        }}
-                        onBlur={handleRenameSubmit}
-                        className="flex-1 min-w-0 bg-surface text-[12px] px-1.5 py-0.5 rounded border border-accent/40 focus:outline-none text-text-primary"
-                        onClick={e => e.stopPropagation()}
-                      />
-                    </div>
-                  ) : (
-                    <ThreadListItem
-                      key={thread.id}
-                      thread={thread}
-                       isActive={threadHighlightEnabled && currentThreadId === thread.id}
-                      language={language}
-                      onSelect={() => handleSelectThread(thread.id)}
-                      onDelete={() => deleteThread(thread.id)}
-                      onRename={handleRenameThread}
-                    />
-                  )
-                ))}
-                {allThreads.length > 34 && (
-                  <button
-                    onClick={() => setShowSessionHistoryPage(true)}
-                    className="mt-1 px-2 py-2 text-[11px] text-text-muted hover:text-accent hover:bg-accent/8 rounded-md transition-colors flex items-center justify-center gap-1.5 border border-border/30 border-dashed"
-                  >
-                    <span>{language === 'zh' ? `查看更多（共 ${allThreads.length} 条）` : `View more (${allThreads.length} total)`}</span>
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col items-center min-h-0">
-          {allThreads.length > 0 && (
-            <div className="flex-1 overflow-y-auto no-scrollbar w-full flex flex-col items-center gap-1 py-1">
-              {allThreads.slice(0, 5).map(thread => (
-                <HintOverlay
-                  key={thread.id}
-                  content={getThreadDisplayTitle(thread)}
-                  side="right"
-                  delay={400}
-                >
-                  <button
-                    onClick={() => handleSelectThread(thread.id)}
-                    className={`relative w-[30px] h-[30px] rounded-md flex items-center justify-center transition-all ${
-                      threadHighlightEnabled && currentThreadId === thread.id
-                        ? 'bg-accent/10 text-accent'
-                        : 'text-text-muted hover:text-text-primary hover:bg-surface-hover/50'
-                    }`}
-                  >
-                    <MessageSquare className="w-3.5 h-3.5 opacity-50" strokeWidth={1.5} />
-                    {thread.mountedTask && (
-                      <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent" />
-                    )}
-                  </button>
-                </HintOverlay>
-              ))}
-            </div>
-          )}
-        </div>
+      {!hideChatHistory && (
+        <div className={`${p}-nav-rail-divider`} style={{ marginTop: 20, marginBottom: 20 }} />
       )}
+
+      {/* 历史会话：场景自带项目列表时收起，避免与场景内的工作区入口重复 */}
+      {!hideChatHistory && <ChatHistoryPart expanded={navRailExpanded} />}
+
+      {/* 历史会话收起后保留弹性占位，让账号区仍贴在底部 */}
+      {hideChatHistory && <div className="flex-1" />}
+
 
       <div className={`${p}-nav-rail-divider`} />
 
-      <div className={`${p}-nav-rail-user`} ref={userAreaRef}>
-        <UserMenuDropdown
-          isOpen={showUserMenu}
-          onClose={() => setShowUserMenu(false)}
-          language={language}
-          onSettingsClick={handleSettingsClick}
-          onExploreClick={handleExploreClick}
-          onWorkflowClick={handleWorkflowClick}
-          onScheduleClick={handleScheduleClick}
-          onPluginCenterClick={handlePluginCenterClick}
-onExpertLibraryClick={handleExpertLibraryClick}
-          onUserInfoClick={handleUserInfoClick}
-          onBillingCenterClick={handleBillingCenterClick}
-          onSessionHistoryClick={handleSessionHistoryClick}
-          onContactsClick={handleContactsClick}
-          onCheckUpdate={handleCheckUpdate}
-          onAbout={handleAbout}
-          onLogout={handleLogout}
-          isAuthenticated={showUserInfo}
-          cloudUser={cloudUser}
-          anchorRef={userAreaRef}
-          hasUpdateAvailable={hasUpdateAvailable}
-        />
+      {/* 账号区：登录态、用户菜单与登录/更新弹窗都在该部件内部 */}
+      <RailUserPart expanded={navRailExpanded} />
 
-        {showUserInfo ? (
-          navRailExpanded ? (
-            <button
-              className={`${p}-nav-rail-user-btn`}
-              onClick={() => setShowUserMenu(!showUserMenu)}
-            >
-              <div className="relative flex-shrink-0">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shadow-accent/20">
-                  {userInitial}
-                </div>
-                {hasUpdateAvailable && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-bg-secondary animate-pulse" />
-                )}
-              </div>
-              <span className={`${p}-nav-rail-user-name`}>{userDisplayName}</span>
-              <ChevronUp className={`w-3.5 h-3.5 ${p}-nav-rail-user-chevron`} />
-            </button>
-          ) : (
-            <HintOverlay content={userDisplayName} side="right" delay={400}>
-              <button
-                className={`${p}-nav-rail-user-btn`}
-                onClick={() => setShowUserMenu(!showUserMenu)}
-              >
-                <div className="relative flex-shrink-0">
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shadow-accent/20">
-                    {userInitial}
-                  </div>
-                  {hasUpdateAvailable && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-bg-secondary animate-pulse" />
-                  )}
-                </div>
-              </button>
-            </HintOverlay>
-          )
-        ) : (
-          navRailExpanded ? (
-            <button className={`${p}-nav-rail-login-btn`} onClick={() => setShowLoginModal(true)}>
-              <div className="relative">
-                <LogIn className="w-3.5 h-3.5" />
-                {hasUpdateAvailable && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-bg-secondary animate-pulse" />
-                )}
-              </div>
-              <span>{t('layout.signin', language as Language)}</span>
-            </button>
-          ) : (
-            <HintOverlay content={t('layout.signin2', language as Language)} side="right" delay={400}>
-              <button className={`${p}-nav-rail-login-btn`} onClick={() => setShowLoginModal(true)}>
-                <div className="relative">
-                  <LogIn className="w-3.5 h-3.5" />
-                  {hasUpdateAvailable && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-bg-secondary animate-pulse" />
-                  )}
-                </div>
-              </button>
-            </HintOverlay>
-          )
-        )}
-      </div>
+      <AddCustomMenuDialog isOpen={showAddCustomMenu} onClose={() => setShowAddCustomMenu(false)} />
 
-      <UserAccountPopover language={language} forceLoginOpen={showLoginModal} onLoginClose={() => setShowLoginModal(false)} hideButton />
-          <UpdateModal isOpen={showUpdateModal} onClose={() => setShowUpdateModal(false)} />
-          <AddCustomMenuDialog isOpen={showAddCustomMenu} onClose={() => setShowAddCustomMenu(false)} />
     </div>
   )
 }

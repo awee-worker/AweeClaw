@@ -689,13 +689,28 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
       chatVisible: false,
     })),
   closeInternalBrowser: () =>
-    set((state) => ({
-      internalBrowserUrl: null,
-      internalBrowserTitle: '',
-      activeCustomMenuId: null,
-      // 关闭后恢复到打开前的显隐：面板自动隐藏的聊天不会被唤起，用户手动开的聊天仍然保留
-      chatVisible: state.chatVisibleBeforeInternalBrowser ?? true,
-      chatVisibleBeforeInternalBrowser: null,
-    })),
+    set((state) => {
+      // 没有打开内部浏览器时只清理残留字段，不动聊天显隐。
+      //
+      // 此前这里无条件回写 chatVisible，而快照在未打开时为 null、兜底值是 true，
+      // 于是每个调用方（点菜单、切面板、开预览…）都会顺手把对话窗口叫出来。
+      // 用户看到的就是「点一下菜单，会话窗口自己弹出来」。
+      if (!state.internalBrowserUrl) {
+        return {
+          internalBrowserUrl: null,
+          internalBrowserTitle: '',
+          activeCustomMenuId: null,
+        }
+      }
+      return {
+        internalBrowserUrl: null,
+        internalBrowserTitle: '',
+        activeCustomMenuId: null,
+        // 关闭后恢复到打开前的显隐：面板自动隐藏的聊天不会被唤起，用户手动开的聊天仍然保留。
+        // 快照缺失时保留当前值，不兜底成 true。
+        chatVisible: state.chatVisibleBeforeInternalBrowser ?? state.chatVisible,
+        chatVisibleBeforeInternalBrowser: null,
+      }
+    }),
   }
 }

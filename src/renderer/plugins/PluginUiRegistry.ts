@@ -19,12 +19,17 @@
 
 import type { ComponentType } from 'react'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
-import type { PluginSidebarPanelContribution, PluginTopActionContribution, PluginSettingsTabContribution, PluginWidgetCardContribution, SceneMode } from '@shared/plugin-sdk/types'
+import type { PluginSidebarPanelContribution, PluginTopActionContribution, PluginSettingsTabContribution, PluginWidgetCardContribution, PluginPrimaryViewContribution, PluginRegionNode, SceneMode } from '@shared/plugin-sdk/types'
+import type { RegionNode } from '@shared/protocols/scenario-regions'
 import { registerPanelComponent, unregisterPanelComponent } from '@renderer/components/explorer/PanelRegistry'
 import { fetchAndRewriteBundle, buildPluginBundleUrl } from './rewriteBareSpecifiers'
 import { createPluginHostApi } from './PluginHostApi'
+import { buildPluginRegions } from './pluginRegions'
 import type { PluginHostApi, PluginPanelProps, PluginUiModule, LoadedPluginUi, PluginConfigActionHandler, WidgetCardPreviewProps } from './types'
 import { contributionToSidebarItem } from './types'
+
+/** primaryView 归一化后注册到 PanelRegistry 的面板 id 后缀 */
+const PRIMARY_PANEL_SUFFIX = ':__primary__'
 
 /** 单个插件的 UI 贡献记录（来自主进程 IPC） */
 interface PluginUiContribution {
@@ -37,6 +42,8 @@ interface PluginUiContribution {
      topActions?: PluginTopActionContribution[]
      settingsTabs?: PluginSettingsTabContribution[]
      widgetCards?: PluginWidgetCardContribution[]
+     primaryView?: PluginPrimaryViewContribution
+     regions?: PluginRegionNode
    }
   mcpServerId?: string
 }
@@ -55,6 +62,16 @@ class PluginUiRegistryImpl {
   private listeners = new Set<Listener>()
   /** 是否已初始化 */
   private initialized = false
+  /**
+   * 插件声明的面板区域树（pluginKey → 区域树）
+   *
+   * 插件可能声明多个面板，但区域树是插件级的：只要某个面板以宽模式打开，
+   * 主区域就按这棵树渲染。按 pluginKey 存而不是按 panelId 存，
+   * 避免同一棵树在多个面板上存多份、卸载时漏清。
+   */
+  private pluginRegions = new Map<string, RegionNode>()
+  /** 面板 id → 所属 pluginKey（查区域树用） */
+  private panelOwner = new Map<string, string>()
 
   /**
    * 合并后的侧边栏导航项缓存（引用稳定，供 useSyncExternalStore 使用）
@@ -478,6 +495,8 @@ class PluginUiRegistryImpl {
             // 这里做类型转换（运行时无影响，仅类型层面）
             // 同时传入 host，供 AdaptivePanelView 渲染时作为 props.host 传入插件组件
             registerPanelComponent(panel.id, comp as unknown as ComponentType<unknown>, panelHost)
+            // 记录归属：宽模式打开时按 panelId 反查插件级区域树
+            this.panelOwner.set(panel.id, pluginKey)
             // hidden 面板不参与导航，仍注册组件供抽屉使用
             if (!panel.hidden) sidebarItems.push(contributionToSidebarItem(panel))
             console.log(`[PluginUiRegistry] Registered panel "${panel.id}" (component: ${panel.component}) for ${pluginKey}`)
@@ -488,6 +507,44 @@ class PluginUiRegistryImpl {
             )
           }
         }
+      }
+
+      // 主区域布局：primaryView（单组件）先归一到面板，再与 regions 一起交给构建器
+      //
+      // 两条声明归一成同一种产物（RegionNode），下游（MainContentArea）只需要
+      // 处理「有区域树 / 没有」两种情况，不必再区分 primaryView。
+      const primaryDeclared = contribution.contributes.primaryView
+      let primaryPanelId: string | undefined
+      if (primaryDeclared?.component) {
+        const primaryComp = uiModule.components?.[primaryDeclared.component]
+        if (primaryComp) {
+          primaryPanelId = `${pluginKey}${PRIMARY_PANEL_SUFFIX}`
+          registerPanelComponent(
+            primaryPanelId,
+            primaryComp as unknown as ComponentType<unknown>,
+            createPluginHostApi({
+              pluginKey,
+              mcpServerId: contribution.mcpServerId,
+              language: this.getCurrentLanguage(),
+            }),
+          )
+          this.panelOwner.set(primaryPanelId, pluginKey)
+        } else {
+          console.error(
+            `[PluginUiRegistry] Plugin ${pluginKey} primaryView component "${primaryDeclared.component}" not found in ui.js`,
+          )
+        }
+      }
+
+      const regions = buildPluginRegions({
+        pluginKey,
+        pluginRootAbsDir: absDir,
+        contributes: contribution.contributes,
+        primaryPanelId,
+      })
+      if (regions) {
+        this.pluginRegions.set(pluginKey, regions)
+        console.log(`[PluginUiRegistry] Registered panel regions for ${pluginKey}`)
       }
 
       if (contribution.contributes.topActions) {
@@ -585,13 +642,34 @@ class PluginUiRegistryImpl {
     if (contribution?.contributes.sidebarPanels) {
       for (const panel of contribution.contributes.sidebarPanels) {
         unregisterPanelComponent(panel.id)
+        if (this.panelOwner.get(panel.id) === pluginKey) this.panelOwner.delete(panel.id)
       }
     }
 
+    // primaryView 归一化出的隐藏面板同样要注销，否则插件禁用后主区域
+    // 还会渲染一个残留的组件实例
+    const primaryPanelId = `${pluginKey}${PRIMARY_PANEL_SUFFIX}`
+    if (this.panelOwner.get(primaryPanelId) === pluginKey) {
+      unregisterPanelComponent(primaryPanelId)
+      this.panelOwner.delete(primaryPanelId)
+    }
+
+    this.pluginRegions.delete(pluginKey)
     this.loaded.delete(pluginKey)
     this.discovered.delete(pluginKey)
     this.invalidateCache()
     this.notifyListeners()
+  }
+
+  /**
+   * 取某个面板所属插件的区域树
+   *
+   * 返回 undefined 表示该面板没有自定义主区域布局 —— 调用方回退默认面板视图。
+   */
+  getPanelRegions(panelId: string): RegionNode | undefined {
+    const pluginKey = this.panelOwner.get(panelId)
+    if (!pluginKey) return undefined
+    return this.pluginRegions.get(pluginKey)
   }
 
   /**

@@ -128,7 +128,7 @@ function buildViewMenu(tr: Tr): AppMenuEntry[] {
     { kind: 'command', label: tr('menu.commandPalette'), accelerator: 'Ctrl+Shift+P', commandId: 'workbench.action.showCommands' },
     { kind: 'command', label: tr('menu.gotoFile'), accelerator: 'Ctrl+P', commandId: 'workbench.action.quickOpen' },
     { kind: 'separator' },
-    { kind: 'command', label: tr('menu.toggleTerminal'), accelerator: 'Ctrl+`', commandId: 'toggle-terminal' },
+    { kind: 'command', label: tr('menu.toggleTerminal'), accelerator: 'Ctrl+Shift+`', commandId: 'new-terminal' },
     { kind: 'command', label: tr('menu.toggleAiPanel'), accelerator: 'Ctrl+Shift+I', commandId: 'toggle-ai-panel' },
     { kind: 'command', label: tr('menu.toggleSidebar'), accelerator: 'Ctrl+B', commandId: 'workbench.action.toggleSidebar' },
     { kind: 'separator' },

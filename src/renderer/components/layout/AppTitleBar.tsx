@@ -1,79 +1,38 @@
-import { Minus, Square, X, Search, Plus, Bell, Cloud, Crown, Calendar, Clock, Phone, Bot, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react'
+/**
+ * 应用标题栏
+ *
+ * 该文件只保留「还留在宿主手里、尚未做成独立部件」的部分，其余均已在
+ * shell/parts 下拆分并注册到 HostPartRegistry：
+ *
+ * - scene-switcher  场景 / 工作空间 / 搜索
+ * - drag-region     内容之间的拖拽余量
+ * - notifications   消息中心 + 服务状态
+ * - quota           套餐 / Token 用量
+ * - sidebar-toggle  侧边栏与助手开关
+ * - window-controls 非 macOS 的最小化 / 最大化 / 关闭
+ *
+ * 还留在这里的是右侧动作组（新对话、环境安装提示、语音对话、桌面伴侣、
+ * 插件贡献按钮），它们没有独立的 part id，等出现第二个使用方再拆。
+ */
 
-function PanelLeftIcon({ filled = false, className }: { filled?: boolean; className?: string }) {
-    return (
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            className={className}>
-            <rect width="18" height="18" x="3" y="3" rx="2" />
-            {filled && <path d="M3 5a2 2 0 0 1 2-2h4v18H5a2 2 0 0 1-2-2V5z" fill="currentColor" opacity="0.75" stroke="none" />}
-            <line x1="9" x2="9" y1="3" y2="21" />
-        </svg>
-    )
-}
-
-function PanelRightIcon({ filled = false, className }: { filled?: boolean; className?: string }) {
-    return (
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            className={className}>
-            <rect width="18" height="18" x="3" y="3" rx="2" />
-            {filled && <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4V3z" fill="currentColor" opacity="0.75" stroke="none" />}
-            <line x1="15" x2="15" y1="3" y2="21" />
-        </svg>
-    )
-}
+import { Plus, Phone, Bot, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react'
 import { api } from '../../adapters/electronBridge'
 import { useStore } from '@store'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentActions } from '@hooks/useAgent'
-import ProjectSelector from './ProjectSelector'
-import ScenarioSelector from './ScenarioSelector'
-import AppMenuBar from './AppMenuBar'
-import { useInlineToast } from '@components/foundation/InlineNotification'
-import { useHasElevatedToastLayer } from '@components/foundation/toastLayerStore'
-import { BRAND } from '@shared/brand'
-import ImStatusFloating from './ImStatusFloating'
-import ServiceStatusPopover from './ServiceStatusPopover'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Volume2 } from 'lucide-react'
-import DockPopover from '../ui/DockPopover'
-import NotificationCenterContent, { NotificationClearButton } from '../dock-panels/NotificationPanel'
-import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
-import { PluginTopActions } from '@renderer/plugins/PluginTopActions'
-import { formatTokenCount } from '@utils/formatter'
-import { getSubscriptionStatus, type SubscriptionStatus } from '@services/featureGuardService'
-import { useCallback, useEffect, useState } from 'react'
 import { t, type Language } from '@renderer/i18n'
 import { logger } from '@shared/toolkit/LogEngine'
 import { updaterService, type UpdateStatus } from '@renderer/adapters/updateAdapter'
-import {
-  useUserNotificationStore,
-  startUserNotificationPolling,
-  stopUserNotificationPolling,
-} from '@store/userNotificationStore'
-
-const isMac = typeof navigator !== 'undefined' && (
-  navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
-  ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toUpperCase().indexOf('MAC') ?? -1) >= 0
-)
-
-/** Windows 平台判定：用于决定自绘菜单栏的摆放位置（Windows 排在搜索按钮之后） */
-const isWindows = typeof navigator !== 'undefined' && (
-  navigator.platform.toUpperCase().indexOf('WIN') >= 0 ||
-  ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toUpperCase().indexOf('WIN') ?? -1) >= 0
-)
-
-/**
- * 消息中心铃铛状态
- *
- * 角标 = 本地运行消息（toast）+ 后端未读通知（套餐 / 场景 / 插件到期等），
- * 两者对用户都是「有事情要处理」，合并在一个入口才能避免漏看。
- */
-function useUnreadNotificationBadge(toastCount: number): number {
-  const unread = useUserNotificationStore(s => s.unreadCount)
-  return toastCount + unread
-}
+import { PluginTopActions } from '@renderer/plugins/PluginTopActions'
+import ImStatusFloating from './ImStatusFloating'
+import { useCallback, useEffect, useState } from 'react'
+import SceneSwitcherPart from '@renderer/shell/parts/SceneSwitcherPart'
+import DragRegionPart from '@renderer/shell/parts/DragRegionPart'
+import NotificationsPart from '@renderer/shell/parts/NotificationsPart'
+import QuotaPart from '@renderer/shell/parts/QuotaPart'
+import SidebarTogglePart from '@renderer/shell/parts/SidebarTogglePart'
+import WindowControlsPart from '@renderer/shell/parts/WindowControlsPart'
 
 /**
  * "重启以更新" 按钮
@@ -122,233 +81,6 @@ function UpdateReadyButton({ language }: { language: Language }) {
     </button>
   )
 }
-
-/** 格式化订阅日期（与 SubscriptionPanel 的展示口径保持一致） */
-function formatPlanDate(dateStr: string, language: Language): string {
-  try {
-    return new Date(dateStr).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  } catch {
-    return dateStr
-  }
-}
-
-/**
- * 顶部「套餐 / Token 用量」入口
- *
- * 该图标同时承担两个职责：「查看 Token 用量」与「查看/管理套餐」。
- * 因此门禁只校验登录态，不再与云端模式强绑定：
- * - cloudMode === 'cloud'：云朵图标 + 剩余百分比，弹层展示用量明细 + 当前套餐
- * - cloudMode === 'local'（用户配置了自定义模型）：Crown 图标、不显示百分比，
- *   弹层只保留当前套餐 + 套餐管理入口（本地模式没有云端 Token 配额概念）
- *
- * 弹层内的套餐概况（套餐名 / 订阅状态 / 到期时间 / 剩余天数）来自
- * /payment/subscription，展开面板时按需拉取；Token 用量来自 store 中的 quota。
- */
-function CloudQuotaIndicator({ language }: { language: Language }) {
-  const { isAuthenticated, cloudMode, quota, fetchQuota } = useStore(
-    useShallow((s) => ({
-      isAuthenticated: s.isAuthenticated,
-      cloudMode: s.cloudMode,
-      quota: s.quota,
-      fetchQuota: s.fetchQuota,
-    })),
-  )
-
-  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null)
-
-  // 云端模式用于 Token 用量，本地模式仅需套餐名做展示，两者都依赖账号级配额数据
-  const isCloud = cloudMode === 'cloud'
-
-  useEffect(() => {
-    if (isAuthenticated && !quota) {
-      fetchQuota().catch(() => {})
-    }
-  }, [isAuthenticated, quota, fetchQuota])
-
-  /**
-   * 订阅状态按需拉取：/payment/subscription 接口后端不做缓存，
-   * 因此只在面板展开时请求，避免顶部图标常驻发起无效请求。
-   */
-  const refreshSubscription = useCallback(() => {
-    void getSubscriptionStatus().then((status) => {
-      // 请求失败时该接口返回 null，此时保留上一次结果，避免弹层闪现空白
-      if (status) setSubscription(status)
-    })
-  }, [])
-
-  // 只要已登录就渲染：本地模式下仍保留套餐查看入口
-  if (!isAuthenticated) return null
-
-  // 非云端模式下不计算/展示 Token 百分比
-  const usedPercent = isCloud && quota && quota.limit !== -1
-    ? Math.min(100, (quota.used / quota.limit) * 100)
-    : 0
-
-  const quotaPercent = isCloud && quota && quota.remaining !== -1
-    ? Math.max(0, Math.round((1 - quota.used / quota.limit) * 100))
-    : null
-
-  const isQuotaExceeded = quotaPercent !== null && quotaPercent <= 0
-  const isQuotaLow = quotaPercent !== null && quotaPercent <= 20
-
-  const cloudColorClass = getQuotaTextColor(usedPercent)
-  const quotaLabel = isCloud && quota
-    ? quota.remaining === -1
-      ? '∞'
-      : `${quotaPercent}%`
-    : ''
-  const quotaColorClass = getQuotaTextColor(usedPercent)
-
-  const subInfo = subscription?.subscription ?? null
-  const hasActive = Boolean(subscription?.hasActiveSubscription && subInfo)
-  // 套餐名优先取订阅接口的最新值，回落用量接口，最后为免费版
-  const planName = subscription?.planName || quota?.displayName || (t('layout.free', language as Language))
-  // 免费版用户从未订阅、无订阅记录，此时不显示「已过期」徽章
-  const showStatusBadge = Boolean(subInfo)
-
-  const iconTitle = isCloud
-    ? quota
-      ? `Token: ${formatTokenCount(quota.used)} / ${quota.limit === -1 ? '∞' : formatTokenCount(quota.limit)}${isQuotaExceeded ? (t('layout.exceeded', language as Language)) : isQuotaLow ? (t('layout.low', language as Language)) : ''}`
-      : ''
-    : `${t('layout.plan', language as Language)}: ${planName}`
-
-  return (
-    <DockPopover
-      placement="bottom"
-      icon={
-        <div
-          className="flex items-center gap-1.5 px-1.5 py-0.5 h-6 rounded-md cursor-pointer group hover:bg-white/5 transition-colors"
-          title={iconTitle}
-        >
-          {isCloud ? (
-            <Cloud className={`w-3 h-3 ${cloudColorClass} ${getQuotaGlowColor(usedPercent)}`} />
-          ) : (
-            <Crown className="w-3.5 h-3.5 text-amber-400" />
-          )}
-          {quotaLabel && (
-            <span className={`text-[10px] font-mono ${quotaColorClass} transition-colors`}>
-              {quotaLabel}
-            </span>
-          )}
-        </div>
-      }
-      title={isCloud ? t('layout.tokenusage', language as Language) : t('layout.plan', language as Language)}
-      width={300}
-      height={isCloud ? 320 : 200}
-      language={language as 'en' | 'zh'}
-      onOpen={refreshSubscription}
-    >
-      <div className="p-3 space-y-4">
-        {/* 当前套餐 + 订阅情况（到期时间 / 剩余天数） */}
-        <div className="px-3 py-2.5 rounded-xl bg-accent/5 border border-accent/10 space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-text-muted shrink-0">
-              {t('subscription.currentplan', language as Language)}
-            </span>
-            <span className="text-xs font-medium text-accent ml-auto truncate">{planName}</span>
-            {showStatusBadge && (
-              <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${
-                hasActive
-                  ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                  : 'bg-text-muted/10 text-text-muted border-text-muted/20'
-              }`}>
-                {hasActive
-                  ? t('subscription.active', language as Language)
-                  : t('subscription.expired', language as Language)}
-              </span>
-            )}
-          </div>
-
-          {subInfo && (
-            <>
-              <div className="flex items-center gap-1.5 text-[11px]">
-                <Calendar className="w-3 h-3 text-text-muted shrink-0" />
-                <span className="text-text-muted">
-                  {t('subscription.periodend', language as Language)}
-                </span>
-                <span className={`ml-auto ${hasActive ? 'text-text-primary' : 'text-text-muted'}`}>
-                  {formatPlanDate(subInfo.currentPeriodEnd, language)}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 text-[11px]">
-                <Clock className="w-3 h-3 text-text-muted shrink-0" />
-                <span className="text-text-muted">
-                  {t('subscription.daysremaining', language as Language)}
-                </span>
-                <span className={`ml-auto font-medium ${hasActive ? 'text-text-primary' : 'text-amber-400'}`}>
-                  {hasActive
-                    ? t('featureguard.daysremaining', language as Language, { days: String(subInfo.daysRemaining) })
-                    : t('subscription.expired', language as Language)}
-                </span>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* 云端模式：Token 用量明细（本地模式无云端配额概念） */}
-        {isCloud && quota && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-2">
-              <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
-                <span className="text-[10px] text-text-muted mb-1">{t('layout.used', language as Language)}</span>
-                <span className="text-sm font-bold text-text-primary">{formatTokenCount(quota.used)}</span>
-              </div>
-              <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
-                <span className="text-[10px] text-text-muted mb-1">{t('layout.remaining', language as Language)}</span>
-                <span className="text-sm font-bold text-text-primary">
-                  {quota.remaining === -1
-                    ? (t('layout.text0', language as Language))
-                    : formatTokenCount(quota.remaining)}
-                </span>
-              </div>
-              <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
-                <span className="text-[10px] text-text-muted mb-1">{t('layout.total', language as Language)}</span>
-                <span className="text-sm font-bold text-text-primary">
-                  {quota.limit === -1
-                    ? (t('layout.text1', language as Language))
-                    : formatTokenCount(quota.limit)}
-                </span>
-              </div>
-            </div>
-
-            {quota.limit !== -1 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-text-muted">
-                    {t('layout.progress', language as Language)}
-                  </span>
-                  <span className={`font-mono ${getQuotaTextColor(usedPercent)}`}>
-                    {usedPercent.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${getQuotaBarColor(usedPercent)}`}
-                    style={{ width: `${usedPercent}%` }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        <button
-          onClick={() => {
-            useStore.getState().setShowUserProfilePage(true)
-          }}
-          className="w-full py-2 text-xs text-accent hover:text-accent-hover transition-colors text-center"
-        >
-          {t('layout.manageplan', language as Language)}
-        </button>
-      </div>
-    </DockPopover>
-  )
-}
-
 
 /**
  * 桌面伴侣开关按钮（顶部栏「语音对话」右侧）
@@ -413,96 +145,56 @@ function VrmCompanionToggleButton({ language }: { language: Language }) {
   )
 }
 
+/** 仅在登录后渲染套餐部件；跟随其后 的分隔线一并收进，避免未登录时留下孤立竖线 */
+function QuotaPartHost() {
+  const isAuthenticated = useStore((s) => s.isAuthenticated)
+  if (!isAuthenticated) return null
+  return (
+    <>
+      <QuotaPart />
+      <div className="w-[1px] h-4 bg-border/50 mx-1"></div>
+    </>
+  )
+}
+
 export default function AppTitleBar() {
-  const { setShowQuickOpen, language, isAuthenticated, activeSidePanel, chatVisible, toggleSidebar, toggleChat, navRailExpanded, setNavRailExpanded, setVoiceConversationActive, closeAllFullPages, setShowEnvironmentSetup, showWelcomePage, setShowScenarioPage, setShowWorkflow } = useStore(useShallow(s => ({
-    setShowQuickOpen: s.setShowQuickOpen,
+  const {
+    language,
+    chatVisible,
+    setVoiceConversationActive,
+    closeAllFullPages,
+    setShowEnvironmentSetup,
+    showWelcomePage,
+    activeScenarioId,
+  } = useStore(useShallow(s => ({
     language: s.language,
-    activeSidePanel: s.activeSidePanel,
     chatVisible: s.chatVisible,
-    toggleSidebar: s.toggleSidebar,
-    toggleChat: s.toggleChat,
-    navRailExpanded: s.navRailExpanded,
-    setNavRailExpanded: s.setNavRailExpanded,
     setVoiceConversationActive: s.setVoiceConversationActive,
     closeAllFullPages: s.closeAllFullPages,
     setShowEnvironmentSetup: s.setShowEnvironmentSetup,
     showWelcomePage: s.showWelcomePage,
-    setShowScenarioPage: s.setShowScenarioPage,
-    setShowWorkflow: s.setShowWorkflow,
-    isAuthenticated: s.isAuthenticated,
+    activeScenarioId: s.activeScenarioId,
   })))
 
-  const sidebarVisible = activeSidePanel !== null
+  /**
+   * 场景声明要隐藏的外壳入口
+   *
+   * 场景自己已经在工作区里提供了对应操作时（如短剧工坊的导航栏与制作台），
+   * 顶部再摆一套通用入口只会造成重复与误操作，因此按场景收起。
+   */
+  const scenarioChrome = scenarioRegistry.get(activeScenarioId)?.ui?.chrome
+  const hideVoiceConversation = scenarioChrome?.hideVoiceConversation === true
+  const hideDesktopCompanion = scenarioChrome?.hideDesktopCompanion === true
+
   const { createThread } = useAgentActions()
   const envInstallStatus = useStore((s) => s.envInstallStatus)
 
-  const { toasts, visibleIds } = useInlineToast()
-  const notificationCount = useUnreadNotificationBadge(toasts.length)
-  // 消息中心 popover 受控：点击通知跳转后需要主动收起，否则浮层会挡在目标页面上
-  const [messagesOpen, setMessagesOpen] = useState(false)
-  const latestVisibleToastId = [...visibleIds].reverse().find(id => {
-    const toast = toasts.find(item => item.id === id)
-    return toast?.variant === 'inline'
-  })
-  const activeToast = latestVisibleToastId ? toasts.find(t => t.id === latestVisibleToastId) : null
-  const shouldEject = useHasElevatedToastLayer()
-
-  const handleOpenMarketplace = useCallback(() => {
-    closeAllFullPages()
-    setShowWorkflow(false)
-    setShowScenarioPage(true)
-  }, [closeAllFullPages, setShowWorkflow, setShowScenarioPage])
-
-  // 登录后启动消息通知轮询，登出时停止并清空（避免角标残留上一账号的未读数）
-  useEffect(() => {
-    if (isAuthenticated) startUserNotificationPolling()
-    else stopUserNotificationPolling()
-  }, [isAuthenticated])
-
   return (
     <div className="h-11 flex items-center justify-between px-0 drag-region select-none bg-background z-50 border-b border-border/30">
-      <div className={`flex items-center gap-3 h-full ${isMac && !navRailExpanded ? 'pl-[40px]' : 'pl-3'}`}>
-        <button
-          onClick={() => setNavRailExpanded(!navRailExpanded)}
-          className="no-drag w-7 h-7 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-200"
-          title={navRailExpanded
-            ? (t('layout.collapsemenu', language as Language))
-            : (t('layout.expandmenu', language as Language))}
-        >
-          {navRailExpanded
-            ? <PanelLeftIcon filled className="w-4 h-4" />
-            : <PanelLeftIcon className="w-4 h-4" />
-          }
-        </button>
+      <SceneSwitcherPart />
 
-        {/* Linux：自绘顶部菜单栏保持在项目选择器之前（macOS 使用系统菜单栏） */}
-        {!isMac && !isWindows && <AppMenuBar />}
-
-        <div className="no-drag">
-          <ProjectSelector />
-        </div>
-
-        <div className="w-[1px] h-4 bg-border/50" />
-
-        <ScenarioSelector onOpenMarketplace={handleOpenMarketplace} />
-
-        <div className="w-[1px] h-4 bg-border/50" />
-
-        <div
-          onClick={() => setShowQuickOpen(true)}
-          className="no-drag flex items-center gap-1.5 px-2 h-[28px] rounded-md hover:bg-text-primary/[0.06] transition-all duration-200 cursor-pointer group"
-        >
-          <Search className="w-3.5 h-3.5 text-text-muted opacity-70 group-hover:text-accent transition-colors" />
-          <span className="text-xs text-text-muted opacity-70 group-hover:text-text-primary transition-colors">
-            {t('layout.search', language as Language)}
-          </span>
-        </div>
-
-        {/* Windows：自绘顶部菜单栏紧跟在搜索按钮之后 */}
-        {isWindows && <AppMenuBar />}
-      </div>
-
-      <div className="flex-1 min-w-0" />
+      {/* 左右内容之间的余量，同时是无边框窗口的拖拽区 */}
+      <DragRegionPart />
 
       <div className="flex items-center justify-end h-full pr-2 gap-1">
         <div className="no-drag flex items-center gap-1 h-full mr-2">
@@ -519,7 +211,7 @@ export default function AppTitleBar() {
                   title={language === 'zh' ? '环境安装中，点击查看进度' : 'Installing environment, click for progress'}
                 >
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span className="text-xs">{language === 'zh' ? envInstallStatus.message : envInstallStatus.message}</span>
+                  <span className="text-xs">{envInstallStatus.message}</span>
                 </button>
               )}
               {envInstallStatus.state === 'done' && !envInstallStatus.isInstalling && (
@@ -529,7 +221,7 @@ export default function AppTitleBar() {
                   title={language === 'zh' ? '环境安装完成' : 'Environment setup complete'}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span className="text-xs">{language === 'zh' ? envInstallStatus.message : envInstallStatus.message}</span>
+                  <span className="text-xs">{envInstallStatus.message}</span>
                 </button>
               )}
               {!showWelcomePage && (
@@ -548,19 +240,21 @@ export default function AppTitleBar() {
                   {t('layout.newchat2', language as Language)}
                 </button>
               )}
-              <button
-                onClick={() => {
-                  setVoiceConversationActive(true)
-                  // 异步关闭其他全屏页面，避免阻塞语音窗口渲染
-                  setTimeout(() => closeAllFullPages(), 0)
-                }}
-                className="flex items-center justify-center w-7 h-7 text-text-muted hover:text-accent hover:bg-accent/10 rounded-md transition-colors"
-                title={language === 'zh' ? '语音对话' : 'Voice conversation'}
-              >
-                <Phone className="w-3.5 h-3.5" />
-              </button>
+              {!hideVoiceConversation && (
+                <button
+                  onClick={() => {
+                    setVoiceConversationActive(true)
+                    // 异步关闭其他全屏页面，避免阻塞语音窗口渲染
+                    setTimeout(() => closeAllFullPages(), 0)
+                  }}
+                  className="flex items-center justify-center w-7 h-7 text-text-muted hover:text-accent hover:bg-accent/10 rounded-md transition-colors"
+                  title={language === 'zh' ? '语音对话' : 'Voice conversation'}
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                </button>
+              )}
               {/* 桌面伴侣开关：紧跟语音对话按钮 */}
-              <VrmCompanionToggleButton language={language as Language} />
+              {!hideDesktopCompanion && <VrmCompanionToggleButton language={language as Language} />}
               {/* 插件贡献的顶部按钮（扩展点），紧跟语音按钮之后 */}
               <PluginTopActions />
             </>
@@ -568,124 +262,18 @@ export default function AppTitleBar() {
 
           <div className="w-[1px] h-4 bg-border/50 mx-1"></div>
 
-          {/* 套餐 / Token 用量入口：仅登录后可见。未登录时一并省略其后分隔线，
-              避免与上一处分隔线相邻形成「双竖线」 */}
-          {isAuthenticated && (
-            <>
-              <CloudQuotaIndicator language={language} />
-              <div className="w-[1px] h-4 bg-border/50 mx-1"></div>
-            </>
-          )}
+          {/* 套餐 / Token 用量入口：仅登录后可见（其后的分隔线随它一起渲染） */}
+          <QuotaPartHost />
 
-          <DockPopover
-            placement="bottom"
-            // 角标交给 DockPopover 统一渲染：与服务图标同源，右上角定位一致，
-            // 不再在 bell 自身的 16px 容器里各自计算偏移（会导致两者上下错位）。
-            badge={
-              notificationCount > 0 && (!activeToast || shouldEject)
-                ? notificationCount > 9
-                  ? '9+'
-                  : notificationCount
-                : undefined
-            }
-            icon={
-              <div className="relative flex items-center justify-center">
-                <AnimatePresence mode="wait">
-                  {activeToast && !shouldEject ? (
-                    <motion.div
-                      layoutId={BRAND.layout.dynamicIslandId}
-                      key={activeToast.id}
-                      initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: 'auto' }}
-                      exit={{ opacity: 0, width: 0 }}
-                      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                      className="flex items-center gap-1.5 whitespace-nowrap"
-                    >
-                      <Volume2 className={`w-3.5 h-3.5 animate-pulse shrink-0 ${
-                        activeToast.type === 'success' ? 'text-emerald-400' :
-                          activeToast.type === 'error' ? 'text-red-400' :
-                            activeToast.type === 'warning' ? 'text-amber-400' :
-                              'text-blue-400'
-                      }`} />
-                      <span className="text-[10.5px] text-text-primary font-medium truncate max-w-[160px]">
-                        {activeToast.message}
-                      </span>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="bell"
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.8 }}
-                      className="relative flex items-center justify-center"
-                    >
-                      <Bell className={`w-4 h-4 ${notificationCount > 0 ? 'text-accent' : ''}`} />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            }
-            title={t('layout.messages', language as Language)}
-            headerActions={<NotificationClearButton language={language as 'en' | 'zh'} />}
-            width={360}
-            height={420}
-            language={language as 'en' | 'zh'}
-            open={messagesOpen}
-            onOpenChange={setMessagesOpen}
-          >
-            <NotificationCenterContent
-              language={language as 'en' | 'zh'}
-              onNavigate={() => setMessagesOpen(false)}
-            />
-          </DockPopover>
-
-          {/* 后台服务状态：紧跟消息图标，仅在确有服务运行时显示 */}
-          <ServiceStatusPopover language={language as Language} />
+          <NotificationsPart />
 
           <div className="w-[1px] h-4 bg-border/50 mx-1"></div>
 
-          <button
-            onClick={toggleSidebar}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
-            title={language === 'zh' ? (sidebarVisible ? '隐藏侧边栏' : '显示侧边栏') : (sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar')}
-          >
-            {sidebarVisible ? <PanelLeftIcon filled className="w-4 h-4" /> : <PanelLeftIcon className="w-4 h-4" />}
-          </button>
-
-          <button
-            onClick={toggleChat}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
-            title={language === 'zh' ? (chatVisible ? '隐藏 AI 助手' : '显示 AI 助手') : (chatVisible ? 'Hide AI Assistant' : 'Show AI Assistant')}
-          >
-            {chatVisible ? <PanelRightIcon filled className="w-4 h-4" /> : <PanelRightIcon className="w-4 h-4" />}
-          </button>
+          <SidebarTogglePart />
         </div>
-
-        {!isMac && (
-          <div className="no-drag flex items-center h-full pl-2 border-l border-border-subtle">
-            <div className="flex items-center gap-0.5">
-              <button
-                onClick={() => api.window.minimize()}
-                className="w-9 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-all group"
-              >
-                <Minus className="w-4 h-4 opacity-70 group-hover:opacity-100" />
-              </button>
-              <button
-                onClick={() => api.window.maximize()}
-                className="w-9 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-all group"
-              >
-                <Square className="w-3 h-3 opacity-70 group-hover:opacity-100" />
-              </button>
-              <button
-                onClick={() => api.window.close()}
-                className="w-9 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-red-500/90 transition-all group"
-              >
-                <X className="w-4 h-4 opacity-70 group-hover:opacity-100" />
-              </button>
-            </div>
-          </div>
-        )}
       </div>
+
+      <WindowControlsPart />
     </div>
   )
 }

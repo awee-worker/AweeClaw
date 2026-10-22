@@ -818,6 +818,11 @@ export class TerminalManagerClass {
       fontFamily: termConfig.fontFamily,
       fontSize: termConfig.fontSize,
       lineHeight: termConfig.lineHeight,
+      // 常规字符用细字重、加粗字符降一档：终端里大量输出（git、npm、提示符）
+      // 默认走 bold，全局看下来偏厚重，压轻后整屏更透气也更易读
+      fontWeight: '300',
+      fontWeightBold: '500',
+      letterSpacing: 0,
       scrollback: termConfig.scrollback,
       allowProposedApi: true,
       drawBoldTextInBrightColors: true,
@@ -924,13 +929,17 @@ export class TerminalManagerClass {
       }
     }
 
-    try {
-      fitAddon.fit();
-    } catch { }
+    // 容器还没布局出来（面板折叠 / 终端标签未激活）时不要 fit：
+    // 此时算出的 0 列会推给 PTY，回显按 0 列换行，内容立刻错位。
+    if (container.clientWidth > 0 && container.clientHeight > 0) {
+      try {
+        fitAddon.fit();
+      } catch { }
 
-    const dims = fitAddon.proposeDimensions?.();
-    if (dims && dims.cols > 0 && dims.rows > 0) {
-      api.terminal.resize(id, dims.cols, dims.rows);
+      const dims = fitAddon.proposeDimensions?.();
+      if (dims && dims.cols > 0 && dims.rows > 0) {
+        api.terminal.resize(id, dims.cols, dims.rows);
+      }
     }
 
     return true;
@@ -959,6 +968,11 @@ export class TerminalManagerClass {
   fitTerminal(id: string) {
     const instance = this.xtermInstances.get(id);
     if (!instance) return;
+
+    // 容器不可见时（面板折叠、终端标签未激活）fit 会算出 0 列 / 0 行，
+    // 再把这样的尺寸推给 PTY，之后所有回显都按 0 列换行，终端内容会彻底错位。
+    // 等容器真正可见后由面板重新调用本方法即可。
+    if (!instance.container || !instance.container.clientWidth || !instance.container.clientHeight) return;
 
     try {
       instance.fitAddon.fit();

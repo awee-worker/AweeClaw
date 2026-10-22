@@ -73,7 +73,7 @@ export interface DeclarativeIdentity {
 // ============================================
 
 export interface DeclarativeUI {
-  layout?: 'chat-centric' | 'split' | 'editor-centric' | 'custom'
+  layout?: 'chat-centric' | 'split' | 'editor-centric' | 'custom' | 'dashboard-centric' | 'analytics-centric'
   panels?: string[]
   sidebarItems?: Array<{
     id: string
@@ -96,6 +96,30 @@ export interface DeclarativeUI {
   welcomeComponent?: string
   /** 打开宽模式面板时是否隐藏聊天，默认 true */
   wideModeHidesChat?: boolean
+
+  /**
+   * 主区域组件
+   *
+   * 无打开文件时在主内容区渲染该组件，替代客户端通用看板。
+   * component 需在场景的组件注册表中存在，否则回退通用看板。
+   */
+  primaryView?: {
+    component: string
+    /** 打开文件时是否仍优先显示编辑器，默认 true */
+    preferEditor?: boolean
+  }
+
+  /**
+   * 外壳区域树
+   *
+   * 声明后整棵外壳布局由场景决定，而非 layout 预设。结构见 RegionNode 定义：
+   * split 容器按行/列排布子区域，slot 引用外壳槽位（rail / titlebar / sidebar /
+   * main / statusbar，各最多一次）。校验不通过时回退 layout 预设。
+   */
+  regions?: unknown
+
+  /** regions 契约版本，缺省 1 */
+  regionsSchemaVersion?: number
 }
 
 // ============================================

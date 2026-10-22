@@ -12,6 +12,7 @@ import { MailCenterView } from './panels/mail-center/MailCenterView'
 import { ScenarioManagerView } from '../scenario/ScenarioManagerView'
 import { SceneToolsPanel } from '../scene-tools/SceneToolsPanel'
 import { TodoHubView } from '../todo-hub/TodoHubView'
+import { ScenarioWorkspacePanel } from './panels/ScenarioWorkspacePanel'
 
 type PanelComponent = ComponentType<unknown>
 
@@ -33,9 +34,9 @@ const BUILTIN_PANEL_COMPONENTS: Record<string, PanelComponent> = {
   PluginMarketView,
   AIBrowserView,
   MailCenterView,
-  ScenarioManagerView,
   SceneToolsPanel,
   TodoHubView,
+  ScenarioWorkspacePanel,
 }
 
 /** 注册表条目：组件 + 可选的插件宿主 API */
@@ -49,6 +50,10 @@ const panelComponentRegistry = new Map<string, PanelRegistryEntry>()
 
 // 场景内置工具面板：全局注册，任何场景下均可通过 panelId='scene-tools' 激活
 registerPanelComponent('scene-tools', SceneToolsPanel)
+
+// 场景工作区：区域树里 { type: 'panel', id: 'scenario-workspace' } 即可摆放，
+// 按 activeSidePanel 渲染当前场景面板，因此一棵静态树也能承载多面板切换
+registerPanelComponent('scenario-workspace', ScenarioWorkspacePanel)
 
 /**
  * 注册面板组件

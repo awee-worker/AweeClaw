@@ -33,6 +33,7 @@ const TerminalPanel = memo(function TerminalPanel() {
 
     const containerRefs = useRef<Map<string, HTMLDivElement>>(new Map())
     const mountedTerminals = useRef<Set<string>>(new Set())
+    const contentAreaRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
         return terminalManager.subscribe(setManagerState)
@@ -54,6 +55,7 @@ const TerminalPanel = memo(function TerminalPanel() {
 
                     // fit 延迟从 100ms 减少到 50ms，加快 PTY resize
                     // ensureTerminalReady 会等待 mount 完成，减少此延迟能缩短 AI 命令写入前的等待
+                    // fitTerminal 自带可见性判断：未激活的终端标签尺寸为 0 时不会动 PTY
                     setTimeout(() => {
                         terminalManager.fitTerminal(terminal.id)
                     }, 50)
@@ -79,6 +81,51 @@ const TerminalPanel = memo(function TerminalPanel() {
             mountedTerminals.current.clear()
         }
     }, [])
+
+    /**
+     * 尺寸变化后重新对齐终端
+     *
+     * PTY 按 cols/rows 决定回显换行位置：容器宽度变了却没重新 fit，
+     * 终端仍按旧列数换行，长行会折到错误的列上，看上去就是一片错位。
+     * 触发场景包括面板拖拽调整高度、折叠后展开、以及多终端时右侧标签栏
+     * 出现导致内容区变窄。
+     */
+    useEffect(() => {
+        const area = contentAreaRef.current
+        if (!area) return
+
+        const fitActive = () => {
+            if (!area.clientWidth || !area.clientHeight) return
+            const activeId = terminalManager.getState().activeId
+            if (!activeId) return
+            terminalManager.fitTerminal(activeId)
+        }
+
+        // 拖拽调整面板高度时 resize 回调会连续触发，按帧合并，
+        // 避免每一像素都走一次 fit + PTY resize
+        let frame = window.requestAnimationFrame(fitActive)
+        const schedule = () => {
+            window.cancelAnimationFrame(frame)
+            frame = window.requestAnimationFrame(fitActive)
+        }
+
+        const observer = new ResizeObserver(schedule)
+        observer.observe(area)
+
+        return () => {
+            window.cancelAnimationFrame(frame)
+            observer.disconnect()
+        }
+    }, [])
+
+    // 切换终端后重新 fit：新建的终端在标签栏出现后宽度才稳定
+    useEffect(() => {
+        if (!managerState.activeId) return
+        const timer = setTimeout(() => {
+            terminalManager.fitTerminal(managerState.activeId as string)
+        }, 60)
+        return () => clearTimeout(timer)
+    }, [managerState.activeId])
 
     const lastProcessedRootRef = useRef<string | null>(null)
     useEffect(() => {
@@ -187,7 +234,7 @@ const TerminalPanel = memo(function TerminalPanel() {
             <div className="h-full bg-background-editor flex" style={{ boxSizing: 'border-box' }}>
                 {/* 终端内容区：flex-1 填充剩余空间，左侧。
                     overflow-hidden 约束 xterm 内部绝对定位的 canvas，防止溢出遮挡右侧标签栏 */}
-                <div className="flex-1 h-full min-w-0 relative overflow-hidden" style={{ boxSizing: 'border-box' }}>
+                <div ref={contentAreaRef} className="flex-1 h-full min-w-0 relative overflow-hidden" style={{ boxSizing: 'border-box' }}>
                     {terminals.map(term => (
                         <div
                             key={term.id}

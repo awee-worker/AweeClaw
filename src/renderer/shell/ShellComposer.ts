@@ -11,7 +11,9 @@
  * - 向后兼容：默认开发助手场景保持现有布局
  */
 
-import type { ScenarioPlugin, UILayout, PanelDescriptor } from '@shared/protocols/scenario'
+import type { ScenarioPlugin, UILayout, PanelDescriptor, PrimaryViewDescriptor } from '@shared/protocols/scenario'
+import type { RegionNode, ScenarioShellMode } from '@shared/protocols/scenario-regions'
+import { REGIONS_SCHEMA_VERSION, SHELL_SLOTS, validateRegionTree } from '@shared/protocols/scenario-regions'
 import { logger } from '@shared/toolkit/LogEngine'
 
 // ============================================
@@ -42,7 +44,32 @@ export interface LayoutConfig {
   panels: PanelDescriptor[]
   sidebarItems: ScenarioPlugin['ui']['sidebarItems']
   statusBarItems: ScenarioPlugin['ui']['statusBarItems']
+
+  /** 当前场景 ID：主区域组件按它解析 */
+  scenarioId: string
+  /** 主区域组件声明（含历史兼容映射），undefined 表示使用客户端通用看板 */
+  primaryView?: PrimaryViewDescriptor
+  /**
+   * 外壳放权档位。
+   *
+   * 'full' 时场景接管整壳，客户端只保证保留集部件与全屏页；其余两档沿用
+   * 现有的 slot / MainContentArea 路径。
+   */
+  shellMode: ScenarioShellMode
+  /** 场景声明的外壳区域树（已校验），undefined 表示使用默认结构 */
+  regions?: RegionNode
 }
+
+/**
+ * build* 函数的返回类型。
+ *
+ * scenarioId / primaryView / shellMode / regions 与具体预设无关，由 getLayoutConfig
+ * 在 switch 之后统一注入，避免十个预设函数各抄一遍、漏一个就静默失效。
+ */
+export type BaseLayoutConfig = Omit<
+  LayoutConfig,
+  'scenarioId' | 'primaryView' | 'shellMode' | 'regions'
+>
 
 // ============================================
 // 布局策略
@@ -78,7 +105,7 @@ function extractKeepChatPanelIds(scenario: ScenarioPlugin): string[] {
   return [...new Set([...BUILTIN_KEEP_CHAT_PANEL_IDS, ...declared])]
 }
 
-function buildEditorCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
+function buildEditorCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'editor-centric',
     showActivityBar: true,
@@ -104,7 +131,7 @@ function buildEditorCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
   }
 }
 
-function buildChatCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
+function buildChatCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   const hasSidebarItems = scenario.ui.sidebarItems && scenario.ui.sidebarItems.length > 0
   return {
     layout: 'chat-centric',
@@ -131,7 +158,7 @@ function buildChatCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
   }
 }
 
-function buildDashboardCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
+function buildDashboardCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'dashboard-centric',
     showActivityBar: true,
@@ -157,7 +184,7 @@ function buildDashboardCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
   }
 }
 
-function buildAnalyticsCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
+function buildAnalyticsCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'analytics-centric',
     showActivityBar: true,
@@ -183,7 +210,7 @@ function buildAnalyticsCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
   }
 }
 
-function buildCanvasCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
+function buildCanvasCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'canvas-centric',
     showActivityBar: true,
@@ -209,7 +236,7 @@ function buildCanvasCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
   }
 }
 
-function buildFullscreenChatConfig(scenario: ScenarioPlugin): LayoutConfig {
+function buildFullscreenChatConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'fullscreen-chat',
     showActivityBar: false,
@@ -235,7 +262,7 @@ function buildFullscreenChatConfig(scenario: ScenarioPlugin): LayoutConfig {
   }
 }
 
-function buildMinimalConfig(scenario: ScenarioPlugin): LayoutConfig {
+function buildMinimalConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'minimal',
     showActivityBar: false,
@@ -261,7 +288,7 @@ function buildMinimalConfig(scenario: ScenarioPlugin): LayoutConfig {
   }
 }
 
-function buildResearchCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
+function buildResearchCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   const hasSidebarItems = scenario.ui.sidebarItems && scenario.ui.sidebarItems.length > 0
   return {
     layout: 'research-centric',
@@ -288,7 +315,7 @@ function buildResearchCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
   }
 }
 
-function buildFocusCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
+function buildFocusCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'focus-centric',
     showActivityBar: false,
@@ -314,7 +341,7 @@ function buildFocusCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
   }
 }
 
-function buildSplitCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
+function buildSplitCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'split-centric',
     showActivityBar: true,
@@ -338,6 +365,125 @@ function buildSplitCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     sidebarItems: scenario.ui.sidebarItems,
     statusBarItems: scenario.ui.statusBarItems,
   }
+}
+
+// ============================================
+// 场景 UI 解析
+// ============================================
+
+/**
+ * 历史兼容：analytics-centric 曾把门店诊断的看板硬编码进主内容区。
+ *
+ * 那张表只是为了既有场景不掉功能。新场景请用 ui.primaryView 声明主区域组件，
+ * 这张表里的条目可以随场景逐步改造逐个删除。
+ */
+const LEGACY_PRIMARY_VIEWS: Record<string, string> = {
+  'store-diagnosis': 'StoreDiagnosisDashboard',
+}
+
+/** 解析主区域组件声明：显式声明 > 历史兼容映射 > 无（调用方回退通用看板） */
+function resolvePrimaryView(scenario: ScenarioPlugin): PrimaryViewDescriptor | undefined {
+  const declared = scenario.ui.primaryView
+  if (declared?.component) return declared
+
+  const legacy = LEGACY_PRIMARY_VIEWS[scenario.id]
+  if (legacy) return { component: legacy }
+
+  return undefined
+}
+
+/**
+ * 解析外壳放权档位。
+ *
+ * 缺省按现状推断：声明了 regions 视为 'regions'，否则 'chrome'。这样老场景
+ * 不需要补字段，行为保持不变。
+ */
+function resolveShellMode(scenario: ScenarioPlugin): ScenarioShellMode {
+  const declared = scenario.ui.shellMode
+  if (declared === 'chrome' || declared === 'regions' || declared === 'full') return declared
+  return scenario.ui.regions ? 'regions' : 'chrome'
+}
+
+/**
+ * 解析外壳区域树。
+ *
+ * 场景声明的是外部数据：契约版本超出支持范围、槽位越界、保留件缺失或结构
+ * 非法时，整棵树被丢弃并回退宿主默认布局。半信半疑地渲染一棵坏树比不渲染
+ * 更糟——用户会看到残缺界面却没有任何提示。
+ *
+ * 注意降级目标只有宿主默认树，绝不回退到场景自己的 regions：full 档位下那
+ * 就是同一棵被拒的树，回退过去还是被拒，结果是白屏而不是降级。
+ */
+function resolveRegions(
+  scenario: ScenarioPlugin,
+  shellMode: ScenarioShellMode,
+): RegionNode | undefined {
+  const regions = scenario.ui.regions
+  if (!regions) return undefined
+
+  const declaredVersion = scenario.ui.regionsSchemaVersion ?? 1
+  if (declaredVersion > REGIONS_SCHEMA_VERSION) {
+    logger.scenario.warn(
+      `[ShellComposer] 场景 ${scenario.id} 声明的 regions 契约版本 ${declaredVersion} 高于客户端支持的 ${REGIONS_SCHEMA_VERSION}，回退默认布局`,
+    )
+    return undefined
+  }
+
+  const result = validateRegionTree(regions, {
+    allowedSlots: SHELL_SLOTS,
+    shellMode,
+    regionsSchemaVersion: declaredVersion,
+    sidebarItemIds: scenario.ui.sidebarItems?.map((item) => item.id),
+  })
+
+  // 未知部件（场景 SDK 比客户端新）不阻断渲染，但必须留下痕迹，
+  // 否则开发者只能盲猜「为什么我的部件没出现」
+  if (result.warnings.length > 0) {
+    logger.scenario.warn(
+      `[ShellComposer] 场景 ${scenario.id} 的 regions 存在可忽略的问题：${result.warnings.join('；')}`,
+    )
+  }
+
+  if (!result.ok) {
+    logger.scenario.warn(
+      `[ShellComposer] 场景 ${scenario.id} 的 regions 校验未通过，回退宿主默认布局：${result.errors.join('；')}`,
+    )
+    return undefined
+  }
+
+  return regions
+}
+
+/**
+ * 稳定序列化：对象键排序后再拼接。
+ *
+ * 缓存 key 需要「配置内容相同则 key 相同」，而 JSON.stringify 依赖键顺序，
+ * 同一份配置换个赋值顺序就会得到不同指纹，白白丢掉缓存。
+ */
+function stableSerialize(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    if (typeof value === 'function') return '"[fn]"'
+    return JSON.stringify(value) ?? 'null'
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map(stableSerialize).join(',')}]`
+  }
+
+  const record = value as Record<string, unknown>
+  const entries = Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`)
+  return `{${entries.join(',')}}`
+}
+
+/** djb2 字符串哈希，取 32 位无符号整数的 36 进制串，用作缓存指纹 */
+function hashString(input: string): string {
+  let hash = 5381
+  for (let i = 0; i < input.length; i += 1) {
+    hash = ((hash << 5) + hash + input.charCodeAt(i)) | 0
+  }
+  return (hash >>> 0).toString(36)
 }
 
 // ============================================
@@ -404,20 +550,19 @@ class ShellComposerClass {
 
 
   getLayoutConfig(scenario: ScenarioPlugin): LayoutConfig {
-    // 缓存 key 必须带上 ui 指纹：场景重装 / 热更新后 id 与 layout 都不变，
-    // 但 sidebarItems 可能整体换掉。只看 id:layout 会命中旧配置，
-    // 表现为「装好了新版本，宽模式面板、隐藏聊天等声明还是旧的」。
-    const uiSignature = (scenario.ui.sidebarItems ?? [])
-      .map(item => `${item.id}${item.wideMode ? 'W' : ''}${item.hideChat ? 'H' : ''}`)
-      .join(',')
-    const cacheKey = `${scenario.id}:${scenario.ui.layout}:${uiSignature}`
+    // 缓存 key 取整个 ui 配置的稳定指纹。
+    //
+    // 此前只拼了 sidebarItems 的 id/wideMode/hideChat：改 panels、statusBarItems、
+    // welcomeComponent、primaryView 或 regions 都不会让缓存失效，表现为
+    // 「场景更新了，界面还是旧的」，只能靠重装或重启刷出来。
+    const cacheKey = `${scenario.id}:${hashString(stableSerialize(scenario.ui))}`
     const cached = this.cache.get(cacheKey)
 
     if (cached && Date.now() - cached.createdAt <= this.ttlMs) {
       return cached.config
     }
 
-    let config: LayoutConfig
+    let config: BaseLayoutConfig
 
     switch (scenario.ui.layout) {
       case 'editor-centric':
@@ -454,8 +599,18 @@ class ShellComposerClass {
         config = buildEditorCentricConfig(scenario)
     }
 
-    this.cache.set(cacheKey, { config, createdAt: Date.now() })
-    return config
+    // 与预设无关的字段统一注入，十个预设函数无需各自维护
+    const shellMode = resolveShellMode(scenario)
+    const fullConfig: LayoutConfig = {
+      ...config,
+      scenarioId: scenario.id,
+      primaryView: resolvePrimaryView(scenario),
+      shellMode,
+      regions: resolveRegions(scenario, shellMode),
+    }
+
+    this.cache.set(cacheKey, { config: fullConfig, createdAt: Date.now() })
+    return fullConfig
   }
 
   clearCache(): void {
