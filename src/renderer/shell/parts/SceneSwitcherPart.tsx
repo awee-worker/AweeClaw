@@ -18,7 +18,9 @@ import { t, type Language } from '@renderer/i18n'
 import AppMenuBar from '@components/layout/AppMenuBar'
 import ProjectSelector from '@components/layout/ProjectSelector'
 import ScenarioSelector from '@components/layout/ScenarioSelector'
+import { PanelLeftIcon } from '@components/foundation/PanelLeftIcon'
 import type { HostPartComponentProps } from '../HostPartRegistry'
+
 
 const isMac = typeof navigator !== 'undefined' && (
   navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
@@ -31,17 +33,6 @@ const isWindows = typeof navigator !== 'undefined' && (
   ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toUpperCase().indexOf('WIN') ?? -1) >= 0
 )
 
-function PanelLeftIcon({ filled = false, className }: { filled?: boolean; className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-      className={className}>
-      <rect width="18" height="18" x="3" y="3" rx="2" />
-      {filled && <path d="M3 5a2 2 0 0 1 2-2h4v18H5a2 2 0 0 1-2-2V5z" fill="currentColor" opacity="0.75" stroke="none" />}
-      <line x1="9" x2="9" y1="3" y2="21" />
-    </svg>
-  )
-}
 
 export function SceneSwitcherPart(_props: HostPartComponentProps) {
   const {
@@ -84,18 +75,17 @@ export function SceneSwitcherPart(_props: HostPartComponentProps) {
 
   return (
     <div className={`flex items-center gap-3 h-full ${isMac && !navRailExpanded ? 'pl-[40px]' : 'pl-3'}`}>
-      <button
-        onClick={() => setNavRailExpanded(!navRailExpanded)}
-        className="no-drag w-7 h-7 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-200"
-        title={navRailExpanded
-          ? (t('layout.collapsemenu', language as Language))
-          : (t('layout.expandmenu', language as Language))}
-      >
-        {navRailExpanded
-          ? <PanelLeftIcon filled className="w-4 h-4" />
-          : <PanelLeftIcon className="w-4 h-4" />
-        }
-      </button>
+      {/* 导航栏收起时在这里提供展开入口；展开态由导航栏顶部右侧的按钮负责收起 */}
+      {!navRailExpanded && (
+        <button
+          onClick={() => setNavRailExpanded(true)}
+          className="no-drag w-7 h-7 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-200"
+          title={t('layout.expandmenu', language as Language)}
+        >
+          <PanelLeftIcon className="w-4 h-4" />
+        </button>
+      )}
+
 
       {/* Linux：自绘顶部菜单栏保持在场景/工作空间选择器之前（macOS 使用系统菜单栏） */}
       {!isMac && !isWindows && <AppMenuBar />}

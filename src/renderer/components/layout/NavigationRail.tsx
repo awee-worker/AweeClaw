@@ -6,6 +6,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getLucideIcon } from '../foundation/IconMap'
 import { Logo } from '../foundation/BrandMark'
+import { PanelLeftIcon } from '../foundation/PanelLeftIcon'
 import { useAgentActions } from '@hooks/useAgent'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
 import type { SidePanel } from '@store/slices'
@@ -111,6 +112,7 @@ export default function NavigationRail() {
     setShowWorkflow,
     activeScenarioId,
     navRailExpanded,
+    setNavRailExpanded,
     showSettingsPage,
     showWelcomePage,
     setShowWelcomePage,
@@ -128,6 +130,7 @@ export default function NavigationRail() {
     setShowWorkflow: s.setShowWorkflow,
     activeScenarioId: s.activeScenarioId,
     navRailExpanded: s.navRailExpanded,
+    setNavRailExpanded: s.setNavRailExpanded,
     showSettingsPage: s.showSettingsPage,
     showWelcomePage: s.showWelcomePage,
     setShowWelcomePage: s.setShowWelcomePage,
@@ -316,6 +319,8 @@ export default function NavigationRail() {
           flex-direction: column;
           /* z-index 高于 AppTitleBar(z-50)，确保顶部阴影不被标题栏背景遮挡 */
           z-index: 60;
+          /* 收起按钮绝对定位到面板顶部右侧，需以面板为参照 */
+          position: relative;
           user-select: none;
           padding: 20px 8px 8px 8px;
           transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1), padding 200ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -332,6 +337,30 @@ export default function NavigationRail() {
         }
         .${p}-nav-rail[data-mac="true"][data-expanded="false"] {
           padding-top: 48px;
+        }
+        .${p}-nav-rail-collapse-btn {
+          /* 与标题栏按钮同高：标题栏 h-11(44px)、按钮 28px 居中，顶部偏移 8px。
+             绝对定位是为了摆脱导航栏的 padding-top（macOS 需为红绿灯让位 48px），
+             靠右则天然避开左侧红绿灯区域。 */
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          border: none;
+          background: transparent;
+          color: rgb(var(--text-muted));
+          cursor: pointer;
+          transition: color 0.2s ease, background 0.2s ease;
+        }
+        .${p}-nav-rail-collapse-btn:hover {
+          color: rgb(var(--text-primary));
+          background: rgb(var(--text-primary) / 0.06);
         }
         .${p}-nav-rail-brand {
           display: flex;
@@ -356,6 +385,7 @@ export default function NavigationRail() {
           justify-content: center;
           padding: 4px 0 12px 0;
         }
+
         .${p}-nav-rail-brand-icon {
           width: 24px;
           height: 24px;
@@ -567,20 +597,27 @@ export default function NavigationRail() {
       `}</style>
 
       {/* 仪表盘入口：场景用它自己的第一屏取代宿主仪表盘时可关闭 */}
-      {showDashboardEntry && (navRailExpanded ? (
+      {showDashboardEntry && (
         <div className={`${p}-nav-rail-brand`} data-active={isDashboardActive} onClick={handleBrandClick}>
           <div className={`${p}-nav-rail-brand-icon`}>
             <Logo className="w-full h-full" />
           </div>
           <span className={`${p}-nav-rail-brand-name`}>仪表盘</span>
         </div>
-      ) : (
-        <div className={`${p}-nav-rail-brand`} data-active={isDashboardActive} onClick={handleBrandClick}>
-          <div className={`${p}-nav-rail-brand-icon`}>
-            <Logo className="w-full h-full" />
-          </div>
-        </div>
-      ))}
+      )}
+
+      {/* 展开态：收起入口落在面板顶部右侧，与标题栏左侧的展开按钮互为镜像 */}
+      {navRailExpanded && (
+        <button
+          type="button"
+          className={`${p}-nav-rail-collapse-btn no-drag`}
+          onClick={() => setNavRailExpanded(false)}
+          title={t('layout.collapsemenu', language as Language)}
+        >
+          <PanelLeftIcon filled className="w-4 h-4" />
+        </button>
+      )}
+
 
       {/* 新建任务：默认所有场景共有的固定入口，场景可通过 ui.chrome.hideNewTask 关闭 */}
       {showNewTaskEntry && (navRailExpanded ? (
