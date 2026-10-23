@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
+  AlertTriangle,
   Code2,
   Cpu,
   Sparkles,
@@ -57,6 +58,7 @@ import {
 } from '@services/pluginService'
 import type { InstalledPlugin } from '@services/pluginService'
 import { skillService } from '@intelligence/runtime/skillRepository'
+import { mcpService } from '@services/toolProtocolAdapter'
 import type { McpServerStatus } from '@shared/protocols/toolProtocolBridge'
 import { type Language } from '@renderer/i18n'
 import { PluginConfigEditDialog } from './PluginConfigEditDialog'
@@ -90,7 +92,23 @@ const TYPE_LABELS: Record<string, { zh: string; en: string; color: string }> = {
   skill: { zh: '技能', en: 'Skill', color: 'bg-amber-500/15 text-amber-400' },
 }
 
+/**
+ * 已安装插件的问题项
+ *
+ * - mcp-error     MCP 服务连接失败，插件提供的工具不可调用
+ * - mcp-missing   声明了 MCP 服务但本地没有对应记录，安装或注册未完成
+ * - skill-missing 技能型插件的 SKILL.md 没有随包落地，技能不会出现在技能列表
+ */
+interface PluginIssue {
+  kind: 'mcp-error' | 'mcp-missing' | 'skill-missing'
+  pluginKey: string
+  pluginName: string
+  /** 失败详情（MCP 错误信息等） */
+  detail?: string
+}
+
 // ─── 组件 ──────────────────────────────────────────────
+
 
 export function PluginInstalledPanel() {
   const language = useStore((s) => s.language) as Language
@@ -108,6 +126,9 @@ export function PluginInstalledPanel() {
   const [searchQuery, setSearchQuery] = useState('')
   /** 声明为 skill 型、但本地缺少 SKILL.md 的插件：技能正文没随包落地，技能条不会出现它 */
   const [skillMissingKeys, setSkillMissingKeys] = useState<Set<string>>(new Set())
+  /** 正在重连失败的 MCP 服务 */
+  const [reconnecting, setReconnecting] = useState(false)
+
 
   /**
    * 按关键字过滤已安装插件
@@ -154,9 +175,63 @@ export function PluginInstalledPanel() {
     })
   }, [plugins, searchQuery])
 
+  /**
+   * 插件问题汇总
+   *
+   * 「已安装」列表只列插件本身，装完连不上或没装完整的情况会静默地不可用，
+   * 因此在列表上方统一汇总三类问题：MCP 连接失败、MCP 服务未注册、技能正文缺失。
+   *
+   * 服务列表为空说明 MCP 状态还没拉回来，此时不做「服务缺失」判断，避免切页瞬间误报。
+   */
+  const issues = useMemo<PluginIssue[]>(() => {
+    const serversReady = mcpServers.length > 0
+    const result: PluginIssue[] = []
+    for (const plugin of plugins) {
+      const manifest = plugin.manifest as { name?: string; nameZh?: string }
+      const pluginName =
+        language === 'zh'
+          ? manifest.nameZh || manifest.name || plugin.pluginKey
+          : manifest.name || plugin.pluginKey
+
+      if (plugin.mcpServerId) {
+        const server = mcpServers.find((s) => s.id === plugin.mcpServerId)
+        if (!server) {
+          // 只有已启用的插件才要求服务在场：禁用的插件本就不会注册服务
+          if (serversReady && plugin.enabled) {
+            result.push({ kind: 'mcp-missing', pluginKey: plugin.pluginKey, pluginName })
+          }
+        } else if (server.status === 'error') {
+          result.push({
+            kind: 'mcp-error',
+            pluginKey: plugin.pluginKey,
+            pluginName,
+            detail: server.error,
+          })
+        }
+      }
+
+      if (skillMissingKeys.has(plugin.pluginKey)) {
+        result.push({ kind: 'skill-missing', pluginKey: plugin.pluginKey, pluginName })
+      }
+    }
+    return result
+  }, [plugins, mcpServers, skillMissingKeys, language])
+
+  /** 可重连的 MCP 服务（连接失败的那些），用于一键重连 */
+  const failedServerIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const plugin of plugins) {
+      if (!plugin.mcpServerId) continue
+      const server = mcpServers.find((s) => s.id === plugin.mcpServerId)
+      if (server?.status === 'error') ids.add(server.id)
+    }
+    return [...ids]
+  }, [plugins, mcpServers])
+
   const loadPlugins = useCallback(async () => {
     setIsLoading(true)
     try {
+
       // 技能贡献与插件列表一同取回：其中被标记 skillMdMissing 的插件，说明技能正文
       // 没有随包落地（技能条里看不到它），卡片上要给出明确提示而不是无声无息。
       const [list, contributions] = await Promise.all([
@@ -180,6 +255,31 @@ export function PluginInstalledPanel() {
       setIsLoading(false)
     }
   }, [language])
+
+  /** 重连所有连接失败的 MCP 服务 */
+  async function handleReconnectFailed() {
+    if (failedServerIds.length === 0 || reconnecting) return
+    setReconnecting(true)
+    try {
+      const results = await Promise.all(
+        failedServerIds.map((id) => mcpService.reconnectServer(id).catch(() => false)),
+      )
+      const failed = results.filter((ok) => !ok).length
+      if (failed === 0) {
+        toast.success(language === 'zh' ? 'MCP 服务已重新连接' : 'MCP services reconnected')
+      } else {
+        toast.warning(
+          language === 'zh'
+            ? `仍有 ${failed} 个服务连接失败，请到设置中检查配置`
+            : `${failed} service(s) still failing, check the config in Settings`,
+        )
+      }
+      await loadPlugins()
+    } finally {
+      setReconnecting(false)
+    }
+  }
+
 
   useEffect(() => {
     loadPlugins()
@@ -535,6 +635,16 @@ export function PluginInstalledPanel() {
 
       {/* 九宫格卡片列表 */}
       <div className="flex-1 overflow-y-auto">
+        {/* 插件异常汇总：安装后连不上 / 没装完整的插件在这里统一提醒 */}
+        {!isLoading && issues.length > 0 && (
+          <PluginIssueBanner
+            issues={issues}
+            language={language}
+            reconnecting={reconnecting}
+            onReconnect={failedServerIds.length > 0 ? () => void handleReconnectFailed() : undefined}
+          />
+        )}
+
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
             <RefreshCw className="w-4 h-4 animate-spin text-text-muted" />
@@ -570,7 +680,9 @@ export function PluginInstalledPanel() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-6">
+          <div
+            className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-6 pb-6 ${issues.length > 0 ? 'pt-4' : 'pt-6'}`}
+          >
             {filteredPlugins.map((plugin) => {
               // 查找该插件对应的 MCP 服务器状态
               const mcpServer = plugin.mcpServerId
@@ -668,6 +780,91 @@ function CardActionButton({
     </button>
   )
 }
+
+/**
+ * 插件异常提示条
+ *
+ * 列表上方的一条汇总提醒：装完却连不上、服务没注册、技能正文缺失的插件都在这里列出，
+ * 最多展开 3 项，其余折叠成计数，避免撑高头部。
+ */
+function PluginIssueBanner({
+  issues,
+  language,
+  reconnecting,
+  onReconnect,
+}: {
+  issues: PluginIssue[]
+  language: Language
+  reconnecting: boolean
+  /** 存在可重连的服务时传入，不传则不显示重连按钮 */
+  onReconnect?: () => void
+}) {
+  const shown = issues.slice(0, 3)
+  const restCount = issues.length - shown.length
+
+  /** 单条问题的描述文字 */
+  function describe(issue: PluginIssue): string {
+    if (issue.kind === 'mcp-error') {
+      return language === 'zh'
+        ? `「${issue.pluginName}」MCP 服务连接失败`
+        : `"${issue.pluginName}" failed to connect to its MCP service`
+    }
+    if (issue.kind === 'mcp-missing') {
+      return language === 'zh'
+        ? `「${issue.pluginName}」声明的 MCP 服务未注册，安装可能未完成`
+        : `The MCP service declared by "${issue.pluginName}" is not registered; the install may be incomplete`
+    }
+    return language === 'zh'
+      ? `「${issue.pluginName}」技能正文缺失，技能不会出现在技能列表`
+      : `"${issue.pluginName}" is missing its skill body, so the skill will not appear in the skill list`
+  }
+
+  return (
+    <div className="mx-6 mt-6 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2.5">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="shrink-0 w-3.5 h-3.5 mt-0.5 text-orange-400" />
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] font-medium text-orange-300">
+            {language === 'zh'
+              ? `${issues.length} 个已安装插件存在异常`
+              : `${issues.length} installed plugin(s) have issues`}
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {shown.map((issue) => (
+              <li
+                key={`${issue.kind}:${issue.pluginKey}`}
+                className="text-[12px] text-orange-200/80 line-clamp-1"
+                title={issue.detail ? `${describe(issue)}：${issue.detail}` : describe(issue)}
+              >
+                {describe(issue)}
+                {issue.detail ? `：${issue.detail}` : ''}
+              </li>
+            ))}
+            {restCount > 0 && (
+              <li className="text-[12px] text-orange-200/60">
+                {language === 'zh' ? `还有 ${restCount} 项…` : `${restCount} more…`}
+              </li>
+            )}
+          </ul>
+        </div>
+        <div className="shrink-0 flex items-center gap-1">
+          {onReconnect && (
+            <button
+              type="button"
+              onClick={onReconnect}
+              disabled={reconnecting}
+              className="flex items-center gap-1 h-6 px-2 rounded-md text-[12px] font-medium text-orange-300 hover:bg-orange-500/15 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+            >
+              <RefreshCw className={`w-3 h-3 ${reconnecting ? 'animate-spin' : ''}`} />
+              {language === 'zh' ? '重新连接' : 'Reconnect'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 function PluginCard({
   plugin,
@@ -824,9 +1021,11 @@ function PluginCard({
         </div>
       </div>
 
-      {/* ── 描述（两行截断） ── */}
+      {/* ── 描述（严格两行截断） ── */}
+      {/* 行高用固定值 1.5（12px → 18px），两行正好 36px：line-clamp 按行盒取整，
+          配合 max-h 才不会让第三行露出一截（leading-relaxed 是 1.625，取整后就会漏两行半） */}
       {description && (
-        <p className="text-[12px] text-text-muted px-3 pb-2 leading-relaxed line-clamp-2 overflow-hidden break-words">
+        <p className="text-[12px] text-text-muted px-3 pb-2 leading-[1.5] line-clamp-2 max-h-[36px] overflow-hidden break-words">
           {description}
         </p>
       )}
