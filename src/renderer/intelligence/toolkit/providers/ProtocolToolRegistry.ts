@@ -18,6 +18,7 @@ import type {
 } from '@intelligence/providerTypes'
 import type { McpTool, McpServerState, McpContent } from '@shared/protocols/toolProtocolBridge'
 import type { ToolLoadingContext } from '@configuration/toolCategoryDefs'
+import { applySessionScope } from '@configuration/toolCategoryDefs'
 import { prepareJsForPlaywright } from '@intelligence/toolkit/playwrightBridge'
 
 /** MCP 工具名称前缀 */
@@ -120,6 +121,15 @@ export class McpToolProvider implements ToolProvider {
       for (const tool of server.tools) {
         definitions.push(this.convertToDefinition(server, tool))
       }
+    }
+
+    // 会话边界同样约束 MCP：场景限定「只服务本场景」时，一个能读文件、能发请求的
+    // MCP 服务就是绕过边界的后门。需要保留某个服务时，在白名单里写
+    // `mcp_<serverId>__*` 即可
+    const scope = this.context.sessionScope
+    if (scope) {
+      const allowed = applySessionScope(new Set(definitions.map((def) => def.name)), scope)
+      return definitions.filter((def) => allowed.has(def.name))
     }
 
     return definitions

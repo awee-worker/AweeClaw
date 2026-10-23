@@ -148,6 +148,9 @@ export async function loadExternalScenarios(): Promise<number> {
             capabilities: fullPlugin.capabilities,
             ui: fullPlugin.ui,
             dataSources: fullPlugin.dataSources,
+            // 会话边界随 bundle 一起下发：场景升级了边界声明，重载后立即生效，
+            // 与 ui / capabilities 的刷新节奏保持一致
+            sessionScope: fullPlugin.sessionScope,
           })
         }
 

@@ -19,6 +19,7 @@ import { Plus, Phone, Bot, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react
 import { api } from '../../adapters/electronBridge'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { resolveUserMenuPlacement } from '@shared/protocols/scenario'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentActions } from '@hooks/useAgent'
 import { t, type Language } from '@renderer/i18n'
@@ -34,6 +35,7 @@ import NotificationsPart from '@renderer/shell/parts/NotificationsPart'
 import QuotaPart from '@renderer/shell/parts/QuotaPart'
 import SidebarTogglePart from '@renderer/shell/parts/SidebarTogglePart'
 import WindowControlsPart from '@renderer/shell/parts/WindowControlsPart'
+import RailUserPart from '@renderer/shell/parts/RailUserPart'
 
 /**
  * "重启以更新" 按钮
@@ -192,6 +194,9 @@ export default function AppTitleBar() {
   const hideVoiceConversation = scenarioChrome?.hideVoiceConversation === true
   const hideDesktopCompanion = scenarioChrome?.hideDesktopCompanion === true
 
+  // 场景把账号区挪到顶部右侧时，导航栏底部不再渲染它，改由这里接管
+  const userMenuInTitlebar = resolveUserMenuPlacement(scenarioChrome) === 'titlebar'
+
   const { createThread } = useAgentActions()
   const envInstallStatus = useStore((s) => s.envInstallStatus)
 
@@ -292,6 +297,14 @@ export default function AppTitleBar() {
           <div className="w-[1px] h-4 bg-border/50 mx-1"></div>
 
           <SidebarTogglePart />
+
+          {/* 账号区落到最右：场景关掉左侧导航栏时，账号入口只剩这一处 */}
+          {userMenuInTitlebar && (
+            <>
+              <div className="w-[1px] h-4 bg-border/50 mx-1"></div>
+              <RailUserPart placement="titlebar" expanded={false} />
+            </>
+          )}
         </div>
       </div>
 

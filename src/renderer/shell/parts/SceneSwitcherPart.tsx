@@ -28,6 +28,16 @@ const isMac = typeof navigator !== 'undefined' && (
   ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toUpperCase().indexOf('MAC') ?? -1) >= 0
 )
 
+/**
+ * macOS 红绿灯占位宽度
+ *
+ * 三个圆形按钮自窗口左边缘约 20px 起排布（直径 12px、间距 8px），整组右边缘
+ * 落在 72px 附近。场景不渲染导航栏时标题栏直接顶到窗口左上角，左侧留白必须
+ * 大于这个值，否则场景选择器会被最右侧的绿色按钮压住。留到 88px 既避开遮挡，
+ * 又不至于让内容离窗口边缘太远。
+ */
+const MAC_TRAFFIC_LIGHTS_INSET = 'pl-[88px]'
+
 /** Windows 平台判定：用于决定自绘菜单栏的摆放位置（Windows 排在搜索按钮之后） */
 const isWindows = typeof navigator !== 'undefined' && (
   navigator.platform.toUpperCase().indexOf('WIN') >= 0 ||
@@ -67,6 +77,8 @@ export function SceneSwitcherPart(_props: HostPartComponentProps) {
   const scenarioChrome = scenarioRegistry.get(activeScenarioId)?.ui?.chrome
   const hideWorkspaceSelector = scenarioChrome?.hideWorkspaceSelector === true
   const hideSearch = scenarioChrome?.hideSearch === true
+  // 导航栏被场景关掉时不再提供展开入口：点了也不会有面板出现
+  const hideNavRail = scenarioChrome?.hideNavRail === true
 
   const handleOpenMarketplace = useCallback(() => {
     closeAllFullPages()
@@ -75,9 +87,9 @@ export function SceneSwitcherPart(_props: HostPartComponentProps) {
   }, [closeAllFullPages, setShowWorkflow, setShowScenarioPage])
 
   return (
-    <div className={`flex items-center gap-3 h-full ${isMac && !navRailExpanded ? 'pl-[40px]' : 'pl-3'}`}>
+    <div className={`flex items-center gap-3 h-full ${isMac && (hideNavRail || !navRailExpanded) ? MAC_TRAFFIC_LIGHTS_INSET : 'pl-3'}`}>
       {/* 导航栏收起时在这里提供展开入口；展开态由导航栏顶部右侧的按钮负责收起 */}
-      {!navRailExpanded && (
+      {!hideNavRail && !navRailExpanded && (
         <HintOverlay content={t('layout.expandmenu', language as Language)} side="bottom" delay={300}>
           <button
             onClick={() => setNavRailExpanded(true)}

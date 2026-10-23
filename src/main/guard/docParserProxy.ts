@@ -13,7 +13,14 @@
 import { utilityProcess } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import * as path from 'path'
-import { DocParserKind, DocParserRequest, DocParserResponse, runDocParserTask } from './docParserCore'
+import {
+  DocParserKind,
+  DocParserRequest,
+  DocParserResponse,
+  PdfPageImage,
+  RenderPdfPagesOptions,
+  runDocParserTask,
+} from './docParserCore'
 
 /** 单任务超时（大 Excel/PDF 解析可能较慢，给足余量） */
 const TASK_TIMEOUT_MS = 120_000
@@ -39,8 +46,13 @@ class DocParserProxyImpl {
   private spawnFailed = false
 
   /** 派发解析任务：优先子进程，失败回退主进程内联 */
-  async run(kind: DocParserKind, filePath: string, sheetData?: any): Promise<DocParserResponse> {
-    const req: DocParserRequest = { id: this.nextId++, kind, filePath, sheetData }
+  async run(
+    kind: DocParserKind,
+    filePath: string,
+    sheetData?: any,
+    renderOptions?: RenderPdfPagesOptions,
+  ): Promise<DocParserResponse> {
+    const req: DocParserRequest = { id: this.nextId++, kind, filePath, sheetData, renderOptions }
     const child = this.ensureChild()
     if (!child) {
       return runDocParserTask(req)
@@ -61,6 +73,16 @@ class DocParserProxyImpl {
     const res = await this.run(kind, filePath)
     return res.ok ? (res.text ?? null) : null
   }
+
+  /** 便捷方法：把 PDF 渲染为页面图，供本地 OCR 使用；失败返回空数组 */
+  async renderPdfPages(
+    filePath: string,
+    options?: RenderPdfPagesOptions,
+  ): Promise<PdfPageImage[]> {
+    const res = await this.run('pdfPages', filePath, undefined, options)
+    return res.ok ? (res.pageImages ?? []) : []
+  }
+
 
   /** 确保 worker 存活；不可用时返回 null（走内联回退） */
   private ensureChild(): Electron.UtilityProcess | null {

@@ -441,6 +441,8 @@ function createGroupedAPI() {
     // 自绘菜单（Windows/Linux）：执行原生角色
     menu: {
       executeRole: (role: string) => raw.executeMenuRole(role),
+      // 场景切换后同步可见的顶级菜单：null 恢复全部，[] 全部收起
+      setScenarioMenus: (ids: string[] | null) => raw.setScenarioMenus(ids),
     },
 
     // 文件操作

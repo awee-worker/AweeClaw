@@ -98,6 +98,9 @@ function buildBasePlugin(
     dataSources: (config.dataSources as unknown as ScenarioPlugin['dataSources']) || {
       workspace: false,
     },
+    // 会话边界随清单一起落盘：bundle 未就绪时不至于退化成「无边界」，
+    // 后续 bundle 加载成功再由 ExternalScenarioLoader 以最新声明覆盖
+    sessionScope: config.sessionScope as unknown as ScenarioPlugin['sessionScope'],
   }
 }
 

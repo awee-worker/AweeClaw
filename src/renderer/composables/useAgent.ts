@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore, useModeStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { getEffectiveLLMConfigAsync } from '@services/modelConfigHelper'
+import { resolveTaskLLMConfig } from '@shared/configuration/modelConfigResolver'
 import {
   useAgentStore,
   selectMessageListState,
@@ -63,8 +64,36 @@ function buildModeOverrides(
 }
 
 /* ------------------------------------------------------------------ */
-/* 会话列表缓存                                                      */
+/* 指定模型覆盖                                                       */
 /* ------------------------------------------------------------------ */
+
+/**
+ * 按指定模型重算 LLM 配置
+ *
+ * 换服务商不只是换个模型名：apiKey / baseUrl / protocol 都要跟着换，否则请求会
+ * 打到旧的端点上。resolveTaskLLMConfig 做的就是这件事（计划任务分派也用它）。
+ * 凭证缺失时它返回 null，此时保持原配置继续跑，比直接报错有用。
+ */
+function resolveModelOverride(
+  base: LLMConfig,
+  override?: { provider: string; model: string },
+): LLMConfig {
+  if (!override) return base
+  if (override.provider === base.provider && override.model === base.model) return base
+  const store = useStore.getState()
+  const resolved = resolveTaskLLMConfig(
+    override.provider,
+    override.model,
+    store.providerConfigs,
+    base,
+  )
+  return resolved ?? base
+}
+
+/* ------------------------------------------------------------------ */
+/* 会话列表缓存                                                       */
+/* ------------------------------------------------------------------ */
+
 
 let cachedThreadsRef: Record<string, ChatThread> | null = null
 let cachedSortedThreads: ChatThread[] = []
@@ -82,8 +111,9 @@ export function useAllThreads(): ChatThread[] {
     cachedThreadsRef = state.threads
     cachedUserId = currentUserId
     cachedSortedThreads = Object.values(state.threads)
-      // 计划任务工作线程不对用户展示：它们只是执行载体，不是用户会话
-      .filter((thread) => thread.origin !== 'plan-task')
+      // 后台工作线程不对用户展示：计划任务、场景内 AI 运行（如原型工坊画图）
+      // 只是执行载体，不是用户会话
+      .filter((thread) => (thread.origin ?? 'user') === 'user')
       .filter((thread) => (currentUserId ? thread.userId === currentUserId : !thread.userId))
       .sort((a, b) => b.lastModified - a.lastModified)
     return cachedSortedThreads
@@ -447,17 +477,32 @@ export function useThreadMessenger() {
    * @param threadId 目标线程 ID
    * @param options 发送选项
    *   - silent: 静默注入模式（不显示为用户消息气泡，但仍发送给 LLM）
+   *   - chatMode: 覆盖工作模式。用于「后台线程不该跟随输入区当前档位」的场合：
+   *     场景工作线程要跑工具链，而输入区停在 chat 档时会拿不到写类工具
+   *   - llmOverride: 指定本轮使用的模型（provider + model），不传就用客户端当前配置
    * @throws 若线程正在运行中（Agent.send 内部 runningTasks 拦截）
    */
   const sendToThread = useCallback(
-    async (content: MessageContent, threadId: string, options?: { silent?: boolean }): Promise<void> => {
+    async (
+      content: MessageContent,
+      threadId: string,
+      options?: {
+        silent?: boolean
+        chatMode?: WorkMode
+        /** 指定本轮使用的模型；不传则用客户端当前配置 */
+        llmOverride?: { provider: string; model: string }
+      },
+    ): Promise<void> => {
       const params = sendParamsRef.current
+      const mode = options?.chatMode ?? params.chatMode
       const agentConfig = getAgentConfig()
       const effectiveConfig = await getEffectiveLLMConfigAsync(params.llmConfig)
-      const overrides = buildModeOverrides(params.chatMode, effectiveConfig)
+      // 指定了模型就整套换过去，而不是只改 model 字段：服务商变了，传输层参数也得变
+      const baseConfig = resolveModelOverride(effectiveConfig, options?.llmOverride)
+      const overrides = buildModeOverrides(mode, baseConfig)
 
       const enhancedConfig: LLMConfig = {
-        ...effectiveConfig,
+        ...baseConfig,
         ...overrides,
         contextLimit: agentConfig.maxContextTokens,
       }
@@ -467,13 +512,13 @@ export function useThreadMessenger() {
         content,
         enhancedConfig,
         params.workspacePath,
-        params.chatMode,
+        mode,
         {
           openFiles: params.openFiles.map((file) => file.path),
           activeFile: params.activeFilePath || undefined,
           customInstructions: params.aiInstructions,
           promptTemplateId: params.promptTemplateId,
-          planPhase: params.chatMode === 'expert' ? params.planPhase : undefined,
+          planPhase: mode === 'expert' ? params.planPhase : undefined,
           // 与 sendMessage 保持一致：漏传会让「继续」/自动续接脱离计划阶段，
           // 工具集重新放开全量能力，模型直接开工而不是先补计划
           taskPlanMode: useStore.getState().agentConfig?.taskPlanMode === true,
@@ -485,6 +530,7 @@ export function useThreadMessenger() {
     },
     [],
   )
+
 
   /** 中止指定线程的执行（不影响主聊天线程） */
   const abortThread = useCallback((threadId: string): void => {

@@ -53,7 +53,12 @@ export function buildPersistedAgentSessionState(
 ): PersistedAgentSessionState {
   const rawThreads = state.threads || {}
   const threads = Object.fromEntries(
-    Object.entries(rawThreads).map(([threadId, thread]) => [threadId, toPersistedChatThread(thread as ChatThread)])
+    Object.entries(rawThreads)
+      // 场景工作线程不落盘：它服务的是「这一次把产物做出来」，重启后既不该出现在
+      // 会话列表，也不该被还原并选中成为当前会话 —— 那会让聊天面板一开机就显示
+      // 一段与场景画布无关的对话。计划任务线程不在此列，它的续跑依赖持久化。
+      .filter(([, thread]) => (thread as ChatThread).origin !== 'scenario-task')
+      .map(([threadId, thread]) => [threadId, toPersistedChatThread(thread as ChatThread)])
   )
 
   return {

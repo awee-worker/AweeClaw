@@ -29,6 +29,53 @@ export interface ScenarioIdentity {
   toolGuidelines?: string
 }
 
+/**
+ * 场景会话边界
+ *
+ * 关闭场景后对话仍然留在同一条会话流里，通用助手随时可以接手。但对「工作区
+ * 自成一整套流程」的场景（原型工坊、图纸库等）来说，用户要的是本场景内的
+ * 产出，而不是一个顺带能写脚本、能查资料、能跑命令的通用助手 —— 那些能力
+ * 一旦混进来，模型很容易用 workaround（例如直接写一份 HTML）绕开场景自己的
+ * 产出通道。
+ *
+ * 声明会话边界后，由宿主统一落实两件事：
+ * - 提示词：在身份之后、工具清单之前注入边界声明，说明本会话只处理什么、
+ *   场景外请求如何回应（引导用户切换场景，而不是硬着头皮做）
+ * - 工具集：allowedTools / deniedTools 直接作用于下发给模型的内置工具清单，
+ *   与提示词里的清单同源（见 getToolsForContext），不存在「提示词说没有、
+ *   实际还能调」的错位
+ *
+ * 未声明时不改变任何现有行为。
+ */
+export interface ScenarioSessionScope {
+  /**
+   * 边界说明（Markdown 片段）
+   *
+   * 直接注入系统提示词。需要写清楚：本会话负责什么、什么请求必须拒答、
+   * 拒答时引导用户去哪。
+   */
+  boundary: string
+  /**
+   * 是否显式拒答场景外话题
+   *
+   * 为真时追加一条硬约束：场景外请求不展开、不绕道完成，只说明边界并给出
+   * 切换建议。为假时只描述边界，由模型自行把握。
+   */
+  refuseOffTopic?: boolean
+  /**
+   * 工具白名单（支持 `proto_*` 这种前缀写法）
+   *
+   * 非空时只下发批次内的工具。场景自有工具同样要写进来，否则会被一并挡掉。
+   */
+  allowedTools?: string[]
+  /**
+   * 工具黑名单（支持 `git_*` 这种前缀写法）
+   *
+   * 在白名单之后生效，适合「大部分保留、少数几个必须挡掉」的场景。
+   */
+  deniedTools?: string[]
+}
+
 // ============================================
 // 场景能力声明
 // ============================================
@@ -180,7 +227,52 @@ export interface PrimaryViewDescriptor {
  *
  * 全部缺省为 false（显示），保持现有场景行为不变。
  */
+/**
+ * 顶部菜单栏顶级菜单标识
+ *
+ * 与主进程菜单（menuItems/*）以及 Windows/Linux 自绘菜单（appMenuModel）的
+ * id 一一对应。macOS 的应用名菜单由系统托管，不在此列。
+ */
+export type ScenarioMenuId = 'file' | 'edit' | 'view' | 'ai' | 'window' | 'help'
+
+/**
+ * 顶部菜单栏显隐配置
+ *
+ * 场景接管整壳后，菜单里的多数条目（打开文件夹、终端、AI 相关命令）在场景内
+ * 没有对应动作，留着只会引导用户点进空白。这里按场景收窄菜单范围。
+ *
+ * - 不写：保持全部菜单可见（现有场景行为不变）
+ * - items：只保留列出的顶级菜单，其余收起
+ * - hide：整条菜单栏收起（macOS 仍保留系统应用菜单）
+ */
+export interface ScenarioMenuBarConfig {
+  hide?: boolean
+  items?: ScenarioMenuId[]
+}
+
 export interface ScenarioChromeConfig {
+  /**
+   * 左侧导航栏整体不渲染。
+   *
+   * 适用于「工作区自成一整套导航」的场景：导航栏在这里只剩一条空白竖条，
+   * 反而挤占内容宽度。关掉后场景出口仍在顶部 scene-switcher，账号区按
+   * userMenuPlacement 落到顶部右侧，用户不会失去这两个入口。
+   *
+   * 默认外壳结构下收起 rail 槽位；regions 档位请同时不写 rail 节点。
+   * 两种档位下 NavigationRail 都不会渲染，因此它内部的会话历史、导航入口
+   * 也一并消失 —— 场景需要自己在工作区里提供等价入口。
+   */
+  hideNavRail?: boolean
+  /**
+   * 账号区（头像 + 用户菜单）摆放位置。
+   *
+   * - rail    ：导航栏左下角（缺省，与原行为一致）
+   * - titlebar：顶部最右侧，渲染为紧凑头像，菜单向下展开
+   *
+   * 缺省值随 hideNavRail 推导：导航栏被关掉时默认落到 titlebar，
+   * 否则用户会连账号入口一起失去。
+   */
+  userMenuPlacement?: 'rail' | 'titlebar'
   /** 导航栏顶部「仪表盘」入口 */
   hideDashboard?: boolean
   /** 导航栏「新建任务」入口 */
@@ -191,6 +283,12 @@ export interface ScenarioChromeConfig {
   hideWorkspaceSelector?: boolean
   /** 顶部快速搜索入口 */
   hideSearch?: boolean
+  /**
+   * 顶部菜单栏（文件 / 编辑 / 视图 / 会话 / 窗口 / 帮助）自定义
+   *
+   * 跨平台生效：Windows/Linux 作用于自绘菜单栏，macOS 作用于系统菜单栏。
+   */
+  menuBar?: ScenarioMenuBarConfig
   /** 顶部「显示 / 隐藏侧边栏」按钮 */
   hideSidebarToggle?: boolean
   /** 顶部「显示 / 隐藏 AI 助手」按钮 */
@@ -201,6 +299,35 @@ export interface ScenarioChromeConfig {
   hideDesktopCompanion?: boolean
   /** 导航栏历史会话列表 */
   hideChatHistory?: boolean
+}
+
+/**
+ * 解析账号区摆放位置
+ *
+ * 推导规则集中在这里，避免标题栏与导航栏各写一份判断而出现「两边都渲染」
+ * 或「两边都不渲染」的错位。导航栏被关掉时用户仍然需要账号入口，因此缺省
+ * 落到顶部右侧。
+ */
+/**
+ * 解析菜单栏的可见顶级菜单
+ *
+ * 返回值是「允许显示的菜单 id」；null 表示不限制（全部显示），空数组表示
+ * 一条都不显示。集中成函数是为了让渲染进程与主进程使用同一套判断，
+ * 避免自绘菜单栏和系统菜单栏显示成两套结构。
+ */
+export function resolveVisibleMenuIds(menuBar?: ScenarioMenuBarConfig): ScenarioMenuId[] | null {
+  if (!menuBar) return null
+  if (menuBar.hide === true) return []
+  if (!menuBar.items) return null
+  // 去重并保持声明顺序，避免场景重复书写导致菜单排列错乱
+  return [...new Set(menuBar.items)]
+}
+
+export function resolveUserMenuPlacement(
+  chrome?: ScenarioChromeConfig,
+): 'rail' | 'titlebar' {
+  if (chrome?.userMenuPlacement) return chrome.userMenuPlacement
+  return chrome?.hideNavRail === true ? 'titlebar' : 'rail'
 }
 
 export interface ScenarioUI {
@@ -269,6 +396,19 @@ export interface ScenarioUI {
    * 缺省视为 1；升到 2 才允许 part / spacer 节点，任何 shellMode 都可用。
    */
   regionsSchemaVersion?: number
+
+  /**
+   * 无人值守执行
+   *
+   * 场景内的 AI 承担的是「把一个产物做出来」的整段动作（原型工坊画页面、
+   * 报表工坊出报表），中途为每一次工具调用弹一次确认，等于让用户守着看它跑。
+   * 声明为 true 后，活跃场景内的工具调用一律放行，不再逐次询问。
+   *
+   * 只豁免「是否允许调用」这一层：ask_user 这类主动提问仍然照常等待用户选择，
+   * 场景会话边界（sessionScope.allowedTools）也照常生效 —— 放开的是询问频次，
+   * 不是工具范围。
+   */
+  unattended?: boolean
 }
 
 // ============================================
@@ -358,6 +498,13 @@ export interface ScenarioPlugin {
   capabilities: ScenarioCapabilities
   ui: ScenarioUI
   dataSources: ScenarioDataSources
+
+  /**
+   * 会话边界：限定 AI 只服务本场景的内容
+   *
+   * 未声明时保持通用助手行为。
+   */
+  sessionScope?: ScenarioSessionScope
 
   isDefault?: boolean
   isBuiltin?: boolean

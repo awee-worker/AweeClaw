@@ -10,10 +10,12 @@
  * - 菜单数据由 appMenuModel 构建，命令经 menuCommandDispatcher 执行
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, ChevronRight } from 'lucide-react'
 import { useStore } from '@store'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { resolveVisibleMenuIds, type ScenarioMenuId } from '@shared/protocols/scenario'
 import { api } from '../../adapters/electronBridge'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { BRAND } from '@shared/brand'
@@ -30,17 +32,28 @@ import type { Language } from '@renderer/i18n'
 
 export default function AppMenuBar() {
   const language = useStore((s) => s.language) as Language
+  const activeScenarioId = useStore((s) => s.activeScenarioId)
 
   const [openId, setOpenId] = useState<string | null>(null)
   const [recentWorkspaces, setRecentWorkspaces] = useState<RecentWorkspaceEntry[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const menus: AppMenuTopLevel[] = buildAppMenuModel({
-    lang: language,
-    recentWorkspaces,
-    docsUrl: BRAND.links.docs,
-    githubUrl: BRAND.links.github,
-  })
+  // 场景可收窄顶级菜单：null 表示不限制，空数组表示全部收起
+  const visibleMenuIds = useMemo<ScenarioMenuId[] | null>(() => {
+    const chrome = scenarioRegistry.get(activeScenarioId)?.ui?.chrome
+    return resolveVisibleMenuIds(chrome?.menuBar)
+  }, [activeScenarioId])
+
+  const menus: AppMenuTopLevel[] = useMemo(() => {
+    const all = buildAppMenuModel({
+      lang: language,
+      recentWorkspaces,
+      docsUrl: BRAND.links.docs,
+      githubUrl: BRAND.links.github,
+    })
+    if (!visibleMenuIds) return all
+    return all.filter((menu) => visibleMenuIds.includes(menu.id as ScenarioMenuId))
+  }, [language, recentWorkspaces, visibleMenuIds])
 
   // 打开「文件」菜单时刷新最近工作空间
   useEffect(() => {
@@ -59,6 +72,12 @@ export default function AppMenuBar() {
       cancelled = true
     }
   }, [openId])
+
+  // 场景切换后菜单集合可能变窄：已展开的顶级菜单若被收起，同步关闭下拉
+  useEffect(() => {
+    if (!openId) return
+    if (!menus.some((menu) => menu.id === openId)) setOpenId(null)
+  }, [menus, openId])
 
   // 点击外部 / Esc 关闭
   useEffect(() => {
@@ -104,6 +123,9 @@ export default function AppMenuBar() {
     }
     setOpenId(null)
   }
+
+  // 场景把菜单全部收起时不渲染容器：留下一个空 div 会让标题栏多出一段点击区
+  if (menus.length === 0) return null
 
   return (
     <div ref={containerRef} className="no-drag flex items-center h-full gap-0.5">

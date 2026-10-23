@@ -36,6 +36,8 @@ export function createAppLifecycleApi() {
     onPrimaryChanged: on<void>('window:primary-changed'),
     // 自绘菜单（Windows/Linux）执行原生角色：undo/copy/zoomIn/minimize...
     executeMenuRole: (role: string) => send('menu:execute-role')(role),
+    // 场景切换后同步可见的顶级菜单：null 恢复全部，[] 全部收起
+    setScenarioMenus: (ids: string[] | null) => send('menu:set-visible-menus')(ids),
     resizeWindow: (width: number, height: number, minWidth?: number, minHeight?: number) =>
       invoke('window:resize')(width, height, minWidth, minHeight),
     setTheme: (theme: 'light' | 'dark' | 'system', bgColor?: string) =>

@@ -23,6 +23,14 @@ import { buildAiMenu } from './menuItems/aiMenu'
 import { buildWindowMenu } from './menuItems/windowMenu'
 import { buildHelpMenu } from './menuItems/helpMenu'
 
+/**
+ * 可被场景收窄的顶级菜单
+ *
+ * 与渲染进程自绘菜单（appMenuModel）的 id 保持一致，两套菜单才能按同一份
+ * 场景声明显示成相同结构。macOS 的应用名菜单由系统托管，不在此列。
+ */
+export type MenuBarMenuId = 'file' | 'edit' | 'view' | 'ai' | 'window' | 'help'
+
 /** 菜单构建上下文 */
 export interface MenuBuilderContext {
   /** 获取主窗口 */
@@ -42,6 +50,13 @@ export class MenuBuilder {
   private ctx: MenuBuilderContext
   private currentLang: Language = 'zh'
   private currentRecentWorkspaces: RecentWorkspace[] = []
+  /**
+   * 当前场景允许显示的顶级菜单
+   *
+   * null = 不限制（全部显示），空数组 = 全部收起。只影响顶级菜单本身，
+   * 已挂载的快捷键 role 随菜单一起消失 —— 场景主动声明时即接受这一结果。
+   */
+  private visibleMenus: MenuBarMenuId[] | null = null
 
   constructor(ctx: MenuBuilderContext) {
     this.ctx = ctx
@@ -73,6 +88,30 @@ export class MenuBuilder {
   }
 
   /**
+   * 按场景设置可见的顶级菜单并重建
+   *
+   * 场景切换时由渲染进程调用。传 null 表示恢复完整菜单，避免上一个场景
+   * 的收窄结果残留到宿主默认场景。
+   */
+  setVisibleMenus(ids: MenuBarMenuId[] | null): void {
+    const normalized = ids === null ? null : [...new Set(ids)]
+    const same =
+      normalized === this.visibleMenus ||
+      (normalized !== null &&
+        this.visibleMenus !== null &&
+        normalized.length === this.visibleMenus.length &&
+        normalized.every((id) => this.visibleMenus!.includes(id)))
+    if (same) return
+    this.visibleMenus = normalized
+    this.rebuild()
+  }
+
+  /** 是否显示某个顶级菜单 */
+  private isVisible(id: MenuBarMenuId): boolean {
+    return this.visibleMenus === null || this.visibleMenus.includes(id)
+  }
+
+  /**
    * 更新最近工作空间并重建菜单
    */
   async updateRecentWorkspaces(): Promise<void> {
@@ -99,28 +138,36 @@ export class MenuBuilder {
     }
 
     // 文件菜单
-    menus.push(
-      buildFileMenu({
-        ...commonCtx,
-        recentWorkspaces: this.currentRecentWorkspaces,
-        onClearRecentWorkspaces: async () => {
-          await this.ctx.onClearRecentWorkspaces()
-          await this.updateRecentWorkspaces()
-        },
-      }),
-    )
+    if (this.isVisible('file')) {
+      menus.push(
+        buildFileMenu({
+          ...commonCtx,
+          recentWorkspaces: this.currentRecentWorkspaces,
+          onClearRecentWorkspaces: async () => {
+            await this.ctx.onClearRecentWorkspaces()
+            await this.updateRecentWorkspaces()
+          },
+        }),
+      )
+    }
 
     // 编辑菜单
-    menus.push(buildEditMenu({ lang: this.currentLang }))
+    if (this.isVisible('edit')) {
+      menus.push(buildEditMenu({ lang: this.currentLang }))
+    }
 
     // 视图菜单
-    menus.push(buildViewMenu(commonCtx))
+    if (this.isVisible('view')) {
+      menus.push(buildViewMenu(commonCtx))
+    }
 
     // AI 菜单
-    menus.push(buildAiMenu(commonCtx))
+    if (this.isVisible('ai')) {
+      menus.push(buildAiMenu(commonCtx))
+    }
 
     // macOS: 窗口菜单
-    if (isMac) {
+    if (isMac && this.isVisible('window')) {
       menus.push(buildWindowMenu({ lang: this.currentLang }))
     }
 
@@ -131,7 +178,9 @@ export class MenuBuilder {
     }
 
     // 帮助菜单
-    menus.push(buildHelpMenu(commonCtx))
+    if (this.isVisible('help')) {
+      menus.push(buildHelpMenu(commonCtx))
+    }
 
     return menus
   }

@@ -45,6 +45,7 @@ import {
 } from './promptLibrary'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
+import { resolveActiveSessionScope } from '@renderer-configuration/scenarioSessionScope'
 import { api } from '../../adapters/electronBridge'
 import { getAllowedToolGroupsSync } from '../../adapters/featureGuardService'
 import { logger } from '@toolkit/LogEngine'
@@ -422,7 +423,9 @@ function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' 
   // 否则 AI 会去调用被套餐禁用的工具（可见性才是主闸门）
   // taskPlanMode 必须传入：否则提示词会把全量工具都描述一遍，而执行层已按计划阶段收窄，
   // 模型会持续尝试调用不存在于本轮的写类工具
-  const allowedTools = getToolsForContext({ mode, templateId, planPhase, taskPlanMode, scenarioToolPacks, scenarioTools, isChannel, sceneToolsEnabled, gitToolsEnabled, sceneMode: useSceneModeStore.getState().currentSceneMode, allowedToolGroups: getAllowedToolGroupsSync(), ...agentFields })
+  // 会话边界同样作用于提示词里的工具清单：清单与执行层同源，才不会出现
+  // 「提示词里写着某工具、实际调不到」或反过来的错位
+  const allowedTools = getToolsForContext({ mode, templateId, planPhase, taskPlanMode, scenarioToolPacks, scenarioTools, isChannel, sceneToolsEnabled, gitToolsEnabled, sceneMode: useSceneModeStore.getState().currentSceneMode, allowedToolGroups: getAllowedToolGroupsSync(), sessionScope: resolveActiveSessionScope(), ...agentFields })
   // 按用户意图裁剪工具描述以压缩提示词体积；
   // 命中开发类意图或无法判定意图时保持全量，避免因漏选工具导致任务失败
   // 计划阶段已把工具集收窄到十几个，无需再按意图裁剪；
@@ -1010,6 +1013,39 @@ function buildTaskPlanDirectiveSection(): string {
 - 唯一例外：纯知识性问答（不产生任何文件、命令或环境改动，如"这个函数什么意思"），可直接回答`
 }
 
+/**
+ * 场景会话边界声明
+ *
+ * 只在场景显式声明 sessionScope 时注入。位置放在身份之后、工具清单之前：
+ * 先立「本会话只负责什么」，再让模型看到工具清单，模型才不会把场景外的
+ * 工具当成可用的替代路径。
+ *
+ * 为什么要在通用身份之外再写一遍：通用提示词鼓励「自主把任务做完」，
+ * 而场景边界恰恰要求某些请求不做。两条指令冲突时必须让后者更接近、
+ * 更具体，否则模型会按通用准则绕开场景自己的产出通道。
+ */
+export function buildScenarioSessionScopeSection(): string | null {
+  const scope = resolveActiveSessionScope()
+  if (!scope) return null
+
+  const lines: string[] = [`## 会话边界（本场景硬约束）`, scope.boundary.trim()]
+
+  if (scope.refuseOffTopic !== false) {
+    lines.push(
+      `边界外的请求一律不执行：不查资料代写、不调用通用文件/终端工具顶替，也不"顺手"完成。`,
+      `遇到边界外请求时：一句话说明本场景只处理上述内容，并提示用户切换到「通用助手」场景继续，不要把话题接下去。`,
+    )
+  }
+
+  if ((scope.allowedTools ?? []).length > 0 || (scope.deniedTools ?? []).length > 0) {
+    lines.push(
+      `本轮可用工具已按会话边界收窄，清单见下方「Available Tools」。清单里没有的能力一律视为不存在，不要尝试调用，也不要声称自己能调用。`,
+    )
+  }
+
+  return lines.join('\n')
+}
+
 export function buildSystemPrompt(ctx: PromptContext): string {
   const identity = getActiveScenarioIdentity()
   const sections: (string | null)[] = [
@@ -1017,6 +1053,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     ctx.scenePersonaPrompt ?? null,
     ctx.sceneRolePersona ?? null,
     identity.systemPrompt,
+    buildScenarioSessionScopeSection(),
     buildCustomAgentPrompt(ctx.customAgentPrompt),
     PROFESSIONAL_OBJECTIVITY,
     LANGUAGE_MATCHING,
@@ -1057,6 +1094,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     ctx.scenePersonaPrompt ?? null,
     ctx.sceneRolePersona ?? null,
     identity.systemPrompt,
+    buildScenarioSessionScopeSection(),
     buildCustomAgentPrompt(ctx.customAgentPrompt),
     PROFESSIONAL_OBJECTIVITY,
     LANGUAGE_MATCHING,

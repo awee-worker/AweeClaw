@@ -174,8 +174,8 @@ export interface ChatThread {
   // ===== Thread Ownership Metadata (Phase 3.1) =====
   /** Thread mode: chat/plan */
   mode?: import('@protocols/workModeProtocol').WorkMode
-  /** Thread origin: user-created or plan-task worker */
-  origin?: 'user' | 'plan-task'
+  /** Thread origin: user-created、plan-task worker 或场景工作线程 */
+  origin?: 'user' | 'plan-task' | 'scenario-task'
   /** Associated plan ID (if origin is plan-task) */
   planId?: string
   /** Associated task ID (if origin is plan-task) */
@@ -210,7 +210,7 @@ export interface PersistedChatThread {
   /** 挂载任务（会话被手动停止时附着，支持一键续跑） */
   mountedTask?: MountedTaskInfo
   mode?: import('@protocols/workModeProtocol').WorkMode
-  origin?: 'user' | 'plan-task'
+  origin?: 'user' | 'plan-task' | 'scenario-task'
   planId?: string
   taskId?: string
   userId?: string

@@ -42,6 +42,12 @@ export interface ChatPartProps extends HostPartComponentProps {
    *
    * 只写一次，不做双向同步：之后显隐完全由 visible 或 store 决定，
    * 否则用户关掉抽屉会被初值立刻弹回来。
+   *
+   * 缺省按形态决定：抽屉 / 弹窗为 false，内排为 true。
+   *
+   * 抽屉是覆盖层，场景把它写进区域树往往只是「留一个随时可唤出的入口」，
+   * 缺省展开会直接压住工作区；内排是常驻一栏，收起会让对话凭空消失。
+   * 两种情况都允许场景显式覆盖。
    */
   defaultOpen?: boolean
   /** 期望宽度（像素）；缺省取用户上次拖拽的 chatWidth */
@@ -61,11 +67,13 @@ export function ChatPart({
   presentation,
   visible,
   onClose,
-  defaultOpen = true,
+  defaultOpen,
   width,
   chatMode = 'secondary',
   hasFile,
 }: ChatPartProps) {
+  /** 抽屉 / 弹窗属于覆盖层，缺省收起；内排是常驻栏位，缺省展开 */
+  const resolvedDefaultOpen = defaultOpen ?? (presentation === 'drawer' || presentation === 'modal' ? false : true)
   const {
     chatWidth,
     setChatWidth,
@@ -87,7 +95,7 @@ export function ChatPart({
   )
 
   /**
-   * 初值同步：按「场景 + defaultOpen」的变化执行，卸载时还原
+   * 初值同步：按「场景 + defaultOpen」的变化执行，离开场景时还原
    *
    * `chatVisible` 是全局状态，别的场景（走 ChatSection 的布局）也读它。
    * 只写不还原的话，进过一次「对话默认收起的场景」再切回去，对话会凭空
@@ -104,19 +112,32 @@ export function ChatPart({
    */
   const appliedDefaultRef = useRef<string | null>(null)
   const restoreRef = useRef<boolean | null>(null)
+  /** 写入初值时的场景 id：卸载时据此分辨「确实离开场景」与「同场景内的模拟卸载」 */
+  const appliedScenarioRef = useRef<string | null>(null)
   useEffect(() => {
-    if (visible !== undefined || defaultOpen === undefined) return
-    const appliedKey = `${activeScenarioId ?? ''}:${defaultOpen}`
+    if (visible !== undefined) return
+    const appliedKey = `${activeScenarioId ?? ''}:${resolvedDefaultOpen}`
     if (appliedDefaultRef.current === appliedKey) return
     appliedDefaultRef.current = appliedKey
+    appliedScenarioRef.current = activeScenarioId ?? null
     const previous = useStore.getState().chatVisible
-    if (previous === defaultOpen) return
+    if (previous === resolvedDefaultOpen) return
     restoreRef.current = previous
-    setChatVisible(defaultOpen)
-  }, [visible, defaultOpen, activeScenarioId, setChatVisible])
+    setChatVisible(resolvedDefaultOpen)
+  }, [visible, resolvedDefaultOpen, activeScenarioId, setChatVisible])
 
   useEffect(() => () => {
     if (restoreRef.current === null) return
+    /*
+     * 只有场景真的换了才还原。
+     *
+     * 开发态 StrictMode 把挂载拆成「执行 → 清理 → 再执行」，同场景内的树重排
+     * 也会走同一段清理。这两种情况的场景 id 没变，还原会把刚写进去的初值顶
+     * 回去，而再执行时 appliedDefaultRef 已记下同一个 key，会直接返回 —— 结果
+     * 抽屉停在展开态，用户看到的就是「切进原型工坊，对话抽屉还开着」。
+     * 还原值保留在 ref 里，等真正离开这个场景时再写回去。
+     */
+    if ((useStore.getState().activeScenarioId ?? null) === appliedScenarioRef.current) return
     setChatVisible(restoreRef.current)
     restoreRef.current = null
   }, [setChatVisible])

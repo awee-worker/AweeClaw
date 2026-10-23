@@ -237,7 +237,11 @@ export function normalizeLegacyThreadRecord(threadId: string, value: unknown): C
     pendingSteps: Array.isArray(value.pendingSteps) ? value.pendingSteps.filter((step): step is string => typeof step === 'string') : undefined,
     mountedTask: normalizeMountedTask(value.mountedTask),
     mode: value.mode as PersistedChatThread['mode'],
-    origin: value.origin === 'plan-task' ? 'plan-task' : value.origin === 'user' ? 'user' : undefined,
+    origin: value.origin === 'plan-task'
+      ? 'plan-task'
+      : value.origin === 'scenario-task'
+        ? 'scenario-task'
+        : value.origin === 'user' ? 'user' : undefined,
     planId: typeof value.planId === 'string' ? value.planId : undefined,
     taskId: typeof value.taskId === 'string' ? value.taskId : undefined,
   })

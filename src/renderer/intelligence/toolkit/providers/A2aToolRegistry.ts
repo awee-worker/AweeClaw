@@ -33,6 +33,7 @@ import type {
   ToolApprovalType,
 } from '@intelligence/providerTypes'
 import type { ToolLoadingContext } from '@configuration/toolCategoryDefs'
+import { applySessionScope } from '@configuration/toolCategoryDefs'
 
 /** 未初始化时的空载荷（等价于「工具不可见」） */
 const EMPTY_PAYLOAD: A2aToolPayload = { enabled: false, agents: [] }
@@ -112,6 +113,12 @@ export class A2aToolProvider implements ToolProvider {
 
   getToolDefinitions(): ToolDefinition[] {
     if (!this.payload.enabled) return []
+    // 会话边界：远端智能体可以把问题转发给另一个通用助手，等于绕开边界，
+    // 场景要保留它就在白名单里显式写上 a2a_tool_call
+    const scope = this.context.sessionScope
+    if (scope && !applySessionScope(new Set([A2A_TOOL_NAME]), scope).has(A2A_TOOL_NAME)) {
+      return []
+    }
     return [this.buildDefinition()]
   }
 

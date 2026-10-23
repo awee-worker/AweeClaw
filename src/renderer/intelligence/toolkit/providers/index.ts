@@ -31,6 +31,7 @@ import { getAllowedToolGroupsSync } from '@services/featureGuardService'
 import { setGitToolsEnabled } from '../gitToolsGate'
 import { setPlanStageActive } from '../planStageGate'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
+import { resolveActiveSessionScope } from '@renderer/configuration/scenarioSessionScope'
 
 let initialized = false
 
@@ -67,6 +68,9 @@ export function setToolLoadingContext(context: ToolLoadingContext): void {
     // 场景模式统一注入：dev 独有开发类工具（git_* / LSP / codebase_search）的
     // 场景门控在 getToolsForContext 内消费，调用点无需各自传值
     sceneMode: context.sceneMode ?? useSceneModeStore.getState().currentSceneMode,
+    // 会话边界同理：主对话 / 多智能体子循环 / 语音三个调用点都经过这里，
+    // 在漏斗处注入可保证「场景限定只服务本场景」在三处生效口径一致
+    sessionScope: context.sessionScope ?? resolveActiveSessionScope(),
   }
   // Git 工具门控缓存同步刷新：执行层（ToolCoordinator）需要同步读取本轮是否放行 git_*
   setGitToolsEnabled(merged.gitToolsEnabled === true)

@@ -1669,6 +1669,8 @@ export interface ElectronAPI {
   toggleDevTools: () => void
   /** 自绘菜单（Windows/Linux）执行原生角色：undo/copy/zoomIn/minimize... */
   executeMenuRole: (role: string) => void
+  /** 场景切换后同步可见的顶级菜单：null 恢复全部，[] 全部收起 */
+  setScenarioMenus: (ids: string[] | null) => void
   getWindowId: () => Promise<number>
   /** 当前窗口是否为应用级服务宿主窗口（首个窗口），用于避免多窗口重复启动单例后台任务 */
   isPrimaryWindow: () => Promise<boolean>

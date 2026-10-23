@@ -26,6 +26,7 @@ import fs, { promises as fsPromises } from 'fs'
 import Store from 'electron-store'
 import { securityManager, OperationType } from './securityPolicyEngine'
 import { docParserProxy } from './docParserProxy'
+import { extractPdfTextViaLocalOcr } from './pdfOcrFallback'
 
 // 导入拆分的模块
 import { readFileWithEncoding, readLargeFile, readFileWindow } from './fileAccessControl'
@@ -584,10 +585,24 @@ export function registerSecureFileHandlers(
     }
 
     try {
-      const text = await docParserProxy.extractText('pdf', filePath)
-      if (text === null) return null
+      let text = await docParserProxy.extractText('pdf', filePath)
+      let ocrUsed = false
+
+      // 文本层为空说明是扫描版 / 图片型 PDF：先在本地渲染页面并 OCR，
+      // 让这类文档不必上传后端也能拿到内容
+      if (!text || text.trim().length === 0) {
+        const ocrText = await extractPdfTextViaLocalOcr(filePath)
+        if (ocrText && ocrText.trim().length > 0) {
+          text = ocrText
+          ocrUsed = true
+        }
+      }
+
+      if (!text || text.trim().length === 0) return null
+
       securityManager.logOperation(OperationType.FILE_READ, filePath, true, {
         pdfTextExtraction: true,
+        ocrUsed,
       })
       return text
     } catch (err) {

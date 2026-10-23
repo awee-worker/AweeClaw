@@ -11,6 +11,7 @@ import GlobalOverlays from './components/layout/GlobalOverlays'
 import WorkspaceStatusBar from './components/layout/WorkspaceStatusBar'
 import { ExecutionStatusDock } from './components/layout/ExecutionStatusDock'
 import { scenarioRegistry, initializeScenarios } from '@shared/configuration/scenarios'
+import { resolveVisibleMenuIds } from '@shared/protocols/scenario'
 import { scenarioLoader, registerBuiltinScenarios } from '@/scenarios'
 import { loadExternalScenarios, setExternalScenarioLoadFunctions } from '@scenario-system/core/ExternalScenarioLoader'
 import { api } from './adapters/electronBridge'
@@ -231,6 +232,18 @@ function AppContent() {
     }
   }, [activeScenarioId, workspace])
 
+  /**
+   * 把场景声明的菜单栏范围同步给主进程
+   *
+   * macOS 用系统菜单栏、Windows/Linux 用自绘菜单栏，两侧都按同一份 ids 收窄，
+   * 避免两套菜单显示成不同结构。null 表示恢复完整菜单。
+   */
+  useEffect(() => {
+    if (!activeScenarioId) return
+    const chrome = scenarioRegistry.get(activeScenarioId)?.ui?.chrome
+    api.menu.setScenarioMenus(resolveVisibleMenuIds(chrome?.menuBar))
+  }, [activeScenarioId, scenarioConfigVersion])
+
   const hasWorkspace = useMemo(() => Boolean(workspace && workspace.roots.length > 0), [workspace])
 
   /**
@@ -280,6 +293,18 @@ function AppContent() {
       useStore.getState().setSidebarWidth(layoutConfig.sidebarDefaultWidth)
     }
   }, [layoutConfig.sidebarDefaultWidth])
+
+  /**
+   * 同步场景无人值守声明
+   *
+   * 引擎侧的审批门禁不认识场景配置，只读 store，所以由这里把「当前活跃场景是否
+   * 无人值守」翻译成一个 ID 写进去；离开该场景时清空，避免豁免被带到别的场景。
+   */
+  useEffect(() => {
+    useStore.getState().setUnattendedScenario(
+      layoutConfig.unattended ? layoutConfig.scenarioId : null,
+    )
+  }, [layoutConfig.unattended, layoutConfig.scenarioId])
 
   // 切换到声明了 hideChat 的面板时自动隐藏聊天窗口（用户可通过右上角按钮手动切换显示）
   // 与 hideChat 强制隐藏不同，这里是"默认隐藏"：用户点击切换按钮后聊天可正常显示

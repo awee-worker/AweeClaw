@@ -81,6 +81,7 @@ function UserMenuDropdown({
   cloudUser,
   anchorRef,
   hasUpdateAvailable,
+  placement = 'rail',
 }: {
   isOpen: boolean
   onClose: () => void
@@ -90,6 +91,8 @@ function UserMenuDropdown({
   cloudUser: { username?: string; email: string; avatarUrl?: string; planId: string; phone?: string } | null
   anchorRef: React.RefObject<HTMLDivElement | null>
   hasUpdateAvailable: boolean
+  /** rail：贴在导航栏底部，菜单向上展开；titlebar：贴在顶部，菜单向右下展开 */
+  placement?: RailUserPlacement
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
@@ -110,13 +113,26 @@ function UserMenuDropdown({
     if (!isOpen || !anchorRef.current) return
     const anchor = anchorRef.current
     const rect = anchor.getBoundingClientRect()
+
+    // 顶部账号区在窗口右上角，向上展开会顶出可视区，因此改成向下、
+    // 且以右边缘对齐 —— 菜单宽度固定，左对齐会溢出到窗口外。
+    if (placement === 'titlebar') {
+      setMenuStyle({
+        position: 'fixed',
+        top: rect.bottom + 6,
+        right: Math.max(8, window.innerWidth - rect.right),
+        width: 200,
+      })
+      return
+    }
+
     setMenuStyle({
       position: 'fixed',
       left: rect.left,
       bottom: window.innerHeight - rect.top + 4,
       width: 200,
     })
-  }, [isOpen, anchorRef])
+  }, [isOpen, anchorRef, placement])
 
   // 入口角标：按通知类型区分归属，避免把「插件到期」误标到场景入口上。
   // 必须放在提前 return 之前 —— 否则菜单开关时会触发 hooks 数量不一致的运行时错误。
@@ -210,8 +226,13 @@ function UserMenuDropdown({
 
       {isAuthenticated && <div className="h-px bg-border/50 my-1 mx-2" />}
 
-      {/* 快速设置：界面语言 / 界面主题（hover 显示二级菜单） */}
-      <QuickSettingsMenu language={language as Language} onClose={onClose} />
+      {/* 快速设置：界面语言 / 界面主题（hover 显示二级菜单）
+          titlebar 落位时菜单贴在窗口右上角，二级菜单必须向左展开才不越界 */}
+      <QuickSettingsMenu
+        language={language as Language}
+        onClose={onClose}
+        direction={placement === 'titlebar' ? 'left' : 'right'}
+      />
 
       <div className="h-px bg-border/50 my-1 mx-2" />
 
@@ -323,12 +344,22 @@ function UserMenuDropdown({
   )
 }
 
+/**
+ * 账号区摆放位置
+ *
+ * - rail    ：导航栏左下角，展开态带用户名，菜单向上弹
+ * - titlebar：顶部最右侧，恒为紧凑头像，菜单向右下弹
+ */
+export type RailUserPlacement = 'rail' | 'titlebar'
+
 export interface RailUserPartProps extends HostPartComponentProps {
   /** 展开态显示用户名与箭头，收起态只留头像；缺省跟随导航栏展开状态 */
   expanded?: boolean
+  /** 摆放位置，缺省为导航栏底部 */
+  placement?: RailUserPlacement
 }
 
-export function RailUserPart({ expanded }: RailUserPartProps) {
+export function RailUserPart({ expanded, placement = 'rail' }: RailUserPartProps) {
   const {
     language,
     isAuthenticated,
@@ -435,6 +466,69 @@ export function RailUserPart({ expanded }: RailUserPartProps) {
   const userDisplayName = formatUserDisplayName(cloudUser?.username || cloudUser?.email || cloudUser?.phone || '')
   const showUserInfo = isAuthenticated && !!cloudUser
 
+  /**
+   * 顶部摆放：只保留头像，尺寸让位给标题栏（40px 的导航栏按钮在 44px 的
+   * 标题栏里会把整条撑高），菜单锚点因此也改成向下展开。
+   */
+  if (placement === 'titlebar') {
+    return (
+      <>
+        <div className="no-drag relative flex items-center" ref={userAreaRef}>
+          <UserMenuDropdown
+            isOpen={showUserMenu}
+            onClose={() => setShowUserMenu(false)}
+            language={language}
+            handlers={handlers}
+            isAuthenticated={showUserInfo}
+            cloudUser={cloudUser}
+            anchorRef={userAreaRef}
+            hasUpdateAvailable={hasUpdateAvailable}
+            placement="titlebar"
+          />
+
+          {showUserInfo ? (
+            <HintOverlay content={userDisplayName} side="bottom" delay={400}>
+              <button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="relative w-7 h-7 rounded-full flex items-center justify-center hover:bg-text-primary/[0.06] transition-colors"
+              >
+                {cloudUser?.avatarUrl ? (
+                  <img
+                    src={cloudUser.avatarUrl}
+                    alt=""
+                    className="w-[22px] h-[22px] rounded-full object-cover border border-border/40"
+                  />
+                ) : (
+                  <div className="w-[22px] h-[22px] rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shadow-accent/20">
+                    {userInitial}
+                  </div>
+                )}
+                {hasUpdateAvailable && (
+                  <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-red-500 ring-2 ring-background animate-pulse" />
+                )}
+              </button>
+            </HintOverlay>
+          ) : (
+            <HintOverlay content={t('layout.signin2', language as Language)} side="bottom" delay={400}>
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="relative w-7 h-7 rounded-md flex items-center justify-center text-text-muted hover:text-accent hover:bg-accent/10 transition-colors"
+              >
+                <LogIn className="w-4 h-4" />
+                {hasUpdateAvailable && (
+                  <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-red-500 ring-2 ring-background animate-pulse" />
+                )}
+              </button>
+            </HintOverlay>
+          )}
+        </div>
+
+        <UserAccountPopover language={language} forceLoginOpen={showLoginModal} onLoginClose={() => setShowLoginModal(false)} hideButton />
+        <UpdateModal isOpen={showUpdateModal} onClose={() => setShowUpdateModal(false)} />
+      </>
+    )
+  }
+
   return (
     <>
       <div className={`${p}-nav-rail-user`} ref={userAreaRef}>
@@ -447,6 +541,7 @@ export function RailUserPart({ expanded }: RailUserPartProps) {
           cloudUser={cloudUser}
           anchorRef={userAreaRef}
           hasUpdateAvailable={hasUpdateAvailable}
+          placement="rail"
         />
 
         {showUserInfo ? (

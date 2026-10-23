@@ -22,7 +22,7 @@ import { logger } from '@shared/toolkit/LogEngine'
 import { SECURITY_DEFAULTS } from '@shared/appConstants'
 import { setCustomLspBinDir } from '../language-server/serverInstaller'
 import { lspManager as mainLspManager } from '../language-server/languageServerManager'
-import { createMenuBuilder, type MenuBuilder as MenuBuilderType } from '../menu/menuBuilder'
+import { createMenuBuilder, type MenuBuilder as MenuBuilderType, type MenuBarMenuId } from '../menu/menuBuilder'
 import { getConfigStore, getBootstrapStoreInstance } from './stores'
 import {
   getMainWindow,
@@ -1335,7 +1335,15 @@ function initLanguageSync(): void {
     logger.system.warn('[Main] Menu init failed:', err)
   })
 
-  // 2. 监听渲染进程：语言切换
+  // 2. 监听渲染进程：场景切换后同步可见的顶级菜单
+  //
+  // 菜单是应用级的，不区分窗口；场景声明收窄菜单时以最后切场景的窗口为准，
+  // 这对单主窗口的正常使用没有影响。
+  ipcMain.on('menu:set-visible-menus', (_event, ids: MenuBarMenuId[] | null) => {
+    menuBuilder?.setVisibleMenus(ids ?? null)
+  })
+
+  // 3. 监听渲染进程：语言切换
   ipcMain.on('i18n:changed', (_event, lang: Language) => {
     getConfigStore().set('language', lang)
     currentAppLanguage = lang

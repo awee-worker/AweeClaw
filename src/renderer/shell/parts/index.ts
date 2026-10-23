@@ -19,6 +19,7 @@
 import { registerHostPart } from '../HostPartRegistry'
 import SceneSwitcherPart from './SceneSwitcherPart'
 import DragRegionPart from './DragRegionPart'
+import DividerPart from './DividerPart'
 import NotificationsPart from './NotificationsPart'
 import QuotaPart from './QuotaPart'
 import SidebarTogglePart from './SidebarTogglePart'
@@ -34,6 +35,7 @@ import StatusbarPart from './StatusbarPart'
 export {
   SceneSwitcherPart,
   DragRegionPart,
+  DividerPart,
   NotificationsPart,
   QuotaPart,
   SidebarTogglePart,
@@ -56,6 +58,7 @@ export function registerDefaultHostParts(): void {
 
   registerHostPart('scene-switcher', SceneSwitcherPart)
   registerHostPart('drag-region', DragRegionPart)
+  registerHostPart('divider', DividerPart)
   registerHostPart('notifications', NotificationsPart)
   registerHostPart('quota', QuotaPart)
   registerHostPart('sidebar-toggle', SidebarTogglePart)

@@ -318,6 +318,17 @@ export interface LayoutSlice {
   /** 设置待跳转的场景工具 ID */
   setPendingSceneToolId: (id: string | null) => void
 
+  /* ===== 场景无人值守 ===== */
+  /**
+   * 声明了 ui.unattended 的活跃场景 ID（null 表示当前场景需要逐次确认）
+   *
+   * 只存在内存：它由布局配置推导而来，落盘反而会和真实场景配置脱节。
+   * 审批门禁（resolveApprovalGate）据此对活跃场景跳过逐次询问。
+   */
+  unattendedScenarioId: string | null
+  /** 同步场景无人值守标记 */
+  setUnattendedScenario: (id: string | null) => void
+
   /* ===== 工作台自定义 ===== */
   /** 每个场景模式的工作台卡片集合（用户可自定义：添加/移除/排序） */
   workbenchWidgets: Record<SceneMode, string[]>
@@ -467,6 +478,9 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   /* ----- 场景工具直达初始状态 ----- */
   pendingSceneToolId: null,
 
+  /* ----- 场景无人值守初始状态 ----- */
+  unattendedScenarioId: null,
+
   /* ----- 场景配置版本初始状态 ----- */
   scenarioConfigVersion: 0,
 
@@ -527,6 +541,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
     activeDockTab: visible ? 'debug' : state.activeDockTab,
   })),
   setChatVisible: (visible) => set({ chatVisible: visible }),
+  setUnattendedScenario: (id) => set({ unattendedScenarioId: id }),
   setNavRailExpanded: (expanded) =>
     set((state) => ({
       navRailExpanded: expanded,

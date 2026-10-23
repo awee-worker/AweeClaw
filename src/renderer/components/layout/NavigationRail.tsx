@@ -9,6 +9,7 @@ import { Logo } from '../foundation/BrandMark'
 import { PanelLeftIcon } from '../foundation/PanelLeftIcon'
 import { useAgentActions } from '@hooks/useAgent'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
+import { resolveUserMenuPlacement } from '@shared/protocols/scenario'
 import type { SidePanel } from '@store/slices'
 import { BRAND } from '@shared/brand'
 import { t, type Language } from '@renderer/i18n'
@@ -216,6 +217,9 @@ export default function NavigationRail() {
   // 历史会话：场景以自己的项目列表 / 素材列表取代会话历史时收起
   const hideChatHistory = scenarioChrome?.hideChatHistory === true
 
+  // 账号区默认留在导航栏底部，场景声明放到顶部右侧时由 AppTitleBar 渲染
+  const showRailUser = resolveUserMenuPlacement(scenarioChrome) === 'rail'
+
   const p = BRAND.cssPrefix
 
   /**
@@ -311,6 +315,14 @@ export default function NavigationRail() {
     closeInternalBrowser()
   }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow, closeInternalBrowser])
 
+
+  /*
+   * 场景声明不要左侧菜单面板时整条不渲染。
+   *
+   * 收口放在部件内部而不是外面的排版层：区域树的 slot / part 两条路径都从这里
+   * 出内容，逐个判断会漏掉场景自定义树里的写法。
+   */
+  if (scenarioChrome?.hideNavRail === true) return null
 
   return (
     <div className={`${p}-nav-rail`} data-expanded={navRailExpanded} data-mac={isMac}>
@@ -851,8 +863,11 @@ export default function NavigationRail() {
 
       <div className={`${p}-nav-rail-divider`} />
 
-      {/* 账号区：登录态、用户菜单与登录/更新弹窗都在该部件内部 */}
-      <RailUserPart expanded={navRailExpanded} />
+      {/*
+       * 账号区：登录态、用户菜单与登录/更新弹窗都在该部件内部。
+       * 场景把账号区挪到顶部右侧时这里不再渲染，否则会出现两个头像与两套菜单。
+       */}
+      {showRailUser && <RailUserPart expanded={navRailExpanded} />}
 
       <AddCustomMenuDialog isOpen={showAddCustomMenu} onClose={() => setShowAddCustomMenu(false)} />
 

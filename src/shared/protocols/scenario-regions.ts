@@ -128,11 +128,12 @@ export type PartPresentation = 'inline' | 'drawer' | 'modal'
 export interface PartPropsById {
   chat: { defaultOpen?: boolean; width?: number }
   'chat-history': { expanded?: boolean }
-  'rail-user': { expanded?: boolean }
+  'rail-user': { expanded?: boolean; placement?: 'rail' | 'titlebar' }
   sidebar: { defaultPanel?: string }
   quota: { placement?: 'compact' | 'full' }
   notifications: { placement?: 'top' | 'bottom' }
   rail: { collapsed?: boolean }
+  divider: { orientation?: 'vertical' | 'horizontal' }
 
   'scene-switcher': Record<string, never>
   'sidebar-toggle': Record<string, never>
@@ -158,6 +159,7 @@ export const HOST_PART_IDS: readonly HostPartId[] = [
   'sidebar-toggle',
   'window-controls',
   'drag-region',
+  'divider',
   'editor',
   'statusbar',
 ]
@@ -174,6 +176,16 @@ export const RESERVED_PART_IDS: readonly HostPartId[] = [
   'window-controls',
   'drag-region',
 ]
+
+/**
+ * 允许在树里重复出现的部件
+ *
+ * 单实例约束针对的是「带状态的整块功能区」（会话、侧边栏、场景出口）：
+ * 挂两份就会出现两套会话流或两个互不同步的侧边栏。分隔线没有状态，
+ * 顶栏里往往需要两条以上（功能入口之间一条、账号区之前一条），
+ * 因此单独放行。
+ */
+export const REPEATABLE_PART_IDS: readonly HostPartId[] = ['divider']
 
 /**
  * 部件节点。
@@ -381,7 +393,7 @@ export function validateRegionTree(
       }
 
       const id = partId as HostPartId
-      if (seenParts.has(id)) {
+      if (seenParts.has(id) && !REPEATABLE_PART_IDS.includes(id)) {
         errors.push(`${path}: 部件 "${id}" 被重复引用`)
       }
       seenParts.add(id)

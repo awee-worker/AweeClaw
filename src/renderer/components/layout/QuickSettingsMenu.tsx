@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback } from 'react'
-import { Globe, Sun, Moon, Monitor, Check, ChevronRight } from 'lucide-react'
+import { Globe, Sun, Moon, Monitor, Check, ChevronRight, ChevronLeft } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { themeManager } from '@/renderer/config/themeDefinition'
@@ -18,14 +18,35 @@ import { api } from '@renderer/adapters/electronBridge'
 import { t, type Language } from '@renderer/i18n'
 import type { ThemeMode, ThemeColor } from '@store'
 
+/**
+ * 二级菜单展开方向
+ *
+ * rail：一级菜单挂在导航栏左下角，左侧是屏幕外，因此向右展开；
+ * left：一级菜单来自顶部右上角的账号按钮，右侧已到窗口边缘，必须向左展开，
+ *       否则二级菜单整块溢出到可视区之外。
+ */
+export type QuickSettingsDirection = 'right' | 'left'
+
 interface QuickSettingsMenuProps {
   language: Language
   onClose: () => void
+  direction?: QuickSettingsDirection
 }
 
-/** 二级菜单容器样式（向右展开） */
-const SUB_MENU_CLASS =
-  'absolute left-full top-0 w-44 py-1 rounded-xl bg-surface/95 backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-[10000]'
+/** 二级菜单容器样式：按方向贴在一级菜单的左/右边缘 */
+function subMenuClass(direction: QuickSettingsDirection): string {
+  const anchor =
+    direction === 'left'
+      ? 'right-full mr-1 top-0'
+      : 'left-full ml-1 top-0'
+  return `absolute ${anchor} w-44 py-1 rounded-xl bg-surface/95 backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-[10000]`
+}
+
+/** 二级菜单指示箭头：方向与展开方向一致 */
+function SubMenuArrow({ direction }: { direction: QuickSettingsDirection }) {
+  const Icon = direction === 'left' ? ChevronLeft : ChevronRight
+  return <Icon className="w-3 h-3 text-text-muted" />
+}
 
 /** 父项触发器样式 */
 const TRIGGER_CLASS =
@@ -40,7 +61,7 @@ const GROUP_TITLE_CLASS =
   'px-3 py-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider'
 
 /** 界面语言快速切换 */
-function LanguageSubMenu({ language, onClose }: QuickSettingsMenuProps) {
+function LanguageSubMenu({ language, onClose, direction = 'right' }: QuickSettingsMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
 
   const handleSelect = useCallback(async (lang: Language) => {
@@ -68,10 +89,10 @@ function LanguageSubMenu({ language, onClose }: QuickSettingsMenuProps) {
       <div className={TRIGGER_CLASS}>
         <Globe className="w-[16px] h-[16px]" strokeWidth={1.5} />
         <span className="flex-1 text-left">{t('layout.interfacelanguage', language)}</span>
-        <ChevronRight className="w-3 h-3 text-text-muted" />
+        <SubMenuArrow direction={direction} />
       </div>
       {isOpen && (
-        <div className={SUB_MENU_CLASS}>
+        <div className={subMenuClass(direction)}>
           {options.map(opt => (
             <button
               key={opt.value}
@@ -92,7 +113,7 @@ function LanguageSubMenu({ language, onClose }: QuickSettingsMenuProps) {
 }
 
 /** 界面主题快速切换 */
-function ThemeSubMenu({ language, onClose }: QuickSettingsMenuProps) {
+function ThemeSubMenu({ language, onClose, direction = 'right' }: QuickSettingsMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
 
   const { themeMode, themeColor, setThemeMode, setThemeColor } = useStore(useShallow(s => ({
@@ -149,10 +170,10 @@ function ThemeSubMenu({ language, onClose }: QuickSettingsMenuProps) {
       <div className={TRIGGER_CLASS}>
         <Sun className="w-[16px] h-[16px]" strokeWidth={1.5} />
         <span className="flex-1 text-left">{t('layout.interfacetheme', language)}</span>
-        <ChevronRight className="w-3 h-3 text-text-muted" />
+        <SubMenuArrow direction={direction} />
       </div>
       {isOpen && (
-        <div className={SUB_MENU_CLASS}>
+        <div className={subMenuClass(direction)}>
           {/* 主题模式 */}
           <div className={GROUP_TITLE_CLASS}>
             {t('layout.thememode', language)}
@@ -207,11 +228,11 @@ function ThemeSubMenu({ language, onClose }: QuickSettingsMenuProps) {
   )
 }
 
-export function QuickSettingsMenu({ language, onClose }: QuickSettingsMenuProps) {
+export function QuickSettingsMenu({ language, onClose, direction = 'right' }: QuickSettingsMenuProps) {
   return (
     <>
-      <LanguageSubMenu language={language} onClose={onClose} />
-      <ThemeSubMenu language={language} onClose={onClose} />
+      <LanguageSubMenu language={language} onClose={onClose} direction={direction} />
+      <ThemeSubMenu language={language} onClose={onClose} direction={direction} />
     </>
   )
 }

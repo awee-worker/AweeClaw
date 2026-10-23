@@ -53,8 +53,14 @@ export interface ThreadStoreState {
 export interface ThreadActions {
     createThread: (options?: {
         activate?: boolean
-        /** 线程来源；'plan-task' 指计划任务工作线程（不进会话列表，触顶时优先回收） */
-        origin?: 'user' | 'plan-task'
+        /**
+         * 线程来源
+         *
+         * - `user`：用户会话，出现在会话列表
+         * - `plan-task`：计划任务工作线程，不进会话列表，触顶时优先回收
+         * - `scenario-task`：场景工作线程（如原型工坊的 AI 画图），同样不进会话列表
+         */
+        origin?: 'user' | 'plan-task' | 'scenario-task'
         /** origin 为 'plan-task' 时关联的计划 ID */
         planId?: string
         /** origin 为 'plan-task' 时关联的任务 ID */
@@ -303,7 +309,8 @@ export const createThreadSlice: StateCreator<
         if (cloudUser?.id) {
             thread.userId = cloudUser.id
         }
-        // 归属标记：计划任务工作线程据此与用户会话列表隔离，并在触顶时被优先回收
+        // 归属标记：非用户会话（计划任务 / 场景工作线程）据此与用户会话列表隔离，
+        // 并在触顶时被优先回收
         if (options?.origin) thread.origin = options.origin
         if (options?.planId) thread.planId = options.planId
         if (options?.taskId) thread.taskId = options.taskId
@@ -321,12 +328,12 @@ export const createThreadSlice: StateCreator<
                     .map(id => ({
                         id,
                         lastModified: newThreads[id].lastModified,
-                        isPlanTask: newThreads[id].origin === 'plan-task',
+                        // 非用户会话（计划任务线程 / 场景工作线程）优先回收：先按来源分组，
+                        // 组内再按最旧优先。否则一次批量创建的后台线程会把更旧的用户会话挤出上限删掉。
+                        isWorkerThread: newThreads[id].origin !== undefined && newThreads[id].origin !== 'user',
                     }))
-                    // 计划任务线程优先回收：先按来源分组（plan-task 排在前面），组内再按最旧优先。
-                    // 否则一个多任务计划批量创建的线程，会把更旧的用户会话挤出上限删掉。
                     .sort((a, b) => {
-                        if (a.isPlanTask !== b.isPlanTask) return a.isPlanTask ? -1 : 1
+                        if (a.isWorkerThread !== b.isWorkerThread) return a.isWorkerThread ? -1 : 1
                         return a.lastModified - b.lastModified
                     })
 

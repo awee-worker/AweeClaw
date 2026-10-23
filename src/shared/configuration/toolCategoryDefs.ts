@@ -19,6 +19,7 @@
 
 import type { WorkMode } from '@protocols/workModeProtocol'
 import type { SceneMode } from '@protocols/sceneModeProtocol'
+import type { ScenarioSessionScope } from '@protocols/scenario'
 import { toolPackRegistry } from './toolPacks'
 
 // ============================================
@@ -119,6 +120,15 @@ export interface ToolLoadingContext {
    * dev 独有开发类工具（DEV_ONLY_TOOL_NAMES、git_*）不会下发。
    */
   sceneMode?: SceneMode
+
+  /**
+   * 场景会话边界（来自 ScenarioPlugin.sessionScope）
+   *
+   * 场景声明后，工具集按声明收窄，与系统提示词里的边界声明同源。
+   * systemRequiredTools 中的交互类工具不受白名单影响 —— 它们不产出任何
+   * 文件或命令，挡掉只会让模型无法提问、无法交付结果。
+   */
+  sessionScope?: ScenarioSessionScope
 }
 /** 角色工具配置 */
 export interface TemplateToolConfig {
@@ -702,6 +712,14 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
     tools = new Set(Array.from(tools).filter((tool) => planTools.has(tool)))
   }
 
+  // 9.5 场景会话边界：场景限定「只服务本场景内容」时，工具集随之收窄。
+  //     放在套餐白名单之前 —— 会话边界是场景自己的语义约束，与被授权了哪些
+  //     能力组无关；两者叠加后仍可能剩下空集，这是预期结果（例如场景既禁了
+  //     终端、套餐也没授权）。
+  if (context.sessionScope) {
+    tools = applySessionScope(tools, context.sessionScope)
+  }
+
   // 9. 套餐能力组白名单过滤（置于最后一道，对全部来源的工具统一生效）
   //    未配置（undefined）→ 全放行；目录未登记的工具（MCP / 场景 / 插件）不受此限制
   if (context.allowedToolGroups !== undefined) {
@@ -721,4 +739,72 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
  */
 export function isToolAvailable(toolName: string, context: ToolLoadingContext): boolean {
   return getToolsForContext(context).includes(toolName)
+}
+
+/**
+ * 会话边界下永不放行的工具
+ *
+ * 这几个都不产生外部副作用（不写文件、不跑命令、不联网），却是模型与用户
+ * 交互的通道：挡掉 ask_user 会让边界收窄变成一个不能追问的黑箱，挡掉
+ * todo_write / create_task_plan 会让长任务无法拆解，挡掉 open_preview 会让
+ * 场景内的产物看不到。因此白名单里不写也要保留。
+ */
+const SESSION_SCOPE_ALWAYS_ALLOWED: readonly string[] = [
+  'ask_user',
+  'todo_write',
+  'create_task_plan',
+  'update_task_plan',
+  'start_task_execution',
+  'open_preview',
+  'finish_plan_task',
+  'report_plan_progress',
+]
+
+/**
+ * 工具名是否命中一条声明模式
+ *
+ * 支持 `git_*` / `mcp_builtin-browser__*` 这种前缀写法：场景能声明到的
+ * 工具集合经常是成组出现的（MCP 服务器一次挂十几个），逐个列举既冗长又
+ * 容易随版本漂移漏掉新工具。
+ */
+export function matchesToolPattern(toolName: string, pattern: string): boolean {
+  const rule = pattern.trim()
+  if (!rule) return false
+  if (rule.endsWith('*')) return toolName.startsWith(rule.slice(0, -1))
+  return toolName === rule
+}
+
+/**
+ * 按会话边界收窄工具集
+ *
+ * 先白名单后黑名单：黑名单是场景对「白名单里顺手带进来的东西」的补救，
+ * 顺序反过来会让黑名单条目被白名单重新放行。
+ */
+export function applySessionScope(
+  tools: Set<string>,
+  scope: ScenarioSessionScope,
+): Set<string> {
+  const allow = (scope.allowedTools ?? []).filter(Boolean)
+  const deny = (scope.deniedTools ?? []).filter(Boolean)
+
+  let next = tools
+
+  if (allow.length > 0) {
+    next = new Set(
+      Array.from(next).filter((tool) =>
+        SESSION_SCOPE_ALWAYS_ALLOWED.includes(tool)
+        || allow.some((pattern) => matchesToolPattern(tool, pattern)),
+      ),
+    )
+  }
+
+  if (deny.length > 0) {
+    next = new Set(
+      Array.from(next).filter(
+        (tool) => !deny.some((pattern) => matchesToolPattern(tool, pattern)),
+      ),
+    )
+  }
+
+  return next
 }

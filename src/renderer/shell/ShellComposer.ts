@@ -58,6 +58,12 @@ export interface LayoutConfig {
   shellMode: ScenarioShellMode
   /** 场景声明的外壳区域树（已校验），undefined 表示使用默认结构 */
   regions?: RegionNode
+  /**
+   * 场景是否声明了无人值守执行（ui.unattended）
+   *
+   * 由 AweeApp 同步进 store，审批门禁据此对活跃场景跳过逐次确认。
+   */
+  unattended: boolean
 }
 
 /**
@@ -68,7 +74,7 @@ export interface LayoutConfig {
  */
 export type BaseLayoutConfig = Omit<
   LayoutConfig,
-  'scenarioId' | 'primaryView' | 'shellMode' | 'regions'
+  'scenarioId' | 'primaryView' | 'shellMode' | 'regions' | 'unattended'
 >
 
 // ============================================
@@ -603,10 +609,14 @@ class ShellComposerClass {
     const shellMode = resolveShellMode(scenario)
     const fullConfig: LayoutConfig = {
       ...config,
+      // 场景声明不要导航栏时，默认外壳结构里的 rail 槽位随之收起。
+      // regions 档位由场景自己的树决定，不写 rail 节点即可，这里不做二次裁剪。
+      showActivityBar: scenario.ui.chrome?.hideNavRail === true ? false : config.showActivityBar,
       scenarioId: scenario.id,
       primaryView: resolvePrimaryView(scenario),
       shellMode,
       regions: resolveRegions(scenario, shellMode),
+      unattended: scenario.ui.unattended === true,
     }
 
     this.cache.set(cacheKey, { config: fullConfig, createdAt: Date.now() })

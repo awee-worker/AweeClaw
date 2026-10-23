@@ -257,11 +257,44 @@ export class ProgrammaticScenarioModule implements ScenarioModule {
 
     // 合并 bundle 提供的自定义配置
     const customPlugin = this.moduleExports?.getPlugin?.()
-    if (customPlugin) {
-      return mergePluginConfig(defaultPlugin, customPlugin)
-    }
+    const plugin = customPlugin ? mergePluginConfig(defaultPlugin, customPlugin) : defaultPlugin
 
-    return defaultPlugin
+    /*
+     * 场景工具名回流到 capabilities.tools
+     *
+     * getTools() 只负责把执行器注册进工具注册表；决定「哪些工具下发给模型」的是
+     * getToolsForContext()，它读 capabilities.tools。两条链路不同步时，工具注册
+     * 齐全但模型看不到定义 —— 表现为 AI 声称「已画完」而画布没有任何内容。
+     * 显式声明的工具名保留在前，bundle 实际注册的工具补齐在后。
+     */
+    const toolNames = this.collectToolNames(plugin.capabilities.tools ?? [])
+    return {
+      ...plugin,
+      capabilities: {
+        ...plugin.capabilities,
+        tools: toolNames.length > 0 ? toolNames : undefined,
+      },
+    }
+  }
+
+  /**
+   * 汇总本场景实际注册的工具名
+   *
+   * 名字来源于 bundle 的 getTools()，此时执行器未必已就绪；取不到只影响本场景
+   * 的工具可见性，不该让整份插件配置加载失败，因此异常按空集处理。
+   */
+  private collectToolNames(declared: string[]): string[] {
+    const names = new Set(declared.filter(Boolean))
+    try {
+      for (const tool of this.moduleExports?.getTools?.() || []) {
+        if (tool?.name) names.add(tool.name)
+      }
+    } catch (err) {
+      logger.agent.warn(
+        `[ProgrammaticScenarioModule] getTools() threw for "${this.config.id}": ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+    return Array.from(names)
   }
 
   getTools(): ScenarioToolDefinition[] {

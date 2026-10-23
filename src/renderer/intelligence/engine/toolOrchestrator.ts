@@ -532,6 +532,19 @@ export interface ApprovalGateToolInfo {
  *
  * @param workspacePath 当前工作空间路径；手动审批模式下用于判定「外部内容」
  */
+/**
+ * 当前场景是否声明了无人值守执行
+ *
+ * 判定要求「标记非空」且「与活跃场景一致」：标记由 AweeApp 按布局配置写入，
+ * 场景切换与它之间存在一帧左右的错位，只比标记不等同于当前场景时，豁免可能
+ * 落到刚切过去还来不及更新的那个场景上。
+ */
+function isUnattendedScenarioActive(): boolean {
+  const mainStore = useStore.getState()
+  if (!mainStore.unattendedScenarioId) return false
+  return mainStore.unattendedScenarioId === mainStore.activeScenarioId
+}
+
 export function resolveApprovalGate(
   toolCall: ApprovalGateToolInfo,
   chatMode?: string,
@@ -540,6 +553,11 @@ export function resolveApprovalGate(
 ): ApprovalGate {
   // chat 模式（纯对话无工具副作用）始终不拦截，与授权方式正交
   if (chatMode === 'chat') return 'none'
+
+  // 无人值守场景（ui.unattended）：场景内的 AI 承担的是「把产物做出来」的整段动作，
+  // 逐次确认等于让用户守着它跑。放开的只是「是否允许调用」这一层 —— ask_user 之类
+  // 主动提问由工具自身等待用户选择，场景会话边界也照常收窄工具范围。
+  if (isUnattendedScenarioActive()) return 'none'
 
   const toolName = toolCall.name
   const approvalType = getToolApprovalType(toolName)

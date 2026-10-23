@@ -82,13 +82,26 @@ export interface PluginHostApi {
   /** 读取插件用户配置 */
   getConfig: () => Record<string, string>
   /**
-   * 向当前会话发送一条用户消息并触发 AI 处理。
+   * 把一条请求交给 AI 处理。
    *
    * 用于插件 UI 将任务交接给 AI（例如录制结束后请求 AI 分析帧并保存宏）。
-   * 消息会进入当前激活的会话线程，走与用户手动输入相同的链路。
    * @param text 用户消息文本
+   * @param scenarioKey 场景内工作单元标识（如当前项目 ID）
+   * @param model 本次运行使用的模型（provider + model）。不传则用客户端当前设置
+   *
+   * 传了 scenarioKey 时消息进入该工作单元的**场景工作线程**：不切换主聊天线程、
+   * 不进会话列表，对话内容也不会出现在聊天面板里 —— 场景里的 AI 产出属于画布 /
+   * 报表本身，不应混进用户的对话历史。运行状态、需要用户选择的问题分别通过
+   * `aweeclaw:plugin-chat-state` 与 `aweeclaw:plugin-chat-interactive` 事件回传，
+   * 由插件面板就地展示。可用模型清单由 `aweeclaw:plugin-models` 广播。
+   *
+   * 不传时退化为原有行为：消息进入当前激活的会话线程。
    */
-  sendChatMessage: (text: string) => Promise<void>
+  sendChatMessage: (
+    text: string,
+    scenarioKey?: string,
+    model?: { provider: string; model: string },
+  ) => Promise<void>
   /**
    * 把一次操作的结果告知 AI，但不触发新的一轮对话。
    *
