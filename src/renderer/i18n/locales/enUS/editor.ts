@@ -45,6 +45,7 @@ export const en = {
   'editorWelcome.eyebrow': 'Workbench',
   'editorWelcome.title': 'Choose a path and keep going.',
   'editorWelcome.subtitle': 'Search files, run commands, or tune the workspace from one calm starting point.',
+  'editorWelcome.noOpenFile': 'No file open',
   'editorWelcome.searchTitle': 'Search files',
   'editorWelcome.searchSubtitle': 'Find and open files in this workspace',
   'editorWelcome.commandsTitle': 'Command palette',

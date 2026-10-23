@@ -45,6 +45,7 @@ export const zh = {
   'editorWelcome.eyebrow': '工作台',
   'editorWelcome.title': '选择一个入口，继续你的工作',
   'editorWelcome.subtitle': '快速搜索文件、打开命令面板，或调整工作台设置。',
+  'editorWelcome.noOpenFile': '没有打开的文件',
   'editorWelcome.searchTitle': '搜索文件',
   'editorWelcome.searchSubtitle': '查找并打开当前工作空间文件',
   'editorWelcome.commandsTitle': '命令面板',

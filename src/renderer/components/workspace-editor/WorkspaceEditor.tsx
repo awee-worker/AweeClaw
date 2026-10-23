@@ -233,6 +233,8 @@ export default function Editor() {
   const activeFilePath = useStore((state) => state.activeFilePath)
   const activeFile = useStore(useShallow(state => state.openFiles.find(f => f.path === state.activeFilePath)))
   const openFileCount = useStore((state) => state.openFiles.length)
+  // 底部面板展开时编辑器区只是面板上方的余量，空状态用精简版
+  const dockPanelVisible = useStore((state) => state.dockPanelVisible)
 
   // 状态
   const [streamingEdit, setStreamingEdit] = useState<StreamingEditState | null>(null)
@@ -919,7 +921,7 @@ export default function Editor() {
     return (
       <div className="h-full flex flex-col bg-background-editor relative overflow-hidden">
         <div className="flex-1 min-h-0 relative overflow-hidden">
-          <EditorWelcome />
+          <EditorWelcome compact={dockPanelVisible} />
         </div>
         <Suspense fallback={null}>
           <DockPanel />

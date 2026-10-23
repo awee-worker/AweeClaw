@@ -1,4 +1,4 @@
-import { Search, TerminalSquare, FolderOpen, Settings, Keyboard } from 'lucide-react'
+import { Search, TerminalSquare, FolderOpen, Settings, Keyboard, FileX2 } from 'lucide-react'
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
 
@@ -7,8 +7,14 @@ import { t } from '@renderer/i18n'
  *
  * 场景感知：当 activeScenarioId 为 scenario-builder 时，
  * 显示场景开发专属文案，让用户立刻感知"我在场景开发工作台"。
+ *
+ * compact：只报「没有打开的文件」
+ *
+ * 底部面板（终端等）展开时，这块区域只是面板上方的余量，不是用户要待的地方——
+ * 此时引导卡片、四个快捷键入口全都用不上，还占着本该留给终端的视野。
+ * 精简成一行状态即可，把注意力还给面板。
  */
-export function EditorWelcome() {
+export function EditorWelcome({ compact = false }: { compact?: boolean }) {
   const language = useStore((state) => state.language)
   const activeScenarioId = useStore((state) => state.activeScenarioId)
   const setShowSettingsPage = useStore((state) => state.setShowSettingsPage)
@@ -32,6 +38,17 @@ export function EditorWelcome() {
   const subtitle = isScenarioBuilder
     ? t('builder.welcome.heroSubtitle', language)
     : t('editorWelcome.subtitle', language)
+
+  if (compact) {
+    return (
+      <div className="h-full flex items-center justify-center bg-background-editor select-none">
+        <div className="flex items-center gap-2 text-text-muted">
+          <FileX2 className="w-4 h-4" strokeWidth={1.5} />
+          <span className="text-[13px]">{t('editorWelcome.noOpenFile', language)}</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex items-center justify-center bg-background-editor">
