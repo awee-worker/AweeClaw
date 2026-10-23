@@ -88,6 +88,8 @@ export const EDITOR_DEFAULTS = {
   formatOnSave: false,
   autoSave: 'off' as const,
   autoSaveDelay: 1000,
+  // 打开编辑器 / 内置浏览器时自动收起菜单栏与侧边栏，关闭后恢复原状
+  autoCollapseChromeOnFocus: true,
 } as const
 
 // ============================================

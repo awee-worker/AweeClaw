@@ -48,6 +48,14 @@ export type SidePanel =
 /** 终端布局模式 */
 export type TerminalLayout = 'tabs' | 'split'
 
+/** 专注布局前的面板快照：进入编辑器 / 内置浏览器前记录，退出时据此恢复 */
+export interface ChromeSnapshot {
+  /** 菜单栏（导航栏）是否展开 */
+  navRailExpanded: boolean
+  /** 工作空间侧边栏当前面板 */
+  activeSidePanel: SidePanel
+}
+
 /** 底部 Dock 面板 Tab 类型 */
 export type DockTab = 'problems' | 'output' | 'debug' | 'terminal' | 'references'
 
@@ -412,6 +420,25 @@ export interface LayoutSlice {
   openInternalBrowser: (url: string, title?: string, menuId?: string) => void
   /** 关闭内部浏览器 */
   closeInternalBrowser: () => void
+
+  /* ===== 专注布局（编辑器 / 内置浏览器占位时收起外壳） ===== */
+  /**
+   * 进入专注布局前的面板快照。
+   *
+   * null 表示当前不在专注布局，或用户已经手动接管过面板状态（此时退出不再覆盖）。
+   */
+  chromeSnapshotBeforeFocus: ChromeSnapshot | null
+  /**
+   * 记录当前面板状态并收起外壳。
+   *
+   * 幂等：已在专注布局（快照非空）时不覆盖首次快照，避免嵌套打开时丢失原始状态。
+   *
+   * @param options.collapseSidePanel 是否同时收起工作空间侧边栏。内置浏览器需要让出整块
+   *        横向空间，传 true；文件编辑器只让出菜单栏，传 false（默认 true）。
+   */
+  enterFocusLayout: (options?: { collapseSidePanel?: boolean }) => void
+  /** 恢复到进入专注布局前的面板状态；快照为空时不做任何事 */
+  exitFocusLayout: () => void
 }
 
 export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> = (set) => {
@@ -451,6 +478,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   internalBrowserTitle: '',
   activeCustomMenuId: null,
   chatVisibleBeforeInternalBrowser: null,
+  chromeSnapshotBeforeFocus: null,
 
   /* ----- 工作台自定义初始状态（优先恢复上次保存的配置） ----- */
   workbenchWidgets: {
@@ -483,6 +511,10 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
     set((state) => ({
       activeSidePanel: panel,
       lastActiveSidePanel: panel ?? state.lastActiveSidePanel,
+      // 用户显式打开 / 切换面板即视为接管：丢弃专注布局快照，退出时不再覆盖这次选择。
+      // 收起（null）不清快照——专注布局自身、打开预览、切到浏览器等都会程序化收起侧边栏，
+      // 若把它们也算作接管，关闭编辑器 / 浏览器后就再也恢复不到打开前的面板。
+      chromeSnapshotBeforeFocus: panel ? null : state.chromeSnapshotBeforeFocus,
     })),
   setTerminalVisible: (visible) => set((state) => ({ 
     terminalVisible: visible,
@@ -495,7 +527,13 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
     activeDockTab: visible ? 'debug' : state.activeDockTab,
   })),
   setChatVisible: (visible) => set({ chatVisible: visible }),
-  setNavRailExpanded: (expanded) => set({ navRailExpanded: expanded }),
+  setNavRailExpanded: (expanded) =>
+    set((state) => ({
+      navRailExpanded: expanded,
+      // 只有「用户主动展开」才算接管专注布局；收起多来自打开文件时的程序化调用
+      // （AweeApp / 文件预览），把它们算作接管会让快照丢失、关闭后无法恢复。
+      chromeSnapshotBeforeFocus: expanded ? null : state.chromeSnapshotBeforeFocus,
+    })),
   toggleTerminal: () => set((state) => {
     const newTerminalVisible = !state.terminalVisible
     if (newTerminalVisible) {
@@ -517,9 +555,14 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   toggleSidebar: () =>
     set((state) => ({
       activeSidePanel: state.activeSidePanel ? null : state.lastActiveSidePanel,
+      chromeSnapshotBeforeFocus: null,
     })),
   toggleChat: () => set((state) => ({ chatVisible: !state.chatVisible })),
-  toggleNavRail: () => set((state) => ({ navRailExpanded: !state.navRailExpanded })),
+  toggleNavRail: () =>
+    set((state) => ({
+      navRailExpanded: !state.navRailExpanded,
+      chromeSnapshotBeforeFocus: null,
+    })),
 
   /* ----- 底部 Dock 面板操作 ----- */
   setDockPanelVisible: (visible) => set({ dockPanelVisible: visible }),
@@ -712,5 +755,43 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
         chatVisibleBeforeInternalBrowser: null,
       }
     }),
+
+  /* ----- 专注布局操作 ----- */
+  enterFocusLayout: (options) =>
+    set((state) => {
+      const collapseSidePanel = options?.collapseSidePanel !== false
+      const snapshot = state.chromeSnapshotBeforeFocus
+
+      // 已在专注布局里（例如编辑器里再打开内置浏览器、浏览器关闭后回到编辑器）：
+      // 保留首次快照，只按当前模式补齐 / 回退侧边栏。
+      if (snapshot) {
+        const nextSidePanel = collapseSidePanel ? null : snapshot.activeSidePanel
+        if (state.navRailExpanded === false && state.activeSidePanel === nextSidePanel) {
+          return state
+        }
+        return { navRailExpanded: false, activeSidePanel: nextSidePanel }
+      }
+
+      return {
+        chromeSnapshotBeforeFocus: {
+          navRailExpanded: state.navRailExpanded,
+          activeSidePanel: state.activeSidePanel,
+        },
+        navRailExpanded: false,
+        // 文件编辑器只让出菜单栏；内置浏览器才收起侧边栏
+        activeSidePanel: collapseSidePanel ? null : state.activeSidePanel,
+      }
+    }),
+  exitFocusLayout: () =>
+    set((state) => {
+      const snapshot = state.chromeSnapshotBeforeFocus
+      if (!snapshot) return state
+      return {
+        navRailExpanded: snapshot.navRailExpanded,
+        activeSidePanel: snapshot.activeSidePanel,
+        chromeSnapshotBeforeFocus: null,
+      }
+    }),
   }
 }
+

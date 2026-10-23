@@ -43,6 +43,8 @@ export interface EditorSettingsState {
     formatOnSave: boolean
     autoSave: 'off' | 'afterDelay' | 'onFocusChange'
     autoSaveDelay: number
+    /** 打开编辑器 / 内置浏览器时自动收起菜单栏与侧边栏，关闭后恢复 */
+    autoCollapseChromeOnFocus: boolean
     theme: string
 
     // AI 补全

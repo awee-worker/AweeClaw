@@ -462,6 +462,11 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                         checked={settings.formatOnSave}
                         onChange={(e) => setSettings({ ...settings, formatOnSave: e.target.checked })}
                     />
+                    <ToggleSwitch
+                        label={language === 'zh' ? '打开编辑器/浏览器时收起侧栏' : 'Collapse panels on editor / browser'}
+                        checked={settings.autoCollapseChromeOnFocus !== false}
+                        onChange={(e) => setSettings({ ...settings, autoCollapseChromeOnFocus: e.target.checked })}
+                    />
                 </div>
 
                 {/* Tab 大小选择 */}

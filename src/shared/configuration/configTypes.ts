@@ -225,6 +225,11 @@ export interface EditorConfig {
   formatOnSave: boolean
   autoSave: 'off' | 'afterDelay' | 'onFocusChange'
   autoSaveDelay: number
+  /**
+   * 打开文件预览编辑器 / 内置浏览器时自动收起菜单栏与工作空间侧边栏，
+   * 关闭后恢复到打开前的状态。
+   */
+  autoCollapseChromeOnFocus: boolean
   terminal: TerminalConfig
   git: GitConfig
   lsp: LspConfig

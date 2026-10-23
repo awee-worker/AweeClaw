@@ -89,6 +89,7 @@ function createMockState(overrides?: Partial<SettingsLocalState>): SettingsLocal
       formatOnSave: false,
       autoSave: 'off',
       autoSaveDelay: 1000,
+      autoCollapseChromeOnFocus: true,
       theme: 'light',
       completionEnabled: true,
       completionDebounceMs: 150,

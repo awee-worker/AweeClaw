@@ -26,6 +26,7 @@ export interface EditorConfigSchema {
   formatOnSave?: boolean
   autoSave?: 'off' | 'afterDelay' | 'onFocusChange'
   autoSaveDelay?: number
+  autoCollapseChromeOnFocus?: boolean
   terminal?: {
     fontSize?: number
     fontFamily?: string
@@ -95,6 +96,9 @@ export function cleanEditorConfig(config: Record<string, unknown>): EditorConfig
     cleaned.autoSave = config.autoSave
   }
   if (typeof config.autoSaveDelay === 'number') cleaned.autoSaveDelay = config.autoSaveDelay
+  if (typeof config.autoCollapseChromeOnFocus === 'boolean') {
+    cleaned.autoCollapseChromeOnFocus = config.autoCollapseChromeOnFocus
+  }
 
   // terminal 子对象
   if (config.terminal && typeof config.terminal === 'object') {

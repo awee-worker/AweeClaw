@@ -10,7 +10,6 @@
  *   调用方不必关心标签页的创建与复用。
  */
 
-import { useStore } from '@store'
 import type { PreviewSession } from '@shared/protocols/previewProtocol'
 import { api } from '@renderer/adapters/electronBridge'
 import { previewSessionService } from './previewSessionManager'
@@ -139,18 +138,9 @@ export async function openBuiltinPreview(
 
 /** 打开（或复用）预览标签页并激活，返回对应会话（调用方据此等待页面就绪） */
 async function activatePreview(url: string, title: string, rootDir?: string, device?: string): Promise<PreviewSession> {
-    const store = useStore.getState()
-
-    // 侧边栏收起与打开标签页必须落在同一次 React 提交里
-    //
-    // 收起侧边栏会让主内容区变宽，打开标签页又会让聊天栏从「弹性占满」变成
-    // 「固定宽度」，同时挤出编辑器区域。拆成两帧时用户会先看到界面变宽、紧接着
-    // 内容被压窄——两次布局变化连着闪，观感就是整个界面缩了一下。合并到同一次
-    // 提交后只有一次布局与一次绘制，直接到达最终形态。
-    if (store.activeSidePanel !== null) {
-        store.setActiveSidePanel(null)
-    }
-
+    // 侧边栏的收起交给 useFocusChromeCollapse：它按「浏览器专注」的模式在绘制前
+    // 与标签页激活落在同一次提交里，并保留打开前的面板快照。
+    // 这里手动 setActiveSidePanel(null) 会把打开前的侧栏状态抹掉，关闭浏览器后无法恢复。
     const session = previewSessionService.openUrl(url, {
         title,
         source: 'manual',

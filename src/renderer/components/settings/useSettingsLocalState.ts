@@ -147,6 +147,8 @@ function toEditorSettingsState(config: EditorConfig): EditorSettingsState {
     formatOnSave: config.formatOnSave ?? false,
     autoSave: config.autoSave ?? 'off',
     autoSaveDelay: config.autoSaveDelay ?? 1000,
+    // 旧配置没有这个字段，按开启处理
+    autoCollapseChromeOnFocus: config.autoCollapseChromeOnFocus !== false,
     theme: 'light',
     completionEnabled: config.ai?.completionEnabled ?? true,
     completionDebounceMs: config.performance?.completionDebounceMs ?? 150,
@@ -361,6 +363,7 @@ export function useSettingsLocalState(embedded: boolean) {
     formatOnSave: state.editorSettings.formatOnSave,
     autoSave: state.editorSettings.autoSave,
     autoSaveDelay: state.editorSettings.autoSaveDelay,
+    autoCollapseChromeOnFocus: state.editorSettings.autoCollapseChromeOnFocus,
     ai: {
       ...state.advancedEditorConfig.ai,
       completionEnabled: state.editorSettings.completionEnabled,

@@ -123,6 +123,7 @@ export default function NavigationRail() {
     activeCustomMenuId,
     closeInternalBrowser,
     setChatVisible,
+    enterFocusLayout,
   } = useStore(useShallow(s => ({
     activeSidePanel: s.activeSidePanel,
     setActiveSidePanel: s.setActiveSidePanel,
@@ -141,6 +142,7 @@ export default function NavigationRail() {
     activeCustomMenuId: s.activeCustomMenuId,
     closeInternalBrowser: s.closeInternalBrowser,
     setChatVisible: s.setChatVisible,
+    enterFocusLayout: s.enterFocusLayout,
   })))
 
   /**
@@ -253,20 +255,25 @@ export default function NavigationRail() {
    * 与打开预览 Tab 时「先让出侧边栏、再挂载 webview」的处理保持一致。
    */
   const handleOpenCustomMenu = useCallback((menu: { url: string; name: string; id: string }) => {
-    const hadSidePanel = useStore.getState().activeSidePanel !== null
-    setActiveSidePanel(null)
+    // 收起动作必须走 enterFocusLayout：它先记录「打开前」的菜单栏 / 侧边栏状态，
+    // 关闭浏览器后据此恢复。直接 setActiveSidePanel(null) 会把打开前的面板抹掉，
+    // 快照只能记到 null，关闭后就再也回不到原来的工作空间面板。
+    const store = useStore.getState()
+    const hadSidePanel = store.activeSidePanel !== null
+    const hadNavRail = store.navRailExpanded
+    enterFocusLayout()
     closeAllFullPages()
 
     const open = () => openInternalBrowser(menu.url, menu.name, menu.id)
 
-    // 侧边栏本来就没展开时没有额外重排，不必多等一帧
-    if (!hadSidePanel) {
+    // 侧边栏与菜单栏本来就没展开时没有额外重排，不必多等一帧
+    if (!hadSidePanel && !hadNavRail) {
       open()
       return
     }
 
     requestAnimationFrame(() => requestAnimationFrame(open))
-  }, [setActiveSidePanel, closeAllFullPages, openInternalBrowser])
+  }, [enterFocusLayout, closeAllFullPages, openInternalBrowser])
 
   const handleBrandClick = useCallback(() => {
     setActiveSidePanel(null)

@@ -181,6 +181,7 @@ const defaultEditorConfig: EditorConfig = {
   formatOnSave: EDITOR_DEFAULTS.formatOnSave,
   autoSave: EDITOR_DEFAULTS.autoSave,
   autoSaveDelay: EDITOR_DEFAULTS.autoSaveDelay,
+  autoCollapseChromeOnFocus: EDITOR_DEFAULTS.autoCollapseChromeOnFocus,
   terminal: { ...TERMINAL_DEFAULTS },
   git: { ...GIT_DEFAULTS },
   lsp: { ...LSP_DEFAULTS },

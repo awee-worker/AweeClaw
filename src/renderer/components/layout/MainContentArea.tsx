@@ -19,6 +19,7 @@ import { getScenarioComponent } from '@components/scenario/ScenarioComponentReso
 import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
 import { RegionRenderer } from '@renderer/shell/RegionRenderer'
 import type { RegionSlotMap } from '@shared/protocols/scenario-regions'
+import { useFocusChromeCollapse } from '@renderer/hooks/useFocusChromeCollapse'
 import ChatSection from './ChatSection'
 
 /**
@@ -201,6 +202,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     showUserProfilePage: s.showUserProfilePage,
     showBillingCenterPage: s.showBillingCenterPage,
     showSessionHistoryPage: s.showSessionHistoryPage,
+    showPluginCenterPage: s.showPluginCenterPage,
     activeSidePanel: s.activeSidePanel,
     internalBrowserUrl: s.internalBrowserUrl,
     // 与 Primary 布局一致：面板可见时需要有编辑器区域承载
@@ -492,6 +494,8 @@ export default function MainContentArea(props: MainContentAreaProps) {
   useChunkWarmup(loadEditorChunk)
   useChunkWarmup(loadInternalBrowserChunk)
   useChunkWarmup(loadPreviewTabChunk)
+  // 打开编辑器 / 内置浏览器时收起菜单栏与侧边栏，关闭后按快照恢复
+  useFocusChromeCollapse(props.layoutConfig.sidebarItems)
 
   // 内置浏览器的承载位置在各个布局分支内部（Primary / Secondary 的左侧工作区），
   // 不在这里整体替换主区域：那样会把 ChatSection 连同 ChatPanel 一起卸载重建。
