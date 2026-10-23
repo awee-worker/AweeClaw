@@ -1404,7 +1404,27 @@ ${index}${foldedNotice ?? ''}`
         const enabled = skills.filter(s => s.enabled)
         if (enabled.length === 0) return ''
 
-        const sections = enabled.map(s => {
+        // 技能支持多选挂载，正文是线性叠加的：不给总量上限，挂上四五个技能
+        // 就能把真正重要的工作上下文挤出去。这里按挂载顺序分配预算——
+        // 先选的保留全文，超出的降级成索引，模型仍可按名用 apply_skill 加载，
+        // 只是不再预先占满窗口。
+        const FULL_CONTENT_BUDGET_CHARS = 24000
+        const detailed: SkillItem[] = []
+        const indexed: SkillItem[] = []
+        let usedChars = 0
+
+        for (const skill of enabled) {
+            const cost = skill.content.length + skill.description.length
+            // 第一个技能无条件保留全文：否则预算一旦耗尽，一条正文都注入不了
+            if (detailed.length > 0 && usedChars + cost > FULL_CONTENT_BUDGET_CHARS) {
+                indexed.push(skill)
+                continue
+            }
+            usedChars += cost
+            detailed.push(skill)
+        }
+
+        const sections = detailed.map(s => {
             // 防注入安全：转义 </skill> 标签
             const safeContent = s.content.replace(/<\/skill>/gi, '<\\/skill>')
             const installPath = `${this.SKILLS_DIR}/${s.name}/`
@@ -1412,6 +1432,13 @@ ${index}${foldedNotice ?? ''}`
             const safePath = installPath.replace(/[&"<>]/g, c => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[c] || c))
             return `<skill name="${safeName}" path="${safePath}">\n${s.description}\n\n${safeContent}\n</skill>`
         }).join('\n\n')
+
+        // 降级不等于丢弃：技能仍处于挂载状态，模型知道它存在、知道怎么取全文
+        const indexedSection = indexed.length > 0
+            ? `\n\n### Skills Loaded as Index Only\n` +
+              `以下技能已由用户挂载，但因上下文预算未展开正文。需要时用 \`apply_skill\` 按名加载：\n` +
+              indexed.map(s => `- **${s.name}**: ${s.description}`).join('\n')
+            : ''
 
         return `## Applied Skills
 
@@ -1421,7 +1448,7 @@ ${index}${foldedNotice ?? ''}`
 - **Environment Adaptation**: Adapt commands (e.g., shell syntax, executable names like "python" vs "python3") to your current environment (Windows). Translate shell scripts to \`.bat\`/\`.cmd\` commands if necessary, and handle path separators correctly.
 - **Tool Integration**: Use the provided tools (shell, file, etc.) to execute these skills as instructed.
 
-${sections}`
+${sections}${indexedSection}`
     }
 
     /**

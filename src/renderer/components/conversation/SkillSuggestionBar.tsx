@@ -388,6 +388,31 @@ export default function SkillSuggestionBar() {
   // 因此展开状态必须显式跟随会话切换复位
   const currentThreadId = useAgentStore(s => s.currentThreadId)
 
+  // 技能与插件都是多选上下文：同一类可以同时挂载多个条目，
+  // 选中态因此按集合判断，而不是只看「第一个同类项」。
+  // 定义在点击处理之前，下面所有回调和渲染都直接复用。
+  const contextItems = useAgentStore(selectContextItems)
+
+  /** 已挂载的技能 id 集合（小写），行内按钮与面板的勾选态共用 */
+  const selectedSkillIds = useMemo(
+    () => new Set(
+      contextItems
+        .filter(item => item.type === 'Skill')
+        .map(item => item.skillId),
+    ),
+    [contextItems],
+  )
+
+  /** 已挂载的插件 key 集合 */
+  const selectedPluginIds = useMemo(
+    () => new Set(
+      contextItems
+        .filter(item => item.type === 'Plugin')
+        .map(item => item.pluginId),
+    ),
+    [contextItems],
+  )
+
   useEffect(() => {
     let cancelled = false
     const load = () => {
@@ -523,7 +548,8 @@ export default function SkillSuggestionBar() {
     // 与技能同等对待：插件点击也要进统计，否则常用插件永远进不了置顶区
     recordPluginClick(plugin.pluginKey)
     const label = getPluginLabel(plugin)
-    // 插件是单选上下文，写入即整体替换；已有的二级项选择与静默说明必须先接管过来，
+    // 插件支持多选挂载：同一插件再次写入时按 pluginId 合并（而非替换其他插件），
+    // 且已有的二级项选择与静默说明必须先接管过来，
     // 否则「先选生成方式、再选模板」这一步会把前一项连同它的约束说明一起冲掉，
     // AI 收到的上下文里就只剩最后选的那一项。
     const merged = mergeSubSelections(currentSubSelections(toPluginEntry(plugin)), created ? [created] : [])
@@ -564,10 +590,12 @@ export default function SkillSuggestionBar() {
   }, [openEntry, sortMode])
 
   /**
-   * 点击一级条目：先写入上下文，再展开二级行
+   * 点击一级条目
    *
-   * 技能与插件走同一入口：两者都有 subSkills 时都能展开二级行，
-   * 没有二级项时保持原有「点一下即选中」的行为。
+   * 技能与插件走同一入口，语义分三种：
+   * - 未挂载 → 追加挂载（多选，同类的其它条目不受影响）
+   * - 已挂载且有二级项 → 展开/收起二级行，不动挂载状态
+   * - 已挂载且无二级项 → 再点一次即取消，与标签上的 × 等价
    */
   const handleEntryClick = useCallback((entry: BarEntry) => {
     // 智能体未启用该插件时，技能/插件在执行层同样用不了：
@@ -578,17 +606,28 @@ export default function SkillSuggestionBar() {
     }
 
     const subSkills = entry.kind === 'skill' ? entry.skill.subSkills : entry.plugin.subSkills
+    const hasSub = Boolean(subSkills && subSkills.length > 0)
 
-    // 一旦换了一级条目，上一条目在二级项里做的选择就失效了：
-    // 界面那条状态标签与写进上下文的说明必须一起清掉，
-    // 否则 AI 会拿着旧条目的选择继续作答（用户已切到别的技能，却说「用深色模板」）。
-    // 本次点击的条目要排除在外：重复点同一条目只是展开/收起二级行，
-    // 把它自己的选择一起清掉，用户刚选的那一项就从消息上消失了。
-    useAgentStore.getState().clearPluginStateNotes(
+    const mountedIndex = contextItems.findIndex(item => (
       entry.kind === 'skill'
-        ? { type: 'Skill', id: entry.skill.name.toLowerCase() }
-        : { type: 'Plugin', id: entry.plugin.pluginKey },
-    )
+        ? item.type === 'Skill' && item.skillId === entry.skill.name.toLowerCase()
+        : item.type === 'Plugin' && item.pluginId === entry.plugin.pluginKey
+    ))
+
+    // 已挂载且没有二级项：这次点击就是取消选择。
+    // 带二级项的条目不这么处理——它的点击语义是展开/收起二级行，
+    // 顺带取消挂载会让用户无法修改自己的选项。
+    if (mountedIndex >= 0 && !hasSub) {
+      if (entry.kind === 'plugin') clearPluginNotice()
+      useAgentStore.getState().removeContextItem(mountedIndex)
+      setOpenSelect(null)
+      setOpenEntry(null)
+      return
+    }
+
+    // 各条目在二级项里的选择互相独立：多选下点一个新条目，
+    // 不能把其他条目已选好的结果清掉，否则「技能 A 选深色模板 + 技能 B 选商务风」会丢一半。
+    // 因此这里不再做跨条目的选择清理，只重置插件侧的一次性提示。
     clearPluginNotice()
 
     if (entry.kind === 'skill') {
@@ -598,8 +637,8 @@ export default function SkillSuggestionBar() {
       attachPlugin(entry.plugin)
     }
     setOpenSelect(null)
-    setOpenEntry(subSkills && subSkills.length > 0 ? entry : null)
-  }, [attachPlugin, attachSkill, isEntryAvailable, isZh])
+    setOpenEntry(hasSub ? entry : null)
+  }, [attachPlugin, attachSkill, contextItems, isEntryAvailable, isZh])
 
   /**
    * 点击二级选项
@@ -739,8 +778,6 @@ export default function SkillSuggestionBar() {
   /** 面板入口的展示条件：技能与插件任一侧有溢出就需要它 */
   const hiddenEntryCount = hiddenSkillCount + hiddenPluginCount
 
-  // 插件是单选上下文（contextItems 里最多一个 Plugin）：取它作为行内按钮与面板的选中态
-  const contextItems = useAgentStore(selectContextItems)
 
   /**
    * 发送后收起二级行
@@ -752,7 +789,7 @@ export default function SkillSuggestionBar() {
    */
   useEffect(() => {
     if (!openEntry) return
-    // 技能与插件都是单选上下文：任一类从上下文里消失，展开的二级行就失去归属
+    // 展开的二级行只属于它自己的条目：该条目从上下文里消失（被取消、或发送后清空）就失去归属
     const stillMounted = openEntry.kind === 'skill'
       ? contextItems.some(
           item => item.type === 'Skill' && item.skillId === openEntry.skill.name.toLowerCase(),
@@ -766,20 +803,19 @@ export default function SkillSuggestionBar() {
     }
   }, [contextItems, openEntry])
 
-  const selectedPluginIndex = useMemo(
-    () => contextItems.findIndex(item => item.type === 'Plugin'),
-    [contextItems],
-  )
-  const selectedPluginId = useMemo(() => {
-    const item = contextItems[selectedPluginIndex]
-    return item?.type === 'Plugin' ? item.pluginId : undefined
-  }, [contextItems, selectedPluginIndex])
-
-  // 面板里再点一次已选插件即取消选择
-  const handlePluginDeselect = useCallback(() => {
-    if (selectedPluginIndex < 0) return
-    useAgentStore.getState().removeContextItem(selectedPluginIndex)
-  }, [selectedPluginIndex])
+  /**
+   * 取消某个插件的挂载
+   *
+   * 多选下必须按 pluginId 定位：沿用「删第一个 Plugin」的写法，
+   * 挂载了多个插件时会删掉用户没想删的那一个。
+   * 省略 pluginKey 时退回第一个插件，与早前的单插件调用保持一致。
+   */
+  const handlePluginDeselect = useCallback((pluginKey?: string) => {
+    const index = contextItems.findIndex(item => (
+      item.type === 'Plugin' && (pluginKey ? item.pluginId === pluginKey : true)
+    ))
+    if (index >= 0) useAgentStore.getState().removeContextItem(index)
+  }, [contextItems])
 
   /**
    * 「更多技能」面板的条目集合
@@ -788,11 +824,6 @@ export default function SkillSuggestionBar() {
    * 带上全部条目才能用搜索一次性定位，否则还得先判断目标在行内还是在面板里。
    */
   const overflowItems = useMemo<OverflowEntryItem[]>(() => {
-    const selectedSkillIds = new Set(
-      contextItems
-        .filter(item => item.type === 'Skill')
-        .map(item => item.skillId),
-    )
     return [
       ...orderedSkills.map(skill => {
         const available = isEntryAvailable(toSkillEntry(skill))
@@ -816,13 +847,13 @@ export default function SkillSuggestionBar() {
           label: getPluginLabel(plugin),
           description: (isZh && plugin.descriptionZh) || plugin.description || '',
           icon: plugin.icon,
-          selected: plugin.pluginKey === selectedPluginId,
+          selected: selectedPluginIds.has(plugin.pluginKey),
           disabled: !available,
           hint: available ? undefined : unavailableInAgentTip('plugin', isZh),
         }
       }),
     ]
-  }, [contextItems, orderedSkills, plugins, selectedPluginId, getSkillLabel, getPluginLabel, isZh, isEntryAvailable])
+  }, [selectedSkillIds, selectedPluginIds, orderedSkills, plugins, getSkillLabel, getPluginLabel, isZh, isEntryAvailable])
 
   /** 面板选中/取消：技能与插件分别回落到各自的一级点击语义 */
   const handleOverflowSelect = useCallback((item: OverflowEntryItem) => {
@@ -839,7 +870,7 @@ export default function SkillSuggestionBar() {
 
   const handleOverflowDeselect = useCallback((item: OverflowEntryItem) => {
     if (item.kind === 'plugin') {
-      handlePluginDeselect()
+      handlePluginDeselect(item.key.slice('plugin:'.length))
       return
     }
     const skillId = item.key.slice('skill:'.length).toLowerCase()
@@ -864,6 +895,8 @@ export default function SkillSuggestionBar() {
     const unavailableTip = available ? undefined : unavailableInAgentTip(entry.kind, isZh)
 
     if (entry.kind === 'skill') {
+      // 多选下必须能看出「哪几个已经挂上了」，否则用户不知道再点一次是加还是减
+      const selected = selectedSkillIds.has(entry.skill.name.toLowerCase())
       return (
         <button
           key={entry.key}
@@ -871,22 +904,26 @@ export default function SkillSuggestionBar() {
           onClick={() => handleEntryClick(entry)}
           title={unavailableTip ?? entry.skill.description}
           aria-disabled={!available}
+          aria-pressed={selected}
           className={[
             'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap shrink-0 transition-all duration-200',
-            available
-              ? 'border-accent/20 bg-accent/5 text-text-secondary hover:text-text-primary hover:border-accent/50 hover:bg-accent/10'
-              : 'border-border/40 bg-surface/60 text-text-muted/70 opacity-60',
+            !available
+              ? 'border-border/40 bg-surface/60 text-text-muted/70 opacity-60'
+              : selected
+                ? 'border-accent/60 bg-accent/15 text-text-primary'
+                : 'border-accent/20 bg-accent/5 text-text-secondary hover:text-text-primary hover:border-accent/50 hover:bg-accent/10',
           ].join(' ')}
         >
           <SkillIcon icon={entry.skill.metadata?.icon} />
           <span>{getSkillLabel(entry.skill)}</span>
+          {selected && available && <Check className="w-3 h-3 text-accent" strokeWidth={2} />}
           {hasSub && <ChevronRight className="w-3 h-3 opacity-60" strokeWidth={1.5} />}
         </button>
       )
     }
 
     const { plugin } = entry
-    const selected = plugin.pluginKey === selectedPluginId
+    const selected = selectedPluginIds.has(plugin.pluginKey)
     return (
       <button
         key={entry.key}

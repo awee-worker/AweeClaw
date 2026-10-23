@@ -133,20 +133,21 @@ export interface MessageActions {
     /**
      * 写入技能的二级项选择结果（如「模板：商务浅色」）。
      *
-     * 技能是单选上下文，因此直接作用在当前挂载的那个技能项上：
+     * 技能支持多选挂载，因此必须按 skillId 定位目标项；缺省时回退到上下文里
+     * 第一个技能，与早前只挂一个技能时的调用保持一致。
      * 同一个二级项换一个选项即覆盖，不同二级项（生成方式、模板风格）并存。
      * 传 undefined 表示撤销全部选择。
      */
-    setSkillSubSelection: (selection?: string, selectionKey?: string) => void
+    setSkillSubSelection: (selection?: string, selectionKey?: string, skillId?: string) => void
     /**
      * 清空插件/技能上下文里的操作结果说明与二级项选择。
      *
-     * 二级项的选择只对本次挂载有效：用户换了一级条目，上一条目留下的说明
-     * 就成了过期状态，继续带给 AI 会让它按旧选择作答。
      * 只清说明、保留技能与插件的挂载本身，因为「用过哪个能力」依然成立。
      *
-     * keep 指定本次点击的条目：它自己的选择正是用户刚做的决定，
-     * 重复点击同一条目（多是展开/收起二级行）不该把选择一起抹掉。
+     * 注意：技能与插件改为多选挂载后，切换一级条目不再会「顶掉」上一条目，
+     * 各条目的二级项选择互相独立，因此点击一级条目时不再调用本方法。
+     * 保留它用于需要整体重置选择状态的场景（如批量清空前的预处理）。
+     * keep 可指定豁免条目。
      */
     clearPluginStateNotes: (keep?: { type: 'Skill' | 'Plugin'; id: string }) => void
     removeContextItem: (index: number, targetThreadId?: string) => void
@@ -1629,8 +1630,9 @@ export const createMessageSlice: StateCreator<
 
             const items = thread.contextItems
 
-            // 技能、插件为单选上下文：再次选择同类项时用新项替换旧项，
-            // 否则切换技能（如「网站开发」→「APP 开发」）时旧选择会一直残留。
+            // 技能、插件为多选上下文：一个新条目追加到已有列表，不同条目各自并存
+            // （例如「网站开发」与「数据分析」可以同时挂载）。
+            // 只有「同一个条目」再次挂载才需要特殊处理——那是在补二级项选择，走下面的合并分支。
             if (item.type === 'Skill' || item.type === 'Plugin') {
                 const itemType = item.type
                 const keyOf = (target: ContextItem): string => {
@@ -1682,12 +1684,14 @@ export const createMessageSlice: StateCreator<
                     return state
                 }
 
+                // 追加而非替换：多选语义下同类条目各自独立，顺序即用户的选择顺序，
+                // 后续技能正文注入按这个顺序分配预算。
                 return {
                     threads: {
                         ...state.threads,
                         [threadId]: {
                             ...thread,
-                            contextItems: [...items.filter(existing => existing.type !== itemType), item],
+                            contextItems: [...items, item],
                         },
                     },
                 }
@@ -1782,12 +1786,21 @@ export const createMessageSlice: StateCreator<
     },
 
     // 写入技能的二级项选择结果：消息标签与上下文注入都以它为准
-    setSkillSubSelection: (selection, selectionKey) => {
+    setSkillSubSelection: (selection, selectionKey, skillId) => {
         const threadId = get().currentThreadId
         if (!threadId) return
 
-        const skill = get().threads[threadId]?.contextItems.find(item => item.type === 'Skill')
+        // 多技能并存时不能只取第一个技能项，否则会把 A 的选择写到 B 上；
+        // 指定了 skillId 就精确命中，未指定才回退到第一个（兼容旧的单技能调用）
+        const skill = get().threads[threadId]?.contextItems.find(item => (
+            item.type === 'Skill' && (skillId ? item.skillId === skillId : true)
+        ))
         if (!skill || skill.type !== 'Skill') return
+
+        /** 只就地更新目标技能项，其余技能各自持有的选择原样保留 */
+        const isTarget = (item: ContextItem): boolean => (
+            item.type === 'Skill' && item.skillId === skill.skillId
+        )
 
         // 同一二级项、同一选项时不重建对象，避免无意义的上下文引用变化
         const current = normalizeSubSelections(skill)
@@ -1809,7 +1822,7 @@ export const createMessageSlice: StateCreator<
                     [threadId]: {
                         ...thread,
                         contextItems: thread.contextItems.map(item => (
-                            item.type === 'Skill'
+                            isTarget(item)
                                 ? {
                                     ...item,
                                     subSelections: next.length > 0 ? next : undefined,
