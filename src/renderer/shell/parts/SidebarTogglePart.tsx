@@ -1,8 +1,8 @@
 /**
- * 侧边栏 / 助手开关部件（sidebar-toggle）
+ * 工作空间面板 / 会话面板开关部件（sidebar-toggle）
  *
  * 两个开关放在一起，因为它们共用一个语义位：右侧工作区的左右两块内容
- * （侧边栏、AI 助手）分别收放。场景用 chrome.hideSidebarToggle /
+ * （工作空间面板、AI 会话面板）分别收放。场景用 chrome.hideSidebarToggle /
  * chrome.hideChatToggle 逐个收起。
  *
  * 助手开关的可见性有一条硬规则：场景声明 hideChatToggle 时收起常驻开关，
@@ -14,6 +14,7 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { HintOverlay } from '@components/ui/HintOverlay'
 import type { HostPartComponentProps } from '../HostPartRegistry'
 
 function PanelLeftIcon({ filled = false, className }: { filled?: boolean; className?: string }) {
@@ -61,23 +62,33 @@ export function SidebarTogglePart(_props: HostPartComponentProps) {
   return (
     <>
       {!hideSidebarToggle && (
-        <button
-          onClick={toggleSidebar}
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
-          title={language === 'zh' ? (sidebarVisible ? '隐藏侧边栏' : '显示侧边栏') : (sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar')}
+        <HintOverlay
+          content={language === 'zh' ? (sidebarVisible ? '隐藏工作空间面板' : '显示工作空间面板') : (sidebarVisible ? 'Hide Workspace Panel' : 'Show Workspace Panel')}
+          side="bottom"
+          delay={300}
         >
-          {sidebarVisible ? <PanelLeftIcon filled className="w-4 h-4" /> : <PanelLeftIcon className="w-4 h-4" />}
-        </button>
+          <button
+            onClick={toggleSidebar}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
+          >
+            {sidebarVisible ? <PanelLeftIcon filled className="w-4 h-4" /> : <PanelLeftIcon className="w-4 h-4" />}
+          </button>
+        </HintOverlay>
       )}
 
       {(!hideChatToggle || chatVisible) && (
-        <button
-          onClick={toggleChat}
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
-          title={language === 'zh' ? (chatVisible ? '隐藏 AI 助手' : '显示 AI 助手') : (chatVisible ? 'Hide AI Assistant' : 'Show AI Assistant')}
+        <HintOverlay
+          content={language === 'zh' ? (chatVisible ? '隐藏 AI 会话面板' : '显示 AI 会话面板') : (chatVisible ? 'Hide Chat Panel' : 'Show Chat Panel')}
+          side="bottom"
+          delay={300}
         >
-          {chatVisible ? <PanelRightIcon filled className="w-4 h-4" /> : <PanelRightIcon className="w-4 h-4" />}
-        </button>
+          <button
+            onClick={toggleChat}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
+          >
+            {chatVisible ? <PanelRightIcon filled className="w-4 h-4" /> : <PanelRightIcon className="w-4 h-4" />}
+          </button>
+        </HintOverlay>
       )}
     </>
   )

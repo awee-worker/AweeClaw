@@ -101,6 +101,7 @@ export function NotificationsPart({ placement = 'bottom' }: HostPartComponentPro
             </AnimatePresence>
           </div>
         }
+        tooltip={t('layout.messages', language as Language)}
         title={t('layout.messages', language as Language)}
         headerActions={<NotificationClearButton language={language as 'en' | 'zh'} />}
         width={360}

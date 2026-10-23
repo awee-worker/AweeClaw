@@ -25,6 +25,7 @@ import { t, type Language } from '@renderer/i18n'
 import { logger } from '@shared/toolkit/LogEngine'
 import { updaterService, type UpdateStatus } from '@renderer/adapters/updateAdapter'
 import { PluginTopActions } from '@renderer/plugins/PluginTopActions'
+import { HintOverlay } from '@components/ui/HintOverlay'
 import ImStatusFloating from './ImStatusFloating'
 import { useCallback, useEffect, useState } from 'react'
 import SceneSwitcherPart from '@renderer/shell/parts/SceneSwitcherPart'
@@ -123,13 +124,8 @@ function VrmCompanionToggleButton({ language }: { language: Language }) {
   }, [busy])
 
   return (
-    <button
-      onClick={() => void handleToggle()}
-      disabled={busy}
-      className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
-        visible ? 'text-accent bg-accent/10' : 'text-text-muted hover:text-accent hover:bg-accent/10'
-      } ${busy ? 'opacity-60 cursor-default' : ''}`}
-      title={
+    <HintOverlay
+      content={
         language === 'zh'
           ? visible
             ? '关闭桌面伴侣'
@@ -138,10 +134,20 @@ function VrmCompanionToggleButton({ language }: { language: Language }) {
             ? 'Close desktop companion'
             : 'Open desktop companion'
       }
+      side="bottom"
+      delay={300}
     >
-      {/* Bot 图形在 24 视口内的实体占比小于 Phone，同尺寸下会显得偏小，故放大一档 */}
-      <Bot className="w-4 h-4" />
-    </button>
+      <button
+        onClick={() => void handleToggle()}
+        disabled={busy}
+        className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
+          visible ? 'text-accent bg-accent/10' : 'text-text-muted hover:text-accent hover:bg-accent/10'
+        } ${busy ? 'opacity-60 cursor-default' : ''}`}
+      >
+        {/* Bot 图形在 24 视口内的实体占比小于 Phone，同尺寸下会显得偏小，故放大一档 */}
+        <Bot className="w-4 h-4" />
+      </button>
+    </HintOverlay>
   )
 }
 
@@ -205,53 +211,69 @@ export default function AppTitleBar() {
               <UpdateReadyButton language={language as Language} />
               {/* 环境安装状态提示：在"新对话"按钮前显示 */}
               {envInstallStatus.isInstalling && (
-                <button
-                  onClick={() => setShowEnvironmentSetup(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-accent hover:text-accent-hover hover:bg-accent/10 rounded-md transition-colors animate-pulse"
-                  title={language === 'zh' ? '环境安装中，点击查看进度' : 'Installing environment, click for progress'}
+                <HintOverlay
+                  content={language === 'zh' ? '环境安装中，点击查看进度' : 'Installing environment, click for progress'}
+                  side="bottom"
+                  delay={300}
                 >
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span className="text-xs">{envInstallStatus.message}</span>
-                </button>
+                  <button
+                    onClick={() => setShowEnvironmentSetup(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-accent hover:text-accent-hover hover:bg-accent/10 rounded-md transition-colors animate-pulse"
+                  >
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span className="text-xs">{envInstallStatus.message}</span>
+                  </button>
+                </HintOverlay>
               )}
               {envInstallStatus.state === 'done' && !envInstallStatus.isInstalling && (
-                <button
-                  onClick={() => setShowEnvironmentSetup(false)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-md transition-colors"
-                  title={language === 'zh' ? '环境安装完成' : 'Environment setup complete'}
+                <HintOverlay
+                  content={language === 'zh' ? '环境安装完成' : 'Environment setup complete'}
+                  side="bottom"
+                  delay={300}
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span className="text-xs">{envInstallStatus.message}</span>
-                </button>
+                  <button
+                    onClick={() => setShowEnvironmentSetup(false)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-md transition-colors"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span className="text-xs">{envInstallStatus.message}</span>
+                  </button>
+                </HintOverlay>
               )}
               {!showWelcomePage && (
-                <button
-                  onClick={() => {
-                    // 新对话：若当前已选择工作空间，默认打开工作空间面板
-                    if (useStore.getState().workspace?.roots?.length) {
-                      useStore.getState().setActiveSidePanel('explorer')
-                    }
-                    createThread()
-                  }}
-                  className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-[rgba(var(--text-primary),0.06)] rounded-md transition-colors"
-                  title={t('layout.newchat', language as Language)}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  {t('layout.newchat2', language as Language)}
-                </button>
+                <HintOverlay content={t('layout.newchat', language as Language)} side="bottom" delay={300}>
+                  <button
+                    onClick={() => {
+                      // 新对话：若当前已选择工作空间，默认打开工作空间面板
+                      if (useStore.getState().workspace?.roots?.length) {
+                        useStore.getState().setActiveSidePanel('explorer')
+                      }
+                      createThread()
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-[rgba(var(--text-primary),0.06)] rounded-md transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    {t('layout.newchat2', language as Language)}
+                  </button>
+                </HintOverlay>
               )}
               {!hideVoiceConversation && (
-                <button
-                  onClick={() => {
-                    setVoiceConversationActive(true)
-                    // 异步关闭其他全屏页面，避免阻塞语音窗口渲染
-                    setTimeout(() => closeAllFullPages(), 0)
-                  }}
-                  className="flex items-center justify-center w-7 h-7 text-text-muted hover:text-accent hover:bg-accent/10 rounded-md transition-colors"
-                  title={language === 'zh' ? '语音对话' : 'Voice conversation'}
+                <HintOverlay
+                  content={language === 'zh' ? '语音对话' : 'Voice conversation'}
+                  side="bottom"
+                  delay={300}
                 >
-                  <Phone className="w-3.5 h-3.5" />
-                </button>
+                  <button
+                    onClick={() => {
+                      setVoiceConversationActive(true)
+                      // 异步关闭其他全屏页面，避免阻塞语音窗口渲染
+                      setTimeout(() => closeAllFullPages(), 0)
+                    }}
+                    className="flex items-center justify-center w-7 h-7 text-text-muted hover:text-accent hover:bg-accent/10 rounded-md transition-colors"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                  </button>
+                </HintOverlay>
               )}
               {/* 桌面伴侣开关：紧跟语音对话按钮 */}
               {!hideDesktopCompanion && <VrmCompanionToggleButton language={language as Language} />}

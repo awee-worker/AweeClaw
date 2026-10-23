@@ -110,7 +110,6 @@ export function QuotaPart({ placement = 'compact' }: HostPartComponentProps & { 
   const trigger = (
     <div
       className="flex items-center gap-1.5 px-1.5 py-0.5 h-6 rounded-md cursor-pointer group hover:bg-white/5 transition-colors"
-      title={iconTitle}
     >
       {isCloud ? (
         <Cloud className={`w-3 h-3 ${cloudColorClass} ${getQuotaGlowColor(usedPercent)}`} />
@@ -129,6 +128,7 @@ export function QuotaPart({ placement = 'compact' }: HostPartComponentProps & { 
     <DockPopover
       placement="bottom"
       icon={trigger}
+      tooltip={iconTitle}
       title={isCloud ? t('layout.tokenusage', language as Language) : t('layout.plan', language as Language)}
       width={300}
       height={isCloud ? 320 : 200}

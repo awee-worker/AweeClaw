@@ -116,6 +116,7 @@ export default function ServiceStatusPopover({ language }: { language: Language 
       placement="bottom"
       icon={<Play className="w-4 h-4" />}
       badge={services.length > 9 ? '9+' : services.length}
+      tooltip={t('services.title', language)}
       title={t('services.title', language)}
       width={340}
       height={360}

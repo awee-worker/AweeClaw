@@ -21,6 +21,7 @@ import { RegionRenderer } from '@renderer/shell/RegionRenderer'
 import type { RegionSlotMap } from '@shared/protocols/scenario-regions'
 import { useFocusChromeCollapse } from '@renderer/hooks/useFocusChromeCollapse'
 import ChatSection from './ChatSection'
+import { CollapsedChatHint } from './CollapsedChatHint'
 
 /**
  * 插件区域树不引用外壳槽位，所以 slot 映射恒为空。
@@ -175,7 +176,11 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
         <InternalBrowserSlot key="internal-browser" />
       ) : hasFile || dockPanelVisible ? (
         <EditorSlot key="editor" />
-      ) : null}
+      ) : chatVisible ? null : (
+        // 主区域既没有工作内容，对话面板也收起了：整块区域会空着，
+        // 这里顶上一块说明，告诉用户从右上角开关恢复
+        <CollapsedChatHint key="chat-collapsed-hint" />
+      )}
       <ChatSection
         key="chat"
         visible={chatVisible}

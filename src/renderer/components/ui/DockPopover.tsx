@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, ReactNode, memo, useMemo } from 'react'
 import { X } from 'lucide-react'
 import { useClickOutside, useEscapeKey } from '@hooks/usePerformance'
+import { HintOverlay } from './HintOverlay'
 
 export interface BottomBarPopoverProps {
   icon: ReactNode
@@ -54,12 +55,28 @@ export default memo(function DockPopover({ icon, tooltip, title, children, width
 
   const isTop = placement === 'top'
 
+  const trigger = (
+    <button
+      ref={triggerRef}
+      onClick={toggle}
+      className={`flex items-center justify-center p-1.5 rounded transition-colors relative ${isOpen ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`}
+    >
+      {icon}
+      {badge !== undefined && <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] flex items-center justify-center px-0.5 text-[10px] font-medium bg-accent text-white rounded-full">{badge}</span>}
+    </button>
+  )
+
   return (
     <div className="relative">
-      <button ref={triggerRef} onClick={toggle} className={`flex items-center justify-center p-1.5 rounded transition-colors relative ${isOpen ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`} title={tooltip}>
-        {icon}
-        {badge !== undefined && <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] flex items-center justify-center px-0.5 text-[10px] font-medium bg-accent text-white rounded-full">{badge}</span>}
-      </button>
+      {/* 悬停说明走自定义浮层，不用原生 title：原生提示延迟长、样式不可控，与产品风格不一致。
+          提示方向跟随面板方向——面板向上弹（触发点在底部）就提示在上方，反之在下。 */}
+      {tooltip ? (
+        <HintOverlay content={tooltip} side={isTop ? 'top' : 'bottom'} delay={300}>
+          {trigger}
+        </HintOverlay>
+      ) : (
+        trigger
+      )}
 
       {isOpen && (
         <div

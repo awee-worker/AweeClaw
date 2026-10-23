@@ -345,13 +345,17 @@ export default function NavigationRail() {
         .${p}-nav-rail[data-mac="true"][data-expanded="false"] {
           padding-top: 48px;
         }
-        .${p}-nav-rail-collapse-btn {
+        .${p}-nav-rail-collapse-wrap {
           /* 与标题栏按钮同高：标题栏 h-11(44px)、按钮 28px 居中，顶部偏移 8px。
              绝对定位是为了摆脱导航栏的 padding-top（macOS 需为红绿灯让位 48px），
-             靠右则天然避开左侧红绿灯区域。 */
+             靠右则天然避开左侧红绿灯区域。
+             定位落在外层容器上而不是按钮本身：按钮外面套了一层悬停说明的包装节点，
+             按钮自持绝对定位会改成相对那个包装节点计算，位置随之跑偏。 */
           position: absolute;
           top: 8px;
           right: 8px;
+        }
+        .${p}-nav-rail-collapse-btn {
           width: 28px;
           height: 28px;
           border-radius: 6px;
@@ -615,14 +619,17 @@ export default function NavigationRail() {
 
       {/* 展开态：收起入口落在面板顶部右侧，与标题栏左侧的展开按钮互为镜像 */}
       {navRailExpanded && (
-        <button
-          type="button"
-          className={`${p}-nav-rail-collapse-btn no-drag`}
-          onClick={() => setNavRailExpanded(false)}
-          title={t('layout.collapsemenu', language as Language)}
-        >
-          <PanelLeftIcon filled className="w-4 h-4" />
-        </button>
+        <div className={`${p}-nav-rail-collapse-wrap no-drag`}>
+          <HintOverlay content={t('layout.collapsemenu', language as Language)} side="right" delay={400}>
+            <button
+              type="button"
+              className={`${p}-nav-rail-collapse-btn no-drag`}
+              onClick={() => setNavRailExpanded(false)}
+            >
+              <PanelLeftIcon filled className="w-4 h-4" />
+            </button>
+          </HintOverlay>
+        </div>
       )}
 
 

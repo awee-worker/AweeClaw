@@ -19,6 +19,7 @@ import AppMenuBar from '@components/layout/AppMenuBar'
 import ProjectSelector from '@components/layout/ProjectSelector'
 import ScenarioSelector from '@components/layout/ScenarioSelector'
 import { PanelLeftIcon } from '@components/foundation/PanelLeftIcon'
+import { HintOverlay } from '@components/ui/HintOverlay'
 import type { HostPartComponentProps } from '../HostPartRegistry'
 
 
@@ -77,13 +78,14 @@ export function SceneSwitcherPart(_props: HostPartComponentProps) {
     <div className={`flex items-center gap-3 h-full ${isMac && !navRailExpanded ? 'pl-[40px]' : 'pl-3'}`}>
       {/* 导航栏收起时在这里提供展开入口；展开态由导航栏顶部右侧的按钮负责收起 */}
       {!navRailExpanded && (
-        <button
-          onClick={() => setNavRailExpanded(true)}
-          className="no-drag w-7 h-7 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-200"
-          title={t('layout.expandmenu', language as Language)}
-        >
-          <PanelLeftIcon className="w-4 h-4" />
-        </button>
+        <HintOverlay content={t('layout.expandmenu', language as Language)} side="bottom" delay={300}>
+          <button
+            onClick={() => setNavRailExpanded(true)}
+            className="no-drag w-7 h-7 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-200"
+          >
+            <PanelLeftIcon className="w-4 h-4" />
+          </button>
+        </HintOverlay>
       )}
 
 
