@@ -101,6 +101,8 @@ export interface PluginInstalledRecord {
   types?: string[]
   /** 单类型字段（主进程 InstalledPluginRecord 实际返回） */
   type?: string
+  /** 插件图标（市场详情登记）：图片地址或 lucide 图标名，manifest.icon 缺失时的回退来源 */
+  icon?: string
   manifest: unknown
   mcpServerId?: string
 }

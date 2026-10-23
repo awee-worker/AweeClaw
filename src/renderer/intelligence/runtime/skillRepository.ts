@@ -534,7 +534,10 @@ class SkillService {
                 nameZh: manifest.nameZh as string | undefined,
                 description: (manifest.description as string) || '',
                 descriptionZh: manifest.descriptionZh as string | undefined,
-                icon: manifest.icon as string | undefined,
+                // 图标有两个来源：插件包 manifest.icon 与安装记录里的市场详情图标。
+                // 只读 manifest 会让没在包里声明图标的插件在技能列表退化成通用图标，
+                // 与「插件与技能市场」里显示的图标对不上。
+                icon: plugin.icon || (manifest.icon as string | undefined),
                 mcpServerId: plugin.mcpServerId,
                 types: plugin.types,
                 subSkills: pluginSubSkills.length > 0 ? pluginSubSkills : undefined,

@@ -94,6 +94,14 @@ export interface InstalledPlugin {
   /** 是否在新建任务界面显示（缺省视为显示） */
   newTaskVisible: boolean
   types: string[]
+  /**
+   * 插件图标，来自市场详情记录
+   *
+   * 与 manifest.icon 是两条独立来源：市场详情由后端登记（配置型插件与内置插件常见），
+   * manifest.icon 由插件包自己声明。取图标时两者都看，否则只声明了详情图标的插件
+   * 在技能列表里会退化成通用图标。
+   */
+  icon?: string
   manifest: Record<string, unknown>
   mcpServerId?: string
 }
@@ -648,6 +656,7 @@ export async function getInstalledPlugins(): Promise<InstalledPlugin[]> {
         // 旧记录没有该字段，缺省视为显示
         newTaskVisible: r.newTaskVisible !== false,
         types,
+        icon: typeof r.icon === 'string' ? r.icon : undefined,
         manifest,
         mcpServerId: r.mcpServerId,
       }

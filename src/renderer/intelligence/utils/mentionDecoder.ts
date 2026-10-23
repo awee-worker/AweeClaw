@@ -146,8 +146,9 @@ export class MentionParser {
                 const labelZh = nameZh ? `@${nameZh}` : undefined
                 // 支持按英文名或中文名（若有）匹配
                 if (label.includes(lowerQuery) || (labelZh && labelZh.includes(lowerQuery))) {
-                    // 插件图标：manifest.icon 图片 URL 直传字符串，lucide 名按名解析，缺省用 Puzzle
-                    const rawIcon = manifest.icon as string | undefined
+                    // 插件图标：manifest.icon 与安装记录里的市场详情图标任取其一，
+                    // 图片 URL 直传字符串，lucide 名按名解析，缺省用 Puzzle
+                    const rawIcon = plugin.icon || (manifest.icon as string | undefined)
                     let pluginIcon: unknown = Puzzle
                     if (isImageIcon(rawIcon)) {
                         pluginIcon = rawIcon
