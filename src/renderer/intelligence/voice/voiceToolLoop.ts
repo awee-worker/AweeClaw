@@ -541,6 +541,9 @@ export async function executeVoiceToolCall(
 ): Promise<VoiceToolResultMessage> {
   const context: ToolExecutionContext = {
     workspacePath,
+    // 继承当前会话：会话级逻辑（如局部整写降级的额度）按 threadId 分桶，
+    // 缺省会让语音调用全部落进同一个共享桶，互相消耗额度。
+    threadId: useAgentStore.getState().currentThreadId ?? undefined,
     chatMode: 'agent',
     requestId,
     skipMainApproval: true,

@@ -482,6 +482,41 @@ export function resolveEditFileRequest(data: Record<string, unknown>): EditFileR
 export { normalizeEditFileArgs }
 
 /* ------------------------------------------------------------------ */
+/* 行号前缀剥离                                                       */
+/* ------------------------------------------------------------------ */
+
+/** read_file 的行号前缀形态：`12: code` 或 `12 | code` */
+const LINE_NUMBER_PREFIX = /^\s*\d+(?::\s?|\s*\|\s?)(.*)$/
+
+/**
+ * 剥离「行号 + 分隔符」前缀
+ *
+ * read_file 返回的代码正文是 `行号: 内容` 形式，模型有时会把整段带行号的文本
+ * 原样用作 old_string / new_string，于是严格匹配一律失败。这里只在「几乎每一行
+ * 都带行号前缀」时才剥离：单个带冒号的正文行（如 YAML 的 `key: value`）不会被误伤。
+ *
+ * 返回空字符串表示没有可剥离的前缀，调用方应保留原文。
+ */
+export function stripLineNumberPrefixes(text: string): string {
+  if (!text.includes('\n')) return ''
+
+  const lines = text.split('\n')
+  let hit = 0
+  const stripped = lines.map((line) => {
+    const match = line.match(LINE_NUMBER_PREFIX)
+    if (!match) return line
+    hit++
+    return match[1]
+  })
+
+  // 空白行不参与分母，避免结尾空行拉低比例导致该剥未剥
+  const meaningful = lines.filter((line) => line.trim().length > 0).length
+  if (meaningful < 2 || hit / meaningful < 0.9) return ''
+
+  return stripped.join('\n')
+}
+
+/* ------------------------------------------------------------------ */
 /* 场景感知扩展                                                       */
 /* ------------------------------------------------------------------ */
 

@@ -6,7 +6,7 @@
 import { api } from '../../adapters/electronBridge'
 import type { VrmCompanionCommand } from '@renderer/types/electronBridge'
 import { toAppError } from '@shared/toolkit/errorCatalog'
-import { resolveEditFileRequest } from '@toolkit/fileEditor'
+import { resolveEditFileRequest, stripLineNumberPrefixes } from '@toolkit/fileEditor'
 import { resolveReadFileRequest } from '@toolkit/fileReader'
 import { logger } from '@toolkit/LogEngine'
 import type { ToolExecutionResult, ToolExecutionContext } from '@intelligence/providerTypes'
@@ -486,6 +486,67 @@ async function detectDirectoryMisuse(targetPath: string, content: unknown): Prom
     if (typeof content !== 'string' || content.trim() !== '') return null
     if (await api.file.exists(targetPath)) return null
     return `"${targetPath}" has no extension and no content, which can only produce an empty file without a suffix. If you meant to create a directory, call create_file_or_folder with path "${targetPath}/". If you really need an empty file, give it a name that has an extension.`
+}
+
+/** 字符级编辑距离（用于文件名相似度，长度超过阈值时不再计算） */
+function nameEditDistance(a: string, b: string): number {
+    if (a === b) return 0
+    if (a.length === 0) return b.length
+    if (b.length === 0) return a.length
+    if (Math.abs(a.length - b.length) > 12) return Math.max(a.length, b.length)
+
+    const prev = new Array<number>(b.length + 1)
+    const curr = new Array<number>(b.length + 1)
+    for (let j = 0; j <= b.length; j++) prev[j] = j
+
+    for (let i = 1; i <= a.length; i++) {
+        curr[0] = i
+        for (let j = 1; j <= b.length; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1
+            curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+        }
+        for (let j = 0; j <= b.length; j++) prev[j] = curr[j]
+    }
+    return prev[b.length]
+}
+
+/** 两个文件名的相似度（0~1），大小写不敏感 */
+function fileNameSimilarity(a: string, b: string): number {
+    const left = a.toLowerCase()
+    const right = b.toLowerCase()
+    const maxLen = Math.max(left.length, right.length)
+    if (maxLen === 0) return 1
+    return 1 - nameEditDistance(left, right) / maxLen
+}
+
+/**
+ * 在目标文件的同级目录里找名称最接近的已有文件
+ *
+ * 用途：编辑类工具收到一个不存在的路径时，路径往往只是写错了一点
+ * （大小写、单复数、少一层目录）。给出最接近的真实文件，模型能直接改对路径，
+ * 而不是另建一个同名近似的新文件、把改动写到错误的位置。
+ */
+async function findSimilarFilePath(targetPath: string, _workspacePath: string | null | undefined): Promise<string | null> {
+    try {
+        const dir = getDirname(targetPath)
+        if (!dir) return null
+        const items = await api.file.readDir(dir)
+        if (!items || items.length === 0) return null
+
+        const targetName = getFileName(targetPath)
+        let best: { path: string; score: number } | null = null
+        for (const item of items) {
+            if (item.isDirectory) continue
+            const score = fileNameSimilarity(targetName, item.name)
+            if (score < 0.7 || score === 1) continue
+            if (!best || score > best.score) {
+                best = { path: item.path, score }
+            }
+        }
+        return best?.path ?? null
+    } catch {
+        return null
+    }
 }
 
 interface DirTreeNode {
@@ -1154,6 +1215,67 @@ async function autoCorrectPartialWrite(
     }
 }
 
+/** 同一会话内，同一个文件允许「局部修改 → 整写降级」的次数 */
+const PARTIAL_WRITE_FALLBACK_LIMIT = 1
+
+/** 计数表上限：长会话里不断新增文件也不至于无限增长 */
+const MAX_TRACKED_FALLBACK_KEYS = 500
+
+/** 会话级降级额度：key = threadId::归一化路径，value = 已降级次数 */
+const partialWriteFallbackCounts = new Map<string, number>()
+
+/**
+ * 申请一次「局部修改 → 整写降级」额度
+ *
+ * 首次降级让当次任务直接收尾，不必为一次工具选择多耗一轮往返；但同一个文件
+ * 在同一会话里再被 write_file 局部改写，说明模型没有从结果提示里纠正习惯，
+ * 此时额度不再续发——否则「错调 write_file」会被长期固化成一条总能成功的路径，
+ * 提示词层面的约束就形同虚设。
+ *
+ * 计数键包含 threadId：不同会话各自独立，互不占用对方的额度。缺少 threadId
+ * 的调用方（语音、计划执行等）共用同一个桶，宁可保守也不放过重复误用。
+ *
+ * @returns 允许降级返回 true；额度已用尽返回 false
+ */
+function tryConsumePartialWriteFallback(ctx: ToolExecutionContext, targetPath: string): boolean {
+    const key = `${ctx.threadId ?? 'no-thread'}::${normalizePath(targetPath)}`
+    const used = partialWriteFallbackCounts.get(key) ?? 0
+    if (used >= PARTIAL_WRITE_FALLBACK_LIMIT) return false
+
+    partialWriteFallbackCounts.set(key, used + 1)
+    // 超出上限时按插入顺序丢弃最早的一批，保证内存有界
+    if (partialWriteFallbackCounts.size > MAX_TRACKED_FALLBACK_KEYS) {
+        const overflow = partialWriteFallbackCounts.size - MAX_TRACKED_FALLBACK_KEYS
+        let removed = 0
+        for (const existingKey of partialWriteFallbackCounts.keys()) {
+            partialWriteFallbackCounts.delete(existingKey)
+            if (++removed >= overflow) break
+        }
+    }
+    return true
+}
+
+/**
+ * 降级额度用尽时的拒绝说明
+ *
+ * 直接把「已降级过一次」这个事实告诉模型，并给出一条不依赖行号的替代路径，
+ * 避免它转而从 create_file_or_folder 之类的入口继续整写覆盖。
+ */
+function buildFallbackExhaustedError(toolName: string, targetPath: string, changedRatio: number): string {
+    const percent = Math.round(changedRatio * 100)
+    return (
+        `${toolName} on "${targetPath}" was already applied once as a full-file write after the partial-change guard, ` +
+        `and this call is again a partial edit (~${percent}% of the original lines change). ` +
+        `The fallback is not offered twice for the same file in one session.\n\n` +
+        `Do this instead — without calling ${toolName} again for this file:\n` +
+        `1. read_file(path="${targetPath}") to get the current content\n` +
+        `2. edit_file with one mode:\n` +
+        `   - String mode: {path, old_string, new_string}  (preferred — no line numbers involved)\n` +
+        `   - Line mode: {path, start_line, end_line, content}\n` +
+        `   - Batch mode: {path, edits: [{action, start_line, end_line, content}]}`
+    )
+}
+
 
 /**
  * 加载技能内容：返回技能正文、安装目录与目录清单
@@ -1770,7 +1892,23 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         await backupFile(path, ctx.workspacePath)
 
         const originalContent = await api.file.read(path)
-        if (originalContent === null || originalContent === undefined) return { success: false, result: '', error: `File not found: ${path}. Use write_file to create new files.` }
+        // 文件不存在有两种完全不同的意图：想改一个路径写错的已有文件，或本想新建。
+        // 两种情况都只有「明确下一步动作」才能让模型一次脱离错误，因此按存在性分别给指引。
+        if (originalContent === null || originalContent === undefined) {
+            const nearMiss = await findSimilarFilePath(path, ctx.workspacePath)
+            const nearMissHint = nearMiss
+                ? `\nA file with a similar name exists: "${nearMiss}". If that is the intended target, retry with that path.`
+                : ''
+            return {
+                success: false,
+                result: '',
+                error:
+                    `File not found: ${path}. edit_file only modifies files that already exist.` +
+                    `${nearMissHint}\n` +
+                    `- To create a new file: call write_file with {path, content}.` +
+                    `\n- To locate the real path: use search_files or list_directory first.`,
+            }
+        }
 
         const resolution = resolveEditFileRequest(args)
 
@@ -1851,7 +1989,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                         return {
                             success: false,
                             result: '',
-                            error: `Invalid line range: ${start_line}-${end_line}. File has ${lines.length} lines.`
+                            error: `Invalid line range: ${start_line}-${end_line}. File has ${lines.length} lines. Re-read the file with read_file and use the numbers it prints — line numbers shift as edits are applied.`
                         }
                     }
 
@@ -1878,7 +2016,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                         return {
                             success: false,
                             result: '',
-                            error: `Invalid after_line: ${after_line}. File has ${lines.length} lines.`
+                            error: `Invalid after_line: ${after_line}. File has ${lines.length} lines (0 inserts at the very top, ${lines.length} appends at the end). Re-read the file with read_file and use the numbers it prints.`
                         }
                     }
 
@@ -1898,7 +2036,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                         return {
                             success: false,
                             result: '',
-                            error: `Invalid line range: ${start_line}-${end_line}. File has ${lines.length} lines.`
+                            error: `Invalid line range: ${start_line}-${end_line}. File has ${lines.length} lines. Re-read the file with read_file and use the numbers it prints — line numbers shift as edits are applied.`
                         }
                     }
 
@@ -2000,12 +2138,22 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             const lines = originalContent.split('\n')
 
-            // 验证行号范围
+            // 验证行号范围。越界多半是模型自己数错了行：把出错位置附近的真实内容
+            // 一并回给它，比只说「行号无效」更容易让它一次改对。
             if (startLine < 1 || endLine > lines.length || startLine > endLine) {
+                const anchor = Math.max(1, Math.min(lines.length, startLine))
+                const snippet = lines
+                    .slice(anchor - 1, Math.min(lines.length, anchor + 2))
+                    .map((line, index) => `${anchor + index}: ${line}`)
+                    .join('\n')
                 return {
                     success: false,
                     result: '',
-                    error: `Invalid line range: ${startLine}-${endLine}. File has ${lines.length} lines. Use read_file to verify line numbers.`
+                    error:
+                        `Invalid line range ${startLine}-${endLine}: the file has ${lines.length} lines. ` +
+                        `Do not estimate line numbers — either re-read with read_file and use the numbers it prints, ` +
+                        `or switch to string mode (old_string + new_string), which does not depend on line numbers.\n` +
+                        `Around line ${anchor} the file currently reads:\n${snippet}`
                 }
             }
 
@@ -2078,10 +2226,51 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             const normalizedOld = normalizeLineEndings(oldString)
             const normalizedNew = normalizeLineEndings(newString)
 
-            const result = smartReplace(normalizedContent, normalizedOld, normalizedNew, replaceAll)
+            let result = smartReplace(normalizedContent, normalizedOld, normalizedNew, replaceAll)
+
+            // 兜底：模型把 read_file 输出的「行号: 内容」整段原样当成 old_string 时，
+            // 严格匹配必然失败。剥离行号前缀后重试一次，命中则按剥离后的文本落盘。
+            let lineNumberStripped = false
+            if (!result.success && result.errorCode === 'OLD_STRING_NOT_FOUND') {
+                const strippedOld = stripLineNumberPrefixes(normalizedOld)
+                if (strippedOld) {
+                    const strippedNew = stripLineNumberPrefixes(normalizedNew) || normalizedNew
+                    const retry = smartReplace(normalizedContent, strippedOld, strippedNew, replaceAll)
+                    if (retry.success) {
+                        result = retry
+                        lineNumberStripped = true
+                        logger.agent.info(`[edit_file] stripped line-number prefixes from old_string: ${path}`)
+                    }
+                }
+            }
 
             if (!result.success) {
                 const { findSimilarContent, analyzeEditError, generateFixSuggestion } = await import('../utils/editRetryPolicy')
+
+                // 成因明确的几类错误直接给结论，避免模型在泛化建议里反复试错
+                if (result.errorCode === 'IDENTICAL_STRINGS') {
+                    return {
+                        success: false,
+                        result: '',
+                        error: `old_string and new_string are identical — there is nothing to change in ${path}. Do not retry this call; if the file already holds the intended content, the task is done.`,
+                    }
+                }
+
+                if (result.errorCode === 'MISSING_OLD_STRING') {
+                    return {
+                        success: false,
+                        result: '',
+                        error: `old_string is empty, so there is nothing to locate in ${path}. To replace a line range use line mode ({path, start_line, end_line, content}); to write the whole file use write_file.`,
+                    }
+                }
+
+                if (normalizedContent === '') {
+                    return {
+                        success: false,
+                        result: '',
+                        error: `${path} exists but is empty, so old_string cannot match anything. Use line mode ({path, start_line: 1, end_line: 1, content: "..."}) to fill it, or write_file for the whole file.`,
+                    }
+                }
 
                 const errorType = analyzeEditError(result.error, result.errorCode)
                 const hasCache = fileCacheService.hasValidCache(path)
@@ -2140,7 +2329,11 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             await notifyLspAfterWrite(path, newContent)
 
-            const strategyInfo = result.stage !== 'exact' ? ` (matched via ${result.stage} strategy)` : ''
+            const strategyInfo = [
+                result.stage !== 'exact' ? `matched via ${result.stage} strategy` : '',
+                lineNumberStripped ? 'line-number prefixes in old_string were ignored' : '',
+            ].filter(Boolean).join('; ')
+            const strategySuffix = strategyInfo ? ` (${strategyInfo})` : ''
 
             const meta = buildWriteMeta(
                 path,
@@ -2150,6 +2343,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 guardedWrite.meta,
                 {
                     matchStrategy: result.stage,
+                    ...(lineNumberStripped && { lineNumberStripped: true }),
                 }
             )
 
@@ -2158,7 +2352,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             return {
                 success: true,
-                result: `File updated successfully${strategyInfo}`,
+                result: `File updated successfully${strategySuffix}`,
                 meta
             }
         }
@@ -2200,17 +2394,46 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             nextContent: content,
             hasRecentRead: fileCacheService.hasValidCache(path),
         })
+        // 局部修改意图被守卫拦下时的处理说明（拼进成功结果，用于引导后续工具选择）
+        let fallbackNote = ''
         if (!writeDecision.allow) {
             // 局部修改意图：后台把这次整写等价改写成定位编辑，避免向前端暴露失败
             if (writeDecision.intent === 'partial-update') {
                 const corrected = await autoCorrectPartialWrite(args, ctx, originalContent, content)
                 if (corrected) return corrected
-            }
-            return {
-                success: false,
-                result: '',
-                // 把拒绝原因直接返回给模型，促使它切换到 edit_file 的合适模式。
-                error: writeDecision.reason || 'write_file rejected by write strategy',
+
+                // 额度用尽：同一文件在本会话里已经降级整写过一次，再放行就等于
+                // 把「错调 write_file」固化成一条总能成功的路径，这里硬拒绝并给出替代做法。
+                if (!tryConsumePartialWriteFallback(ctx, path)) {
+                    logger.agent.warn('[write_file] partial-write fallback exhausted, rejecting', { path })
+                    return {
+                        success: false,
+                        result: '',
+                        error: buildFallbackExhaustedError(
+                            'write_file',
+                            path,
+                            writeDecision.analysis.changedRatio,
+                        ),
+                    }
+                }
+
+                // 首次降级：定位编辑没能落地（例如 diff 里没有可生成的行级改动）时不再判为
+                // 失败。写入内容来自模型自己给出的全文，落盘结果与一次整写完全等价，
+                // 而整写路径本身带备份与冲突检测。
+                logger.agent.warn(
+                    '[write_file] local-change guard could not be auto-corrected, falling back to full write',
+                    { path },
+                )
+                fallbackNote =
+                    ' Applied as a full-file write after the partial-change guard could not rewrite it into targeted edits.' +
+                    ' This fallback is available only once per file in a session — for any later partial change to this file, use edit_file (read_file first, then old_string/new_string or edits).'
+            } else {
+                return {
+                    success: false,
+                    result: '',
+                    // 把拒绝原因直接返回给模型，促使它切换到 edit_file 的合适模式。
+                    error: writeDecision.reason || 'write_file rejected by write strategy',
+                }
             }
         }
         const guardedWrite = await guardedWriteFile({
@@ -2249,15 +2472,29 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             content,
             action: fileExisted ? 'edit' : 'create',
         })
+        // 覆盖已有文件时始终带一句后续工具指引：错调 write_file 的根因是模型不知道
+        // 「这个文件已经存在」，在它刚完成一次覆盖的当下给出规则，比只靠提示词更有效。
+        const overwriteHint = fileExisted && originalContent !== content
+            ? ' This file already existed and was overwritten. For any later change to it, use edit_file instead (read_file first, then old_string/new_string, start_line/end_line/content, or edits).'
+            : ''
+
+        // 附加策略层软提示（如建议局部修改优先用 edit_file），帮助模型后续选择更合适的工具
+        const resultText = [
+            'File written successfully.',
+            writeDecision.reason,
+            fallbackNote,
+            overwriteHint,
+        ]
+            .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+            .join(' ')
+
         return {
             success: true,
-            // 附加策略层软提示（如建议局部修改优先用 edit_file），帮助模型后续选择更合适的工具
-            result: writeDecision.reason
-                ? `File written successfully. ${writeDecision.reason}`
-                : 'File written successfully',
+            result: resultText,
             meta: buildWriteMeta(path, originalContent, content, lineChanges, guardedWrite.meta, {
                 writeIntent: writeDecision.intent,
                 writeAnalysis: writeDecision.analysis,
+                ...(fallbackNote && { guardFallback: 'full-write' }),
             })
         }
     },
@@ -2318,6 +2555,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 对已存在文件的写入同样受局部修改策略约束：
         // create_file_or_folder 也带 content，若放任它覆盖已有文件，就等同于绕过
         // write_file 的局部修改拦截，模型会转而从这个入口整写覆盖。
+        let fallbackNote = ''
         if (existedBefore && originalContent !== null && content) {
             const writeDecision = guardWriteFile({
                 path,
@@ -2326,15 +2564,36 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 hasRecentRead: fileCacheService.hasValidCache(path),
             })
             if (!writeDecision.allow) {
-                // 与 write_file 一致：局部修改意图的后台更正，不向前端暴露失败
+                // 与 write_file 一致的额度规则：同一文件在同一会话里只放行一次整写降级。
+                // 两个入口共用同一份计数（键只含会话与路径），避免这里成为绕过口。
                 if (writeDecision.intent === 'partial-update') {
                     const corrected = await autoCorrectPartialWrite(args, ctx, originalContent, content)
                     if (corrected) return corrected
-                }
-                return {
-                    success: false,
-                    result: '',
-                    error: writeDecision.reason || 'create_file_or_folder rejected by write strategy',
+                    if (!tryConsumePartialWriteFallback(ctx, path)) {
+                        logger.agent.warn('[create_file_or_folder] partial-write fallback exhausted, rejecting', { path })
+                        return {
+                            success: false,
+                            result: '',
+                            error: buildFallbackExhaustedError(
+                                'create_file_or_folder',
+                                path,
+                                writeDecision.analysis.changedRatio,
+                            ),
+                        }
+                    }
+                    logger.agent.warn(
+                        '[create_file_or_folder] local-change guard could not be auto-corrected, falling back to full write',
+                        { path },
+                    )
+                    fallbackNote =
+                        ' Applied as a full-file write after the partial-change guard could not rewrite it into targeted edits.' +
+                        ' This fallback is available only once per file in a session — use edit_file for later partial changes.'
+                } else {
+                    return {
+                        success: false,
+                        result: '',
+                        error: writeDecision.reason || 'create_file_or_folder rejected by write strategy',
+                    }
                 }
             }
         }
@@ -2370,14 +2629,17 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
         return {
             success: true,
-            result: isOverwrite ? 'File updated' : 'File created',
+            result: `${isOverwrite ? 'File updated' : 'File created'}${fallbackNote}`,
             meta: buildWriteMeta(
                 path,
                 isOverwrite ? originalContent : null,
                 content,
                 lineChanges,
                 guardedWrite.meta,
-                { isNewFile: !isOverwrite }
+                {
+                    isNewFile: !isOverwrite,
+                    ...(fallbackNote && { guardFallback: 'full-write' }),
+                }
             )
         }
     },

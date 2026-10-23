@@ -362,16 +362,16 @@ ON FAILURE:
   1. First call read_file to get the current content
   2. Then use edit_file with old_string/new_string (string mode) OR start_line/end_line/content (line mode) OR edits array (batch mode)
 
-⚠️ INTENT IS AUTO-DETECTED on existing files: if your content changes less than ~35% of the original file, the call is classified as a PARTIAL EDIT and REJECTED. For a few-line change, do NOT rewrite the whole file — use edit_file, even though you *can* produce the full content.
+⚠️ INTENT IS AUTO-DETECTED on existing files: if your content changes less than ~35% of the original file, the call is treated as a PARTIAL EDIT — it is reworked into edit_file, and only degrades to a full write once per file per session before being rejected outright. For a few-line change, do NOT rewrite the whole file — use edit_file, even though you *can* produce the full content.
 
 A rejected write_file wastes a full round trip, so choose edit_file up front for local changes.`,
         criticalRules: [
             'DEFAULT for any change to an EXISTING file: use edit_file, NOT write_file.',
             'NEVER use write_file to change part of an existing file — only a new file or an intentional full-file regeneration.',
             'Creating a NEW file: use write_file.',
-            'Existing file + change under ~35% of its content: write_file is REJECTED as a partial edit — use edit_file instead.',
+            'Existing file + change under ~35% of its content: the call is reworked into edit_file; if that is impossible it degrades to a full write ONCE per file per session — a second such call is REJECTED. Use edit_file instead.',
             'MODIFYING an EXISTING file locally: you MUST use edit_file, NOT write_file. First read_file, then edit_file.',
-            'write_file on an existing file with partial changes WILL BE REJECTED. The error will tell you to use edit_file instead.',
+            'write_file on an existing file with partial changes degrades to a full write at most once per file per session; the second attempt is REJECTED with instructions to use edit_file.',
             'If write_file is rejected, do NOT retry write_file — immediately use read_file to get content, then edit_file to make changes.',
             'Prefer over create_file_or_folder when you have file content ready',
             'Do not rewrite the same large file multiple times in one turn unless absolutely necessary',

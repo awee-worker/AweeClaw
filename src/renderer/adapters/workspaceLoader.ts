@@ -275,8 +275,23 @@ export async function bindWorkspaceRootLite(shellState: WorkspaceShellState): Pr
   gitService.setWorkspace(shellState.primaryRoot)
 }
 
+/** 工作空间根路径比较口径：忽略末尾分隔符差异，null 与空串等价 */
+function normalizeRootForCompare(root: string | null): string | null {
+  if (!root) return null
+  const trimmed = root.replace(/[\\/]+$/, '')
+  return trimmed || root
+}
+
 export function commitWorkspaceShell(shellState: WorkspaceShellState): void {
-  const { setWorkspace, setFiles } = useStore.getState()
+  const { setWorkspace, setFiles, workspacePath, clearArtifacts } = useStore.getState()
+  const nextRoot = shellState.workspace.roots[0] || null
+
+  // 产物记录归属于产生它的那个工作空间：切换后旧产物既打不开也没有参考价值，
+  // 直接清空，避免面板里残留上一份工作空间的条目。
+  if (normalizeRootForCompare(workspacePath) !== normalizeRootForCompare(nextRoot)) {
+    clearArtifacts()
+  }
+
   setWorkspace(shellState.workspace)
   setFiles(shellState.files)
 }

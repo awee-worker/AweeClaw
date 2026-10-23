@@ -91,7 +91,8 @@ export function ArtifactPanel({ collapsed, onToggleCollapse }: ArtifactPanelProp
     clearArtifacts: s.clearArtifacts,
   })))
 
-  // 只展示当前工作空间的产物：切换工作空间后列表自动切换，无需清空历史
+  // 切换工作空间时列表已在 store 层清空；这里再做一次归属过滤，
+  // 兜住「产物先落盘、工作空间后绑定」这类时序下录错的归属。
   const visibleArtifacts = useMemo(() => {
     if (!workspacePath) return artifacts
     return artifacts.filter(item => pathStartsWith(item.path, workspacePath))

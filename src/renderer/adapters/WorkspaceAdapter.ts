@@ -215,9 +215,11 @@ class WorkspaceManager {
     await this.saveCurrentWorkspace()
     this.resetRuntimeState()
 
-    const { setWorkspace, setFiles } = useStore.getState()
+    const { setWorkspace, setFiles, clearArtifacts } = useStore.getState()
     setWorkspace(null)
     setFiles([])
+    // 关闭工作空间后产物同样失效：路径已不在任何工作空间内，留在面板里也打不开
+    clearArtifacts()
 
     workspaceStorageRuntime.reset()
   }
