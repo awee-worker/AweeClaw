@@ -12,6 +12,7 @@
  * - 生命周期钩子（onActivate/onDeactivate/onHealthCheck）
  */
 
+import { splitSqlStatements } from '@shared/toolkit/sqlStatements'
 import type {
   ScenarioModule,
   ScenarioModuleContext,
@@ -362,10 +363,7 @@ export class DeclarativeScenarioModule implements ScenarioModule {
       for (const filePath of db.installScriptFiles) {
         const content = this.files[filePath]
         if (content) {
-          const statements = content
-            .split(';')
-            .map(s => s.trim())
-            .filter(s => s.length > 0)
+          const statements = splitSqlStatements(content)
 
           for (const sql of statements) {
             scripts.push({
@@ -395,10 +393,7 @@ export class DeclarativeScenarioModule implements ScenarioModule {
       for (const filePath of db.uninstallScriptFiles) {
         const content = this.files[filePath]
         if (content) {
-          const statements = content
-            .split(';')
-            .map(s => s.trim())
-            .filter(s => s.length > 0)
+          const statements = splitSqlStatements(content)
 
           for (const sql of statements) {
             scripts.push({

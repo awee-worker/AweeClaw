@@ -207,6 +207,30 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   }>
   scenarioDbGetPath: (scenarioId: string) => Promise<string>
 
+  /** 场景素材文件：图片 / 视频落在场景数据目录，业务数据只存相对路径 */
+  scenarioAssetDir: (scenarioId: string) => Promise<{ success: boolean; dir?: string; error?: string }>
+  scenarioAssetWrite: (params: { scenarioId: string; relativePath: string; base64: string }) => Promise<{
+    success: boolean
+    absPath?: string
+    sizeBytes?: number
+    error?: string
+  }>
+  scenarioAssetRead: (params: { scenarioId: string; relativePath: string }) => Promise<{
+    success: boolean
+    base64?: string
+    error?: string
+  }>
+  scenarioAssetImport: (params: { scenarioId: string; relativePath: string; sourcePath: string }) => Promise<{
+    success: boolean
+    absPath?: string
+    sizeBytes?: number
+    error?: string
+  }>
+  scenarioAssetRemove: (params: { scenarioId: string; relativePath: string }) => Promise<{
+    success: boolean
+    error?: string
+  }>
+
   scenarioGetScenariosDir: () => Promise<string>
   scenarioSelectScenarioDir: () => Promise<string | null>
   scenarioReadScenarioConfig: (sourceDir: string) => Promise<{ success: boolean; config?: Record<string, unknown>; resolvedDir?: string; error?: string }>
@@ -815,6 +839,9 @@ function createGroupedAPI() {
 
     // 场景数据库（自动分组：scenarioDbXxx → scenarioDb.xxx）
     scenarioDb: createGroup(raw, 'scenarioDb'),
+
+    // 场景素材文件（自动分组：scenarioAssetXxx → scenarioAsset.xxx）
+    scenarioAsset: createGroup(raw, 'scenarioAsset'),
 
     // 定时任务（自动分组：cronXxx → cron.xxx, onCronXxx → cron.onXxx）
     cron: createGroup(raw, 'cron'),

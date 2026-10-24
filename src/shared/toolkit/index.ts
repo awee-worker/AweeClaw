@@ -93,3 +93,6 @@ export {
   isVersionDirName,
   pickLatestVersionDir,
 } from './versionHelper'
+
+// SQL 语句切分
+export { splitSqlStatements } from './sqlStatements'

@@ -54,6 +54,7 @@ import { registerSettingsDbIpcHandlers } from '../storage/settingsDb'
 import { registerSessionDbIpcHandlers } from '../storage/sessionDb'
 import { registerMemoryDbIpcHandlers } from '../storage/memoryDb'
 import { registerScenarioDbIpcHandlers } from '../storage/scenarioDb'
+import { registerScenarioAssetsIpcHandlers } from '../storage/scenarioAssets'
 import { registerProjectAttachmentIpcHandlers } from '../storage/projectAttachments'
 import { registerSceneToolsDbIpcHandlers } from '../storage/sceneToolsDb'
 
@@ -313,6 +314,9 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 场景数据库
   registerOnce('scenario-db', () => registerScenarioDbIpcHandlers())
+
+  // 场景素材文件（二进制落盘）
+  registerOnce('scenario-assets', () => registerScenarioAssetsIpcHandlers())
 
   // 场景安装
   registerOnce('scenario-install', () => registerScenarioInstallIpcHandlers(getMainWindow))

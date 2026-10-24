@@ -12,6 +12,7 @@
  */
 
 import { logger } from '@shared/toolkit/LogEngine'
+import { splitSqlStatements } from '@shared/toolkit/sqlStatements'
 import { safeIpcHandle } from '../core/ipcGuard'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -57,7 +58,7 @@ function getScenarioDbPath(scenarioId: string): string {
 }
 
 async function executeSqlInFile(dbPath: string, sql: string): Promise<SqlResult> {
-  const startTime = Date.now()
+  const start = Date.now()
   try {
     const { DatabaseSync } = await import('node:sqlite')
     const db = new DatabaseSync(dbPath, { open: true })
@@ -65,16 +66,19 @@ async function executeSqlInFile(dbPath: string, sql: string): Promise<SqlResult>
       db.exec('PRAGMA journal_mode=WAL')
       db.exec('PRAGMA foreign_keys=ON')
 
-      const statements = sql
-        .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0)
+      // 按 SQLite 词法切分：字符串字面量里的分号不是分隔符。
+      // 场景数据大量采用「整页 JSON 覆盖写」，而图片会被内联成
+      // `data:image/png;base64,...` 这类地址，裸切分号会把整条 UPDATE 劈开，
+      // 前半段引号不闭合报错，字段却停在旧值上。
+      const statements = splitSqlStatements(sql)
 
       let totalRowsAffected = 0
       let lastRows: Record<string, unknown>[] | undefined
       let lastColumns: string[] | undefined
+      const failures: string[] = []
 
-      for (const stmt of statements) {
+      for (let index = 0; index < statements.length; index += 1) {
+        const stmt = statements[index]
         try {
           if (/^\s*(SELECT|PRAGMA)\s/i.test(stmt)) {
             const prepared = db.prepare(stmt)
@@ -88,9 +92,24 @@ async function executeSqlInFile(dbPath: string, sql: string): Promise<SqlResult>
             totalRowsAffected++
           }
         } catch (stmtErr) {
+          const message = stmtErr instanceof Error ? stmtErr.message : String(stmtErr)
+          failures.push(`#${index + 1} ${message}`)
           logger.agent.warn(
-            `[ScenarioDB] Statement failed: ${stmt.slice(0, 80)}... — ${stmtErr instanceof Error ? stmtErr.message : String(stmtErr)}`
+            `[ScenarioDB] Statement failed: ${stmt.slice(0, 80)}... — ${message}`
           )
+        }
+      }
+
+      // 失败必须往上报：调用方据此抛错，才不会把「没写进去」当成「写成功」，
+      // 让数据静默停在上一个版本
+      if (failures.length > 0) {
+        return {
+          success: false,
+          error: `SQL 执行失败（${failures.length}/${statements.length} 条）：${failures[0]}`,
+          rows: lastRows,
+          columns: lastColumns,
+          rowsAffected: totalRowsAffected,
+          executionTime: Date.now() - start
         }
       }
 
@@ -99,7 +118,7 @@ async function executeSqlInFile(dbPath: string, sql: string): Promise<SqlResult>
         rowsAffected: totalRowsAffected,
         rows: lastRows,
         columns: lastColumns,
-        executionTime: Date.now() - startTime,
+        executionTime: Date.now() - start
       }
     } finally {
       db.close()
@@ -108,7 +127,7 @@ async function executeSqlInFile(dbPath: string, sql: string): Promise<SqlResult>
     return {
       success: false,
       error: err instanceof Error ? err.message : String(err),
-      executionTime: Date.now() - startTime,
+      executionTime: Date.now() - start
     }
   }
 }

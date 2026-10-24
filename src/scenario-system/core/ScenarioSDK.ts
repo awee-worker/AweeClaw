@@ -203,6 +203,42 @@ export interface ScenarioSkillsAPI {
   read: (name: string) => Promise<ScenarioSkillContent | null>
 }
 
+// ============================================
+// 素材文件 API
+// ============================================
+
+/** 素材写入结果：relativePath 是回写业务数据的那个值，absPath 只用于排查 */
+export interface ScenarioAssetWriteResult {
+  success: boolean
+  relativePath?: string
+  absPath?: string
+  error?: string
+}
+
+export interface ScenarioAssetsAPI {
+  /**
+   * 场景数据目录绝对路径（素材相对路径以它为基准）
+   *
+   * 首次调用会创建 `assets/` 子目录并缓存结果。返回 null 表示场景 id 不合法或目录不可写。
+   */
+  dir: () => Promise<string | null>
+  /** 写入素材（base64），relativePath 相对素材根目录 */
+  write: (relativePath: string, base64: string) => Promise<ScenarioAssetWriteResult>
+  /** 读回素材（base64），文件不存在返回 null */
+  read: (relativePath: string) => Promise<string | null>
+  /** 把已有本地文件导入素材目录（MCP 出图、用户拖入的原图） */
+  importFile: (sourcePath: string, relativePath: string) => Promise<ScenarioAssetWriteResult>
+  /** 删除素材文件，换图后回收孤儿文件用 */
+  remove: (relativePath: string) => Promise<boolean>
+  /**
+   * 相对路径 → 可直接给 img/video 用的地址
+   *
+   * 同步方法：渲染发生在每一帧里，等不了 IPC。调用前必须先 await dir() 完成初始化，
+   * 否则返回 null（调用方应当回退到原地址，不要因此隐藏内容）。
+   */
+  url: (relativePath: string) => string | null
+}
+
 export interface ScenarioSDK {
   shared: {
     react: typeof React
@@ -219,6 +255,8 @@ export interface ScenarioSDK {
   dataBus: ScenarioDataBusAPI
   logger: ScenarioLoggerAPI
   health: ScenarioHealthAPI
+  /** 素材文件读写（图片 / 视频落在场景数据目录，不进数据库） */
+  assets: ScenarioAssetsAPI
   /** MCP 插件工具调用（向后兼容：老客户端无此字段，场景调用前需 `if (sdk.mcp)` 检测） */
   mcp: ScenarioMcpAPI
   /** 内置工具调用 */
@@ -527,6 +565,110 @@ export function createScenarioSDK(
     },
   }
 
+  // ─────────────────────────────────────────────
+  // 素材文件命名空间
+  // ─────────────────────────────────────────────
+  // 素材根目录取一次就缓存：渲染层每一帧都要把相对路径转成 <img src>，
+  // 走 IPC 拿目录会变成每帧一次跨进程调用。
+  let cachedAssetDir: string | null = null
+
+  const toPreviewUrl = (absPath: string): string =>
+    `local-preview:///${encodeURIComponent(absPath).replace(/%2F/g, '/')}`
+
+  const requirePermission = (
+    permission: ScenarioPermission,
+    action: string,
+  ): ScenarioToolCallResult | null => {
+    if (!permissionGuard.hasPermission(permission)) {
+      logger.agent.warn(
+        `[SDK:Assets] Blocked ${action}: scenario "${scenarioId}" lacks permission "${permission}"`,
+      )
+      return {
+        success: false,
+        result: '',
+        error: `场景未声明 "${permission}" 权限，无法${action}`,
+      }
+    }
+    return null
+  }
+
+  const assetsApi: ScenarioAssetsAPI = {
+    dir: async (): Promise<string | null> => {
+      if (cachedAssetDir) return cachedAssetDir
+      try {
+        const resp = await api.scenarioAsset.dir(scenarioId)
+        if (!resp?.success || !resp.dir) return null
+        cachedAssetDir = resp.dir
+        return cachedAssetDir
+      } catch (err) {
+        logger.agent.warn('[SDK:Assets] dir error:', err)
+        return null
+      }
+    },
+
+    write: async (relativePath: string, base64: string): Promise<ScenarioAssetWriteResult> => {
+      const denied = requirePermission('filesystem:write', '写入素材')
+      if (denied) return { success: false, error: denied.error }
+      try {
+        const resp = await api.scenarioAsset.write({ scenarioId, relativePath, base64 })
+        if (!resp?.success) return { success: false, error: resp?.error || '写入素材失败' }
+        return { success: true, relativePath, absPath: resp.absPath }
+      } catch (err) {
+        logger.agent.error('[SDK:Assets] write error:', err)
+        return { success: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+
+    read: async (relativePath: string): Promise<string | null> => {
+      if (!permissionGuard.hasPermission('filesystem:read')) return null
+      try {
+        const resp = await api.scenarioAsset.read({ scenarioId, relativePath })
+        return resp?.success && resp.base64 ? resp.base64 : null
+      } catch (err) {
+        logger.agent.warn('[SDK:Assets] read error:', err)
+        return null
+      }
+    },
+
+    importFile: async (sourcePath: string, relativePath: string): Promise<ScenarioAssetWriteResult> => {
+      const deniedWrite = requirePermission('filesystem:write', '导入素材')
+      if (deniedWrite) return { success: false, error: deniedWrite.error }
+      const deniedRead = requirePermission('filesystem:read', '读取待导入文件')
+      if (deniedRead) return { success: false, error: deniedRead.error }
+      try {
+        // 分组规则把 scenarioAssetImport 归到 scenarioAsset.import
+        const resp = await api.scenarioAsset.import({ scenarioId, relativePath, sourcePath })
+        if (!resp?.success) return { success: false, error: resp?.error || '导入素材失败' }
+        return { success: true, relativePath, absPath: resp.absPath }
+      } catch (err) {
+        logger.agent.error('[SDK:Assets] importFile error:', err)
+        return { success: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+
+    remove: async (relativePath: string): Promise<boolean> => {
+      if (!permissionGuard.hasPermission('filesystem:write')) return false
+      try {
+        const resp = await api.scenarioAsset.remove({ scenarioId, relativePath })
+        return Boolean(resp?.success)
+      } catch (err) {
+        logger.agent.warn('[SDK:Assets] remove error:', err)
+        return false
+      }
+    },
+
+    url: (relativePath: string): string | null => {
+      const raw = String(relativePath ?? '').trim()
+      if (!raw) return null
+      // 已经是可直接加载的地址：外链、内嵌数据、以及宿主协议一律原样返回
+      if (/^(https?:|data:|blob:|local-preview:|scenario-bundle:)/i.test(raw)) return raw
+      if (!cachedAssetDir) return null
+      const base = cachedAssetDir.replace(/[\\/]+$/, '')
+      const joined = /^[\\/]/.test(raw) ? raw.replace(/^[\\/]+/, '') : raw
+      return toPreviewUrl(`${base}/${joined}`)
+    },
+  }
+
   const sdk: ScenarioSDK = {
     // shared 字段使用 getter 动态读取，避免创建 SDK 时 sharedDeps 尚未注入导致永久 undefined。
     // 场景 bundle 顶层代码可能在 import 时就访问 shared.zustand，
@@ -554,6 +696,7 @@ export function createScenarioSDK(
     mcp: mcpApi,
     tools: toolsApi,
     skills: skillsApi,
+    assets: assetsApi,
   }
 
   return sdk

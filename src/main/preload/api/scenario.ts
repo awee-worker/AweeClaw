@@ -24,6 +24,20 @@ export function createScenarioApi() {
     }) => invoke('scenario-db:drop')(params),
     scenarioDbGetPath: (scenarioId: string) => invoke('scenario-db:getPath')(scenarioId),
 
+    // ── 场景素材文件（图片 / 视频等二进制落盘，节点里只存相对路径）──
+    scenarioAssetDir: (scenarioId: string) => invoke('scenario-asset:dir')({ scenarioId }),
+    scenarioAssetWrite: (params: { scenarioId: string; relativePath: string; base64: string }) =>
+      invoke('scenario-asset:write')(params),
+    scenarioAssetRead: (params: { scenarioId: string; relativePath: string }) =>
+      invoke('scenario-asset:read')(params),
+    scenarioAssetImport: (params: {
+      scenarioId: string
+      relativePath: string
+      sourcePath: string
+    }) => invoke('scenario-asset:import')(params),
+    scenarioAssetRemove: (params: { scenarioId: string; relativePath: string }) =>
+      invoke('scenario-asset:remove')(params),
+
     // ── 场景安装 / 卸载 ──
     scenarioGetScenariosDir: invoke('scenario:getScenariosDir'),
     scenarioSelectScenarioDir: invoke('scenario:selectScenarioDir'),
