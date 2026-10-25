@@ -255,15 +255,15 @@ export function MemorySettingsPanel() {
   /**
    * 重建全部记忆关联
    *
-   * 关联在写入时自动生成，早于该机制的存量记忆没有边；
-   * 这里重算一遍，让历史记忆也获得关联。
+   * 关联在写入时自动生成，早于该机制的存量记忆没有边；这里重算一遍，
+   * 让历史记忆也获得关联，同时清理两端内容已经对不上的旧关联。
    */
   const handleRebuildRelations = useCallback(async () => {
     setRebuilding(true)
     setRebuildMessage(null)
     try {
       const count = await longTermMemoryService.rebuildAllRelations()
-      setRebuildMessage(`已完成，处理 ${count} 条关联`)
+      setRebuildMessage(`已完成，处理 ${count} 条关联，并清理了失效关联`)
     } catch (err) {
       setRebuildMessage(`重建失败：${err instanceof Error ? err.message : String(err)}`)
     } finally {

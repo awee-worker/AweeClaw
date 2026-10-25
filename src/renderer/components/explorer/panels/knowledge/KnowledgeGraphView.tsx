@@ -543,10 +543,17 @@ export function KnowledgeGraphView({
     [getNodeAt, entities, onSelectEntity],
   )
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault()
-    const delta = e.deltaY > 0 ? 0.9 : 1.1
-    setZoom((prev) => Math.max(0.2, Math.min(3, prev * delta)))
+  // React 的 onWheel 绑定在 passive 监听上，preventDefault 会被忽略并抛错，这里改用原生监听
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? 0.9 : 1.1
+      setZoom((prev) => Math.max(0.2, Math.min(3, prev * delta)))
+    }
+    canvas.addEventListener('wheel', onWheel, { passive: false })
+    return () => canvas.removeEventListener('wheel', onWheel)
   }, [])
 
   const resetView = useCallback(() => {
@@ -617,7 +624,6 @@ export function KnowledgeGraphView({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onDoubleClick={handleDoubleClick}
-        onWheel={handleWheel}
       />
 
       {hoveredNode && (

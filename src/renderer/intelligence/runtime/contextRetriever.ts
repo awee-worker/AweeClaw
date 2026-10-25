@@ -25,6 +25,13 @@ import type {
 /** 默认检索条数（非 starred / 非 verified 部分） */
 const DEFAULT_KNOWLEDGE_LIMIT = 8
 const DEFAULT_MEMORY_LIMIT = 8
+/**
+ * 未被检索命中时仍强制保留的 verified 记忆条数上限。
+ *
+ * 这类记忆是历史会话里确认过的事实，属于「用户可能期待 AI 记得」的部分；
+ * 但它们与当前问题未必相关，条数越多，越容易把模型带偏到旧对象上。
+ */
+const MAX_VERIFIED_MEMORIES = 3
 
 export interface ContextRetrievalRequest {
   /** 当前用户消息（用于语义检索），首次对话时可能为空 */
@@ -120,10 +127,15 @@ class ContextRetriever {
   }
 
   /**
-   * 检索长期记忆：verified 始终保留 + 非-verified 按 query 上下文感知检索 top-k
+   * 检索长期记忆：verified 限量保留 + 其余按 query 上下文感知检索 top-k
    *
    * contextAwareSearch 基于 query + currentFile + taskType 做上下文加权检索，
    * 内部使用关键词打分（无向量依赖），保证稳定性。
+   *
+   * verified 记忆曾经是无条件全量补全，结果是不论用户这一轮问什么，历史会话
+   * 确认过的事实都会先进上下文；用户一句笼统的「调一下按钮样式」，模型就会
+   * 照着记忆里那个按钮去改。现在改为限额保留：用户显式交代的偏好优先，
+   * 其余按最近更新时间截断，避免历史内容挤占当前会话的注意力。
    */
   private async retrieveMemory(
     query: string,
@@ -137,11 +149,15 @@ class ContextRetriever {
     const retrieved = results.map(r => r.entry)
     const retrievedIds = new Set(retrieved.map(e => e.id))
 
-    // 补全未被检索命中的 verified 记忆（verified 始终保留）
     const all = await longTermMemoryService.getEnabledEntries()
-    const missedVerified = all.filter(
-      e => e.verificationStatus === 'verified' && !retrievedIds.has(e.id),
-    )
+    const missedVerified = all
+      .filter(e => e.verificationStatus === 'verified' && !retrievedIds.has(e.id))
+      // 用户明确交代的事实（source=user）优先，其次是最近更新过的
+      .sort((a, b) => {
+        const userFirst = Number(b.source === 'user') - Number(a.source === 'user')
+        return userFirst !== 0 ? userFirst : b.updatedAt - a.updatedAt
+      })
+      .slice(0, MAX_VERIFIED_MEMORIES)
 
     return [...missedVerified, ...retrieved]
   }
@@ -164,13 +180,19 @@ class ContextRetriever {
   }
 
   /**
-   * 无 query 降级：verified + 最近 N 条记忆（按 updatedAt 倒序）
+   * 无 query 降级：verified（限额）+ 最近 N 条记忆（按 updatedAt 倒序）
    */
   private async fallbackMemory(limit: number): Promise<MemoryEntry[]> {
     const all = await longTermMemoryService.getEnabledEntries()
     if (all.length === 0) return []
 
-    const verified = all.filter(e => e.verificationStatus === 'verified')
+    const verified = all
+      .filter(e => e.verificationStatus === 'verified')
+      .sort((a, b) => {
+        const userFirst = Number(b.source === 'user') - Number(a.source === 'user')
+        return userFirst !== 0 ? userFirst : b.updatedAt - a.updatedAt
+      })
+      .slice(0, MAX_VERIFIED_MEMORIES)
     const verifiedIds = new Set(verified.map(e => e.id))
     const recent = all
       .filter(e => !verifiedIds.has(e.id))

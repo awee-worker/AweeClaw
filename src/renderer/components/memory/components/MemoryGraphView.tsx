@@ -407,11 +407,19 @@ export function MemoryGraphView() {
     dragNodeRef.current = null
   }
 
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
-    e.preventDefault()
-    const delta = e.deltaY > 0 ? 0.9 : 1.1
-    setZoom((z) => Math.max(0.3, Math.min(3, z * delta)))
-  }
+  // 滚轮缩放：React 的 onWheel 绑定在 passive 监听上，preventDefault 会被浏览器忽略并抛
+  // "Unable to preventDefault inside passive event listener invocation"，因此改用原生监听
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? 0.9 : 1.1
+      setZoom((z) => Math.max(0.3, Math.min(3, z * delta)))
+    }
+    canvas.addEventListener('wheel', onWheel, { passive: false })
+    return () => canvas.removeEventListener('wheel', onWheel)
+  }, [])
 
   return (
     <div className="relative w-full h-full bg-slate-950">
@@ -500,7 +508,6 @@ export function MemoryGraphView() {
             dragNodeRef.current = null
             setHoveredNode(null)
           }}
-          onWheel={handleWheel}
         />
       </div>
     </div>

@@ -79,6 +79,11 @@ export interface MemorySearchParams {
   query: string
   status?: MemoryStatus
   limit?: number
+  /**
+   * 词面相关度下限，默认 0（有任何相关即入选）。
+   * 需要「宁缺勿滥」的注入场景可以抬高该值，只保留与当前问题重合度较高的记忆。
+   */
+  minRelevance?: number
 }
 
 export interface MemorySearchResult {

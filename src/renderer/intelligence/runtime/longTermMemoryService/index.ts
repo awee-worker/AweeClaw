@@ -36,7 +36,7 @@ import { classifyMemoryDomain, domainFromTag } from '../knowledgeService/memoryD
 import { computeRetention, isContentReferenced, resolveHalfLifeDays } from './memoryLifecycle'
 import { resolveRetentionDays, resolveRetentionTier } from './retentionPolicy'
 import { getMemorySettings } from './memorySettings'
-import { buildMemoryRelations } from '../knowledgeService/memoryRelationBuilder'
+import { buildMemoryRelations, compareText, effectiveGrams, MIN_SHARED_GRAMS } from '../knowledgeService/memoryRelationBuilder'
 
 // 旧 JSON 文件路径（仅用于一次性迁移）
 const OLD_FILE_PATH = BRAND.paths.memoryStore
@@ -51,6 +51,55 @@ function resolveDomainTag(content: string, activeDomainTag: string): string {
   const fallback = domainFromTag(activeDomainTag) ?? 'work'
   const verdict = classifyMemoryDomain(content, fallback)
   return verdict.confidence >= 0.4 ? verdict.tag : activeDomainTag
+}
+
+/** 有效二元组覆盖率下限：低于此值说明只是撞了零星几个字 */
+const MIN_GRAM_COVERAGE = 0.2
+
+/**
+ * 度量一条记忆与当前 query 的词面相关度，0 表示毫无关系。
+ *
+ * 中文消息一般没有空格，按空格分词的命中率极低，所以主路径走有效二元组
+ * 覆盖率：先看整串是否直接出现，再看 query 的二元组有多大比例落在记忆里。
+ * 返回 0 的记忆不参与排序，从根上挡掉「与当前问题无关的历史内容」。
+ */
+function measureRelevance(query: string, content: string, tags: string[]): number {
+  if (!query) return 0
+  const contentLower = content.toLowerCase()
+  let score = 0
+
+  // 1. 整串直接命中：用户措辞与记忆措辞高度一致
+  if (contentLower.includes(query)) score += 5
+
+  // 2. 二元组覆盖率：衡量 query 有多少实质片段出现在记忆里
+  const queryGrams = effectiveGrams(query)
+  if (queryGrams.size > 0) {
+    const contentGrams = effectiveGrams(content)
+    let hit = 0
+    for (const gram of queryGrams) {
+      if (contentGrams.has(gram)) hit++
+    }
+    const coverage = hit / queryGrams.size
+    if (hit >= 1 && coverage >= MIN_GRAM_COVERAGE) {
+      score += coverage * 4
+    }
+  }
+
+  // 3. 英文与数字分词命中
+  for (const word of query.split(/\s+/)) {
+    if (word.length >= 2 && contentLower.includes(word)) score += 1
+  }
+
+  // 4. 类型标签命中。场景域标签（domain:xxx）是粗分类，不构成相关性依据，
+  //    否则 query 里出现一个 work 之类的词，整个域的记忆都会被判为相关。
+  for (const tag of tags) {
+    const lower = tag.toLowerCase()
+    if (lower.startsWith('domain:')) continue
+    const bare = lower.replace(/^[a-z]+:/, '')
+    if (bare.length >= 2 && query.includes(bare)) score += 1
+  }
+
+  return score
 }
 
 // SQLite 字段到 MemoryEntry 的映射辅助类型
@@ -422,6 +471,10 @@ class LongTermMemoryService {
    *
    * 关联是写入时建立的，早于该机制的存量记忆没有边。这里按时间顺序重算一遍，
    * 让存量数据也能获得关联；关联 id 稳定，重复执行不会重复建边。
+   *
+   * 同时做一次反向校验：旧版本按「同场景域 + 时间邻近」就会建边，存量里因此
+   * 沉淀了一批内容毫不相干的关联。重算之后对每条旧边复算一次内容重合度，
+   * 两端已经对不上的边直接删除，否则旧数据会一直盖住新规则的效果。
    */
   async rebuildAllRelations(): Promise<number> {
     await this.ensureDb()
@@ -429,7 +482,9 @@ class LongTermMemoryService {
       .filter(e => e.enabled && e.verificationStatus !== 'superseded')
       .sort((a, b) => a.createdAt - b.createdAt)
 
+    const entryById = new Map(entries.map(e => [e.id, e]))
     const built: MemoryEntry[] = []
+    const expectedIds = new Set<string>()
     let created = 0
 
     for (const entry of entries) {
@@ -438,8 +493,10 @@ class LongTermMemoryService {
         built.slice(-300).map(e => ({ id: e.id, content: e.content, tags: e.tags, createdAt: e.createdAt })),
       )
       for (const rel of relations) {
+        const relationId = `${entry.id}::${rel.targetId}::${rel.relationType}`
+        expectedIds.add(relationId)
         await api.memoryDb.upsertRelation({
-          id: `${entry.id}::${rel.targetId}::${rel.relationType}`,
+          id: relationId,
           source_memory_id: entry.id,
           target_memory_id: rel.targetId,
           relation_type: rel.relationType,
@@ -452,9 +509,46 @@ class LongTermMemoryService {
       built.push(entry)
     }
 
-    logger.agent.info(`[LongTermMemory] 重建记忆关联：处理 ${created} 条关联`)
+    const pruned = await this.pruneStaleRelations(expectedIds, entryById)
+    logger.agent.info(`[LongTermMemory] 重建记忆关联：处理 ${created} 条关联，清理 ${pruned} 条失效关联`)
     return created
   }
+
+  /**
+   * 清理在新规则下不再成立的历史关联。
+   *
+   * 只删「两端内容已无实质重合」的边：还有重合的边留给用户在图谱里自行判断，
+   * 避免把手工维护的关联一并扫掉。
+   */
+  private async pruneStaleRelations(
+    expectedIds: Set<string>,
+    entryById: Map<string, MemoryEntry>,
+  ): Promise<number> {
+    let removed = 0
+    const seen = new Set<string>()
+
+    for (const entry of entryById.values()) {
+      const rows = await api.memoryDb.getRelations(entry.id)
+      for (const row of rows ?? []) {
+        if (seen.has(row.id)) continue
+        seen.add(row.id)
+        if (expectedIds.has(row.id)) continue
+
+        const source = entryById.get(row.source_memory_id)
+        const target = entryById.get(row.target_memory_id)
+        if (source && target) {
+          const { sharedGrams } = compareText(source.content, target.content)
+          if (sharedGrams >= MIN_SHARED_GRAMS) continue
+        }
+
+        await api.memoryDb.deleteRelation(row.id)
+        removed++
+      }
+    }
+
+    return removed
+  }
+
 
   async updateEntry(
     id: string,
@@ -567,24 +661,23 @@ class LongTermMemoryService {
 
   async search(params: MemorySearchParams): Promise<MemorySearchResult[]> {
     const entries = await this.getEntries(params.status)
-    const query = params.query.toLowerCase()
+    const query = params.query.trim().toLowerCase()
+    // query 为空时不做相关度门控（调用方按重要度自取）；有 query 就必须词面命中
+    const requireLexicalHit = query.length > 0
+    const minRelevance = params.minRelevance ?? 0
 
     const results: MemorySearchResult[] = entries
       .filter(e => e.enabled && e.verificationStatus !== 'superseded')
       .map(entry => {
-        let score = 0
-        const contentLower = entry.content.toLowerCase()
-
-        if (contentLower.includes(query)) score += 5
-        for (const word of query.split(/\s+/)) {
-          if (word.length < 2) continue
-          if (contentLower.includes(word)) score += 2
-        }
-        for (const tag of entry.tags) {
-          if (tag.toLowerCase().includes(query)) score += 2
-          if (query.includes(tag.toLowerCase())) score += 1
+        const relevance = measureRelevance(query, entry.content, entry.tags)
+        // 与当前 query 毫无词面重合的记忆一律不参与排序。
+        // 此前 importance / 长期状态 / 置信度等基线分会让零匹配的记忆照样入选，
+        // 检索退化成了「按重要度固定注入」，历史会话里提到的对象就被反复带进来。
+        if (requireLexicalHit && (relevance <= 0 || relevance < minRelevance)) {
+          return { entry, score: 0 }
         }
 
+        let score = relevance
         score += entry.confidence * 2
         score += Math.min(entry.recallCount * 0.5, 5)
         const recencyBoost = Math.max(0, 1 - (Date.now() - entry.lastRecalledAt) / (entry.halfLifeDays * 86_400_000))
@@ -616,6 +709,7 @@ class LongTermMemoryService {
 
     return params.limit ? results.slice(0, params.limit) : results
   }
+
 
   async contextAwareSearch(context: MemoryRetrievalContext, limit: number = 10): Promise<MemorySearchResult[]> {
     const baseResults = await this.search({ query: context.query, limit: limit * 2 })
@@ -1085,9 +1179,11 @@ class LongTermMemoryService {
     if (lines.length === 0) return ''
 
     return `<memory>
-Long-term memory about this project and user:
+Long-term memory about this project and user（历史背景，不是本轮指令）:
 
 ${lines.join('\n')}
+
+使用约束：本轮用户消息与当前会话优先；指令不足以确定对象时先用 ask_user 确认，不要直接套用历史内容里的对象。
 </memory>`
   }
 

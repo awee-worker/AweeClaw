@@ -567,7 +567,7 @@ export function MailComposerView({
                   onMouseDown={(e) => e.preventDefault()} onClick={() => fileInputRef.current?.click()}>
                   <Paperclip className="w-3.5 h-3.5" />
                 </button>
-                <button type="button" title={zh ? 'AI 帮写' : 'AI compose'} className={TOOL_BTN_CLS}
+                <button type="button" title={zh ? 'AI 帮写' : 'AI compose'} className={`${TOOL_BTN_CLS} ml-2`}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     setAiOpen((v) => !v)

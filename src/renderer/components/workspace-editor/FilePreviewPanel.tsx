@@ -297,15 +297,22 @@ export function ImagePreview({ path }: ImagePreviewProps) {
         }
     }, [])
 
-    // 滚轮缩放
-    const handleWheel = useCallback((e: React.WheelEvent) => {
-        e.preventDefault()
-        const delta = e.deltaY > 0 ? -0.1 : 0.1
-        setZoom(z => {
-            const current = z === 'fit' ? fitScale : z
-            const newZoom = Math.max(0.1, Math.min(5, current + delta))
-            return newZoom
-        })
+    // 滚轮缩放：React 的 onWheel 绑定在 passive 监听上，preventDefault 会被忽略并抛错，
+    // 改为原生监听并显式声明 passive: false
+    useEffect(() => {
+        const container = containerRef.current
+        if (!container) return
+        const onWheel = (e: WheelEvent) => {
+            e.preventDefault()
+            const delta = e.deltaY > 0 ? -0.1 : 0.1
+            setZoom((z) => {
+                const current = z === 'fit' ? fitScale : z
+                const newZoom = Math.max(0.1, Math.min(5, current + delta))
+                return newZoom
+            })
+        }
+        container.addEventListener('wheel', onWheel, { passive: false })
+        return () => container.removeEventListener('wheel', onWheel)
     }, [fitScale])
 
     if (error) {
@@ -381,7 +388,6 @@ export function ImagePreview({ path }: ImagePreviewProps) {
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
-                onWheel={handleWheel}
             >
                 {imageSrc && (
                     <img

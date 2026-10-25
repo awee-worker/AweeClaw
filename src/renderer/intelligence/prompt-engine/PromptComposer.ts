@@ -567,7 +567,13 @@ function buildLongTermMemory(entries: MemoryEntry[], tokenBudget: number = 1500)
   return `## Memory
 Important facts and preferences remembered from past conversations:
 
-${lines.join('\n')}`
+${lines.join('\n')}
+
+记忆使用规则（优先级从高到低）：
+1. 本轮用户消息 + 当前会话里已经确认的内容，是唯一权威的执行依据。
+2. 上面这些记忆来自历史会话，只是背景参考。它们描述的对象未必是本轮要处理的对象，即使名词相同也不要直接套用。
+3. 当用户指令不够具体、靠记忆无法确定指向哪个对象（例如只说了「这个按钮」，而项目里存在多个相似按钮），先调用 ask_user 让用户确认，不要凭记忆猜测，也不要自行挑选历史会话里提到过的那个。
+4. 记忆与当前会话内容冲突时，以当前会话为准，并可以主动指出这处差异。`
 }
 
 function buildCustomInstructions(instructions: string | null): string | null {

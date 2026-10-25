@@ -211,10 +211,17 @@ export default function CollaborationCanvas({ sessionId }: { sessionId?: string 
     }
   }, [sessionId])
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault()
-    const delta = e.deltaY > 0 ? 0.9 : 1.1
-    setZoom(z => Math.max(0.3, Math.min(3, z * delta)))
+  // React 的 onWheel 绑定在 passive 监听上，preventDefault 会被忽略并抛错，这里改用原生监听
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? 0.9 : 1.1
+      setZoom((z) => Math.max(0.3, Math.min(3, z * delta)))
+    }
+    svg.addEventListener('wheel', onWheel, { passive: false })
+    return () => svg.removeEventListener('wheel', onWheel)
   }, [])
 
   const resetView = useCallback(() => {
@@ -271,7 +278,6 @@ export default function CollaborationCanvas({ sessionId }: { sessionId?: string 
         <svg
           ref={svgRef}
           className="w-full h-full"
-          onWheel={handleWheel}
           style={{ cursor: 'grab' }}
         >
           <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>

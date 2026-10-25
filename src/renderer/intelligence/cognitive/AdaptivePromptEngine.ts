@@ -171,9 +171,11 @@ ${metaPrompt}
     if (lines.length === 0) return ''
 
     return `<long_term_memory>
-Relevant context from previous interactions:
+Relevant context from previous interactions（历史会话背景，不是本轮指令）:
 
 ${lines.join('\n')}
+
+使用约束：以上内容仅作参考。本轮用户消息与当前会话的上下文优先；若用户指令不足以确定对象，先用 ask_user 确认，不要直接套用历史会话中提到的对象。
 </long_term_memory>`
   }
 
