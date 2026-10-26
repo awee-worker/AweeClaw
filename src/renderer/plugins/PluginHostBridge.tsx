@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useAgentCommands, useThreadMessenger } from '@hooks/useAgent'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
+import { peekAgent } from '@intelligence/engine/agentAccessor'
 import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
@@ -257,6 +258,40 @@ export function PluginHostBridge() {
 
   useEffect(() => {
     /**
+     * 释放上一轮残留的执行占用
+     *
+     * 场景工作线程是串行的执行载体。一次生成挂死（模型无响应、流始终没收到完成
+     * 信号）之后，Agent 内部 runningTasks 上的执行锁不会自己消失，下一次 send
+     * 会直接被 "Thread ... is already running" 挡下 —— 面板提示「可以再点一次
+     * 生成」，点了却只拿到这句报错，重来一次的路被彻底堵死。
+     *
+     * 面板在运行期间是禁用生成按钮的，能走到这里的「还在跑」只可能是上一轮没人
+     * 收尾的残留，因此新请求进来时先中止它，等锁真正释放再发。
+     *
+     * 判定只能以执行锁为准，不能拿流式状态替代：abort 在 runningTasks 里找不到
+     * 目标线程时会兜底中止全部运行中任务，误判会把用户主对话那边正在跑的请求
+     * 一起打断。
+     */
+    async function releaseStaleRun(threadId: string): Promise<void> {
+      if (!peekAgent()?.isRunning(threadId)) return
+
+      logger.system.warn(
+        `[PluginHostBridge] 线程存在未收尾的上一轮运行，先中止再重发: thread=${threadId}`,
+      )
+      abortThread(threadId)
+
+      // 中止是异步收尾：锁在 send 的 finally 里释放，这里轮询到真正空闲为止
+      const MAX_WAIT_ATTEMPTS = 20 // 150ms × 20 ≈ 3s
+      for (let attempt = 0; attempt < MAX_WAIT_ATTEMPTS; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 150))
+        if (!peekAgent()?.isRunning(threadId)) return
+      }
+      logger.system.warn(
+        `[PluginHostBridge] 等待执行锁释放超时，仍尝试发送: thread=${threadId}`,
+      )
+    }
+
+    /**
      * 开始跟踪一次运行
      *
      * 提问-回答是多轮的：ask_user 结束后本轮结束，用户点完选项再发一条新消息，
@@ -349,12 +384,17 @@ export function PluginHostBridge() {
       // 提问收尾与用户点击之间存在极短的空窗，此时线程可能还挂在上一轮上：
       // 补一次重试，避免选择被「Thread already running」挡掉后无声消失
       const dispatch = (attempt: number): void => {
-        void sendToThread(content, threadId, {
-          silent: true,
-          chatMode: 'agent',
-          // 沿用本次生成选的模型：微调是同一件事的延续
-          llmOverride: lastModelByPluginRef.current.get(detail.pluginKey),
-        }).catch((err: unknown) => {
+        void (async () => {
+          // 提问那一轮结束后线程通常已经空闲，但模型若在收尾阶段挂住，锁会一直留着；
+          // 与首次生成同一条处理：先清残留再续发，否则用户的回答会被静默丢弃
+          await releaseStaleRun(threadId)
+          await sendToThread(content, threadId, {
+            silent: true,
+            chatMode: 'agent',
+            // 沿用本次生成选的模型：微调是同一件事的延续
+            llmOverride: lastModelByPluginRef.current.get(detail.pluginKey),
+          })
+        })().catch((err: unknown) => {
           if (attempt === 0) {
             setTimeout(() => dispatch(1), 800)
             return
@@ -388,6 +428,9 @@ export function PluginHostBridge() {
       if (detail.model) lastModelByPluginRef.current.set(detail.pluginKey, detail.model)
 
       try {
+        // 上一轮可能挂死（模型无响应 / 未收到完成信号），执行锁还留在 Agent 里。
+        // 先把它收掉，否则这次发送会立刻被 "Thread already running" 挡回来。
+        await releaseStaleRun(threadId)
         // 固定 agent 档：场景面板没有输入区，currentMode 可能停在 chat，
         // 那样拿到的工具集不足以完成一次生成（建画板、写节点都要工具）
         await sendToThread(detail.text, threadId, {
