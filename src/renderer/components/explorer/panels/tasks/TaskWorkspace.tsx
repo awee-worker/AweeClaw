@@ -53,7 +53,7 @@ export function TaskWorkspace() {
 
   // ─── AI 执行任务 ───────────────────────────────────────
   // 旧入口（任务面板）：执行后切换到聊天界面（保留原行为）
-  const setActiveSidePanel = useStore(s => s.setActiveSidePanel)
+  const closeSidePanelForView = useStore(s => s.closeSidePanelForView)
   const setChatVisible = useStore(s => s.setChatVisible)
   const closeAllFullPages = useStore(s => s.closeAllFullPages)
 
@@ -64,9 +64,9 @@ export function TaskWorkspace() {
     onThreadReady: useCallback(() => {
       // 保留原行为：切到主聊天界面
       closeAllFullPages()
-      setActiveSidePanel(null)
+      closeSidePanelForView()
       setChatVisible(true)
-    }, [closeAllFullPages, setActiveSidePanel, setChatVisible]),
+    }, [closeAllFullPages, closeSidePanelForView, setChatVisible]),
   })
 
   // ─── 数据加载 ───────────────────────────────────────

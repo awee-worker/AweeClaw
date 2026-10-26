@@ -45,6 +45,15 @@ export type SidePanel =
   | 'todo-hub'
   | null
 
+/**
+ * 工作空间面板 id
+ *
+ * 顶部「显示工作空间面板」开关与「新建任务」默认打开的都是这一块面板。
+ * 插件市场 / 待办中心 / 邮件中心这类场景面板不算：它们占的是主内容区，
+ * 用户切走视图后不该被开关当成工作空间面板重新顶出来。
+ */
+export const WORKSPACE_PANEL_ID = 'explorer' as const
+
 /** 终端布局模式 */
 export type TerminalLayout = 'tabs' | 'split'
 
@@ -186,7 +195,7 @@ type FullscreenPageState = Record<(typeof FULLSCREEN_PAGE_KEYS)[number], boolean
 
 /** 布局默认值集中管理，便于统一调整 */
 const LAYOUT_DEFAULTS = {
-  activeSidePanel: 'explorer' as SidePanel,
+  activeSidePanel: WORKSPACE_PANEL_ID as SidePanel,
   terminalVisible: false,
   debugVisible: false,
   chatVisible: true,
@@ -353,6 +362,15 @@ export interface LayoutSlice {
 
   /* ===== 面板可见性操作 ===== */
   setActiveSidePanel: (panel: SidePanel) => void
+  /**
+   * 因切走视图而收起侧边栏
+   *
+   * 与 setActiveSidePanel(null) 的差别只在「上次面板」：后者保留当前面板，
+   * 顶部开关「关掉再打开」仍回到同一块；而打开设置页 / 历史会话、切换会话、
+   * 把待办交给 AI 这类操作已经把用户带离了那块面板的上下文，开关再按下应当
+   * 回到工作空间面板，而不是把刚离开的插件市场 / 待办中心重新顶出来。
+   */
+  closeSidePanelForView: () => void
   setTerminalVisible: (visible: boolean) => void
   setDebugVisible: (visible: boolean) => void
   setChatVisible: (visible: boolean) => void
@@ -530,6 +548,20 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
       // 若把它们也算作接管，关闭编辑器 / 浏览器后就再也恢复不到打开前的面板。
       chromeSnapshotBeforeFocus: panel ? null : state.chromeSnapshotBeforeFocus,
     })),
+  /**
+   * 收起侧边栏，并把「上次面板」重置为工作空间面板。
+   *
+   * lastActiveSidePanel 是顶部开关的恢复目标：用户自己关掉面板再打开，理应回到
+   * 同一块；但切走视图是被动离开，若继续记住插件市场，开关一按就会把用户刚离开
+   * 的界面重新弹出，看上去像「点错按钮」。
+   */
+  closeSidePanelForView: () =>
+    set({
+      activeSidePanel: null,
+      lastActiveSidePanel: WORKSPACE_PANEL_ID,
+      // 视图切换属于用户主动接管，专注布局的快照不再回放
+      chromeSnapshotBeforeFocus: null,
+    }),
   setTerminalVisible: (visible) => set((state) => ({ 
     terminalVisible: visible,
     dockPanelVisible: visible ? true : (state.activeDockTab === 'terminal' ? false : state.dockPanelVisible),

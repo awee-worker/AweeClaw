@@ -144,7 +144,7 @@ export function ChatHistoryPart({ expanded }: ChatHistoryPartProps) {
   const {
     language,
     activeSidePanel,
-    setActiveSidePanel,
+    closeSidePanelForView,
     setChatVisible,
     setShowSessionHistoryPage,
     showWelcomePage,
@@ -153,7 +153,7 @@ export function ChatHistoryPart({ expanded }: ChatHistoryPartProps) {
   } = useStore(useShallow((s) => ({
     language: s.language,
     activeSidePanel: s.activeSidePanel,
-    setActiveSidePanel: s.setActiveSidePanel,
+    closeSidePanelForView: s.closeSidePanelForView,
     setChatVisible: s.setChatVisible,
     setShowSessionHistoryPage: s.setShowSessionHistoryPage,
     showWelcomePage: s.showWelcomePage,
@@ -208,7 +208,9 @@ export function ChatHistoryPart({ expanded }: ChatHistoryPartProps) {
   const handleSelectThread = (threadId: string) => {
     const panel = activeSidePanel
     if (panel && (hideChatPanelIds.has(panel) || wideModePanelIds.has(panel))) {
-      setActiveSidePanel(null)
+      // 切会话等于离开那块面板的上下文：收起时一并重置「上次面板」，
+      // 否则顶部工作空间开关再按下会把刚离开的面板（插件市场等）重新打开。
+      closeSidePanelForView()
       setChatVisible(true)
     }
     void switchThread(threadId)

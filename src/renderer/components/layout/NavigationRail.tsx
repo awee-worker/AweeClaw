@@ -109,6 +109,7 @@ export default function NavigationRail() {
   const {
     activeSidePanel,
     setActiveSidePanel,
+    closeSidePanelForView,
     language,
     setShowWorkflow,
     activeScenarioId,
@@ -128,6 +129,7 @@ export default function NavigationRail() {
   } = useStore(useShallow(s => ({
     activeSidePanel: s.activeSidePanel,
     setActiveSidePanel: s.setActiveSidePanel,
+    closeSidePanelForView: s.closeSidePanelForView,
     language: s.language,
     setShowWorkflow: s.setShowWorkflow,
     activeScenarioId: s.activeScenarioId,
@@ -280,24 +282,29 @@ export default function NavigationRail() {
   }, [enterFocusLayout, closeAllFullPages, openInternalBrowser])
 
   const handleBrandClick = useCallback(() => {
-    setActiveSidePanel(null)
+    // 回欢迎页属于离开当前面板：顺便重置「上次面板」，顶部开关再按下时打开工作空间面板
+    closeSidePanelForView()
     setShowWelcomePage(true)
     setShowWorkflow(false)
     closeInternalBrowser()
-  }, [setActiveSidePanel, setShowWelcomePage, setShowWorkflow, closeInternalBrowser])
+  }, [closeSidePanelForView, setShowWelcomePage, setShowWorkflow, closeInternalBrowser])
 
   // 新建任务：新建对话（聊天界面）并进入「新建任务页面」。
-  // 若当前已选择工作空间，则默认打开工作空间文件面板；未选择工作空间时不打开，避免出现空面板。
+  // 若当前已选择工作空间，则默认打开工作空间文件面板；未选择工作空间时不打开，避免出现空面板，
+  // 但要收起当前场景面板（插件市场 / 待办中心等）并重置开关的恢复目标，否则用户会停在一块
+  // 与新建任务无关的界面上，顶部开关再按下也只会把它重新打开。
   const handleNewTask = useCallback(() => {
     if (useStore.getState().workspace?.roots?.length) {
       setActiveSidePanel('explorer')
+    } else {
+      closeSidePanelForView()
     }
     closeAllFullPages()
     // 先关闭内部浏览器（其关闭逻辑会回写"打开前"的聊天显隐），再显式显示聊天窗口，避免被回写覆盖
     closeInternalBrowser()
     setChatVisible(true)
     createThread()
-  }, [setActiveSidePanel, closeAllFullPages, setChatVisible, closeInternalBrowser, createThread])
+  }, [setActiveSidePanel, closeSidePanelForView, closeAllFullPages, setChatVisible, closeInternalBrowser, createThread])
 
   // 仪表盘（欢迎页）选中态
   const isDashboardActive = showWelcomePage

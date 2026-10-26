@@ -75,9 +75,9 @@ export function TodoHubView() {
     setDueDate('')
   }
 
-  /** 关闭待办面板，回到会话视图 */
+  /** 关闭待办面板，回到会话视图（同时重置顶部开关的恢复目标） */
   const handleClose = () => {
-    useStore.getState().setActiveSidePanel(null)
+    useStore.getState().closeSidePanelForView()
     useStore.getState().setChatVisible(true)
   }
 

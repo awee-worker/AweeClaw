@@ -631,7 +631,7 @@ export function AIBrowserView() {
   const openSearchSettings = useCallback(() => {
     const store = useStore.getState()
     store.setSettingsIntent({ tab: 'search' })
-    store.setActiveSidePanel(null)
+    store.closeSidePanelForView()
     store.setShowSettingsPage(true)
   }, [])
 
@@ -644,7 +644,7 @@ export function AIBrowserView() {
         const threadId = createThread({ activate: true })
         const store = useStore.getState()
         store.closeInternalBrowser()
-        store.setActiveSidePanel(null)
+        store.closeSidePanelForView()
         store.closeAllFullPages()
         store.setChatVisible(true)
         await sendToThread(prompt, threadId)

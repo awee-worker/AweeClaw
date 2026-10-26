@@ -197,7 +197,7 @@ export function resolveThreadTodos(threadId: string, settled: boolean): void {
 function backToChat(): void {
   const store = useStore.getState()
   store.closeAllFullPages()
-  store.setActiveSidePanel(null)
+  store.closeSidePanelForView()
   store.setChatVisible(true)
 }
 

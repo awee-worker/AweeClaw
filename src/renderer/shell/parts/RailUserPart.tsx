@@ -366,6 +366,7 @@ export function RailUserPart({ expanded, placement = 'rail' }: RailUserPartProps
     cloudUser,
     logout,
     setActiveSidePanel,
+    closeSidePanelForView,
     setShowSettingsPage,
     setShowScenarioPage,
     setShowPluginCenterPage,
@@ -385,6 +386,7 @@ export function RailUserPart({ expanded, placement = 'rail' }: RailUserPartProps
     cloudUser: s.cloudUser,
     logout: s.logout,
     setActiveSidePanel: s.setActiveSidePanel,
+    closeSidePanelForView: s.closeSidePanelForView,
     setShowSettingsPage: s.setShowSettingsPage,
     setShowScenarioPage: s.setShowScenarioPage,
     setShowPluginCenterPage: s.setShowPluginCenterPage,
@@ -428,13 +430,18 @@ export function RailUserPart({ expanded, placement = 'rail' }: RailUserPartProps
 
   const hasUpdateAvailable = updateStatus?.status === 'available' || updateStatus?.status === 'downloaded'
 
-  /** 打开一个「独占式」全屏页：收起侧边栏、退出工作流与内置浏览器 */
+  /**
+   * 打开一个「独占式」全屏页：收起侧边栏、退出工作流与内置浏览器
+   *
+   * 收起走 closeSidePanelForView：这里是把用户带离当前面板的上下文，
+   * 顶部开关再按下应当打开工作空间面板，而不是把刚离开的插件市场顶回来。
+   */
   const openExclusive = useCallback((open: () => void) => {
-    setActiveSidePanel(null)
+    closeSidePanelForView()
     open()
     setShowWorkflow(false)
     closeInternalBrowser()
-  }, [setActiveSidePanel, setShowWorkflow, closeInternalBrowser])
+  }, [closeSidePanelForView, setShowWorkflow, closeInternalBrowser])
 
   const handlers: UserMenuHandlers = {
     onSettingsClick: () => openExclusive(() => setShowSettingsPage(true)),
