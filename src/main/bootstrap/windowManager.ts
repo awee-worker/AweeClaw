@@ -15,6 +15,8 @@ import { app, BrowserWindow, screen, webContents } from 'electron'
 import * as path from 'path'
 import { logger } from '@shared/toolkit/LogEngine'
 import { safeOpenExternal } from '../guard/safeExternalUrl'
+import { PREVIEW_NEW_WINDOW_CHANNEL } from '@shared/protocols/previewProtocol'
+import { attachRendererConsoleDiag, diagLog } from './popupDiagnostics'
 import { cleanupFileWatcher } from '../guard/fileSystemObserver'
 import {
   shutdownWindowController,
@@ -347,6 +349,7 @@ export function createWindow(isEmpty = false, deferLoad = false): BrowserWindow 
   registerShortcuts(win)
   registerExternalLinkHandler(win)
   registerWebviewGuard(win)
+  attachRendererConsoleDiag(win)
 
   const windowId = win.id
   windows.set(windowId, win)
@@ -665,6 +668,7 @@ function registerWebviewGuard(win: BrowserWindow): void {
 
     // 仅允许 http/https 协议，阻止 file://、javascript:、data: 等
     const src = typeof params.src === 'string' ? params.src.trim() : ''
+    diagLog('[webview-popup] will-attach', { src, allowpopups: params.allowpopups })
     if (!/^https?:\/\//i.test(src)) {
       logger.system.warn(`[WebviewGuard] Blocked webview with unsafe src: ${src || '(empty)'}`)
       event.preventDefault()
@@ -673,14 +677,36 @@ function registerWebviewGuard(win: BrowserWindow): void {
   })
 
   win.webContents.on('did-attach-webview', (_event, guestWebContents) => {
-    // webview 内新窗口拦截：devtools 与本地 dev server 放行，其余 http/https 走系统浏览器
+    diagLog('[webview-popup] did-attach', {
+      guestId: guestWebContents.id,
+      hostId: guestWebContents.hostWebContents?.id,
+    })
+    // webview 内新窗口拦截
+    //
+    // 页面里的 target=_blank 链接与 window.open() 统一交回承载 webview 的渲染进程，
+    // 由内置浏览器自己以新标签页打开：这样弹窗落在应用内的浏览器上下文里，用户不会
+    // 被甩到系统浏览器，标签页也能沿用当前的设备档、健康采集等会话能力。
+    // 宿主渲染进程不可用（窗口正在销毁）时才退回系统浏览器，避免点了没反应。
     guestWebContents.setWindowOpenHandler(({ url }) => {
+      diagLog('[webview-popup] handler-hit', { guestId: guestWebContents.id, url })
       if (url.startsWith('devtools://')) {
         return { action: 'allow' }
       }
-      if (/^https?:\/\//i.test(url)) {
-        void safeOpenExternal(url)
+      if (!/^https?:\/\//i.test(url)) {
+        diagLog('[webview-popup] blocked-non-http', { url })
         return { action: 'deny' }
+      }
+
+      const host = guestWebContents.hostWebContents
+      if (host && !host.isDestroyed()) {
+        host.send(PREVIEW_NEW_WINDOW_CHANNEL, {
+          guestId: guestWebContents.id,
+          url,
+        })
+        diagLog('[webview-popup] forwarded', { hostId: host.id, guestId: guestWebContents.id, url })
+      } else {
+        diagLog('[webview-popup] fallback-external', { url })
+        void safeOpenExternal(url)
       }
       return { action: 'deny' }
     })

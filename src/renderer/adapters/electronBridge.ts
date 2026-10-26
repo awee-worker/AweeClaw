@@ -535,6 +535,8 @@ function createGroupedAPI() {
         raw.preview.onHealth(callback),
       onDevice: (callback: Parameters<typeof raw.preview.onDevice>[0]) =>
         raw.preview.onDevice(callback),
+      onNewWindow: (callback: Parameters<typeof raw.preview.onNewWindow>[0]) =>
+        raw.preview.onNewWindow(callback),
       watchAutoReload: (rootDir: string, url: string) =>
         raw.preview.watchAutoReload(rootDir, url),
       unwatchAutoReload: (rootDir: string, url: string) =>

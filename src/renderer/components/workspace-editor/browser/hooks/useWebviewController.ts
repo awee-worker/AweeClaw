@@ -202,6 +202,7 @@ export function useWebviewController(session: PreviewSession | null): WebviewCon
 
       guestIdRef.current = id
       setGuestId(id)
+      console.info('[diag] guest-register', JSON.stringify({ sid, id }))
       // 会话上记一份 guest id，AI 侧按需采集资源瀑布时需要它
       previewSessionService.setGuestId(sid, id)
 

@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, RefreshCw, X } from 'lucide-react'
+import { api } from '@renderer/adapters/electronBridge'
 
 /**
  * 沙箱页面 → 宿主的能力请求消息类型。
@@ -78,6 +79,51 @@ export default function SandboxFrame({ src, title, onExit }: SandboxFrameProps) 
     }
   }, [reloadToken])
 
+  /**
+   * 页面里的新窗口请求转给系统浏览器
+   *
+   * 沙箱页面没有地址栏和标签页，弹窗留在应用内无处安放，因此这里按 guest id 认领
+   * 自己的请求后直接交给系统浏览器——与主窗口里点外链的行为保持一致。
+   * guest id 要等 dom-ready 之后才可读，所以订阅挂在事件上而不是首帧。
+   */
+  useEffect(() => {
+    const view = webviewRef.current as
+      | (EventTarget & { getWebContentsId?: () => number })
+      | null
+    if (!view) return
+
+    let guestId: number | null = null
+    let off: (() => void) | undefined
+
+    const bind = () => {
+      if (guestId !== null) return
+
+      let id: number
+      try {
+        const candidate = view.getWebContentsId?.()
+        if (typeof candidate !== 'number' || candidate < 0) return
+        id = candidate
+      } catch {
+        // webview 尚未 attach，等下一次 dom-ready
+        return
+      }
+
+      guestId = id
+      off = api.preview.onNewWindow?.((request) => {
+        if (request.guestId !== id) return
+        void api?.file?.openExternalUrl(request.url)
+      })
+    }
+
+    view.addEventListener('dom-ready', bind)
+    bind()
+
+    return () => {
+      view.removeEventListener('dom-ready', bind)
+      off?.()
+    }
+  }, [reloadToken])
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background">
       {/* 顶栏：客户端绘制，退出入口不交给页面 */}
@@ -120,9 +166,16 @@ export default function SandboxFrame({ src, title, onExit }: SandboxFrameProps) 
           title={title || 'sandbox'}
           partition={SANDBOX_PARTITION}
           className="h-full w-full border-0 bg-background-editor"
-          // 不设置 nodeintegration / disablewebsecurity / allowpopups：
-          // nodeIntegration 由主进程 will-attach-webview 强制为 false，
-          // 弹窗由主进程 setWindowOpenHandler 统一拦截
+          // allowpopups：页面里 target=_blank / window.open 的请求需要先由 guest 转发出来，
+          // 否则内核直接丢弃，点击表现为无响应。开不开窗口仍由主进程的
+          // setWindowOpenHandler 决定（一律 deny），沙箱没有地址栏与标签页，
+          // 请求由下面的订阅转给系统浏览器。
+          //
+          // 值必须是字符串：给自定义布尔属性传 true 会被 React 丢弃，属性不落地，
+          // 内核随即吞掉弹窗请求，订阅永远收不到。
+          allowpopups={'' as unknown as boolean}
+          // 不设置 nodeintegration / disablewebsecurity：
+          // nodeIntegration 由主进程 will-attach-webview 强制为 false
         />
       </div>
     </div>

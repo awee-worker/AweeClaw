@@ -1824,6 +1824,10 @@ export interface ElectronAPI {
     onDevice: (
       callback: (request: import('@protocols/previewProtocol').PreviewDeviceRequest) => void,
     ) => () => void
+    /** 页面新窗口请求订阅（target=_blank / window.open，main → render） */
+    onNewWindow: (
+      callback: (request: import('@protocols/previewProtocol').PreviewNewWindowRequest) => void,
+    ) => () => void
     /** 登记预览目录的自动刷新（本地静态页面专用） */
     watchAutoReload: (rootDir: string, url: string) => Promise<{ success: boolean; error?: string }>
     /** 取消预览目录的自动刷新 */

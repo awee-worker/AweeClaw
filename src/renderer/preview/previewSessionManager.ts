@@ -1,6 +1,6 @@
 import { useStore } from '@store'
 import { DESKTOP_PROFILE, DEVICE_PRESETS } from '@shared/protocols/previewProtocol'
-import type { OpenPreviewMetadata, PreviewAutoReloadPayload, PreviewDeviceRequest, PreviewHealthSnapshot, PreviewServerCandidate, PreviewSession, PreviewSessionStatus } from '@shared/protocols/previewProtocol'
+import type { OpenPreviewMetadata, PreviewAutoReloadPayload, PreviewDeviceRequest, PreviewHealthSnapshot, PreviewNewWindowRequest, PreviewServerCandidate, PreviewSession, PreviewSessionStatus } from '@shared/protocols/previewProtocol'
 import { buildPreviewDocumentPath, parsePreviewDocumentPath } from '@shared/protocols/previewProtocol'
 import { api } from '@renderer/adapters/electronBridge'
 import { devServerDiscoveryService } from './devServerLocator'
@@ -74,6 +74,8 @@ export class PreviewSessionService {
   private autoReloadBridgeAttached = false
   /** 设备模式切换订阅是否已建立（只需一次） */
   private deviceBridgeAttached = false
+  /** 页面新窗口请求订阅是否已建立（只需一次） */
+  private newWindowBridgeAttached = false
   /**
    * 订阅会话状态变化
    *
@@ -84,6 +86,7 @@ export class PreviewSessionService {
     this.ensureHealthBridge()
     this.ensureAutoReloadBridge()
     this.ensureDeviceBridge()
+    this.ensureNewWindowBridge()
     this.listeners.add(listener)
     listener(this.state)
     return () => this.listeners.delete(listener)
@@ -150,6 +153,8 @@ export class PreviewSessionService {
     this.ensureHealthBridge()
     this.ensureAutoReloadBridge()
     this.ensureDeviceBridge()
+    this.ensureNewWindowBridge()
+    console.info('[diag] openUrl', JSON.stringify({ url, forceNew: Boolean(options.forceNew) }))
     if (!options.forceNew) {
       const existingSessionId = this.sessionByUrl.get(url)
       if (existingSessionId) {
@@ -216,6 +221,9 @@ export class PreviewSessionService {
   }
 
   restoreSession(preview: OpenPreviewMetadata): void {
+    // 恢复出来的标签页同样要能承接页面里的新窗口链接：重启后的首个会话常常走这条路重建
+    this.ensureNewWindowBridge()
+
     const existing = this.sessions.get(preview.sessionId)
     if (existing) {
       return
@@ -672,6 +680,55 @@ export class PreviewSessionService {
     } catch {
       // preload 未就绪（如单测环境）时忽略
     }
+  }
+
+  /**
+   * 建立页面新窗口请求的订阅（幂等）
+   *
+   * 页面里的 target=_blank 链接与 window.open() 由主进程拦下，把「要打开这个地址」
+   * 推回渲染进程。这里按 guest id 认领属于预览标签页的请求，以新标签页打开；
+   * 不在会话表里的 guest（自定义菜单里的独立内置浏览器）自行处理，这里不做兜底，
+   * 避免同一个链接被两处同时打开。
+   */
+  private ensureNewWindowBridge(): void {
+    if (this.newWindowBridgeAttached) {
+      return
+    }
+    try {
+      console.info('[diag] newWindow-bridge attach, apiType=', typeof api.preview.onNewWindow)
+      api.preview.onNewWindow((request) => this.handleNewWindowRequest(request))
+      this.newWindowBridgeAttached = true
+    } catch (error) {
+      console.info('[diag] newWindow-bridge attach failed', String(error))
+      // preload 未就绪（如单测环境）时忽略
+    }
+  }
+
+  /** 页面请求新窗口：为发起请求的会话新建一个标签页 */
+  private handleNewWindowRequest(request: PreviewNewWindowRequest): void {
+    console.info(
+      '[diag] newWindow-received',
+      JSON.stringify(request),
+      'sessionGuestIds=',
+      JSON.stringify(this.state.sessions.map((session) => session.guestId)),
+    )
+    if (!request || typeof request.guestId !== 'number') return
+    if (typeof request.url !== 'string' || !/^https?:\/\//i.test(request.url)) return
+
+    const owner = this.state.sessions.find((session) => session.guestId === request.guestId)
+    console.info('[diag] newWindow-owner', owner ? owner.id : 'none')
+    if (!owner) return
+    this.openUrl(request.url, {
+      source: 'manual',
+      activate: true,
+      // 页面用的是 target=_blank 语义：一律新开标签页，不与同源已打开的页面合并
+      forceNew: true,
+      workspaceRoot: owner.workspaceRoot,
+      // 新标签页沿用发起页面的设备档：弹出来的页面和来源页保持同一形态
+      deviceId: owner.deviceId,
+      deviceWidth: owner.deviceViewport?.width,
+      deviceHeight: owner.deviceViewport?.height,
+    })
   }
 
   /** 处理主进程推来的设备切换请求 */

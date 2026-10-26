@@ -22,12 +22,14 @@ import {
   PREVIEW_AUTO_RELOAD_CHANNEL,
   PREVIEW_DEVICE_CHANNEL,
   PREVIEW_HEALTH_CHANNEL,
+  PREVIEW_NEW_WINDOW_CHANNEL,
   type DevToolsRect,
   type PreviewAutoReloadPayload,
   type PreviewContentSummary,
   type PreviewDeviceRequest,
   type PreviewHealthSnapshot,
   type PreviewNetworkEntry,
+  type PreviewNewWindowRequest,
 } from '../../../shared/protocols/previewProtocol'
 import type {
   ElementCapture,
@@ -112,6 +114,14 @@ export function createPreviewApi() {
 
     /** 订阅设备模式切换请求（AI 工具发起，main → render） */
     onDevice: on<PreviewDeviceRequest>(PREVIEW_DEVICE_CHANNEL),
+
+    /**
+     * 订阅页面发起的新窗口请求（target=_blank / window.open）
+     *
+     * 主进程不直接建窗口，把诉求推给承载 webview 的渲染进程，由内置浏览器
+     * 以新标签页的形式打开。
+     */
+    onNewWindow: on<PreviewNewWindowRequest>(PREVIEW_NEW_WINDOW_CHANNEL),
 
     /** 登记预览目录的自动刷新（本地静态页面专用，dev server 自带 HMR） */
     watchAutoReload: (rootDir: string, url: string) =>

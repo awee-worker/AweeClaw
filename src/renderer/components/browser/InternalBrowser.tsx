@@ -6,13 +6,17 @@
  *   不会在 webview 未 dom-ready 时调用 loadURL）
  * - BrowserWebView：webview 容器（冻结初始 src，避免 src 导航与 loadURL 双重导航冲突）
  *
- * 本组件只负责：
- * - 内容区占位容器 + 工具栏 UI（关闭/后退/前进/刷新/地址栏/外部打开）
+ * 本组件负责：
+ * - 内容区占位容器 + 标签条 + 工具栏 UI（关闭/后退/前进/刷新/地址栏/外部打开）
+ * - 多标签：页面里的 target=_blank / window.open 由主进程推回来，在这里新开标签页
  * - 自定义菜单 URL 驱动的本地会话状态（不注册 previewSessionService，
  *   service 的方法对未知 session 全部 no-op，无副作用）
+ *
+ * 标签切换会重建 webview（不同标签是不同地址，冻结的 src 不会跟着变），
+ * 因此切走再切回来的页面会重新加载——与「一个内置浏览器只保留一个 guest」的取舍一致。
  */
-import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, Loader2, RefreshCw, Sparkles, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, Loader2, Plus, RefreshCw, Sparkles, X } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { t, type Language } from '@renderer/i18n'
@@ -26,6 +30,28 @@ import AIEditPanel from '@components/workspace-editor/browser/AIEditPanel'
 import { BROWSER_AI_EDIT_EVENT, buildAIEditPrompt } from '@components/workspace-editor/browser/aiEditPrompt'
 import { sanitizeUrl } from '@components/workspace-editor/browser/hooks/usePreviewSessionSync'
 
+/** 新标签页默认地址 */
+const NEW_TAB_URL = 'https://www.aweeclaw.com'
+
+interface InternalTab {
+  id: string
+  url: string
+  title: string
+}
+
+function createTabId(): string {
+  return `tab-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+}
+
+/** 标签标题：页面标题未知时用域名兜底，避免标签条上是一长串地址 */
+function titleFromUrl(url: string): string {
+  try {
+    return new URL(url).host || url
+  } catch {
+    return url
+  }
+}
+
 
 export default function InternalBrowser() {
   const { url, title, closeInternalBrowser, language } = useStore(
@@ -37,19 +63,41 @@ export default function InternalBrowser() {
     })),
   )
 
-  // 本地会话状态：URL 驱动。初始导航由 BrowserWebView 的 src 属性完成，
-  // 后续导航通过 session.url 变化触发 controller 的增量 loadURL（webview 已就绪）。
-  const [session, setSession] = useState<PreviewSession | null>(() => ({
-    id: `internal-browser-${Date.now().toString(36)}`,
-    url: url ?? '',
-    title: title ?? '',
-    source: 'manual',
-    status: 'loading',
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    reloadToken: 0,
-  }))
+  // 标签集合：自定义菜单打开时只有一个标签，页面弹窗请求会在这里追加
+  const [tabs, setTabs] = useState<InternalTab[]>(() => [
+    {
+      id: createTabId(),
+      url: url ?? '',
+      title: title || titleFromUrl(url ?? ''),
+    },
+  ])
+  const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0]?.id ?? '')
+  /** 刷新令牌：推进后由 controller 消费，触发一次真正的页面重载 */
+  const [reloadToken, setReloadToken] = useState(0)
   const [address, setAddress] = useState(url ?? '')
+
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]
+  const activeUrl = activeTab?.url ?? ''
+
+  /**
+   * 会话对象由当前标签派生
+   *
+   * controller 只认一个会话，切换标签等价于「换一条会话」：id 变化让 webview 重建，
+   * url 变化让未挂载的场景也能落到正确地址。
+   */
+  const session = useMemo<PreviewSession>(
+    () => ({
+      id: `internal-browser-${activeTab?.id ?? 'default'}`,
+      url: activeUrl,
+      title: activeTab?.title ?? '',
+      source: 'manual',
+      status: 'loading',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      reloadToken,
+    }),
+    [activeTab?.id, activeTab?.title, activeUrl, reloadToken],
+  )
 
   const controller = useWebviewController(session)
 
@@ -62,12 +110,12 @@ export default function InternalBrowser() {
   const handleSubmitEdit = useCallback(
     (instruction: string) => {
       if (!picked) return
-      const pageUrl = session?.url || url || undefined
+      const pageUrl = activeUrl || url || undefined
       const prompt = buildAIEditPrompt(picked, instruction, pageUrl)
       window.dispatchEvent(new CustomEvent(BROWSER_AI_EDIT_EVENT, { detail: { text: prompt } }))
       clearPick()
     },
-    [picked, clearPick, session?.url, url],
+    [picked, clearPick, activeUrl, url],
   )
 
   /**
@@ -79,46 +127,152 @@ export default function InternalBrowser() {
    */
   const canMount = useDeferredMount()
 
-  // 外部 URL 变化（打开另一个自定义菜单）→ 同步到本地会话
+  /** 已在标签里落地的自定义菜单地址：用于区分「菜单换了地址」和「用户自己导航走了」 */
+  const syncedMenuUrlRef = useRef<string>(url ?? '')
+
+  // 外部 URL 变化（打开另一个自定义菜单）→ 在当前标签上导航过去
   useEffect(() => {
-    if (url && session?.url !== url) {
-      setSession((prev) => (prev ? { ...prev, url, title: title ?? prev.title, updatedAt: Date.now() } : prev))
-      setAddress(url)
+    if (!url || syncedMenuUrlRef.current === url) return
+    syncedMenuUrlRef.current = url
+
+    setTabs((prev) =>
+      prev.map((tab) =>
+        tab.id === activeTabId ? { ...tab, url, title: title || titleFromUrl(url) } : tab,
+      ),
+    )
+  }, [url, title, activeTabId])
+
+  // 地址栏跟随当前标签的地址；标签切换与页面内跳转都走这里
+  useEffect(() => {
+    setAddress(activeUrl)
+  }, [activeUrl])
+
+  /** 新开标签页并激活 */
+  const openTab = useCallback((targetUrl: string, tabTitle?: string) => {
+    const next = sanitizeUrl(targetUrl)
+    if (!next) return
+
+    const tab: InternalTab = {
+      id: createTabId(),
+      url: next,
+      title: tabTitle || titleFromUrl(next),
     }
-  }, [url, title, session?.url])
+    setTabs((prev) => [...prev, tab])
+    setActiveTabId(tab.id)
+  }, [])
+
+  /**
+   * 页面请求新窗口（target=_blank / window.open）
+   *
+   * 主进程把请求推回渲染进程，这里按 guest id 认领属于自己的那一个，以新标签页打开。
+   * 原先是直接 deny 后交给系统浏览器，用户在内置浏览器里点链接会突然跳到外部程序；
+   * 现在留在应用内，与工具栏的「外部打开」按钮各管一途。
+   */
+  useEffect(() => {
+    const guestId = controller.guestId
+    if (guestId === null) return
+
+    const off = api.preview.onNewWindow?.((request) => {
+      if (request.guestId !== guestId) return
+      openTab(request.url)
+    })
+    return () => off?.()
+  }, [controller.guestId, openTab])
+
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      if (tabs.length <= 1) return
+
+      const closingIndex = tabs.findIndex((tab) => tab.id === tabId)
+      const next = tabs.filter((tab) => tab.id !== tabId)
+      setTabs(next)
+
+      if (tabId === activeTabId) {
+        const fallback = next[Math.min(Math.max(closingIndex, 0), next.length - 1)]
+        if (fallback) setActiveTabId(fallback.id)
+      }
+    },
+    [tabs, activeTabId],
+  )
 
   // 地址栏提交导航
-  const handleNavigate = useCallback((raw: string) => {
-    const next = sanitizeUrl(raw)
-    if (!next) return
-    setAddress(next)
-    setSession((prev) => (prev ? { ...prev, url: next, status: 'loading', updatedAt: Date.now() } : prev))
-  }, [])
+  const handleNavigate = useCallback(
+    (raw: string) => {
+      const next = sanitizeUrl(raw)
+      if (!next) return
+      setAddress(next)
+      setTabs((prev) =>
+        prev.map((tab) =>
+          tab.id === activeTabId ? { ...tab, url: next, title: titleFromUrl(next) } : tab,
+        ),
+      )
+    },
+    [activeTabId],
+  )
 
   // 还原地址栏为当前 URL
   const handleResetAddress = useCallback(() => {
-    setAddress(session?.url ?? url ?? '')
-  }, [session?.url, url])
+    setAddress(activeUrl || url || '')
+  }, [activeUrl, url])
 
-  // 刷新：通过 reloadToken 机制触发 controller 内部的 webview.reload()
+  // 刷新：推进令牌，由 controller 消费后重载当前页面
   const handleReload = useCallback(() => {
-    setSession((prev) =>
-      prev ? { ...prev, reloadToken: prev.reloadToken + 1, status: 'loading', updatedAt: Date.now() } : prev,
-    )
+    setReloadToken((value) => value + 1)
   }, [])
 
   const handleOpenExternal = useCallback(() => {
     try {
-      void api?.file?.openExternalUrl(session?.url ?? url ?? '')
+      void api?.file?.openExternalUrl(activeUrl || url || '')
     } catch {
       /* ignore */
     }
-  }, [session?.url, url])
+  }, [activeUrl, url])
 
   if (!url) return null
 
   return (
     <div className="h-full w-full flex flex-col min-h-0 overflow-hidden bg-background">
+      {/* 标签条：页面弹窗新开的标签也在这里，可切换、可关闭 */}
+      <div className="flex items-center gap-1 h-8 px-2 border-b border-border/40 bg-background-secondary/40 shrink-0 overflow-x-auto select-none">
+        {tabs.map((tab) => {
+          const isActive = tab.id === activeTabId
+          return (
+            <div
+              key={tab.id}
+              className={`group flex items-center gap-1 h-6 pl-2 pr-1 rounded-md max-w-[180px] transition-colors ${
+                isActive
+                  ? 'bg-text-primary/[0.08] text-text-primary'
+                  : 'text-text-muted hover:bg-text-primary/[0.04]'
+              }`}
+            >
+              <button
+                onClick={() => setActiveTabId(tab.id)}
+                title={tab.url}
+                className="flex-1 min-w-0 truncate text-[11px] text-left"
+              >
+                {tab.title || titleFromUrl(tab.url)}
+              </button>
+              {tabs.length > 1 && (
+                <button
+                  onClick={() => handleCloseTab(tab.id)}
+                  title={t('layout.close', language as Language) || 'Close'}
+                  className="w-4 h-4 rounded flex items-center justify-center text-text-muted opacity-0 group-hover:opacity-100 hover:text-text-primary hover:bg-text-primary/[0.08] transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )
+        })}
+        <button
+          onClick={() => openTab(NEW_TAB_URL)}
+          title={t('layout.browsernewtab', language as Language) || 'New tab'}
+          className="w-6 h-6 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06] transition-colors shrink-0"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
       {/* 工具栏 */}
       <div className="flex items-center gap-1.5 h-11 px-2 border-b border-border/50 bg-background-secondary/60 shrink-0 select-none">
         {/* 关闭 */}
@@ -207,9 +361,17 @@ export default function InternalBrowser() {
       {/* webview 主体（复用已有内置浏览器的 webview 容器） */}
       {/* overflow-hidden：AI 修改浮层为绝对定位，拖动时不能撑出额外的滚动区域 */}
       <div className="flex-1 min-h-0 relative overflow-hidden bg-background-editor">
-        {/* key 用重建序号：刷新令牌推进时 React 重建 webview 元素，页面重新加载 */}
+        {/*
+          key 由「标签 id + 重建序号」组成：
+          - 刷新令牌推进时序号变化，React 重建节点，页面按 src 重新加载
+          - 切换标签时 id 变化，webview 跟着换到新标签的地址
+        */}
         {session && canMount && (
-          <BrowserWebView key={controller.reloadNonce} session={session} controller={controller} />
+          <BrowserWebView
+            key={`${activeTab?.id ?? 'default'}-${controller.reloadNonce}`}
+            session={session}
+            controller={controller}
+          />
         )}
 
         {/* AI 修改浮层：跟随选中元素定位，浮在页面之上 */}

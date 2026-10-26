@@ -308,6 +308,23 @@ export interface PreviewDeviceRequest {
   height?: number
 }
 
+/**
+ * 页面请求打开新窗口（main → renderer）
+ *
+ * 页面里的 target=_blank 链接与 window.open() 不会由主进程直接建窗口：主进程把
+ * 请求交回承载 webview 的渲染进程，由内置浏览器自己决定怎么开（新标签页），
+ * 这样弹窗行为和用户在应用内的其他导航保持在同一个上下文里。
+ */
+export const PREVIEW_NEW_WINDOW_CHANNEL = 'preview:new-window-request'
+
+/** 新窗口请求载荷 */
+export interface PreviewNewWindowRequest {
+  /** 发起请求的 webview guest id：渲染侧据此判断是不是自己的页面 */
+  guestId: number
+  /** 目标地址（已由主进程限定为 http/https） */
+  url: string
+}
+
 
 export interface OpenPreviewMetadata {
   sessionId: string
