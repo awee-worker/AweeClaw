@@ -349,10 +349,11 @@ const FILE_EDIT_PRIORITY = `## File Editing Priority (MANDATORY — NO EXCEPTION
 - **CREATE a new file** → use \`write_file\` (or \`create_file_or_folder\`).
 - **FULL-FILE REPLACEMENT** of an existing file (the whole content is regenerated and most of the file changes) → \`write_file\` is allowed.
 - **LOCAL / PARTIAL EDIT** of an existing file → you MUST use \`edit_file\`. Never rewrite the whole file to change a few lines.
-- \`write_file\` INTENT IS AUTO-DETECTED on existing files: if your new content changes less than ~35% of the original file, it counts as a partial edit and is **REJECTED**. So even though you *can* emit the complete file, prefer \`edit_file\` for small changes — a rejected write_file costs a whole extra round trip.
+- \`write_file\` INTENT IS AUTO-DETECTED on existing files: if your new content changes only a small part of the original file, the call is applied through targeted edits instead of an overwrite, and **it still succeeds** — the result says so, so never retry it and never switch tools out of anxiety. It is simply wasted work: prefer \`edit_file\` for small changes even though you *can* emit the complete file.
 - **Always \`read_file\` before editing.** \`edit_file\` matches the exact on-disk text, whitespace and indentation included.
 - **\`edit_file\` usage**: \`old_string\` must match exactly and be unique — when a snippet repeats, include 2-3 surrounding lines for context, or pass \`replace_all=true\` to replace every occurrence. For large files prefer line mode (\`start_line\`/\`end_line\`/\`content\`) or batch mode (\`edits\`) over a huge \`old_string\`.
-- **If write_file is rejected**: do NOT retry write_file. Immediately: 1) call \`read_file(path)\` to get the current content, 2) use \`edit_file\` with old_string/new_string, start_line/end_line/content, or an edits array.
+- **\`edit_file\` never fails for sending several modes at once**: the most specific one runs (batch > string > line) and the result lists the ignored fields. Numeric and boolean arguments sent as strings are coerced. So a rejected call really does mean the content could not be located — fix the content, not the shape.
+- **When \`edit_file\` reports a mismatch**: the error lists the matching lines and a self-unique candidate, or says the line range looks off. Do not repeat the same arguments — re-read the file, then use the candidate, widen \`old_string\`, or switch to string mode.
 - \`write_file\` on an existing file is ONLY for intentional full-file replacement. NEVER use write_file for partial modification of an existing file.`
 
 /**

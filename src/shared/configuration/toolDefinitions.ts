@@ -10,7 +10,6 @@
 import { z } from 'zod'
 import { BRAND } from '@shared/brand'
 import type { ToolApprovalType } from '@shared/protocols/modelGateway'
-import { normalizeEditFileArgs, resolveEditFileRequest } from '@toolkit/fileEditor'
 import { normalizeReadFileArgs, resolveReadFileRequest } from '@toolkit/fileReader'
 
 // ============================================
@@ -262,9 +261,14 @@ Client-first: local extraction; falls back to server if local fails.`,
         name: 'edit_file',
         displayName: 'Edit File',
         description: `Edit part of an existing file after reading it first. This is the DEFAULT and ONLY correct tool for locally modifying an existing file — NOT write_file.
-Choose one mode only: string mode (old_string + new_string), line mode (start_line + end_line + content), or batch mode (edits array).
-Never mix modes, never send empty placeholder edits. Use write_file ONLY for creating a new file or regenerating a file in full.`,
-        detailedDescription: `USE THIS TOOL whenever you change part of an existing file — even if the change is large enough that you could emit the whole file. Only switch to write_file when the file is new, or when the content is regenerated in full and most of the file changes (write_file rejects changes under ~35%).
+Choose one mode only: string mode (old_string + new_string), line mode (start_line + end_line + content), or batch mode (edits array). Supplying several modes by accident is tolerated — the most specific one wins and the result names what was ignored — but pick one deliberately.
+Never send empty placeholder edits. Use write_file ONLY for creating a new file or regenerating a file in full.
+
+Examples:
+- replace text: {path: "src/a.ts", old_string: "const x = 1", new_string: "const x = 2"}
+- replace lines: {path: "src/a.ts", start_line: 12, end_line: 14, content: "..."}
+- several changes: {path: "src/a.ts", edits: [{action: "replace", start_line: 12, end_line: 12, content: "..."}, {action: "insert", after_line: 40, content: "..."}]}`,
+        detailedDescription: `USE THIS TOOL whenever you change part of an existing file — even if the change is large enough that you could emit the whole file. Only switch to write_file when the file is new, or when the content is regenerated in full and most of the file changes. (A write_file on an existing file with a small diff is not rejected — it is quietly re-expressed as targeted edits and still succeeds — but the call is wasted work you can avoid.)
 
 PROCEDURE FOR MODIFYING AN EXISTING FILE:
 1. Call read_file(path="...") to get the current content
@@ -280,43 +284,47 @@ CHOOSING THE RIGHT MODE:
 - Batch mode: Use when making 2+ non-overlapping changes to the same file
 
 AVOID:
-- Do not mix string/line/batch fields in one call
 - Do not include empty placeholder fields
 - Keep old_string concise but unique enough to match exactly one location
 - Prefer line or batch mode for large files or when you have line numbers
 
+SLOPPY CALLS ARE TOLERATED, NOT REWARDED:
+- If several modes' fields arrive together, the most specific one runs (batch > string > line) and the result names the fields that were ignored.
+- Line numbers and booleans sent as strings ("12", "true") are coerced.
+
 ON FAILURE:
 - "old_string not found" → the file changed or whitespace differs: call read_file again and copy the exact text, or switch to line mode
-- "multiple matches" → add 2-3 surrounding lines for context, or pass replace_all=true
+- "multiple matches" → the error lists every matching line and offers a self-unique candidate; use that candidate, widen old_string yourself, or pass replace_all=true
+- "line range is likely off" → the content you supplied looks nothing like the lines at that range: re-read the file and use the numbers it prints, or switch to string mode
 - Never fall back to write_file just because edit_file failed — re-read and retry edit_file`,
+        // 这里只做「形状与类型」校验，不做模式校验、也不做规范化。
+        // 模式冲突若在 schema 层被拦下，模型只能拿到一行 "Validation failed"，
+        // 执行器准备好的替代方案（该用哪个模式、缺哪个字段）会全部丢失。
+        // 因此模式推断统一交给执行器里的 resolveEditFileRequest 处理。
+        //
+        // 数值 / 布尔一律走 preprocess：模型给 "12"、"true" 是常态，
+        // 裸 z.number() 会直接判为参数非法，这正是 edit_file 偶发莫名其妙的失败来源之一。
         customSchema: z.object({
             path: z.string().min(1, 'path is required'),
             old_string: z.string().optional(),
             new_string: z.string().optional(),
-            start_line: z.number().optional(),
-            end_line: z.number().optional(),
+            start_line: z.preprocess(preprocessNumber, z.number().int()).optional(),
+            end_line: z.preprocess(preprocessNumber, z.number().int()).optional(),
             content: z.string().optional(),
-            replace_all: z.boolean().optional(),
-            edits: z.array(
-                z.object({
-                    action: z.enum(['replace', 'insert', 'delete']),
-                    start_line: z.number().optional(),
-                    end_line: z.number().optional(),
-                    after_line: z.number().optional(),
-                    content: z.string().optional(),
-                })
+            replace_all: z.preprocess(preprocessBoolean, z.boolean()).optional(),
+            edits: z.preprocess(
+                preprocessArray,
+                z.array(
+                    z.object({
+                        action: z.enum(['replace', 'insert', 'delete']),
+                        start_line: z.preprocess(preprocessNumber, z.number().int()).optional(),
+                        end_line: z.preprocess(preprocessNumber, z.number().int()).optional(),
+                        after_line: z.preprocess(preprocessNumber, z.number().int()).optional(),
+                        content: z.string().optional(),
+                    }).passthrough()
+                )
             ).optional(),
-        }).passthrough()
-            .superRefine((data, ctx) => {
-                const resolution = resolveEditFileRequest(data as Record<string, unknown>)
-                if (resolution.ok) return
-
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    message: resolution.error,
-                })
-            })
-            .transform((data) => normalizeEditFileArgs(data as Record<string, unknown>)),
+        }).passthrough(),
         category: 'write',
         approvalType: 'none',
         parallel: false,
@@ -362,17 +370,16 @@ ON FAILURE:
   1. First call read_file to get the current content
   2. Then use edit_file with old_string/new_string (string mode) OR start_line/end_line/content (line mode) OR edits array (batch mode)
 
-⚠️ INTENT IS AUTO-DETECTED on existing files: if your content changes less than ~35% of the original file, the call is treated as a PARTIAL EDIT — it is reworked into edit_file, and only degrades to a full write once per file per session before being rejected outright. For a few-line change, do NOT rewrite the whole file — use edit_file, even though you *can* produce the full content.
+⚠️ INTENT IS AUTO-DETECTED on existing files. If your content would change only a small part of the original file, the system treats it as a partial edit and applies it through targeted edits instead of a whole-file overwrite — the call still succeeds, and the result tells you so. It never fails for this reason, but it does mean the write cost more work than an edit_file call would have.
 
-A rejected write_file wastes a full round trip, so choose edit_file up front for local changes.`,
+So for a few-line change, use edit_file up front — even though you *can* produce the full content.`,
         criticalRules: [
             'DEFAULT for any change to an EXISTING file: use edit_file, NOT write_file.',
             'NEVER use write_file to change part of an existing file — only a new file or an intentional full-file regeneration.',
             'Creating a NEW file: use write_file.',
-            'Existing file + change under ~35% of its content: the call is reworked into edit_file; if that is impossible it degrades to a full write ONCE per file per session — a second such call is REJECTED. Use edit_file instead.',
+            'Existing file + change to only a small part of its content: the call is applied through targeted edits instead of an overwrite. It still succeeds and the result says so — no retry needed, but next time reach for edit_file first.',
             'MODIFYING an EXISTING file locally: you MUST use edit_file, NOT write_file. First read_file, then edit_file.',
-            'write_file on an existing file with partial changes degrades to a full write at most once per file per session; the second attempt is REJECTED with instructions to use edit_file.',
-            'If write_file is rejected, do NOT retry write_file — immediately use read_file to get content, then edit_file to make changes.',
+            'A write_file call on an existing file NEVER fails because the change looked partial — do not retry it "with the whole file" or switch tools out of anxiety; read the result note instead.',
             'Prefer over create_file_or_folder when you have file content ready',
             'Do not rewrite the same large file multiple times in one turn unless absolutely necessary',
         ],
@@ -2616,7 +2623,7 @@ export const FILE_EDIT_DECISION_GUIDE = `
 **0. DEFAULT RULE (read this first)**
 - For ANY change to a file that ALREADY EXISTS, the tool is \`edit_file\`. This is the default; \`write_file\` is the exception.
 - \`write_file\` may be used in exactly two situations: (a) the file does NOT exist yet (creating it), or (b) the whole file is intentionally regenerated and most of its content changes.
-- When in doubt, choose \`edit_file\`. A misplaced \`write_file\` on an existing file is rejected as a partial edit and wastes a round trip.
+- When in doubt, choose \`edit_file\`. A \`write_file\` call on an existing file never fails for looking like a partial edit — it is applied through targeted edits and the result says so — but it costs more work than the right call.
 
 **1. Pick the tool (MANDATORY)**
 - Creating a NEW file: use \`write_file\`.
@@ -2624,20 +2631,20 @@ export const FILE_EDIT_DECISION_GUIDE = `
 - \`write_file\` on an existing file is ONLY allowed for intentional full-file replacement (the whole file is regenerated on purpose).
 - **NEVER** use \`write_file\` to partially modify an existing file. For ANY targeted change on an existing file, always use \`edit_file\`.
 
-**2. Pick exactly one edit_file mode**
+**2. edit_file takes exactly one mode — and tolerates a sloppy call**
 - String mode: \`old_string\` + \`new_string\`.
 - Line mode: \`start_line\` + \`end_line\` + \`content\`.
 - Batch mode: \`edits\` array only.
+- If several modes' fields are present by accident, the most specific one wins (batch > string > line) and the result names the ignored fields. Pick one mode deliberately anyway.
 
 **3. Avoid invalid payloads**
-- Never mix string, line, and batch fields in one call.
 - Never send empty placeholder edits.
 - Prefer line or batch mode for large files.
+- Keep \`old_string\` unique: if it repeats, widen it with a neighbouring line or pass \`replace_all=true\`.
 
-**4. If a \`write_file\` call is rejected (partial edit on an existing file):**
-- STOP using write_file for this file.
-- Read the current file content with \`read_file\`.
-- Use \`edit_file\` with the appropriate mode (string/line/batch) to make the change.
+**4. When a call is rejected**
+- \`write_file\` is never rejected for looking like a partial edit — read the result note; no retry needed.
+- When \`edit_file\` reports a mismatch, do not repeat the same arguments: re-read the file and copy the exact text, or switch to string mode (it does not depend on line numbers).
 - After a failed edit, read the file again before retrying — the file may have changed.
 `
 
@@ -2741,7 +2748,12 @@ export function generateToolDefinition(config: ToolConfig): ToolDefinition {
 // Zod 预处理辅助函数 (增强容错性)
 // ============================================
 
-const preprocessNumber = (val: unknown) => {
+/**
+ * 用 function 声明而非 const 定义：TOOL_CONFIGS 在模块顶层立即求值，
+ * 而 edit_file 的 customSchema 位于本文件靠前的位置。const 会因暂时性死区
+ * 在模块加载阶段抛出 ReferenceError，函数声明则可靠地整体提升。
+ */
+function preprocessNumber(val: unknown): unknown {
     if (typeof val === 'string' && val.trim() !== '') {
         const parsed = Number(val)
         return isNaN(parsed) ? val : parsed
@@ -2749,7 +2761,7 @@ const preprocessNumber = (val: unknown) => {
     return val
 }
 
-const preprocessBoolean = (val: unknown) => {
+function preprocessBoolean(val: unknown): unknown {
     if (typeof val === 'string') {
         const lower = val.toLowerCase()
         if (lower === 'true') return true
@@ -2758,7 +2770,7 @@ const preprocessBoolean = (val: unknown) => {
     return val
 }
 
-const preprocessArray = (val: unknown) => {
+function preprocessArray(val: unknown): unknown {
     if (typeof val === 'string') {
         try {
             return JSON.parse(val)

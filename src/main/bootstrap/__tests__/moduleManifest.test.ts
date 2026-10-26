@@ -79,6 +79,13 @@ describe('resolveInitOrder — 模块初始化编排', () => {
     expect(problems).toEqual([])
   })
 
+  it('依赖更晚阶段的模块会被报告', () => {
+    // boot 阶段先执行，依赖 deferred 模块永远等不到
+    const modules = [mod('Boot', ['Later'], 'boot'), mod('Later', undefined, 'deferred')]
+    const { problems } = resolveInitOrder(modules, 'boot')
+    expect(problems.some((p) => p.includes('更晚阶段'))).toBe(true)
+  })
+
   it('只返回指定阶段的模块', () => {
     const modules = [mod('bootA'), mod('deferredA', undefined, 'deferred')]
     expect(resolveInitOrder(modules, 'boot').order.map((m) => m.id)).toEqual(['bootA'])

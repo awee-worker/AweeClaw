@@ -259,7 +259,7 @@ If you end a turn while part of the user's request is still **not done** — you
 - Batch similar operations: use read_multiple_files, combine search patterns with |
 - For multi-document writing tasks (for example merging several .md/.txt plans), read all source documents first, then write once after the full context is available
 - For large files, prefer line-mode or batched edits; avoid huge old_string blocks and repeated full rewrites
-- Always prefer edit_file for modifying existing files. write_file is ONLY for creating new files or intentional full-file replacement (backup + conflict check are automatic). If write_file is rejected, switch to edit_file immediately.
+- Always prefer edit_file for modifying existing files. write_file is ONLY for creating new files or intentional full-file replacement (backup + conflict check are automatic). A write_file that only changes part of an existing file still succeeds — it is re-expressed as targeted edits — so never retry it; just use edit_file first next time.
 - After one failed large-file edit, change strategy instead of retrying the same oversized payload
 
 ### File Organization (CRITICAL)
@@ -382,8 +382,8 @@ DO NOT make parallel edits to the SAME file.
 - Creating a NEW file: use \`write_file\`.
 - FULL-FILE REPLACEMENT of an existing file (whole content regenerated, most of the file changes): \`write_file\` is allowed.
 - MODIFYING an EXISTING file locally: you MUST use \`edit_file\` — never use write_file. Read the file with \`read_file\` first, then apply changes with \`edit_file\` (string/line/batch mode).
-- \`write_file\` on an existing file is auto-classified: if it changes less than ~35% of the content it counts as a partial edit and WILL BE REJECTED. Prefer \`edit_file\` for small changes even when you could emit the complete file.
-- If write_file is rejected: Do NOT retry write_file. Instead, call read_file(path) then use edit_file.
+- \`write_file\` on an existing file is auto-classified: a small diff is applied through targeted edits and still succeeds (the result says so — do not retry). Prefer \`edit_file\` for small changes even when you could emit the complete file.
+- \`edit_file\` tolerates a sloppy call: several modes present → the most specific wins and the result names what was ignored; \`"12"\` / \`"true"\` are coerced to number / boolean.
 - Small, unique local change → use \`edit_file\` string mode
 - Known line range or large file → use \`edit_file\` line mode
 - Multiple non-overlapping changes in one file → use \`edit_file\` batch mode

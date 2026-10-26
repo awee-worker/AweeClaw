@@ -1,12 +1,13 @@
 /**
  * 内置浏览器工具栏（三段式布局）
  *
- * [后退][前进][刷新/停止] │ [地址栏] │ [检查元素][缩小][放大][设备模拟][外部打开][新建标签页]
+ * [后退][前进][刷新/停止] │ [地址栏] │ [AI 修改][检查元素][缩小][放大][设备模拟][外部打开][新建标签页]
  *
  * - 导航组：后退/前进按 canGoBack/canGoForward 禁用；刷新与停止按 isLoading 切换
  * - 地址栏：BrowserAddressBar（flex-1）
- * - 功能组：元素检查（DevTools toggle）、缩放（50%–300%，点击百分比重置）、
- *           设备模拟（移动 / 桌面档位切换）、外部打开（系统浏览器）、新建标签页
+ * - 功能组：AI 修改（元素拾取，渐变底色突出）、检查元素（DevTools toggle）、
+ *           缩放（50%–300%，点击百分比重置）、设备模拟（移动 / 桌面档位切换）、
+ *           外部打开（系统浏览器）、新建标签页
  */
 import { ArrowLeft, ArrowRight, RefreshCw, Sparkles, SquareDashedMousePointer, ZoomIn, ZoomOut, ExternalLink, Plus, Expand, Shrink } from 'lucide-react'
 import type { PreviewHealthSnapshot, PreviewSession } from '@shared/protocols/previewProtocol'
@@ -133,6 +134,33 @@ export default function BrowserToolbar({
       />
       {/* 功能组 */}
       <div className="flex items-center gap-0.5 shrink-0">
+        {/* AI 修改：点一次进入拾取，再点一次退出
+            只让图标高亮，底色与工具栏其他图标按钮保持一致：靠颜色识别入口，
+            不靠色块抢占视觉重心 */}
+        {onToggleAIPick && (
+          <HintOverlay
+            content={
+              aiPickActive
+                ? t('editor.browser.aiEditPicking', language)
+                : t('editor.browser.aiEdit', language)
+            }
+          >
+            <button
+              type="button"
+              onClick={onToggleAIPick}
+              disabled={!controller.webviewReady}
+              aria-label={t('editor.browser.aiEdit', language)}
+              aria-pressed={aiPickActive}
+              className={`group inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400/50 disabled:pointer-events-none disabled:opacity-40 enabled:hover:bg-text-primary/[0.05] ${
+                aiPickActive ? 'bg-fuchsia-500/10 ring-1 ring-fuchsia-400/50' : ''
+              }`}
+            >
+              <Sparkles className="h-4 w-4 text-fuchsia-500 drop-shadow-[0_0_6px_rgba(217,70,239,0.45)] transition-transform duration-200 group-hover:scale-110" />
+            </button>
+          </HintOverlay>
+        )}
+
+        {/* 检查元素（DevTools） */}
         <HintOverlay
           content={
             devtoolsOpen
@@ -152,29 +180,6 @@ export default function BrowserToolbar({
             <SquareDashedMousePointer className="w-4 h-4" />
           </ActionButton>
         </HintOverlay>
-
-        {/* AI 修改：点一次进入拾取，再点一次退出 */}
-        {onToggleAIPick && (
-          <HintOverlay
-            content={
-              aiPickActive
-                ? t('editor.browser.aiEditPicking', language)
-                : t('editor.browser.aiEdit', language)
-            }
-          >
-            <ActionButton
-              variant="ghost"
-              size="icon"
-              className={`h-8 w-8 ${aiPickActive ? 'text-accent ring-2 ring-accent/30' : ''}`}
-              onClick={onToggleAIPick}
-              disabled={!controller.webviewReady}
-              aria-label={t('editor.browser.aiEdit', language)}
-              aria-pressed={aiPickActive}
-            >
-              <Sparkles className="w-4 h-4" />
-            </ActionButton>
-          </HintOverlay>
-        )}
 
         {/* 缩放：缩小 + 百分比(点击重置) + 放大 */}
         <HintOverlay content={t('editor.browser.zoomOut', language)}>

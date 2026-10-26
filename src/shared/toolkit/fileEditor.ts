@@ -46,11 +46,17 @@ export interface EditFileBatchArgs {
 
 export type EditFileResolvedArgs = EditFileStringArgs | EditFileLineArgs | EditFileBatchArgs
 
+/**
+ * 解析结果。
+ *
+ * `notes` 记录「被判定忽略的输入」：模型同时给了多种模式的字段时，调用方
+ * 会按优先级挑一个执行，剩下的必须显式告诉模型，否则它会以为两件事都做了。
+ */
 export type EditFileResolution =
-  | { ok: true; mode: 'string'; normalized: Record<string, unknown>; args: EditFileStringArgs }
-  | { ok: true; mode: 'line'; normalized: Record<string, unknown>; args: EditFileLineArgs }
-  | { ok: true; mode: 'batch'; normalized: Record<string, unknown>; args: EditFileBatchArgs }
-  | { ok: false; normalized: Record<string, unknown>; error: string }
+  | { ok: true; mode: 'string'; normalized: Record<string, unknown>; args: EditFileStringArgs; notes?: string[] }
+  | { ok: true; mode: 'line'; normalized: Record<string, unknown>; args: EditFileLineArgs; notes?: string[] }
+  | { ok: true; mode: 'batch'; normalized: Record<string, unknown>; args: EditFileBatchArgs; notes?: string[] }
+  | { ok: false; normalized: Record<string, unknown>; error: string; notes?: string[] }
 
 /* ------------------------------------------------------------------ */
 /* 字段键常量                                                         */
@@ -72,14 +78,20 @@ const TOP_LEVEL_KEYS_TO_STRIP = [
 
 /** 检测原始数据中包含哪些模式的字段 */
 class ModeDetector {
-  /** 是否包含字符串模式字段 */
+  /** 是否包含字符串模式字段（null 视为「没给」，避免空值把模式判定带偏） */
   static hasStringMode(data: Record<string, unknown>): boolean {
-    return data.old_string !== undefined || data.new_string !== undefined
+    return (
+      (data.old_string !== undefined && data.old_string !== null) ||
+      (data.new_string !== undefined && data.new_string !== null)
+    )
   }
 
-  /** 是否包含行模式字段 */
+  /** 是否包含行模式字段（null 视为「没给」） */
   static hasLineMode(data: Record<string, unknown>): boolean {
-    return data.start_line !== undefined || data.end_line !== undefined
+    return (
+      (data.start_line !== undefined && data.start_line !== null) ||
+      (data.end_line !== undefined && data.end_line !== null)
+    )
   }
 
   /** 是否包含批量模式字段（非空 edits 数组） */
@@ -87,21 +99,6 @@ class ModeDetector {
     return Array.isArray(data.edits) && data.edits.length > 0
   }
 
-  /** 统计激活的模式数量 */
-  static countActiveModes(data: Record<string, unknown>): number {
-    return [this.hasStringMode(data), this.hasLineMode(data), this.hasBatchMode(data)].filter(
-      Boolean,
-    ).length
-  }
-
-  /** 返回所有激活的模式标签 */
-  static getActiveModes(data: Record<string, unknown>): EditFileMode[] {
-    const modes: EditFileMode[] = []
-    if (this.hasStringMode(data)) modes.push('string')
-    if (this.hasLineMode(data)) modes.push('line')
-    if (this.hasBatchMode(data)) modes.push('batch')
-    return modes
-  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -207,35 +204,38 @@ class FieldSanitizer {
 }
 
 /* ------------------------------------------------------------------ */
-/* 冲突检测器                                                         */
+/* 可执行性探测                                                       */
 /* ------------------------------------------------------------------ */
 
-/** 检测批量模式与其他模式字段的冲突 */
-class ConflictChecker {
-  /** 返回冲突错误消息，无冲突返回 null */
-  static getBatchConflictError(data: Record<string, unknown>): string | null {
-    if (!ModeDetector.hasBatchMode(data)) return null
-    if (PlaceholderDetector.isBatchPlaceholder(data)) return null
+/**
+ * 判断某个模式的字段是否「足以直接执行」。
+ *
+ * 与 ModeDetector 的存在性判定分开：存在性回答「出现了哪些字段」（供清理占位符用），
+ * 可执行性回答「哪个模式能真正跑起来」（供选模式用）。
+ *
+ * 二者混用会误伤一类很常见的输入：模型只给了完整的行模式，但顺手带上了
+ * `old_string: ""`。存在性判定认为「有字符串模式」于是优先选它，
+ * 结果因 old_string 为空而失败——明明行模式是完整的。
+ */
+class ExecutabilityProbe {
+  static string(data: Record<string, unknown>): boolean {
+    return (
+      typeof data.old_string === 'string' &&
+      data.old_string.length > 0 &&
+      typeof data.new_string === 'string'
+    )
+  }
 
-    // 顶层存在有意义 content
-    if (typeof data.content === 'string' && data.content.length > 0) {
-      return 'Batch mode cannot be combined with top-level content. Put replacement text inside each edit, or remove the edits array.'
-    }
+  static line(data: Record<string, unknown>): boolean {
+    return (
+      typeof data.start_line === 'number' &&
+      typeof data.end_line === 'number' &&
+      typeof data.content === 'string'
+    )
+  }
 
-    // 顶层存在有意义的行模式字段
-    if (ModeDetector.hasLineMode(data) && !PlaceholderDetector.isLinePlaceholder(data)) {
-      return 'Batch mode cannot be combined with top-level line mode fields'
-    }
-
-    // 顶层存在有意义的字符串模式字段
-    if (
-      ModeDetector.hasStringMode(data) &&
-      !PlaceholderDetector.isEmptyStringPlaceholder(data)
-    ) {
-      return 'Batch mode cannot be combined with top-level string mode fields'
-    }
-
-    return null
+  static batch(data: Record<string, unknown>): boolean {
+    return Array.isArray(data.edits) && data.edits.length > 0
   }
 }
 
@@ -243,9 +243,37 @@ class ConflictChecker {
 /* 规范化处理器                                                       */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 把行号字段的字符串形式转成数字。
+ *
+ * schema 层已经做过同样的转换，但解析器也被非 schema 入口直接调用（测试、内部复用），
+ * 两层都做一次，避免同一个入参在不同入口得到不同结论。
+ */
+function coerceLineNumber(value: unknown): unknown {
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    return Number.isNaN(parsed) ? value : parsed
+  }
+  return value
+}
+
 /** 对原始数据进行规范化处理，清理占位符与冲突字段 */
 function normalizeEditFileArgs(data: Record<string, unknown>): Record<string, unknown> {
   const normalized = { ...data }
+
+  // 行号一律按数字处理：模型给 "12" 是常态，不该因此判为参数非法
+  if (normalized.start_line !== undefined) normalized.start_line = coerceLineNumber(normalized.start_line)
+  if (normalized.end_line !== undefined) normalized.end_line = coerceLineNumber(normalized.end_line)
+  if (Array.isArray(normalized.edits)) {
+    normalized.edits = normalized.edits.map((edit) => {
+      if (!edit || typeof edit !== 'object' || Array.isArray(edit)) return edit
+      const candidate = { ...(edit as Record<string, unknown>) }
+      if (candidate.start_line !== undefined) candidate.start_line = coerceLineNumber(candidate.start_line)
+      if (candidate.end_line !== undefined) candidate.end_line = coerceLineNumber(candidate.end_line)
+      if (candidate.after_line !== undefined) candidate.after_line = coerceLineNumber(candidate.after_line)
+      return candidate
+    })
+  }
 
   // 清理空 edits 和占位符 edits
   FieldSanitizer.stripEmptyEdits(normalized)
@@ -439,43 +467,68 @@ function parseBatchMode(
 /* 主入口                                                             */
 /* ------------------------------------------------------------------ */
 
-/** 解析编辑文件请求，返回规范化结果或错误 */
-export function resolveEditFileRequest(data: Record<string, unknown>): EditFileResolution {
-  // 1. 冲突检测
-  const conflictError = ConflictChecker.getBatchConflictError(data)
-  if (conflictError) {
-    return { ok: false, normalized: { ...data }, error: conflictError }
-  }
+/** 附带说明地返回解析结果 */
+function withNotes(resolution: EditFileResolution, notes: string[]): EditFileResolution {
+  if (notes.length === 0) return resolution
+  // 逐分支展开而不是重构对象：mode 与 args 是一一对应的判别联合，
+  // 用 { mode: resolution.mode, args: resolution.args } 会把它们的关联拆散。
+  if (!resolution.ok) return { ...resolution, notes }
+  if (resolution.mode === 'string') return { ...resolution, notes }
+  if (resolution.mode === 'line') return { ...resolution, notes }
+  return { ...resolution, notes }
+}
 
-  // 2. 规范化
+/**
+ * 解析编辑文件请求。
+ *
+ * 模式推断是「全函数」：只要入参里有一种模式可用，就一定选出一个并返回成功，
+ * 不会因为模型多带了别的模式的字段而报错。被忽略的字段写入 `notes` 回传，
+ * 由执行器拼进结果文本，模型可以据此自我纠正下一轮的调用。
+ */
+export function resolveEditFileRequest(data: Record<string, unknown>): EditFileResolution {
+  // 1. 先基于原始入参记录「哪些模式的字段是有意义的」。
+  //    规范化会清掉批量模式下的顶层字段，之后就拿不到被忽略的信息了。
+  const meaningfulString = ModeDetector.hasStringMode(data) && !PlaceholderDetector.isEmptyStringPlaceholder(data)
+  const meaningfulLine = ModeDetector.hasLineMode(data) && !PlaceholderDetector.isLinePlaceholder(data)
+  const meaningfulBatch = ModeDetector.hasBatchMode(data) && !PlaceholderDetector.isBatchPlaceholder(data)
+
+  // 2. 规范化：清理空占位符；批量模式存在时清掉与顶层冲突的字段
   const normalized = normalizeEditFileArgs(data)
 
-  // 3. 模式计数校验
-  const modeCount = ModeDetector.countActiveModes(normalized)
-  if (modeCount > 1) {
-    return {
-      ok: false,
-      normalized,
-      error: 'Cannot mix string mode, line mode, and batch mode parameters',
+  // 3. 记录被忽略的模式，供调用方回传给模型
+  const notes: string[] = []
+  if (meaningfulBatch) {
+    if (meaningfulString) {
+      notes.push('old_string/new_string were ignored because a non-empty edits array was also provided — batch mode takes precedence.')
     }
+    if (meaningfulLine) {
+      notes.push('start_line/end_line/content were ignored because a non-empty edits array was also provided — batch mode takes precedence.')
+    }
+  } else if (meaningfulString && meaningfulLine) {
+    notes.push('start_line/end_line/content were ignored because old_string/new_string were also provided — string mode takes precedence.')
   }
 
-  if (modeCount === 0) {
-    return {
+  // 4. 按「可执行性」挑模式，优先级 batch > string > line：
+  //    batch 自带行号与内容，信息量最大；string 不依赖行号，比 line 更抗错位。
+  if (ExecutabilityProbe.batch(normalized)) return withNotes(parseBatchMode(normalized), notes)
+  if (ExecutabilityProbe.string(normalized)) return withNotes(parseStringMode(normalized), notes)
+  if (ExecutabilityProbe.line(normalized)) return withNotes(parseLineMode(normalized), notes)
+
+  // 5. 没有可执行模式：派给「字段出现过」的解析器，让它给出精确的缺字段原因，
+  //    而不是笼统地说参数不对。
+  if (ModeDetector.hasBatchMode(normalized)) return withNotes(parseBatchMode(normalized), notes)
+  if (ModeDetector.hasLineMode(normalized)) return withNotes(parseLineMode(normalized), notes)
+  if (ModeDetector.hasStringMode(normalized)) return withNotes(parseStringMode(normalized), notes)
+
+  return withNotes(
+    {
       ok: false,
       normalized,
       error:
-        'Must provide either (old_string + new_string), (start_line + end_line + content), or (edits array)',
-    }
-  }
-
-  // 4. 分发到对应解析器
-  const activeModes = ModeDetector.getActiveModes(normalized)
-  const mode = activeModes[0]
-
-  if (mode === 'string') return parseStringMode(normalized)
-  if (mode === 'line') return parseLineMode(normalized)
-  return parseBatchMode(normalized)
+        'No edit content: provide one of — (old_string + new_string) | (start_line + end_line + content) | a non-empty edits array',
+    },
+    notes,
+  )
 }
 
 /** 对外暴露规范化函数（供外部调用） */

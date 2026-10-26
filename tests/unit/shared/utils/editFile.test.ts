@@ -121,7 +121,7 @@ describe('editFile utils', () => {
     }
   })
 
-  it('still rejects meaningful batch edits mixed with top-level content', () => {
+  it('resolves meaningful batch edits as batch mode when top-level fields are also present', () => {
     const result = resolveEditFileRequest({
       path: 'app/page.tsx',
       content: 'export default function HomePage() {}',
@@ -137,13 +137,14 @@ describe('editFile utils', () => {
       end_line: 356,
     })
 
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.error).toContain('Batch mode cannot be combined')
-    }
+    // 混用不再是失败：批量编辑信息量最大，直接按批量执行，并说明顶层字段被忽略
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.mode).toBe('batch')
+    expect(result.notes?.join(' ')).toContain('batch mode takes precedence')
   })
 
-  it('rejects genuine mixed modes', () => {
+  it('resolves genuine mixed modes as string mode instead of failing', () => {
     const result = resolveEditFileRequest({
       path: 'src/example.ts',
       old_string: 'before',
@@ -153,9 +154,17 @@ describe('editFile utils', () => {
       content: 'const updated = true',
     })
 
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.mode).toBe('string')
+    expect(result.notes?.join(' ')).toContain('start_line/end_line/content were ignored')
+  })
+
+  it('reports an actionable error only when no edit content is present at all', () => {
+    const result = resolveEditFileRequest({ path: 'src/example.ts', content: 'ignored' })
+
     expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.error).toContain('Cannot mix')
-    }
+    if (result.ok) return
+    expect(result.error).toContain('No edit content')
   })
 })

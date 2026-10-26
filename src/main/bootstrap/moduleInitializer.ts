@@ -34,7 +34,7 @@ import {
 } from './windowManager'
 import { setIpcModuleForWindow } from './windowManager'
 import { setIpcModule as setIpcModuleForCleanup } from './globalCleanup'
-import { resolveInitOrder, type ModuleManifest } from './moduleManifest'
+import { resolveInitOrder, type ModuleManifest, type ModulePhase } from './moduleManifest'
 import { initHostServices } from '../modules/plugin-sdk/hostServices'
 import { registerPerceptionIpc } from '../modules/perception/PerceptionIpc'
 import { registerPerceptionFusionIpc } from '../modules/perception/PerceptionFusionIpc'
@@ -196,7 +196,7 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   // 历史故障：某模块内 `require('./Xxx')` 打包后抛 MODULE_NOT_FOUND 并冒泡，
   // 导致其后所有模块的 IPC 均未注册（表现为设置页「加载配置失败 / No handler registered」）。
   // ==========================================
-  await runModulePhase(bootModules(firstWin))
+  await runModulePhase(allModules(firstWin), 'boot')
 
   // ==========================================
   // 7. 应用菜单与语言同步
@@ -260,7 +260,19 @@ function bootModules(firstWin: BrowserWindow): ModuleManifest[] {
  *   proactive 之后（收敛要读它们的配置）
  */
 export async function runDeferredInit(firstWin: BrowserWindow): Promise<void> {
-  await runModulePhase(deferredModules(firstWin))
+  await runModulePhase(allModules(firstWin), 'deferred')
+}
+
+/**
+ * 两个阶段的完整模块清单。
+ *
+ * 排序只看当前阶段，但依赖校验需要全量 id —— deferred 阶段的模块会合法地
+ * 依赖 boot 阶段的产物（例如 CapabilityGuard 要读 IoT / Perception / Proactive
+ * 初始化后的配置）。只传单阶段清单时，这些跨阶段依赖会被误判为
+ * 「依赖了不存在的模块」。
+ */
+function allModules(firstWin: BrowserWindow): ModuleManifest[] {
+  return [...bootModules(firstWin), ...deferredModules(firstWin)]
 }
 
 /**
@@ -370,8 +382,8 @@ function deferredModules(firstWin: BrowserWindow): ModuleManifest[] {
  * 排序问题（循环依赖 / 引用了不存在的模块）只报错不阻断 —— 一个配置疏漏
  * 不该让应用完全起不来，按声明顺序尽力执行即可。
  */
-async function runModulePhase(modules: ModuleManifest[]): Promise<void> {
-  const { order, problems } = resolveInitOrder(modules, modules[0]?.phase ?? 'boot')
+async function runModulePhase(modules: ModuleManifest[], phase: ModulePhase): Promise<void> {
+  const { order, problems } = resolveInitOrder(modules, phase)
   for (const problem of problems) {
     logger.system.error(`[Main] Module manifest problem: ${problem}`)
   }

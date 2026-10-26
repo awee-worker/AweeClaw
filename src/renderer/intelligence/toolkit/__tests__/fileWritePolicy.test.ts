@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { analyzeWriteIntent, guardWriteFile } from '../fileWritePolicy'
+import { analyzeWriteIntent, guardWriteFile, buildLineEditsFromDiff, applyLineEdits } from '../fileWritePolicy'
 
 /** 构造一份 80 行的样本文件，用于模拟“已有文件”的局部修改与整写覆盖 */
 const BASE_LINES = Array.from({ length: 80 }, (_, i) => `const value${i} = ${i}`)
@@ -109,5 +109,62 @@ describe('guardWriteFile', () => {
     })
     expect(decision.allow).toBe(true)
     expect(decision.reason).toContain('edit_file')
+  })
+})
+
+describe('applyLineEdits', () => {
+  it('替换单行', () => {
+    const result = applyLineEdits('a\nb\nc', [
+      { action: 'replace', start_line: 2, end_line: 2, content: 'B' },
+    ])
+    expect(result).toEqual({ ok: true, content: 'a\nB\nc' })
+  })
+
+  it('删除区间', () => {
+    const result = applyLineEdits('a\nb\nc\nd', [
+      { action: 'delete', start_line: 2, end_line: 3 },
+    ])
+    expect(result).toEqual({ ok: true, content: 'a\nd' })
+  })
+
+  it('after_line 为 0 时插到文件最前面', () => {
+    const result = applyLineEdits('a\nb', [{ action: 'insert', after_line: 0, content: 'head' }])
+    expect(result).toEqual({ ok: true, content: 'head\na\nb' })
+  })
+
+  it('多处编辑按原始行号从后往前应用，互不干扰', () => {
+    const result = applyLineEdits('l1\nl2\nl3\nl4\nl5', [
+      { action: 'replace', start_line: 2, end_line: 2, content: 'X' },
+      { action: 'replace', start_line: 4, end_line: 4, content: 'Y' },
+    ])
+    expect(result).toEqual({ ok: true, content: 'l1\nX\nl3\nY\nl5' })
+  })
+
+  it('行号越界时返回失败而不是静默改写', () => {
+    const result = applyLineEdits('a\nb', [
+      { action: 'replace', start_line: 5, end_line: 6, content: 'x' },
+    ])
+    expect(result.ok).toBe(false)
+  })
+})
+
+describe('buildLineEditsFromDiff + applyLineEdits', () => {
+  it('局部修改能原样还原出目标内容', () => {
+    const next = replaceLines(BASE, [[40, '// changed']])
+    const edits = buildLineEditsFromDiff(BASE, next)
+    expect(edits.length).toBeGreaterThan(0)
+    const applied = applyLineEdits(BASE, edits)
+    expect(applied).toEqual({ ok: true, content: next })
+  })
+
+  it('末尾追加能原样还原出目标内容', () => {
+    const next = `${BASE}\nconst appended = true`
+    const applied = applyLineEdits(BASE, buildLineEditsFromDiff(BASE, next))
+    expect(applied).toEqual({ ok: true, content: next })
+  })
+
+  it('内容等价时生成空编辑列表（不产生无意义的写入）', () => {
+    expect(buildLineEditsFromDiff(BASE, BASE)).toEqual([])
+    expect(buildLineEditsFromDiff(BASE, BASE.replace(/\n/g, '\r\n'))).toEqual([])
   })
 })

@@ -9,6 +9,7 @@ import {
   initializeToolProviders,
 } from '@intelligence/toolkit'
 import { TOOL_SCHEMAS, TOOL_CONFIGS } from '@configuration/tools'
+import { resolveEditFileRequest } from '@toolkit/fileEditor'
 
 // Mock dependencies that tools need
 vi.mock('@services/WorkspaceManager', () => ({
@@ -89,14 +90,18 @@ describe('Tool Definitions', () => {
       expect(result.success).toBe(false)
     })
 
-    it('should ignore placeholder line fields and empty edits in edit_file string mode', () => {
+    // 说明：edit_file 的 schema 只校验「形状与类型」，不再做模式判定与字段清理。
+    // 模式判定放在 resolveEditFileRequest 里，因为它需要在 schema 拦截之前
+    // 把「该用哪个模式」的完整指引回传给模型；放 schema 层只会剩下一行 Validation failed。
+
+    it('should accept placeholder line fields and empty edits in edit_file string mode', () => {
       const editFileSchema = TOOL_SCHEMAS.edit_file
       expect(editFileSchema).toBeDefined()
 
       const result = editFileSchema.safeParse({
         path: 'portal/src/pages/dashboard/DocsPage.tsx',
-        old_string: "const DocsPage = () => {\n  const [selectedKey, setSelectedKey] = useState('quick-start');\n\n  const menuItems = [",
-        new_string: "const DocsPage = () => {\n  const [selectedKey, setSelectedKey] = useState('quick-start');\n  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';\n  const openAIBaseUrl = apiBaseUrl.endsWith('/v1') ? apiBaseUrl : `${apiBaseUrl}/v1`;\n  const chatCompletionsUrl = `${window.location.origin}${openAIBaseUrl}/chat/completions`;\n  const openAIBaseUrlAbsolute = `${window.location.origin}${openAIBaseUrl}`;\n\n  const menuItems = [",
+        old_string: 'const a = 1',
+        new_string: 'const a = 2',
         start_line: 1,
         end_line: 1,
         content: '',
@@ -105,15 +110,13 @@ describe('Tool Definitions', () => {
       })
 
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.start_line).toBeUndefined()
-        expect(result.data.end_line).toBeUndefined()
-        expect(result.data.content).toBeUndefined()
-        expect(result.data.edits).toBeUndefined()
-      }
+      // 形如占位符的字段由解析层清理，最终落到字符串模式
+      const resolution = resolveEditFileRequest(result.data as Record<string, unknown>)
+      expect(resolution.ok).toBe(true)
+      if (resolution.ok) expect(resolution.mode).toBe('string')
     })
 
-    it('should ignore empty edits in edit_file line mode', () => {
+    it('should accept a line-mode call carrying empty string fields', () => {
       const editFileSchema = TOOL_SCHEMAS.edit_file
       expect(editFileSchema).toBeDefined()
 
@@ -128,14 +131,12 @@ describe('Tool Definitions', () => {
       })
 
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.old_string).toBeUndefined()
-        expect(result.data.new_string).toBeUndefined()
-        expect(result.data.edits).toBeUndefined()
-      }
+      const resolution = resolveEditFileRequest(result.data as Record<string, unknown>)
+      expect(resolution.ok).toBe(true)
+      if (resolution.ok) expect(resolution.mode).toBe('line')
     })
 
-    it('should still reject genuine mixed edit_file modes', () => {
+    it('should not reject mixed edit_file modes at the schema level', () => {
       const editFileSchema = TOOL_SCHEMAS.edit_file
       expect(editFileSchema).toBeDefined()
 
@@ -148,10 +149,17 @@ describe('Tool Definitions', () => {
         content: 'const updated = true',
       })
 
-      expect(result.success).toBe(false)
+      // schema 放行 —— 混用不再是一次调用失败，而是被解析成最具体的一种模式
+      expect(result.success).toBe(true)
+      const resolution = resolveEditFileRequest(result.data as Record<string, unknown>)
+      expect(resolution.ok).toBe(true)
+      if (resolution.ok) {
+        expect(resolution.mode).toBe('string')
+        expect(resolution.notes?.join(' ')).toContain('ignored')
+      }
     })
 
-    it('should accept line mode when batch fields are only empty mirrored placeholders', () => {
+    it('should resolve to line mode when batch fields are only empty mirrored placeholders', () => {
       const editFileSchema = TOOL_SCHEMAS.edit_file
       expect(editFileSchema).toBeDefined()
 
@@ -174,10 +182,26 @@ describe('Tool Definitions', () => {
       })
 
       expect(result.success).toBe(true)
+      const resolution = resolveEditFileRequest(result.data as Record<string, unknown>)
+      expect(resolution.ok).toBe(true)
+      if (resolution.ok) expect(resolution.mode).toBe('line')
+    })
+
+    it('should coerce string line numbers in edit_file arguments', () => {
+      const editFileSchema = TOOL_SCHEMAS.edit_file
+      expect(editFileSchema).toBeDefined()
+
+      const result = editFileSchema.safeParse({
+        path: 'src/example.ts',
+        start_line: '3',
+        end_line: '4',
+        content: 'const updated = true',
+      })
+
+      expect(result.success).toBe(true)
       if (result.success) {
-        expect(result.data.edits).toBeUndefined()
-        expect(result.data.old_string).toBeUndefined()
-        expect(result.data.new_string).toBeUndefined()
+        expect(result.data.start_line).toBe(3)
+        expect(result.data.end_line).toBe(4)
       }
     })
   })

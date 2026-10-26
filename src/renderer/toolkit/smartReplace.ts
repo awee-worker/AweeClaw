@@ -21,6 +21,14 @@ export interface LocatedSpan {
   stage: string
 }
 
+/** 一处命中的位置信息（MULTIPLE_MATCHES 时用于告诉模型该往哪里加上下文） */
+export interface MatchLocation {
+  /** 命中片段起始处的 1-based 行号 */
+  line: number
+  /** 实际命中的文本 */
+  text: string
+}
+
 /** 替换操作结果 */
 export interface ReplaceOutcome {
   success: boolean
@@ -29,6 +37,10 @@ export interface ReplaceOutcome {
   stage?: string
   error?: string
   errorCode?: ReplaceErrorCode
+  /** 命中总数（仅 MULTIPLE_MATCHES 时提供） */
+  matchCount?: number
+  /** 全部命中位置（仅 MULTIPLE_MATCHES 时提供） */
+  matches?: MatchLocation[]
 }
 
 /** 错误码 */
@@ -70,6 +82,16 @@ function splitLinesWithOffsets(text: string): { lines: string[]; offsets: number
   lines.push(remaining.slice(pos))
   offsets.push(pos)
   return { lines, offsets }
+}
+
+/** 字符偏移 → 1-based 行号（用于把命中位置翻译成模型能核对的坐标） */
+function lineNumberAt(content: string, offset: number): number {
+  let line = 1
+  const limit = Math.min(offset, content.length)
+  for (let i = 0; i < limit; i++) {
+    if (content[i] === '\n') line++
+  }
+  return line
 }
 
 /** 计算两个等长行块之间的相似度（基于字符级编辑距离） */
@@ -443,10 +465,18 @@ export function smartReplace(
   }
 
   if (!replaceAll && spans.length > 1) {
+    // 把每一处命中的行号一并带出：只说「有多个匹配」模型只能盲猜，
+    // 给出具体位置它才能判断该往哪一处加上下文。
+    const matches: MatchLocation[] = spans.map((span) => ({
+      line: lineNumberAt(content, span.start),
+      text: span.text,
+    }))
     return {
       success: false,
       errorCode: 'MULTIPLE_MATCHES',
-      error: 'Found multiple matches for old_string. Include more surrounding context to make it unique.',
+      error: `Found ${matches.length} matches for old_string. Include more surrounding context to make it unique.`,
+      matchCount: matches.length,
+      matches,
     }
   }
 

@@ -330,7 +330,8 @@ export default function InternalBrowser() {
           </div>
         </div>
 
-        {/* AI 修改：点一次进入拾取，再点一次退出 */}
+        {/* AI 修改：点一次进入拾取，再点一次退出
+            只让图标高亮，底色与工具栏其他图标按钮一致，与预览标签页保持同一视觉语言 */}
         <button
           onClick={togglePick}
           disabled={controller.guestId === null}
@@ -339,13 +340,13 @@ export default function InternalBrowser() {
               ? t('editor.browser.aiEditPicking', language as Language) || 'Picking an element…'
               : t('editor.browser.aiEdit', language as Language) || 'AI Edit'
           }
-          className={`w-7 h-7 rounded-md flex items-center justify-center disabled:opacity-30 transition-colors ${
-            pickPhase === 'picking'
-              ? 'text-accent bg-accent/10'
-              : 'text-text-muted enabled:hover:text-text-primary enabled:hover:bg-text-primary/[0.06]'
+          aria-label={t('editor.browser.aiEdit', language as Language) || 'AI Edit'}
+          aria-pressed={pickPhase === 'picking'}
+          className={`group inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400/50 disabled:pointer-events-none disabled:opacity-40 enabled:hover:bg-text-primary/[0.06] ${
+            pickPhase === 'picking' ? 'bg-fuchsia-500/10 ring-1 ring-fuchsia-400/50' : ''
           }`}
         >
-          <Sparkles className="w-4 h-4" />
+          <Sparkles className="h-3.5 w-3.5 text-fuchsia-500 drop-shadow-[0_0_6px_rgba(217,70,239,0.45)] transition-transform duration-200 group-hover:scale-110" />
         </button>
 
         {/* 外部打开 */}

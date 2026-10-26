@@ -66,7 +66,7 @@ import { skillService, type SkillItem } from '../runtime/skillRepository'
 import type { Language } from '@renderer/i18n'
 import type { ReplaceErrorCode } from '@utils/smartReplace'
 import { resolveAgentLanguage, pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
-import { guardWriteFile, buildLineEditsFromDiff } from './fileWritePolicy'
+import { guardWriteFile, buildLineEditsFromDiff, applyLineEdits } from './fileWritePolicy'
 import { openBuiltinPreview } from '@renderer/preview/openBuiltinPreview'
 import { previewSessionService } from '@renderer/preview/previewSessionManager'
 import type {
@@ -347,6 +347,113 @@ function getReplaceErrorMessage(errorCode?: ReplaceErrorCode): string {
         default:
             return translate('agent.tool.edit.replaceFailed')
     }
+}
+
+/** 把片段压成单行并截断，用于错误提示里列出现场 */
+function truncateForError(text: string, max: number): string {
+    const oneLine = text.replace(/\s+/g, ' ').trim()
+    return oneLine.length > max ? `${oneLine.slice(0, max)}…` : oneLine
+}
+
+/**
+ * 为「多重匹配」构造一个只命中一次的 old_string 候选
+ *
+ * 做法：先定位第一处命中，再向上 / 向下各扩展一行，取第一个在全文里唯一的窗口。
+ * 返回值带行号，模型可以直接核对这是不是它想改的那一处，不必再猜。
+ */
+function buildUniqueCandidate(content: string, oldString: string): string | null {
+    const lines = content.split('\n')
+    const targetLineCount = oldString.split('\n').length
+
+    let startLine = -1
+    for (let i = 0; i + targetLineCount <= lines.length; i++) {
+        const window = lines.slice(i, i + targetLineCount).join('\n')
+        if (window === oldString || window.includes(oldString)) {
+            startLine = i
+            break
+        }
+    }
+    if (startLine < 0) return null
+
+    const windows: Array<[number, number]> = [
+        [startLine - 1, startLine + targetLineCount - 1],
+        [startLine, startLine + targetLineCount],
+        [startLine - 1, startLine + targetLineCount],
+    ]
+
+    for (const [from, to] of windows) {
+        if (from < 0 || to >= lines.length) continue
+        const block = lines.slice(from, to + 1).join('\n')
+        if (!block.includes(oldString)) continue
+        if (content.split(block).length - 1 === 1) {
+            return `  (lines ${from + 1}-${to + 1})\n${block}`
+        }
+    }
+    return null
+}
+
+/** 行块的字符二元组 Jaccard 相似度：比编辑距离快，且对长文本足够稳 */
+function blockSimilarityRatio(a: string[], b: string[]): number {
+    const x = a.join('\n').trim()
+    const y = b.join('\n').trim()
+    if (!x || !y) return 1
+    if (x === y) return 1
+
+    const grams = (s: string): Set<string> => {
+        const set = new Set<string>()
+        for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2))
+        return set
+    }
+
+    const gx = grams(x)
+    const gy = grams(y)
+    if (gx.size === 0 || gy.size === 0) return 0
+
+    let intersection = 0
+    for (const g of gx) if (gy.has(g)) intersection++
+    return intersection / (gx.size + gy.size - intersection)
+}
+
+/**
+ * 行号模式的内容一致性校验
+ *
+ * 行号错位时，模型给的 content 与被替换区间几乎无关，覆盖下去就是静默改错行——
+ * 比直接失败更糟。但「整段替换成完全不同的实现」本身合法，所以只在两个条件
+ * 同时成立时判为异常：相似度极低，且被替换区间的首行在文件**另一处**也出现
+ * （说明这一段很可能位于别的行号）。
+ */
+function detectLineContentMismatch(
+    lines: string[],
+    startLine: number,
+    endLine: number,
+    content: string,
+): string | null {
+    const oldLines = lines.slice(startLine - 1, endLine)
+    if (oldLines.length === 0) return null
+
+    const newLines = content.split('\n')
+    if (blockSimilarityRatio(oldLines, newLines) >= 0.15) return null
+
+    // 只有「足够长的行」才拿来当锚点：`}`、`return null` 这类短行本来就在文件里
+    // 反复出现，把它们当作错位证据会把正常的整段重写误判成行号错误。
+    const firstLine = oldLines[0].trim()
+    if (firstLine.length < 12) return null
+
+    let occurrences = 0
+    let otherLine = -1
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() !== firstLine) continue
+        occurrences++
+        if (i + 1 !== startLine) otherLine = i + 1
+    }
+    if (occurrences < 2 || otherLine < 0) return null
+
+    return (
+        `The text at lines ${startLine}-${endLine} has almost nothing in common with the replacement content, ` +
+        `and the same starting line also appears at line ${otherLine} — the line range is likely off.\n` +
+        `Re-read the file with read_file and use the numbers it prints, ` +
+        `or switch to string mode (old_string + new_string), which does not depend on line numbers.`
+    )
 }
 
 async function checkParentPathNotFile(filePath: string): Promise<string | null> {
@@ -1122,13 +1229,15 @@ async function guardedWriteFile(opts: {
     nextContent: string
     originalContent: string | null
     staleMessage?: string
-    skipStaleCheck?: boolean
 }): Promise<
     | { success: true; meta: { preHash: string; postHash: string } }
     | { success: false; result: ToolExecutionResult }
 > {
     const originalHash = hashContent(opts.originalContent)
-    if (!opts.skipStaleCheck) {
+    // 只在「原文件存在且非空」时校验 stale：新建文件时 originalContent 是空串，
+    // 而磁盘上读到的是 null，两者天然不等，一做校验就是一次假冲突。
+    const hadOriginalContent = typeof opts.originalContent === 'string' && opts.originalContent.length > 0
+    if (hadOriginalContent) {
         const currentContent = await api.file.read(opts.path)
         const currentHash = hashContent(currentContent)
 
@@ -1175,107 +1284,48 @@ async function guardedWriteFile(opts: {
 }
 
 /**
- * 局部修改被守卫拦下时的后台更正
+ * 局部修改意图的就地改判
  *
- * write_file / create_file_or_folder 试图对「已有文件」做局部修改时会被 fileWritePolicy
- * 硬拒绝（引导模型改用 edit_file）。这里把这个拒绝在后台消化掉：把整写内容与原文件的
- * 差异翻译成 edit_file 的批量编辑，交给 edit_file 执行同一处修改，从而不向前端暴露一次
- * 「失败」，也省掉模型因误选工具而多走的一轮往返。
+ * write_file / create_file_or_folder 对「已有文件」做局部修改时，把整写内容与原文件的
+ * 差异翻译成一组行级编辑，在内存里算出最终内容，交给调用方一次性落盘。
  *
- * 由于编辑指令源自「原文件 → 目标内容」的行级 diff，逐条应用后必然还原出目标内容，
- * 与一次成功的整写等价，因此不是猜测意图，而是同一结果的另一种执行方式。
+ * 不借道 edit_file 执行器的原因：那样会再读一次文件、再备份一次、再发一遍
+ * file:writing 与 notifyComposerChange，一次写入产生两套副作用。这里只做纯计算。
  *
- * 仅当守卫判定为「局部修改意图」时才触发；冲突、越界等真实错误照常返回失败。
- * 更正成功时结果带 autoCorrected 标记，便于 UI 与日志区分。
+ * 返回 null 表示无法安全改判（diff 为空、行号越界、或算出的内容与目标不一致），
+ * 调用方直接整写——整写路径自带备份，落盘结果与模型给出的内容完全一致。
  */
-async function autoCorrectPartialWrite(
-    args: Record<string, unknown>,
-    ctx: ToolExecutionContext,
+function planPartialWriteCorrection(
     originalContent: string,
     nextContent: string,
-): Promise<ToolExecutionResult | null> {
+): { content: string; appliedEdits: number } | null {
     const edits = buildLineEditsFromDiff(originalContent, nextContent)
     if (!edits.length) return null
 
-    const editResult = await rawToolExecutors.edit_file({ path: args.path, edits }, ctx)
-    if (!editResult.success) return null
-
-    logger.agent.info(
-        `[write-auto-correct] write_file local change auto-corrected into ${edits.length} edit_file op(s)`,
-        { path: args.path, edits: edits.length },
-    )
-
-    return {
-        ...editResult,
-        result: `${editResult.result}（已自动将整写意图后台更正为定位编辑，无需重试）`,
-        meta: {
-            ...(editResult.meta || {}),
-            autoCorrected: 'write_file->edit_file',
-        },
+    const applied = applyLineEdits(originalContent, edits)
+    if (!applied.ok) {
+        logger.agent.warn('[write-auto-correct] line edits could not be applied, falling back to full write', {
+            error: applied.error,
+            edits: edits.length,
+        })
+        return null
     }
-}
 
-/** 同一会话内，同一个文件允许「局部修改 → 整写降级」的次数 */
-const PARTIAL_WRITE_FALLBACK_LIMIT = 1
-
-/** 计数表上限：长会话里不断新增文件也不至于无限增长 */
-const MAX_TRACKED_FALLBACK_KEYS = 500
-
-/** 会话级降级额度：key = threadId::归一化路径，value = 已降级次数 */
-const partialWriteFallbackCounts = new Map<string, number>()
-
-/**
- * 申请一次「局部修改 → 整写降级」额度
- *
- * 首次降级让当次任务直接收尾，不必为一次工具选择多耗一轮往返；但同一个文件
- * 在同一会话里再被 write_file 局部改写，说明模型没有从结果提示里纠正习惯，
- * 此时额度不再续发——否则「错调 write_file」会被长期固化成一条总能成功的路径，
- * 提示词层面的约束就形同虚设。
- *
- * 计数键包含 threadId：不同会话各自独立，互不占用对方的额度。缺少 threadId
- * 的调用方（语音、计划执行等）共用同一个桶，宁可保守也不放过重复误用。
- *
- * @returns 允许降级返回 true；额度已用尽返回 false
- */
-function tryConsumePartialWriteFallback(ctx: ToolExecutionContext, targetPath: string): boolean {
-    const key = `${ctx.threadId ?? 'no-thread'}::${normalizePath(targetPath)}`
-    const used = partialWriteFallbackCounts.get(key) ?? 0
-    if (used >= PARTIAL_WRITE_FALLBACK_LIMIT) return false
-
-    partialWriteFallbackCounts.set(key, used + 1)
-    // 超出上限时按插入顺序丢弃最早的一批，保证内存有界
-    if (partialWriteFallbackCounts.size > MAX_TRACKED_FALLBACK_KEYS) {
-        const overflow = partialWriteFallbackCounts.size - MAX_TRACKED_FALLBACK_KEYS
-        let removed = 0
-        for (const existingKey of partialWriteFallbackCounts.keys()) {
-            partialWriteFallbackCounts.delete(existingKey)
-            if (++removed >= overflow) break
-        }
+    // 改判结果必须与目标内容逐字一致，否则说明 diff 翻译有偏差。
+    // 宁可走整写，也不要写出一份模型没要求过的内容。
+    const expected = nextContent.replace(/\r\n?/g, '\n')
+    if (applied.content !== expected) {
+        logger.agent.warn('[write-auto-correct] corrected content differs from target, falling back to full write', {
+            edits: edits.length,
+        })
+        return null
     }
-    return true
-}
 
-/**
- * 降级额度用尽时的拒绝说明
- *
- * 直接把「已降级过一次」这个事实告诉模型，并给出一条不依赖行号的替代路径，
- * 避免它转而从 create_file_or_folder 之类的入口继续整写覆盖。
- */
-function buildFallbackExhaustedError(toolName: string, targetPath: string, changedRatio: number): string {
-    const percent = Math.round(changedRatio * 100)
-    return (
-        `${toolName} on "${targetPath}" was already applied once as a full-file write after the partial-change guard, ` +
-        `and this call is again a partial edit (~${percent}% of the original lines change). ` +
-        `The fallback is not offered twice for the same file in one session.\n\n` +
-        `Do this instead — without calling ${toolName} again for this file:\n` +
-        `1. read_file(path="${targetPath}") to get the current content\n` +
-        `2. edit_file with one mode:\n` +
-        `   - String mode: {path, old_string, new_string}  (preferred — no line numbers involved)\n` +
-        `   - Line mode: {path, start_line, end_line, content}\n` +
-        `   - Batch mode: {path, edits: [{action, start_line, end_line, content}]}`
-    )
+    logger.agent.info('[write-auto-correct] local change rewritten into targeted edits', {
+        edits: edits.length,
+    })
+    return { content: applied.content, appliedEdits: edits.length }
 }
-
 
 /**
  * 加载技能内容：返回技能正文、安装目录与目录清单
@@ -1912,13 +1962,22 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
         const resolution = resolveEditFileRequest(args)
 
-        // 判断使用哪种模式：content 单独存在时不触发 line mode（保持与 validate 逻辑一致）
         if (!resolution.ok) {
-            const helpTip = resolution.error.includes('mix')
-                ? ' You can only use ONE mode at a time: string (old_string+new_string), line (start_line+end_line+content), or batch (edits array).'
-                : ''
-            return { success: false, result: '', error: `edit_file validation failed: ${resolution.error}. ${helpTip} Use read_file first, then pick exactly one mode and include all required fields for that mode.` }
+            // 走到这里只剩两种可能：真的没给任何编辑内容，或某一模式的字段不全。
+            // 混用多种模式已不再算错误——解析层会按优先级挑一种，并在 notes 里说明。
+            const notesText = resolution.notes?.length ? `\n${resolution.notes.join('\n')}` : ''
+            return {
+                success: false,
+                result: '',
+                error:
+                    `edit_file could not work out an edit from these arguments: ${resolution.error}.` +
+                    `\nUse read_file first, then provide ONE of: {path, old_string, new_string} | {path, start_line, end_line, content} | {path, edits: [...]}.` +
+                    notesText,
+            }
         }
+
+        // 解析层判定为「被忽略」的字段随成功结果一并回传，模型才知道下一轮该精简什么
+        const notesSuffix = resolution.notes?.length ? `\n${resolution.notes.join('\n')}` : ''
 
         const hasBatchMode = resolution.mode === 'batch'
         const hasLineMode = resolution.mode === 'line'
@@ -1933,6 +1992,8 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
 
             let lines = originalContent.split('\n')
+            // 冻结一份原始行：逐条应用编辑时 lines 会变，一致性校验需要原始快照
+            const originalLines = lines.slice()
 
             // 🎯 关键优化：从后往前排序，避免行号偏移
             const sortedEdits = [...edits].sort((a, b) => {
@@ -1990,6 +2051,22 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                             success: false,
                             result: '',
                             error: `Invalid line range: ${start_line}-${end_line}. File has ${lines.length} lines. Re-read the file with read_file and use the numbers it prints — line numbers shift as edits are applied.`
+                        }
+                    }
+
+                    // 一致性校验用「未动过的原文件行」：lines 已经被行号更大的编辑改过，
+                    // 拿它做相似度比较会引入假信号。
+                    const mismatch = detectLineContentMismatch(
+                        originalLines,
+                        start_line!,
+                        end_line!,
+                        content!,
+                    )
+                    if (mismatch) {
+                        return {
+                            success: false,
+                            result: '',
+                            error: `Batch edit ${start_line}-${end_line} was not applied. ${mismatch}`,
                         }
                     }
 
@@ -2056,7 +2133,6 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 nextContent: newContent,
                 originalContent,
                 staleMessage: 'Batch edit conflict detected: file changed since it was read',
-                skipStaleCheck: true,
             })
             if (!guardedWrite.success) return guardedWrite.result
 
@@ -2099,7 +2175,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             return {
                 success: true,
-                result: `File updated successfully (batch mode: ${edits.length} edits applied)${warningsSuffix}`,
+                result: `File updated successfully (batch mode: ${edits.length} edits applied)${warningsSuffix}${notesSuffix}`,
                 meta
             }
         }
@@ -2124,7 +2200,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 return guardedWrite.success
                     ? {
                         success: true,
-                        result: 'File written (was empty)',
+                        result: `File written (was empty)${notesSuffix}`,
                         meta: buildWriteMeta(
                             path,
                             '',
@@ -2157,6 +2233,13 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 }
             }
 
+            // 内容一致性校验：行号错位时覆盖下去就是静默改错行，比直接失败更糟。
+            // 只在「相似度极低 + 被替换区间的首行在别处也出现」时判定，避免误伤整段重写。
+            const mismatch = detectLineContentMismatch(lines, startLine, endLine, content)
+            if (mismatch) {
+                return { success: false, result: '', error: mismatch }
+            }
+
             // 提取被替换的行（用于警告检测）
             const oldLines = lines.slice(startLine - 1, endLine)
             const newLines = content.split('\n')
@@ -2177,7 +2260,6 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 nextContent: newContent,
                 originalContent,
                 staleMessage: 'Line edit conflict detected: file changed since it was read',
-                skipStaleCheck: true,
             })
             if (!guardedWrite.success) return guardedWrite.result
 
@@ -2215,7 +2297,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             return {
                 success: true,
-                result: `File updated successfully (line mode)${warningsSuffix}`,
+                result: `File updated successfully (line mode)${warningsSuffix}${notesSuffix}`,
                 meta
             }
         } else {
@@ -2272,6 +2354,28 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                     }
                 }
 
+                // 多重匹配：把每一处命中的行号列出来，并给出一个「加上下文就唯一」的
+                // 现成候选。只回一句「有多个匹配」模型只能盲猜，往往要试两三轮才收敛。
+                if (result.errorCode === 'MULTIPLE_MATCHES' && result.matches?.length) {
+                    const lines = result.matches
+                        .slice(0, 6)
+                        .map((m) => `  line ${m.line}: ${truncateForError(m.text, 80)}`)
+                        .join('\n')
+                    const candidate = buildUniqueCandidate(normalizedContent, normalizedOld)
+                    const candidateBlock = candidate
+                        ? `\n\nA self-unique candidate (declares its own line range, and occurs only once in the file):\n${candidate}`
+                        : '\n\nNo single-occurrence window was found around the first match — re-read the file and copy a bigger block.'
+                    return {
+                        success: false,
+                        result: '',
+                        error:
+                            `Found ${result.matchCount ?? result.matches.length} matches for old_string in ${path}:\n${lines}` +
+                            candidateBlock +
+                            '\n\nPick the occurrence you actually mean, widen old_string with one or two neighbouring lines so it matches only that one, ' +
+                            'or pass replace_all=true if every occurrence should change.',
+                    }
+                }
+
                 const errorType = analyzeEditError(result.error, result.errorCode)
                 const hasCache = fileCacheService.hasValidCache(path)
 
@@ -2308,7 +2412,6 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 nextContent: newContent,
                 originalContent,
                 staleMessage: 'String edit conflict detected: file changed since it was read',
-                skipStaleCheck: true,
             })
             if (!guardedWrite.success) return guardedWrite.result
 
@@ -2352,7 +2455,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             return {
                 success: true,
-                result: `File updated successfully${strategySuffix}`,
+                result: `File updated successfully${strategySuffix}${notesSuffix}`,
                 meta
             }
         }
@@ -2394,73 +2497,48 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             nextContent: content,
             hasRecentRead: fileCacheService.hasValidCache(path),
         })
-        // 局部修改意图被守卫拦下时的处理说明（拼进成功结果，用于引导后续工具选择）
-        let fallbackNote = ''
-        if (!writeDecision.allow) {
-            // 局部修改意图：后台把这次整写等价改写成定位编辑，避免向前端暴露失败
-            if (writeDecision.intent === 'partial-update') {
-                const corrected = await autoCorrectPartialWrite(args, ctx, originalContent, content)
-                if (corrected) return corrected
-
-                // 额度用尽：同一文件在本会话里已经降级整写过一次，再放行就等于
-                // 把「错调 write_file」固化成一条总能成功的路径，这里硬拒绝并给出替代做法。
-                if (!tryConsumePartialWriteFallback(ctx, path)) {
-                    logger.agent.warn('[write_file] partial-write fallback exhausted, rejecting', { path })
-                    return {
-                        success: false,
-                        result: '',
-                        error: buildFallbackExhaustedError(
-                            'write_file',
-                            path,
-                            writeDecision.analysis.changedRatio,
-                        ),
-                    }
-                }
-
-                // 首次降级：定位编辑没能落地（例如 diff 里没有可生成的行级改动）时不再判为
-                // 失败。写入内容来自模型自己给出的全文，落盘结果与一次整写完全等价，
-                // 而整写路径本身带备份与冲突检测。
-                logger.agent.warn(
-                    '[write_file] local-change guard could not be auto-corrected, falling back to full write',
-                    { path },
-                )
-                fallbackNote =
-                    ' Applied as a full-file write after the partial-change guard could not rewrite it into targeted edits.' +
-                    ' This fallback is available only once per file in a session — for any later partial change to this file, use edit_file (read_file first, then old_string/new_string or edits).'
+        // 局部修改意图的就地改判：把整写内容翻译成行级编辑，在内存里算出最终内容，
+        // 只落盘一次。这里没有「额度」也没有「硬拒绝」——同一份输入永远得到同样的结论，
+        // 模型不会因为「这是第几次调用」而遇到完全不同的结果。
+        let correctionNote = ''
+        let effectiveContent = content
+        if (!writeDecision.allow && writeDecision.intent === 'partial-update') {
+            const correction = planPartialWriteCorrection(originalContent, content)
+            if (correction) {
+                effectiveContent = correction.content
+                correctionNote =
+                    'Note: an existing file was changed through targeted edits instead of a whole-file overwrite.' +
+                    ' Next time, change part of an existing file with edit_file directly (old_string/new_string, or an edits array).'
             } else {
-                return {
-                    success: false,
-                    result: '',
-                    // 把拒绝原因直接返回给模型，促使它切换到 edit_file 的合适模式。
-                    error: writeDecision.reason || 'write_file rejected by write strategy',
-                }
+                correctionNote =
+                    'Note: an existing file was overwritten in full because the change could not be expressed as targeted edits.' +
+                    ' Next time, change part of an existing file with edit_file (read_file first, then old_string/new_string or an edits array).'
             }
         }
         const guardedWrite = await guardedWriteFile({
             path,
-            nextContent: content,
+            nextContent: effectiveContent,
             originalContent,
             staleMessage: 'Write conflict detected: file changed before overwrite completed',
-            skipStaleCheck: true,
         })
         if (!guardedWrite.success) return guardedWrite.result
         // 写入成功后立即刷新缓存，保证后续 edit/read 判定看到的是最新内容。
-        fileCacheService.markFileAsRead(path, content)
+        fileCacheService.markFileAsRead(path, effectiveContent)
 
         // 通知 LSP 并等待诊断
-        await notifyLspAfterWrite(path, content)
+        await notifyLspAfterWrite(path, effectiveContent)
 
-        const lineChanges = getLineChangesForWrite(originalContent, content)
+        const lineChanges = getLineChangesForWrite(originalContent, effectiveContent)
 
         notifyComposerChange({
             filePath: path,
             workspacePath: ctx.workspacePath || '',
             oldContent: originalContent,
-            newContent: content,
+            newContent: effectiveContent,
             changeType: originalContent ? 'modify' : 'create',
             linesAdded: lineChanges.added,
             linesRemoved: lineChanges.removed,
-            ...getWritePreviewFlags(originalContent, content),
+            ...getWritePreviewFlags(originalContent, effectiveContent),
             toolCallId: ctx.toolCallId
         })
 
@@ -2469,20 +2547,19 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             type: 'file:written',
             filePath: path,
             workspacePath: ctx.workspacePath || '',
-            content,
+            content: effectiveContent,
             action: fileExisted ? 'edit' : 'create',
         })
         // 覆盖已有文件时始终带一句后续工具指引：错调 write_file 的根因是模型不知道
         // 「这个文件已经存在」，在它刚完成一次覆盖的当下给出规则，比只靠提示词更有效。
-        const overwriteHint = fileExisted && originalContent !== content
+        const overwriteHint = fileExisted && originalContent !== effectiveContent
             ? ' This file already existed and was overwritten. For any later change to it, use edit_file instead (read_file first, then old_string/new_string, start_line/end_line/content, or edits).'
             : ''
 
-        // 附加策略层软提示（如建议局部修改优先用 edit_file），帮助模型后续选择更合适的工具
+        // 附加策略层软提示，帮助模型后续选择更合适的工具
         const resultText = [
             'File written successfully.',
-            writeDecision.reason,
-            fallbackNote,
+            correctionNote,
             overwriteHint,
         ]
             .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
@@ -2491,10 +2568,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         return {
             success: true,
             result: resultText,
-            meta: buildWriteMeta(path, originalContent, content, lineChanges, guardedWrite.meta, {
+            meta: buildWriteMeta(path, originalContent, effectiveContent, lineChanges, guardedWrite.meta, {
                 writeIntent: writeDecision.intent,
                 writeAnalysis: writeDecision.analysis,
-                ...(fallbackNote && { guardFallback: 'full-write' }),
+                ...(correctionNote && { partialWriteCorrection: true }),
             })
         }
     },
@@ -2552,10 +2629,12 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             ? getLineChangesForWrite(originalContent, content)
             : { added: countLinesFast(content), removed: 0 }
 
-        // 对已存在文件的写入同样受局部修改策略约束：
-        // create_file_or_folder 也带 content，若放任它覆盖已有文件，就等同于绕过
-        // write_file 的局部修改拦截，模型会转而从这个入口整写覆盖。
-        let fallbackNote = ''
+        // 对已存在文件的写入同样受局部修改策略约束：create_file_or_folder 也带 content，
+        // 若放任它覆盖已有文件，就等同于绕过 write_file 的局部修改拦截。
+        // 与 write_file 使用同一套确定性处理：能就地改判成定位编辑就改判，否则整写。
+        // 不存在「第几次调用」的状态差异，也不会硬拒绝。
+        let correctionNote = ''
+        let effectiveContent = content
         if (existedBefore && originalContent !== null && content) {
             const writeDecision = guardWriteFile({
                 path,
@@ -2563,61 +2642,48 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 nextContent: content,
                 hasRecentRead: fileCacheService.hasValidCache(path),
             })
-            if (!writeDecision.allow) {
-                // 与 write_file 一致的额度规则：同一文件在同一会话里只放行一次整写降级。
-                // 两个入口共用同一份计数（键只含会话与路径），避免这里成为绕过口。
-                if (writeDecision.intent === 'partial-update') {
-                    const corrected = await autoCorrectPartialWrite(args, ctx, originalContent, content)
-                    if (corrected) return corrected
-                    if (!tryConsumePartialWriteFallback(ctx, path)) {
-                        logger.agent.warn('[create_file_or_folder] partial-write fallback exhausted, rejecting', { path })
-                        return {
-                            success: false,
-                            result: '',
-                            error: buildFallbackExhaustedError(
-                                'create_file_or_folder',
-                                path,
-                                writeDecision.analysis.changedRatio,
-                            ),
-                        }
-                    }
-                    logger.agent.warn(
-                        '[create_file_or_folder] local-change guard could not be auto-corrected, falling back to full write',
-                        { path },
-                    )
-                    fallbackNote =
-                        ' Applied as a full-file write after the partial-change guard could not rewrite it into targeted edits.' +
-                        ' This fallback is available only once per file in a session — use edit_file for later partial changes.'
+            if (!writeDecision.allow && writeDecision.intent === 'partial-update') {
+                const correction = planPartialWriteCorrection(originalContent, content)
+                if (correction) {
+                    effectiveContent = correction.content
+                    correctionNote =
+                        'Note: an existing file was changed through targeted edits instead of a whole-file overwrite.' +
+                        ' Next time, change part of an existing file with edit_file directly.'
                 } else {
-                    return {
-                        success: false,
-                        result: '',
-                        error: writeDecision.reason || 'create_file_or_folder rejected by write strategy',
-                    }
+                    correctionNote =
+                        'Note: an existing file was overwritten in full because the change could not be expressed as targeted edits.' +
+                        ' Next time, change part of an existing file with edit_file.'
                 }
             }
         }
 
+        // 改判后的内容可能与模型给出的整文不同，行级统计要按实际落盘的内容重算
+        const finalLineChanges = effectiveContent === content
+            ? lineChanges
+            : existedBefore && originalContent !== null
+                ? getLineChangesForWrite(originalContent, effectiveContent)
+                : { added: countLinesFast(effectiveContent), removed: 0 }
+
         const guardedWrite = await guardedWriteFile({
             path,
-            nextContent: content,
+            nextContent: effectiveContent,
             originalContent,
             staleMessage: 'Create file conflict detected: target path changed before creation completed',
         })
 
         if (guardedWrite.success) {
             // 通知 LSP 并等待诊断
-            await notifyLspAfterWrite(path, content)
+            await notifyLspAfterWrite(path, effectiveContent)
 
             notifyComposerChange({
                 filePath: path,
                 workspacePath: ctx.workspacePath || '',
                 oldContent: isOverwrite ? originalContent : null,
-                newContent: content,
+                newContent: effectiveContent,
                 changeType: isOverwrite ? 'modify' : 'create',
-                linesAdded: lineChanges.added,
-                linesRemoved: lineChanges.removed,
-                ...getWritePreviewFlags(isOverwrite ? originalContent : null, content),
+                linesAdded: finalLineChanges.added,
+                linesRemoved: finalLineChanges.removed,
+                ...getWritePreviewFlags(isOverwrite ? originalContent : null, effectiveContent),
                 toolCallId: ctx.toolCallId
             })
         }
@@ -2625,20 +2691,20 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         if (!guardedWrite.success) return guardedWrite.result
 
         // 发送文件编写完成事件
-        EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content, action: existedBefore ? 'edit' : 'create' })
+        EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content: effectiveContent, action: existedBefore ? 'edit' : 'create' })
 
         return {
             success: true,
-            result: `${isOverwrite ? 'File updated' : 'File created'}${fallbackNote}`,
+            result: `${isOverwrite ? 'File updated' : 'File created'}${correctionNote ? ` ${correctionNote}` : ''}`,
             meta: buildWriteMeta(
                 path,
                 isOverwrite ? originalContent : null,
-                content,
-                lineChanges,
+                effectiveContent,
+                finalLineChanges,
                 guardedWrite.meta,
                 {
                     isNewFile: !isOverwrite,
-                    ...(fallbackNote && { guardFallback: 'full-write' }),
+                    ...(correctionNote && { partialWriteCorrection: true }),
                 }
             )
         }

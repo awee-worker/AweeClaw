@@ -247,6 +247,63 @@ export function buildLineEditsFromDiff(originalContent: string, nextContent: str
 }
 
 /**
+ * 把一批行级编辑应用到内容上，返回新内容。
+ *
+ * 语义与 edit_file 的 batch 模式一致：insert 的 after_line 是「插入到第 N 行之后」，
+ * 0 表示插到文件最前面。行号一律基于**原始内容**，因此从大到小应用，
+ * 避免前面的编辑把后面的行号推偏。
+ *
+ * 这是纯字符串变换，不涉及 IO。write_file 的局部修改改判路径靠它就地算出最终内容，
+ * 只落盘一次，不再借道 edit_file 执行器（那会带来二次备份与重复的写入事件）。
+ */
+export function applyLineEdits(
+  content: string,
+  edits: LineEditOp[],
+): { ok: true; content: string } | { ok: false; error: string } {
+  if (edits.length === 0) return { ok: true, content }
+
+  let lines = content.split('\n')
+
+  const ordered = [...edits].sort((a, b) => {
+    const aLine = a.start_line ?? a.after_line ?? 0
+    const bLine = b.start_line ?? b.after_line ?? 0
+    return bLine - aLine
+  })
+
+  for (const edit of ordered) {
+    if (edit.action === 'replace') {
+      const start = edit.start_line
+      const end = edit.end_line
+      if (typeof start !== 'number' || typeof end !== 'number' || start < 1 || end > lines.length || start > end) {
+        return { ok: false, error: `replace range ${start}-${end} falls outside the file (${lines.length} lines)` }
+      }
+      const replacement = (edit.content ?? '').split('\n')
+      lines = [...lines.slice(0, start - 1), ...replacement, ...lines.slice(end)]
+      continue
+    }
+
+    if (edit.action === 'delete') {
+      const start = edit.start_line
+      const end = edit.end_line
+      if (typeof start !== 'number' || typeof end !== 'number' || start < 1 || end > lines.length || start > end) {
+        return { ok: false, error: `delete range ${start}-${end} falls outside the file (${lines.length} lines)` }
+      }
+      lines = [...lines.slice(0, start - 1), ...lines.slice(end)]
+      continue
+    }
+
+    const after = edit.after_line
+    if (typeof after !== 'number' || after < 0 || after > lines.length) {
+      return { ok: false, error: `insert anchor ${after} falls outside the file (${lines.length} lines)` }
+    }
+    const inserted = (edit.content ?? '').split('\n')
+    lines = [...lines.slice(0, after), ...inserted, ...lines.slice(after)]
+  }
+
+  return { ok: true, content: lines.join('\n') }
+}
+
+/**
  * write_file 执行前的统一守卫。
  *
  * 核心规则：

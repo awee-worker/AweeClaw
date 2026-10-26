@@ -40,6 +40,14 @@ export interface InitOrderResult {
   problems: string[]
 }
 
+/** 阶段执行顺序，用于判断跨阶段依赖是否成立 */
+const PHASE_SEQUENCE: ModulePhase[] = ['boot', 'deferred']
+
+function phaseRank(phase: ModulePhase): number {
+  const index = PHASE_SEQUENCE.indexOf(phase)
+  return index < 0 ? PHASE_SEQUENCE.length : index
+}
+
 /**
  * 按依赖关系计算某阶段的初始化顺序。
  *
@@ -61,6 +69,7 @@ export function resolveInitOrder(
   })
 
   const problems: string[] = []
+  const byIdAll = new Map(modules.map((m) => [m.id, m]))
   const seen = new Set<string>()
   for (const m of scoped) {
     if (seen.has(m.id)) problems.push(`模块 id 重复: ${m.id}`)
@@ -78,8 +87,13 @@ export function resolveInitOrder(
     for (const dep of m.dependsOn ?? []) {
       if (!indexOf.has(dep)) {
         // 跨阶段依赖不必在此排序：阶段本身已保证顺序（boot 整体先于 deferred）。
-        // 只有引用了完全不存在的 id 才是配置错误。
-        if (!allIds.has(dep)) problems.push(`模块 ${m.id} 依赖了不存在的模块 ${dep}`)
+        // 因此依赖更早阶段的模块是合法的，依赖更晚阶段的模块则是死约束。
+        if (!allIds.has(dep)) {
+          problems.push(`模块 ${m.id} 依赖了不存在的模块 ${dep}`)
+        } else if (phaseRank(byIdAll.get(dep)!.phase) > phaseRank(phase)) {
+          const depPhase = byIdAll.get(dep)!.phase
+          problems.push(`模块 ${m.id}（${phase}）依赖了更晚阶段 ${depPhase} 的模块 ${dep}`)
+        }
         continue
       }
       if (dep === m.id) {
