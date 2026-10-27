@@ -28,6 +28,7 @@ export function resetWorkspaceRuntimeState(): void {
       currentThreadId: null,
       threadMessageVersions: {},
       pendingChanges: [],
+      fileChangeHistory: [],
       branches: {},
       activeBranchId: {},
       inputPrompt: '',

@@ -37,6 +37,7 @@ import type { ToolCall } from '@intelligence/providerTypes'
 import type { ToolExecutionContext, AgentToolExecutionResult } from '@intelligence/providerTypes'
 import { useAgentStore } from '../state/IntelligenceStore'
 import { buildExecutionBatches } from './executionPlanner'
+import { collectFileWriteLockTargets, withFileWriteLock } from './fileWriteLock'
 import { streamingEditService } from '../runtime/streamingEditor'
 import { resolveStreamingEditFilePath } from '../runtime/editPreviewStreamer'
 import * as perfTrace from '@intelligence/diagnostics/perfTraceReporter'
@@ -50,49 +51,66 @@ import { getEffectiveLLMConfig } from '@services/modelConfigHelper'
 
 // ===== 审批服务 =====
 
-class ToolApprovalCoordinator {
-  private pendingResolves = new Map<string, (approved: boolean) => void>()
-  private queue: Array<{ id: string; resolve: (approved: boolean) => void }> = []
+interface PendingApproval {
+  id: string
+  resolve: (approved: boolean) => void
+  /**
+   * 发起审批的会话线程。
+   *
+   * 多条会话可以同时停在「等待确认」上：审批必须能按线程归属筛选，
+   * 否则在一条会话里点「全部批准」会把另一条会话排队中的高危操作一起放行。
+   */
+  threadId?: string
+}
 
-  async waitForApproval(requestId?: string): Promise<boolean> {
+class ToolApprovalCoordinator {
+  private pendingResolves = new Map<string, PendingApproval>()
+  private queue: PendingApproval[] = []
+
+  async waitForApproval(requestId?: string, threadId?: string): Promise<boolean> {
     const id = requestId || crypto.randomUUID()
     return new Promise((resolve) => {
-      this.pendingResolves.set(id, resolve)
-      this.queue.push({ id, resolve })
+      const entry: PendingApproval = { id, resolve, threadId }
+      this.pendingResolves.set(id, entry)
+      this.queue.push(entry)
     })
   }
 
   approve(requestId?: string): void {
     if (requestId) {
-      const resolve = this.pendingResolves.get(requestId)
-      logger.agent.info(`[ApprovalService] approve(${requestId}): found=${!!resolve}, queueSize=${this.queue.length}, pendingIds=[${Array.from(this.pendingResolves.keys()).join(',')}]`)
-      if (resolve) {
-        resolve(true)
+      const entry = this.pendingResolves.get(requestId)
+      logger.agent.info(`[ApprovalService] approve(${requestId}): found=${!!entry}, queueSize=${this.queue.length}, pendingIds=[${Array.from(this.pendingResolves.keys()).join(',')}]`)
+      if (entry) {
+        entry.resolve(true)
         this.pendingResolves.delete(requestId)
         this.queue = this.queue.filter(item => item.id !== requestId)
-      } else {
-        // 精确匹配失败，尝试前缀匹配（处理 requestId 可能不完整的情况）
-        const matchedKey = Array.from(this.pendingResolves.keys()).find(key => key.startsWith(requestId) || requestId.startsWith(key))
-        if (matchedKey) {
-          logger.agent.info(`[ApprovalService] approve: prefix matched ${requestId} -> ${matchedKey}`)
-          this.pendingResolves.get(matchedKey)?.(true)
-          this.pendingResolves.delete(matchedKey)
-          this.queue = this.queue.filter(item => item.id !== matchedKey)
-        } else if (this.queue.length > 0) {
-          // 前缀匹配也失败，处理队列中的第一个
-          const first = this.queue.shift()!
-          logger.agent.info(`[ApprovalService] approve: no match for ${requestId}, resolving first in queue: ${first.id}`)
-          this.pendingResolves.get(first.id)?.(true)
-          this.pendingResolves.delete(first.id)
-        } else {
-          logger.agent.warn(`[ApprovalService] approve(${requestId}): no match found and queue is empty`)
-        }
+        return
       }
-    } else if (this.queue.length > 0) {
-      const first = this.queue.shift()!
+
+      // 精确匹配失败，尝试前缀匹配（处理 requestId 可能不完整的情况）
+      const matchedKey = Array.from(this.pendingResolves.keys()).find(key => key.startsWith(requestId) || requestId.startsWith(key))
+      if (matchedKey) {
+        logger.agent.info(`[ApprovalService] approve: prefix matched ${requestId} -> ${matchedKey}`)
+        this.pendingResolves.get(matchedKey)?.resolve(true)
+        this.pendingResolves.delete(matchedKey)
+        this.queue = this.queue.filter(item => item.id !== matchedKey)
+        return
+      }
+
+      // 精确与前缀匹配都失败：该 requestId 已过期或不属于本窗口的待批项。
+      // 此时不能兜底批准队列里的第一项 —— 那条属于另一个请求（很可能是另一条
+      // 并行会话的工具），用一个无关点击放行它等于绕过了用户的确认。
+      logger.agent.warn(`[ApprovalService] approve(${requestId}): no matching pending request, ignored`)
+      return
+    }
+
+    // 无 requestId：只处理队列头，且仅当它确实是最早的那一条
+    if (this.queue.length > 0) {
+      const first = this.queue[0]
       logger.agent.info(`[ApprovalService] approve() (no id): resolving first in queue: ${first.id}`)
-      this.pendingResolves.get(first.id)?.(true)
+      first.resolve(true)
       this.pendingResolves.delete(first.id)
+      this.queue = this.queue.filter(item => item.id !== first.id)
     } else {
       logger.agent.warn('[ApprovalService] approve() called but no pending requests')
     }
@@ -100,60 +118,81 @@ class ToolApprovalCoordinator {
 
   reject(requestId?: string): void {
     if (requestId) {
-      const resolve = this.pendingResolves.get(requestId)
-      logger.agent.info(`[ApprovalService] reject(${requestId}): found=${!!resolve}, queueSize=${this.queue.length}, pendingIds=[${Array.from(this.pendingResolves.keys()).join(',')}]`)
-      if (resolve) {
-        resolve(false)
+      const entry = this.pendingResolves.get(requestId)
+      logger.agent.info(`[ApprovalService] reject(${requestId}): found=${!!entry}, queueSize=${this.queue.length}, pendingIds=[${Array.from(this.pendingResolves.keys()).join(',')}]`)
+      if (entry) {
+        entry.resolve(false)
         this.pendingResolves.delete(requestId)
         this.queue = this.queue.filter(item => item.id !== requestId)
-      } else {
-        // 精确匹配失败，尝试前缀匹配
-        const matchedKey = Array.from(this.pendingResolves.keys()).find(key => key.startsWith(requestId) || requestId.startsWith(key))
-        if (matchedKey) {
-          logger.agent.info(`[ApprovalService] reject: prefix matched ${requestId} -> ${matchedKey}`)
-          this.pendingResolves.get(matchedKey)?.(false)
-          this.pendingResolves.delete(matchedKey)
-          this.queue = this.queue.filter(item => item.id !== matchedKey)
-        } else {
-          // 精确与前缀匹配都失败：说明该 requestId 已过期，或不属于当前待批项。
-          // 此前会兜底拒绝队列里的第一项，等于用一个无关请求把另一个待批工具一起否掉，
-          // 用户看到的是「没点拒绝却有一个工具被拒」。这里只记录，不做任何裁决。
-          logger.agent.warn(`[ApprovalService] reject(${requestId}): no matching pending request, ignored`)
-        }
+        return
       }
-    } else if (this.queue.length > 0) {
-      const first = this.queue.shift()!
+
+      // 精确匹配失败，尝试前缀匹配
+      const matchedKey = Array.from(this.pendingResolves.keys()).find(key => key.startsWith(requestId) || requestId.startsWith(key))
+      if (matchedKey) {
+        logger.agent.info(`[ApprovalService] reject: prefix matched ${requestId} -> ${matchedKey}`)
+        this.pendingResolves.get(matchedKey)?.resolve(false)
+        this.pendingResolves.delete(matchedKey)
+        this.queue = this.queue.filter(item => item.id !== matchedKey)
+        return
+      }
+
+      // 精确与前缀匹配都失败：说明该 requestId 已过期，或不属于当前待批项。
+      // 此前会兜底拒绝队列里的第一项，等于用一个无关请求把另一个待批工具一起否掉，
+      // 用户看到的是「没点拒绝却有一个工具被拒」。这里只记录，不做任何裁决。
+      logger.agent.warn(`[ApprovalService] reject(${requestId}): no matching pending request, ignored`)
+      return
+    }
+
+    if (this.queue.length > 0) {
+      const first = this.queue[0]
       logger.agent.info(`[ApprovalService] reject() (no id): resolving first in queue: ${first.id}`)
-      this.pendingResolves.get(first.id)?.(false)
+      first.resolve(false)
       this.pendingResolves.delete(first.id)
+      this.queue = this.queue.filter(item => item.id !== first.id)
     } else {
       logger.agent.warn('[ApprovalService] reject() called but no pending requests')
     }
   }
 
-  approveAll(): void {
-    for (const item of this.queue) {
-      this.pendingResolves.get(item.id)?.(true)
-      this.pendingResolves.delete(item.id)
-    }
-    this.queue = []
+  /**
+   * 全部批准
+   *
+   * @param threadId 限定线程。传入时只处理该线程的待批项，其他并行会话排队中的
+   *   工具保持原样等待各自的确认 —— 在 A 会话点「全部批准」不该替 B 会话做决定。
+   */
+  approveAll(threadId?: string): void {
+    this.settleAll(true, threadId)
   }
 
-  rejectAll(): void {
-    for (const item of this.queue) {
-      this.pendingResolves.get(item.id)?.(false)
+  /** 全部拒绝（线程语义与 approveAll 一致） */
+  rejectAll(threadId?: string): void {
+    this.settleAll(false, threadId)
+  }
+
+  private settleAll(approved: boolean, threadId?: string): void {
+    const targets = threadId
+      ? this.queue.filter(item => (item.threadId ?? undefined) === threadId)
+      : [...this.queue]
+
+    for (const item of targets) {
+      item.resolve(approved)
       this.pendingResolves.delete(item.id)
     }
-    this.queue = []
+
+    if (targets.length === 0) return
+    const settled = new Set(targets.map(item => item.id))
+    this.queue = this.queue.filter(item => !settled.has(item.id))
   }
 
   async waitForBatchApproval(
     toolCallIds: string[],
-    requestId?: string
+    requestId?: string,
+    threadId?: string
   ): Promise<Map<string, boolean>> {
     const results = new Map<string, boolean>()
     const promises = toolCallIds.map(tcId =>
-      this.waitForApproval(`${requestId}_${tcId}`).then(approved => {
+      this.waitForApproval(`${requestId}_${tcId}`, threadId).then(approved => {
         results.set(tcId, approved)
       })
     )
@@ -847,7 +886,15 @@ async function invokeToolInvocation(
 
   const toolHandler = async (): Promise<AgentToolExecutionResult> => {
     try {
-      const result = await withToolWatchdog(
+      // 并行子任务各自调度，彼此看不到对方的进度：同一文件的写入必须互斥。
+      // edit_file 的读—改—写一旦交错，后落盘的会覆盖先落盘的修改。
+      // 锁只包住写入动作本身，写不同文件的调用互不阻塞。
+      const writeTargets = collectFileWriteLockTargets(
+        toolCall.name,
+        toolCall.arguments as Record<string, unknown> | undefined,
+        workspacePath ?? null,
+      )
+      const result = await withFileWriteLock(writeTargets, () => withToolWatchdog(
         toolCall.name,
         toolManager.execute(
           toolCall.name,
@@ -864,7 +911,7 @@ async function invokeToolInvocation(
             abortSignal,
           }
         )
-      )
+      ))
 
       const duration = Date.now() - startTime
 
@@ -1445,7 +1492,9 @@ async function orchestrateToolBatchInternal(
 
     const approvalResults = await approvalService.waitForBatchApproval(
       groupToolCalls.map(tc => tc.id),
-      context.requestId
+      context.requestId,
+      // 归属线程随审批项一起登记，供「全部批准 / 全部拒绝」按会话筛选
+      context.threadId ?? undefined,
     )
 
     const approvedTools = groupToolCalls.filter(tc => approvalResults.get(tc.id) !== false)

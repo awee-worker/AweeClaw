@@ -15,20 +15,23 @@
  * 插件贡献按钮），它们没有独立的 part id，等出现第二个使用方再拆。
  */
 
-import { Plus, Phone, Bot, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react'
+import { Plus, Phone, Bot, RefreshCw, Loader2, CheckCircle2, X } from 'lucide-react'
 import { api } from '../../adapters/electronBridge'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { resolveUserMenuPlacement } from '@shared/protocols/scenario'
 import { useShallow } from 'zustand/react/shallow'
-import { useAgentActions } from '@hooks/useAgent'
+import { useAllThreads, useAgentActions, useRunningThreadIds } from '@hooks/useAgent'
 import { t, type Language } from '@renderer/i18n'
 import { logger } from '@shared/toolkit/LogEngine'
 import { updaterService, type UpdateStatus } from '@renderer/adapters/updateAdapter'
 import { PluginTopActions } from '@renderer/plugins/PluginTopActions'
 import { HintOverlay } from '@components/ui/HintOverlay'
+import { useClickOutside, useEscapeKey } from '@hooks/usePerformance'
+import { getThreadDisplayTitle, type ChatThread } from '@intelligence/providerTypes'
+import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import ImStatusFloating from './ImStatusFloating'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import SceneSwitcherPart from '@renderer/shell/parts/SceneSwitcherPart'
 import DragRegionPart from '@renderer/shell/parts/DragRegionPart'
 import NotificationsPart from '@renderer/shell/parts/NotificationsPart'
@@ -82,6 +85,106 @@ function UpdateReadyButton({ language }: { language: Language }) {
       <RefreshCw className={`w-3.5 h-3.5 ${installing ? 'animate-spin' : ''}`} />
       {isZh ? '重启以更新' : 'Restart to Update'}
     </button>
+  )
+}
+
+/**
+ * 「N 个任务正在执行」状态提示
+ *
+ * 之前的会话还在跑、用户又点了新建任务时，让用户知道后台仍有任务在执行：
+ * 计数来自 useRunningThreadIds，点击弹窗列出执行中的会话，点条目跳回该会话。
+ * 没有执行中的任务时不渲染，不占顶部空间。
+ *
+ * 弹层形态与消息中心一致：从提示按钮下方展开的锚定面板（DockPopover 同款
+ * 样式与关闭逻辑），不是居中模态 —— 用户扫一眼列表就该能顺手点走。
+ */
+function RunningTasksIndicator() {
+  const language = useStore((s) => s.language)
+  const closeSidePanelForView = useStore((s) => s.closeSidePanelForView)
+  const setChatVisible = useStore((s) => s.setChatVisible)
+  const currentThreadId = useAgentStore((s) => s.currentThreadId)
+  const runningIds = useRunningThreadIds()
+  const allThreads = useAllThreads()
+  const { switchThread } = useAgentActions()
+  const [open, setOpen] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  // 正在看的这条会话不需要提醒：只有不在当前会话界面上的执行中任务才计数
+  const backgroundIds = runningIds.filter((id) => id !== currentThreadId)
+
+  useClickOutside(() => setOpen(false), open, [panelRef, triggerRef])
+  useEscapeKey(() => setOpen(false), open)
+
+  if (backgroundIds.length === 0) return null
+
+  const isZh = language === 'zh'
+  const label = isZh
+    ? `${backgroundIds.length} 个任务正在执行`
+    : `${backgroundIds.length} task${backgroundIds.length > 1 ? 's' : ''} running`
+
+  /** 从面板进入会话：退出占住主区域的侧边面板，再切到目标会话 */
+  const handleOpenThread = (threadId: string) => {
+    setOpen(false)
+    closeSidePanelForView()
+    setChatVisible(true)
+    void switchThread(threadId)
+  }
+
+  const runningThreads = backgroundIds
+    .map((id) => allThreads.find((th) => th.id === id))
+    .filter((th): th is ChatThread => !!th)
+
+  return (
+    <div className="relative">
+      <HintOverlay content={label} side="bottom" delay={300}>
+        <button
+          ref={triggerRef}
+          onClick={() => setOpen(!open)}
+          className={`flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium rounded-md transition-colors ${
+            open
+              ? 'text-accent bg-accent/15'
+              : 'text-accent hover:text-accent-hover hover:bg-accent/10'
+          }`}
+        >
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <span className="text-xs">{label}</span>
+        </button>
+      </HintOverlay>
+      {open && (
+        <div
+          ref={panelRef}
+          className="absolute top-full right-0 mt-2 origin-top-right animate-slide-down bg-surface/80 backdrop-blur-2xl border border-border/50 rounded-2xl shadow-2xl shadow-black/20 overflow-hidden z-50 w-[300px]"
+        >
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-white/[0.02] shrink-0">
+            <span className="text-[12px] font-bold text-text-muted uppercase tracking-wider">
+              {isZh ? '正在执行的任务' : 'Running Tasks'}
+            </span>
+            <button
+              onClick={() => setOpen(false)}
+              className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-white/10 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="p-2 flex flex-col gap-1 max-h-[280px] overflow-y-auto custom-scrollbar">
+            {runningThreads.map((thread) => (
+              <button
+                key={thread.id}
+                onClick={() => handleOpenThread(thread.id)}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-text-primary/[0.06] transition-colors text-left"
+              >
+                <Loader2 className="w-3.5 h-3.5 shrink-0 text-accent animate-spin" />
+                <span className="flex-1 min-w-0 text-[13px] text-text-primary truncate">
+                  {getThreadDisplayTitle(thread)}
+                </span>
+                <span className="shrink-0 text-[11px] text-accent">{isZh ? '执行中' : 'Running'}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -245,6 +348,8 @@ export default function AppTitleBar() {
                   </button>
                 </HintOverlay>
               )}
+              {/* 正在执行的任务提示：新建任务按钮前，点击查看后台仍在跑的会话 */}
+              <RunningTasksIndicator />
               {!showWelcomePage && (
                 <HintOverlay content={t('layout.newchat', language as Language)} side="bottom" delay={300}>
                   <button

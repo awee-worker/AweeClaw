@@ -120,6 +120,39 @@ export function useAllThreads(): ChatThread[] {
   })
 }
 
+/**
+ * 正在执行的用户会话 id 列表
+ *
+ * 「执行中」＝ streamState 处于流式回复或工具调用阶段（idle / error 都是收尾态）。
+ * 过滤规则与 useAllThreads 保持一致：只统计用户可见的会话，后台工作线程
+ * （计划任务、场景内 AI 运行）不算用户的任务。
+ *
+ * 返回值经浅比较去重订阅：流式期间 thread 对象高频重建，但 id 数组内容不变
+ * 时不会触发下游重渲染。
+ */
+export function useRunningThreadIds(): string[] {
+  const currentUserId = useStore((s) => s.cloudUser?.id)
+
+  return useAgentStore(useShallow((state) => {
+    const ids: string[] = []
+    for (const thread of Object.values(state.threads)) {
+      const phase = thread.streamState?.phase
+      if (phase !== 'streaming' && phase !== 'tool_running' && phase !== 'tool_pending') continue
+      if ((thread.origin ?? 'user') !== 'user') continue
+      if (currentUserId ? thread.userId === currentUserId : !thread.userId) {
+        ids.push(thread.id)
+      }
+    }
+    return ids
+  }))
+}
+
+/** 判断某条会话是否正在执行（与 useRunningThreadIds 同一口径） */
+export function isThreadExecuting(thread: Pick<ChatThread, 'streamState'>): boolean {
+  const phase = thread.streamState?.phase
+  return phase === 'streaming' || phase === 'tool_running' || phase === 'tool_pending'
+}
+
 /* ------------------------------------------------------------------ */
 /* 状态清理                                                           */
 /* ------------------------------------------------------------------ */
@@ -127,10 +160,16 @@ export function useAllThreads(): ChatThread[] {
 /** 读取 Agent store 的动作 */
 const getAgentActions = () => useAgentStore.getState()
 
-/** 清空当前会话消息与工具调用日志 */
+/**
+ * 清空当前会话消息与工具调用日志
+ *
+ * 工具日志按线程清理：日志面板是全局共享的，无参清空会把另一条并行会话
+ * 正在跑的工具记录一起抹掉。
+ */
 function clearAgentConversationState(): void {
+  const threadId = useAgentStore.getState().currentThreadId ?? undefined
   getAgentActions().clearMessages()
-  useStore.getState().clearToolCallLogs()
+  useStore.getState().clearToolCallLogs(threadId)
 }
 
 /* ------------------------------------------------------------------ */
@@ -219,6 +258,10 @@ export function useAgentCommands() {
 
   const sendMessage = useCallback(async (content: MessageContent) => {
     const params = sendParamsRef.current
+    // 先锁定目标会话：下面有若干 await（读配置、加载引擎），期间用户可能已经
+    // 点了「新建任务」把 currentThreadId 切走，等真正发送时再取当前会话，
+    // 这条消息就会落到新会话里，而旧会话什么也没收到。
+    const targetThreadId = useAgentStore.getState().currentThreadId ?? undefined
     const agentConfig = getAgentConfig()
     const effectiveConfig = await getEffectiveLLMConfigAsync(params.llmConfig)
     const overrides = buildModeOverrides(params.chatMode, effectiveConfig)
@@ -240,7 +283,7 @@ export function useAgentCommands() {
       explicitRoleId: useStore.getState().agentConfig?.activeExpertId || undefined,
       // 任务计划模式：输入区专家弹窗选中后，本轮强制走 create_task_plan 拆解执行
       taskPlanMode: useStore.getState().agentConfig?.taskPlanMode === true,
-    })
+    }, targetThreadId ? { threadId: targetThreadId } : undefined)
   }, [])
 
   // 中止 / 审批都是「引擎没跑起来就无事可做」的动作，引擎未加载时直接跳过，

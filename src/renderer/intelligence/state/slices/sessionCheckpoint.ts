@@ -26,15 +26,21 @@ export interface CheckpointState {
 }
 
 export interface CheckpointActions {
-  addPendingChange: (change: Omit<PendingChange, 'id' | 'timestamp' | 'status'>) => void
-  acceptAllChanges: () => void
-  undoAllChanges: () => Promise<{ success: boolean; restoredFiles: string[]; errors: string[] }>
-  acceptChange: (filePath: string) => void
-  undoChange: (filePath: string) => Promise<boolean>
-  clearPendingChanges: () => void
-  getPendingChanges: () => PendingChange[]
+  /**
+   * 记录一条待确认变更
+   *
+   * @param threadId 产生变更的线程。后台线程自己执行时也必须显式传入：
+   *   currentThreadId 此时指向用户正在看的另一条会话，靠它推断会把变更记到别人头上。
+   */
+  addPendingChange: (change: Omit<PendingChange, 'id' | 'timestamp' | 'status' | 'threadId'>, threadId?: string) => void
+  acceptAllChanges: (threadId?: string) => void
+  undoAllChanges: (threadId?: string) => Promise<{ success: boolean; restoredFiles: string[]; errors: string[] }>
+  acceptChange: (filePath: string, threadId?: string) => void
+  undoChange: (filePath: string, threadId?: string) => Promise<boolean>
+  clearPendingChanges: (threadId?: string) => void
+  getPendingChanges: (threadId?: string) => PendingChange[]
   /** 清空文件变更历史（切换线程或开始新一轮对话时调用） */
-  clearFileChangeHistory: () => void
+  clearFileChangeHistory: (threadId?: string) => void
 
   createMessageCheckpoint: (
     messageId: string,
@@ -158,6 +164,30 @@ function getCurrentThreadId(state: ThreadSlice): string | null {
   return state.currentThreadId
 }
 
+/**
+ * 变更记录的所属线程
+ *
+ * 未显式指定时回落到当前会话：调用方（AI 工具执行）总是知道自己在哪条线程里，
+ * 这条回落只服务于界面上的手动操作（接受 / 撤销当前会话的变更）。
+ */
+function resolveChangeScope(state: ThreadSlice, threadId?: string): string | undefined {
+  return threadId ?? state.currentThreadId ?? undefined
+}
+
+/** 判断一条变更记录是否属于给定线程 */
+function belongsToThread(entry: { threadId?: string }, scope: string | undefined): boolean {
+  return (entry.threadId ?? undefined) === scope
+}
+
+/** 清除文件变更历史时按线程保留其他人的记录 */
+function omitThreadHistory(
+  history: FileChangeHistoryEntry[],
+  scope: string | undefined,
+): FileChangeHistoryEntry[] {
+  if (!history.some(entry => belongsToThread(entry, scope))) return history
+  return history.filter(entry => !belongsToThread(entry, scope))
+}
+
 export const createCheckpointSlice: StateCreator<
   ThreadSlice & BranchSlice & CheckpointSlice,
   [],
@@ -167,15 +197,21 @@ export const createCheckpointSlice: StateCreator<
   pendingChanges: [],
   fileChangeHistory: [],
 
-  addPendingChange: (change) => {
+  addPendingChange: (change, targetThreadId) => {
     set(state => {
-      // 获取当前流式助手消息 ID，用于关联文件变更历史
-      const threadId = state.currentThreadId
+      // 归属线程：调用方显式指定优先，否则取当前会话
+      const threadId = resolveChangeScope(state, targetThreadId)
+      // 获取该线程流式助手消息 ID，用于关联文件变更历史
       const assistantMessageId = threadId
         ? state.threads[threadId]?.streamState?.assistantId
         : undefined
 
-      const existingIdx = state.pendingChanges.findIndex(c => c.filePath === change.filePath)
+      // 同文件合并必须限定在同一线程内：两条会话先后写同一个文件时，
+      // 各自的撤销快照与新增行数是两份独立记录，合并覆盖会让先写的那条
+      // 丢掉原始快照，撤销时把文件回滚到错误的内容。
+      const existingIdx = state.pendingChanges.findIndex(
+        c => c.filePath === change.filePath && belongsToThread(c, threadId),
+      )
       if (existingIdx !== -1) {
         const existing = state.pendingChanges[existingIdx]
         const updated = [...state.pendingChanges]
@@ -190,9 +226,11 @@ export const createCheckpointSlice: StateCreator<
           linesRemoved: existing.linesRemoved + change.linesRemoved,
         }
 
-        // 同步更新历史记录（同文件累加）
+        // 同步更新历史记录（同文件、同线程累加）
         const historyUpdated = state.fileChangeHistory.map(h =>
-          h.filePath === change.filePath && h.assistantMessageId === assistantMessageId
+          h.filePath === change.filePath &&
+          h.assistantMessageId === assistantMessageId &&
+          belongsToThread(h, threadId)
             ? {
                 ...h,
                 relativePath: change.relativePath,
@@ -215,6 +253,7 @@ export const createCheckpointSlice: StateCreator<
         id: newId,
         status: 'pending',
         timestamp: now,
+        threadId,
       }
 
       // 新增历史记录条目（仅当有关联的 assistantMessageId 时）
@@ -236,16 +275,21 @@ export const createCheckpointSlice: StateCreator<
             status: 'pending',
             assistantMessageId,
             timestamp: now,
+            threadId,
           }
         : null
 
-      // 如果 assistantMessageId 变化了，清除上一轮的历史（只保留当前轮次）
+      // 如果 assistantMessageId 变化了，清除本线程上一轮的历史（只保留当前轮次）
+      // 只处理同一线程内的条目：别条会话的历史与这次写入无关，不能一起丢掉。
       let fileChangeHistory = state.fileChangeHistory
       if (newHistoryEntry) {
-        const lastEntry = state.fileChangeHistory[state.fileChangeHistory.length - 1]
+        const threadEntries = fileChangeHistory.filter(entry => belongsToThread(entry, threadId))
+        const lastEntry = threadEntries[threadEntries.length - 1]
         if (lastEntry && lastEntry.assistantMessageId !== assistantMessageId) {
-          // 新一轮对话，清空旧历史
-          fileChangeHistory = []
+          // 本线程进入新一轮对话，清空本线程旧历史
+          fileChangeHistory = threadEntries.length > 0
+            ? fileChangeHistory.filter(entry => !belongsToThread(entry, threadId))
+            : fileChangeHistory
         }
       }
 
@@ -258,18 +302,24 @@ export const createCheckpointSlice: StateCreator<
     })
   },
 
-  acceptAllChanges: () => {
-    set(state => ({
-      pendingChanges: [],
-      // 历史记录中所有 pending 标记为 accepted
-      fileChangeHistory: state.fileChangeHistory.map(h =>
-        h.status === 'pending' ? { ...h, status: 'accepted' as const } : h,
-      ),
-    }))
+  acceptAllChanges: (targetThreadId) => {
+    set(state => {
+      const scope = resolveChangeScope(state, targetThreadId)
+      return {
+        pendingChanges: state.pendingChanges.filter(change => !belongsToThread(change, scope)),
+        // 历史记录中本线程的 pending 标记为 accepted，其他线程保持不变
+        fileChangeHistory: state.fileChangeHistory.map(h =>
+          h.status === 'pending' && belongsToThread(h, scope)
+            ? { ...h, status: 'accepted' as const }
+            : h,
+        ),
+      }
+    })
   },
 
-  undoAllChanges: async () => {
-    const changes = get().pendingChanges
+  undoAllChanges: async (targetThreadId) => {
+    const scope = resolveChangeScope(get(), targetThreadId)
+    const changes = get().pendingChanges.filter(change => belongsToThread(change, scope))
     const restoredFiles: string[] = []
     const errors: string[] = []
 
@@ -297,30 +347,40 @@ export const createCheckpointSlice: StateCreator<
     }
 
     set(state => ({
-      pendingChanges: [],
-      // 历史记录中所有 pending 标记为 rejected
+      pendingChanges: state.pendingChanges.filter(change => !belongsToThread(change, scope)),
+      // 历史记录中本线程的 pending 标记为 rejected，其他线程保持不变
       fileChangeHistory: state.fileChangeHistory.map(h =>
-        h.status === 'pending' ? { ...h, status: 'rejected' as const } : h,
+        h.status === 'pending' && belongsToThread(h, scope)
+          ? { ...h, status: 'rejected' as const }
+          : h,
       ),
     }))
 
     return { success: errors.length === 0, restoredFiles, errors }
   },
 
-  acceptChange: (filePath) => {
-    set(state => ({
-      pendingChanges: state.pendingChanges.filter(change => change.filePath !== filePath),
-      // 历史记录中标记为 accepted（不删除）
-      fileChangeHistory: state.fileChangeHistory.map(h =>
-        h.filePath === filePath && h.status === 'pending'
-          ? { ...h, status: 'accepted' as const }
-          : h,
-      ),
-    }))
+  acceptChange: (filePath, targetThreadId) => {
+    set(state => {
+      const scope = resolveChangeScope(state, targetThreadId)
+      return {
+        pendingChanges: state.pendingChanges.filter(
+          change => !(change.filePath === filePath && belongsToThread(change, scope)),
+        ),
+        // 历史记录中标记为 accepted（不删除）
+        fileChangeHistory: state.fileChangeHistory.map(h =>
+          h.filePath === filePath && h.status === 'pending' && belongsToThread(h, scope)
+            ? { ...h, status: 'accepted' as const }
+            : h,
+        ),
+      }
+    })
   },
 
-  undoChange: async (filePath) => {
-    const change = get().pendingChanges.find(item => item.filePath === filePath)
+  undoChange: async (filePath, targetThreadId) => {
+    const scope = resolveChangeScope(get(), targetThreadId)
+    const change = get().pendingChanges.find(
+      item => item.filePath === filePath && belongsToThread(item, scope),
+    )
     if (!change) return false
 
     try {
@@ -334,10 +394,12 @@ export const createCheckpointSlice: StateCreator<
       }
 
       set(state => ({
-        pendingChanges: state.pendingChanges.filter(item => item.filePath !== filePath),
+        pendingChanges: state.pendingChanges.filter(
+          item => !(item.filePath === filePath && belongsToThread(item, scope)),
+        ),
         // 历史记录中标记为 rejected（不删除）
         fileChangeHistory: state.fileChangeHistory.map(h =>
-          h.filePath === filePath && h.status === 'pending'
+          h.filePath === filePath && h.status === 'pending' && belongsToThread(h, scope)
             ? { ...h, status: 'rejected' as const }
             : h,
         ),
@@ -348,15 +410,29 @@ export const createCheckpointSlice: StateCreator<
     }
   },
 
-  clearPendingChanges: () => {
-    set({ pendingChanges: [] })
+  clearPendingChanges: (targetThreadId) => {
+    set(state => {
+      const scope = resolveChangeScope(state, targetThreadId)
+      return {
+        pendingChanges: state.pendingChanges.filter(change => !belongsToThread(change, scope)),
+      }
+    })
   },
 
-  clearFileChangeHistory: () => {
-    set({ fileChangeHistory: [] })
+  clearFileChangeHistory: (targetThreadId) => {
+    set(state => {
+      const scope = resolveChangeScope(state, targetThreadId)
+      return {
+        fileChangeHistory: omitThreadHistory(state.fileChangeHistory, scope),
+      }
+    })
   },
 
-  getPendingChanges: () => get().pendingChanges,
+  getPendingChanges: (targetThreadId) => {
+    const state = get()
+    const scope = resolveChangeScope(state, targetThreadId)
+    return state.pendingChanges.filter(change => belongsToThread(change, scope))
+  },
 
   createMessageCheckpoint: async (messageId, description, images, contextItems) => {
     const threadId = getCurrentThreadId(get())
@@ -520,7 +596,10 @@ export const createCheckpointSlice: StateCreator<
       }
     }
 
+    // 只收本线程尚未确认的变更：其他会话并行执行时正在写的文件与这次回滚无关，
+    // 把它们一并回滚到旧内容会直接抹掉别人的成果。
     for (const change of state.pendingChanges) {
+      if (!belongsToThread(change, threadId)) continue
       if (!(change.filePath in filesToRestore)) {
         filesToRestore[change.filePath] = change.snapshot
       }
@@ -566,7 +645,10 @@ export const createCheckpointSlice: StateCreator<
             lastModified: Date.now(),
           },
         },
-        pendingChanges: [],
+        // 只清本线程的待确认变更，其他会话的记录留给它们自己处理
+        pendingChanges: currentState.pendingChanges.filter(
+          change => !belongsToThread(change, threadId),
+        ),
       }
     })
 

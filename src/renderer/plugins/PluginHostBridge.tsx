@@ -142,11 +142,14 @@ export function PluginHostBridge() {
    * 压缩成阶段事件往外发。同一时刻只跟踪最后一次插件发起的运行：插件面板是
    * 串行的，后发起的请求本就该覆盖前一个的状态显示。
    */
-  const runRef = useRef<{
+   const runRef = useRef<{
     pluginKey: string
     /** 本次运行所在线程：状态订阅与结果读取都指向它，而不是主聊天线程 */
     threadId: string
     started: boolean
+    /** 消息真正开始发送前 subscribe 回调不判定结束：abort 残留时 streamState 可能
+     *  短暂经过 tool_running，若此时误设 started=true，abort 完成后立刻 stopTracking('done') */
+    sending: boolean
     lastTool?: string
     /** 已抛给面板的提问指纹：同一条消息重复广播会让面板闪一下再重置 */
     interactiveKey?: string
@@ -302,7 +305,7 @@ export function PluginHostBridge() {
       // 上一个运行还没收尾就来了新请求：按已完成收尾，避免插件面板卡在旧状态
       if (runRef.current) stopTracking('done')
 
-      const run: NonNullable<typeof runRef.current> = { pluginKey, threadId, started: false }
+       const run: NonNullable<typeof runRef.current> = { pluginKey, threadId, started: false, sending: true }
       runRef.current = run
       lastThreadByPluginRef.current.set(pluginKey, threadId)
       emitChatState({
@@ -324,7 +327,9 @@ export function PluginHostBridge() {
         forwardInteractive(thread?.messages)
 
         if (!busy) {
-          if (run.started) stopTracking(phase === 'error' ? 'error' : 'done')
+          // sending=true 表示消息还在投递中（abort 残留 / sendToThread 尚未开始流式），
+          // 此时 idle 不代表完成：不判定结束，避免误广播 done 让面板闪一下「已生成」
+          if (run.started && !run.sending) stopTracking(phase === 'error' ? 'error' : 'done')
           return
         }
 
@@ -378,31 +383,34 @@ export function PluginHostBridge() {
         { interactive: { ...interactive, selectedIds: detail.selectedIds } } as never,
         threadId,
       )
-      // 续发属于同一轮「做原型」的后续，重新挂上跟踪，面板才会显示新一轮进度
-      beginRun(detail.pluginKey, threadId)
+       // 续发属于同一轮「做原型」的后续，重新挂上跟踪，面板才会显示新一轮进度
+       beginRun(detail.pluginKey, threadId)
 
-      // 提问收尾与用户点击之间存在极短的空窗，此时线程可能还挂在上一轮上：
-      // 补一次重试，避免选择被「Thread already running」挡掉后无声消失
-      const dispatch = (attempt: number): void => {
-        void (async () => {
-          // 提问那一轮结束后线程通常已经空闲，但模型若在收尾阶段挂住，锁会一直留着；
-          // 与首次生成同一条处理：先清残留再续发，否则用户的回答会被静默丢弃
-          await releaseStaleRun(threadId)
-          await sendToThread(content, threadId, {
-            silent: true,
-            chatMode: 'agent',
-            // 沿用本次生成选的模型：微调是同一件事的延续
-            llmOverride: lastModelByPluginRef.current.get(detail.pluginKey),
-          })
-        })().catch((err: unknown) => {
-          if (attempt === 0) {
-            setTimeout(() => dispatch(1), 800)
-            return
-          }
-          logger.system.warn('[PluginHostBridge] scenario answer dispatch failed:', err)
-        })
-      }
-      dispatch(0)
+       // 提问收尾与用户点击之间存在极短的空窗，此时线程可能还挂在上一轮上：
+       // 补一次重试，避免选择被「Thread already running」挡掉后无声消失
+       const dispatch = (attempt: number): void => {
+         void (async () => {
+           // 提问那一轮结束后线程通常已经空闲，但模型若在收尾阶段挂住，锁会一直留着；
+           // 与首次生成同一条处理：先清残留再续发，否则用户的回答会被静默丢弃
+           const run = runRef.current
+           await releaseStaleRun(threadId)
+           await sendToThread(content, threadId, {
+             silent: true,
+             chatMode: 'agent',
+             // 沿用本次生成选的模型：微调是同一件事的延续
+             llmOverride: lastModelByPluginRef.current.get(detail.pluginKey),
+           })
+           // 投递完成：subscribe 回调从现在开始判定结束，否则 idle 会被误读为「已完成」
+           if (run && runRef.current === run) run.sending = false
+         })().catch((err: unknown) => {
+           if (attempt === 0) {
+             setTimeout(() => dispatch(1), 800)
+             return
+           }
+           logger.system.warn('[PluginHostBridge] scenario answer dispatch failed:', err)
+         })
+       }
+       dispatch(0)
     }
 
 
@@ -437,6 +445,8 @@ export function PluginHostBridge() {
           chatMode: 'agent',
           llmOverride: detail.model,
         })
+        // 投递完成：subscribe 回调从现在开始判定结束，否则 idle 会被误读为「已完成」
+        if (runRef.current === run) run.sending = false
       } catch (err) {
         logger.system.error(
           `[PluginHostBridge] scenario run failed (plugin=${detail.pluginKey}, thread=${threadId}):`,

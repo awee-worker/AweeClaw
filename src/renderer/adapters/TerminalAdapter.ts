@@ -36,6 +36,14 @@ function summarizeCommand(command: string): string {
   return normalized.length > 120 ? `${normalized.slice(0, 120)}…` : normalized;
 }
 
+/**
+ * 未指定占用方时的 Agent 终端分组名。
+ *
+ * 命令行调用（工具执行）会带上自己的会话线程作为占用方；不带线程的场景
+ * （如场景工具、单次脚本）共用这一组，行为与改造前一致。
+ */
+const DEFAULT_AGENT_TERMINAL_OWNER = '__default__';
+
 // ===== 类型定义 =====
 
 export interface TerminalInstance {
@@ -320,9 +328,18 @@ export class TerminalManagerClass {
     activeId: null as string | null,
   };
 
-  /** Agent 专属终端 ID（跨 tool call 复用） */
-  private agentTerminalId: string | null = null;
-  private agentTerminalCreating: Promise<string> | null = null;
+  /**
+   * Agent 终端按占用方分组（占用方 = 会话线程，缺省为 DEFAULT_AGENT_TERMINAL_OWNER）
+   *
+   * 同一线程跨 tool call 复用自己的终端；不同线程各用各的，避免并发执行时
+   * 一方拿到另一方正忙的终端 —— 复用逻辑会向该终端发送 Ctrl+C 清场，
+   * 相当于直接打断了另一条会话正在跑的命令。
+   */
+  private agentTerminalIds = new Map<string, string>()
+  /** 终端 → 占用方。终端存活期间不变，用于按线程回收命令与终端 */
+  private agentTerminalOwners = new Map<string, string>()
+  /** 正在创建中的 Agent 终端（按占用方去重） */
+  private agentTerminalCreating = new Map<string, Promise<string>>()
 
   // xterm 实例管理
   private xtermInstances = new Map<string, XTermInstance>();
@@ -1052,9 +1069,11 @@ export class TerminalManagerClass {
       this.xtermInstances.delete(id);
     }
 
-    if (this.agentTerminalId === id) {
-      this.agentTerminalId = null
+    // 终端关闭后解除它在各占用方上的绑定，并把归属关系一并清掉
+    for (const [ownerKey, terminalId] of this.agentTerminalIds) {
+      if (terminalId === id) this.agentTerminalIds.delete(ownerKey)
     }
+    this.agentTerminalOwners.delete(id)
 
     this.outputBuffers.delete(id);
     this.ptyReady.delete(id);
@@ -1089,9 +1108,14 @@ export class TerminalManagerClass {
    *    只放行 source !== 'agent' 的终端，即用户手动启动的长驻服务（dev server / watch），
    *    交由 stop_terminal 或应用退出统一回收。
    */
-  abortActiveAgentCommands(): void {
+  abortActiveAgentCommands(ownerKey?: string): void {
+    // 只回收归属该占用方（会话线程）的终端；未指定时按旧行为处理全部 Agent 终端
+    const owns = (terminalId: string): boolean =>
+      ownerKey === undefined || this.agentTerminalOwners.get(terminalId) === ownerKey
+
     // 1. 中断活跃命令并结束其执行 Promise
     for (const [termId, execution] of this.activeExecutions.entries()) {
+      if (!owns(termId)) continue
       try {
         this.writeToTerminal(termId, '\x03')
       } catch {
@@ -1105,6 +1129,7 @@ export class TerminalManagerClass {
     // 2. 关闭一次性命令终端；AI 启动的后台长进程一并回收，避免会话结束后残留占满 CPU
     for (const terminal of [...this.state.terminals]) {
       if (!terminal.isAgent) continue
+      if (!owns(terminal.id)) continue
 
       const info = this.getTerminalCommandState(terminal.id)
       const detachedSession =
@@ -1197,12 +1222,19 @@ export class TerminalManagerClass {
    * 2. 终端被卡住的命令占用（running 但非 detached）→ 发送 Ctrl+C 中断后复用
    * 3. 终端被长进程占用（detached）→ 创建新终端（长进程不应被打断）
    */
-  async getOrCreateAgentTerminal(cwd: string, shell?: string): Promise<string> {
+  async getOrCreateAgentTerminal(
+    cwd: string,
+    shell?: string,
+    ownerKey: string = DEFAULT_AGENT_TERMINAL_OWNER,
+  ): Promise<string> {
+    const currentId = this.agentTerminalIds.get(ownerKey) ?? null
+
     // 检查现有 agent 终端是否仍然存活
-    if (this.agentTerminalId) {
-      const exists = this.state.terminals.find(t => t.id === this.agentTerminalId)
+    if (currentId) {
+      const agentTerminalId = currentId
+      const exists = this.state.terminals.find(t => t.id === agentTerminalId)
       if (exists) {
-        const commandInfo = this.getTerminalCommandState(this.agentTerminalId)
+        const commandInfo = this.getTerminalCommandState(agentTerminalId)
         const occupiedByDetachedWork =
           commandInfo.current?.status === 'detached' ||
           commandInfo.last?.status === 'detached'
@@ -1213,7 +1245,7 @@ export class TerminalManagerClass {
         // shell 已退出（例如命令超时/中止后被强制终止）→ 终端不可复用，重建
         const lastStatus = commandInfo.last?.status
         if (lastStatus === 'shell_exited') {
-          this.agentTerminalId = null
+          this.agentTerminalIds.delete(ownerKey)
         }
         // 空闲终端：直接复用
         else if (!occupiedByDetachedWork && !occupiedByActiveCommand) {
@@ -1227,57 +1259,63 @@ export class TerminalManagerClass {
             lastStatus === 'failed' ||
             lastStatus === 'cancelled'
           if (lastAbnormal) {
-            this.interruptStaleAgentCommand(this.agentTerminalId)
+            this.interruptStaleAgentCommand(agentTerminalId)
           }
-          return this.agentTerminalId
+          return agentTerminalId
         }
 
         // 长进程（detached）正确占用终端：不能中断，创建新终端
         else if (occupiedByDetachedWork) {
-          this.agentTerminalId = null
+          this.agentTerminalIds.delete(ownerKey)
         } else {
           // 命令卡在 running 状态（sentinel 失败等导致状态残留）
           // 发送 Ctrl+C 中断卡住的命令，清理状态后复用终端
-          // 避免每次卡住都创建新标签
-          this.interruptStaleAgentCommand(this.agentTerminalId)
-          return this.agentTerminalId
+          // 避免每次卡住都创建新标签。
+          // 这里只会中断「本占用方」自己的终端：不同会话的执行不会互踩。
+          this.interruptStaleAgentCommand(agentTerminalId)
+          return agentTerminalId
         }
       }
       // 已被关闭，重置
       else {
-        this.agentTerminalId = null
+        this.agentTerminalIds.delete(ownerKey)
       }
     }
 
-    // 并发锁：防止快速连续的 run_command 创建多个 Agent 终端
-    if (this.agentTerminalCreating) {
-      return this.agentTerminalCreating
+    // 并发锁：防止同一占用方快速连续调用时创建多个 Agent 终端
+    const creating = this.agentTerminalCreating.get(ownerKey)
+    if (creating) {
+      return creating
     }
 
-    this.agentTerminalCreating = this.createTerminal({
+    const creation = this.createTerminal({
       name: this.getNextAgentTerminalName(),
       cwd,
       shell,
       isAgent: true,
     }).then(id => {
-      this.agentTerminalId = id
+      this.agentTerminalIds.set(ownerKey, id)
+      this.agentTerminalOwners.set(id, ownerKey)
       this.cleanupIdleAgentTerminals()
-      this.agentTerminalCreating = null
+      this.agentTerminalCreating.delete(ownerKey)
       return id
     }).catch(err => {
-      this.agentTerminalCreating = null
+      this.agentTerminalCreating.delete(ownerKey)
       throw err
     })
 
-    return this.agentTerminalCreating
+    this.agentTerminalCreating.set(ownerKey, creation)
+    return creation
   }
 
+
   /**
-   * 释放当前 Agent 终端绑定（不关闭终端）。
-   * 长进程占用终端后调用，使下一次 getOrCreateAgentTerminal() 创建新终端。
+   * 释放 Agent 终端绑定（不关闭终端）。
+   * 长进程占用终端后调用，使该占用方下一次 getOrCreateAgentTerminal() 创建新终端。
+   * 终端本身的归属关系保留在 agentTerminalOwners 中，停止该会话时仍能按线程回收。
    */
-  releaseAgentTerminal() {
-    this.agentTerminalId = null
+  releaseAgentTerminal(ownerKey: string = DEFAULT_AGENT_TERMINAL_OWNER) {
+    this.agentTerminalIds.delete(ownerKey)
   }
 
   /**
@@ -1332,9 +1370,10 @@ export class TerminalManagerClass {
   }
 
   private cleanupIdleAgentTerminals(): void {
+    const boundAgentTerminalIds = new Set(this.agentTerminalIds.values())
     const idleAgentTerminals = this.state.terminals
       .filter(terminal => terminal.isAgent)
-      .filter(terminal => terminal.id !== this.agentTerminalId)
+      .filter(terminal => !boundAgentTerminalIds.has(terminal.id))
       .filter(terminal => terminal.id !== this.state.activeId)
       .filter((terminal) => {
         const commandInfo = this.getTerminalCommandState(terminal.id)
@@ -1773,8 +1812,9 @@ export class TerminalManagerClass {
       this.closeTerminal(terminal.id);
     }
 
-    this.agentTerminalId = null
-    this.agentTerminalCreating = null
+    this.agentTerminalIds.clear()
+    this.agentTerminalOwners.clear()
+    this.agentTerminalCreating.clear()
     this.currentCommandSessions.clear()
     this.lastCommandSessions.clear()
     this.activeExecutions.clear()

@@ -1528,9 +1528,9 @@ export async function executeAgentCycle(
             newContent: typeof meta.newContent === 'string' ? meta.newContent : null,
             linesAdded: (meta.linesAdded as number) || 0,
             linesRemoved: (meta.linesRemoved as number) || 0,
-          })
+          }, threadId)
           // 立即自动接受（从 pendingChanges 移除，保留在 fileChangeHistory 中标记为 accepted）
-          store.acceptChange(meta.filePath)
+          store.acceptChange(meta.filePath, threadId)
           // 同步清除编辑器的 diff 状态（若有该文件的 diff 视图打开）
           void composerService.acceptChange(meta.filePath)
           continue
@@ -1550,7 +1550,7 @@ export async function executeAgentCycle(
           newContent: typeof meta.newContent === 'string' ? meta.newContent : null,
           linesAdded: (meta.linesAdded as number) || 0,
           linesRemoved: (meta.linesRemoved as number) || 0,
-        })
+        }, threadId)
       }
     }
 

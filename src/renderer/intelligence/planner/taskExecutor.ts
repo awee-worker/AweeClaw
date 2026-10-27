@@ -1304,7 +1304,7 @@ function buildGraphExecutionContext(
                     statusText: `等待确认: ${name}`,
                 })
 
-                const approved = await approvalService.waitForApproval(`${requestId}_${approvalToolId}`)
+                const approved = await approvalService.waitForApproval(`${requestId}_${approvalToolId}`, threadId)
 
                 threadStore.beginToolExecuting()
 

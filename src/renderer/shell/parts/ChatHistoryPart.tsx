@@ -13,14 +13,14 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Edit2, MessageSquare, MoreHorizontal, PackageOpen, Trash2 } from 'lucide-react'
+import { Edit2, Loader2, MessageSquare, MoreHorizontal, PackageOpen, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { BRAND } from '@shared/brand'
 import { t, type Language } from '@renderer/i18n'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
-import { useAgentActions, useAllThreads } from '@hooks/useAgent'
+import { useAgentActions, useAllThreads, isThreadExecuting } from '@hooks/useAgent'
 import { getMessageText, getThreadDisplayTitle } from '@intelligence/providerTypes'
 import type { ChatThread } from '@intelligence/providerTypes'
 import { HintOverlay } from '@components/ui/HintOverlay'
@@ -34,6 +34,7 @@ const COLLAPSED_LIMIT = 5
 function ThreadListItem({
   thread,
   isActive,
+  running,
   language,
   onSelect,
   onDelete,
@@ -41,6 +42,7 @@ function ThreadListItem({
 }: {
   thread: ChatThread
   isActive: boolean
+  running: boolean
   language: Language
   onSelect: () => void
   onDelete: () => void
@@ -85,7 +87,12 @@ function ThreadListItem({
       } ${menuOpen ? 'z-30 bg-surface-hover/50' : 'z-0'}`}
       onClick={onSelect}
     >
-      <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-50" strokeWidth={1.5} />
+      {/* 正在执行的会话把入口图标换成旋转指示，用户切走后也能看出这条还在跑 */}
+      {running ? (
+        <Loader2 className="w-3.5 h-3.5 shrink-0 text-accent animate-spin" strokeWidth={1.5} />
+      ) : (
+        <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-50" strokeWidth={1.5} />
+      )}
       <div className="flex-1 min-w-0 group-hover:pr-5 transition-all">
         <div className="flex items-center gap-1.5 min-w-0">
           <div className="text-[13px] font-medium truncate leading-snug" title={title}>{title}</div>
@@ -236,7 +243,11 @@ export function ChatHistoryPart({ expanded }: ChatHistoryPartProps) {
                       : 'text-text-muted hover:text-text-primary hover:bg-surface-hover/50'
                   }`}
                 >
-                  <MessageSquare className="w-3.5 h-3.5 opacity-50" strokeWidth={1.5} />
+                  {isThreadExecuting(thread) ? (
+                    <Loader2 className="w-3.5 h-3.5 text-accent animate-spin" strokeWidth={1.5} />
+                  ) : (
+                    <MessageSquare className="w-3.5 h-3.5 opacity-50" strokeWidth={1.5} />
+                  )}
                   {thread.mountedTask && (
                     <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent" />
                   )}
@@ -284,6 +295,7 @@ export function ChatHistoryPart({ expanded }: ChatHistoryPartProps) {
                   key={thread.id}
                   thread={thread}
                   isActive={threadHighlightEnabled && currentThreadId === thread.id}
+                  running={isThreadExecuting(thread)}
                   language={language}
                   onSelect={() => handleSelectThread(thread.id)}
                   onDelete={() => deleteThread(thread.id)}

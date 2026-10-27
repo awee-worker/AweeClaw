@@ -24,6 +24,13 @@ export interface PendingChange extends Omit<FileChangeDescriptor, 'oldContent'> 
   status: 'pending' | 'accepted' | 'rejected'
   snapshot: FileSnapshot
   timestamp: number
+  /**
+   * 产生这条变更的会话线程。
+   *
+   * 变更条只服务单条会话：多条会话并行执行时，任何一条都不该看到、也不该
+   * 接受 / 撤销别人写下的文件变更。历史数据没有该字段，按「无归属」处理。
+   */
+  threadId?: string
 }
 
 /**
@@ -38,6 +45,8 @@ export interface FileChangeHistoryEntry extends Omit<FileChangeDescriptor, 'oldC
   /** 关联的助手消息 ID，用于按消息筛选 */
   assistantMessageId: string
   timestamp: number
+  /** 产生这条记录的会话线程，用于把变更历史限制在所属会话内 */
+  threadId?: string
 }
 
 export interface MessageCheckpoint {

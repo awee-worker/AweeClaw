@@ -703,9 +703,34 @@ export const selectIsAwaitingApproval = (state: AgentStore) => {
     return streamState.phase === 'tool_pending'
 }
 
-export const selectPendingChanges = (state: AgentStore) => state.pendingChanges
+/**
+ * 当前会话的待确认文件变更
+ *
+ * 变更记录存在一个全局数组里（多条会话可能同时各有若干条），但界面只应展示
+ * 当前会话自己的那些：别条会话的变更属于别人的撤销点，混进来既会误导用户，
+ * 也会让「全部接受」误伤别人的文件。结果按 (线程, 数组引用) 做引用缓存 ——
+ * 流式期间 pendingChanges 频繁重建，缓存命中能挡住下游成片的无效重渲染。
+ */
+let lastPendingChangesThreadId: string | null = null
+let lastPendingChangesSource: AgentStore['pendingChanges'] | null = null
+let lastPendingChangesResult: AgentStore['pendingChanges'] = []
 
-export const selectHasPendingChanges = (state: AgentStore) => state.pendingChanges.length > 0
+export const selectPendingChanges = (state: AgentStore) => {
+    const scope = state.currentThreadId ?? undefined
+    const source = state.pendingChanges
+
+    if (lastPendingChangesThreadId === state.currentThreadId && lastPendingChangesSource === source) {
+        return lastPendingChangesResult
+    }
+
+    const filtered = source.filter(change => (change.threadId ?? undefined) === scope)
+    lastPendingChangesThreadId = state.currentThreadId
+    lastPendingChangesSource = source
+    lastPendingChangesResult = filtered
+    return filtered
+}
+
+export const selectHasPendingChanges = (state: AgentStore) => selectPendingChanges(state).length > 0
 
 // 消息检查点缓存
 let lastCheckpointThreadId: string | null = null

@@ -616,15 +616,24 @@ export class AgentClass {
     const targetThreadId = threadId || store.currentThreadId
 
     // 收集需要中止的线程 ID 列表
-    // 优先中止指定线程；若未找到则全量中止（兜底，确保停止按钮始终生效）
+    //
+    // 只中止目标线程。曾经的兜底是「目标线程不在 runningTasks 里就全量中止」，
+    // 在多任务并行时后果很严重：用户停在一条已完成的会话上点停止，会把另一条
+    // 正在后台执行的会话一并杀掉（连它的终端命令、待批工具都被清掉）。
+    // 现在只有「根本没有目标线程」（currentThreadId 为空且未显式指定）时，
+    // 才回到全量中止 —— 那种情况下没有别的会话可以误伤。
     const threadIdsToAbort: string[] = []
-    if (targetThreadId && this.runningTasks.has(targetThreadId)) {
-      threadIdsToAbort.push(targetThreadId)
+    if (targetThreadId) {
+      if (this.runningTasks.has(targetThreadId)) {
+        threadIdsToAbort.push(targetThreadId)
+      } else {
+        logger.agent.warn(
+          `[Agent.abort] Thread "${targetThreadId}" is not running (running=${this.runningTasks.size}), nothing to abort for it`,
+        )
+      }
     } else if (this.runningTasks.size > 0) {
-      // ⚠️ 兜底机制：指定线程未在 runningTasks 中找到（可能因 currentThreadId 闭包过期、
-      //   多窗口线程 ID 不一致等），此时中止所有运行中的任务，确保用户点击停止后 AI 真正停下
       logger.agent.warn(
-        `[Agent.abort] Thread "${targetThreadId}" not found in runningTasks (size=${this.runningTasks.size}), aborting all as fallback`,
+        `[Agent.abort] No target thread, aborting all running tasks (size=${this.runningTasks.size})`,
       )
       threadIdsToAbort.push(...this.runningTasks.keys())
     }
@@ -681,24 +690,47 @@ export class AgentClass {
     // 兜底：仍未取到 requestId 时（例如 currentThreadId 闭包过期），只中止
     // 「本窗口 Agent 会话」登记过的请求，确保停止按钮依然生效。
     // ⚠️ 此处不再调用无参 api.llm.abort()。
-    if (abortedRequestIds.length === 0) {
+    // ⚠️ 且仅在确实没有可定位的运行中任务时才启用：否则一个不属于任何运行中
+    //    线程的停止请求会把其他并发会话的请求一起中断。
+    if (
+      abortedRequestIds.length === 0 &&
+      threadIdsToAbort.length === 0 &&
+      this.runningTasks.size === 0
+    ) {
       for (const id of this.agentRequestIds) {
         api.llm.abort(id)
       }
       this.agentRequestIds.clear()
     }
 
-    // 中断所有正在执行的 Agent 终端命令（如 npm install 等长命令）
-    // 确保用户点击"结束对话"后，后台 shell 命令不再继续执行
+    // 中断被中止线程正在执行的 Agent 终端命令（如 npm install 等长命令）
+    // 确保用户点击"结束对话"后，后台 shell 命令不再继续执行。
+    // 按线程回收：另一个并行会话的命令属于它自己，不能被这次停止连带杀掉。
     try {
-      terminalManager.abortActiveAgentCommands()
+      if (threadIdsToAbort.length > 0) {
+        for (const tid of threadIdsToAbort) {
+          terminalManager.abortActiveAgentCommands(tid)
+        }
+      } else if (this.runningTasks.size === 0) {
+        terminalManager.abortActiveAgentCommands()
+      }
     } catch (err) {
       logger.agent.warn('[Agent.abort] Failed to abort active terminal commands:', err)
     }
 
+    // 工作台会话是单例：只有它确实属于被中止的线程时才标记失败，
+    // 否则在 A 会话点停止会顺手把 B 会话正在跑的工作台任务判为失败
     const globalStore = useStore.getState()
     const activeSession = globalStore.activeWorkspaceSession
-    if (activeSession && activeSession.status !== 'completed' && activeSession.status !== 'failed') {
+    const activeSessionBelongsToAborted = activeSession
+      ? threadIdsToAbort.length === 0 || threadIdsToAbort.includes(activeSession.threadId)
+      : false
+    if (
+      activeSession &&
+      activeSessionBelongsToAborted &&
+      activeSession.status !== 'completed' &&
+      activeSession.status !== 'failed'
+    ) {
       globalStore.updateWorkspaceSession({
         status: 'failed',
         currentAgentId: undefined,
@@ -825,12 +857,14 @@ export class AgentClass {
 
   approveAll(): void {
     const state = useAgentStore.getState()
+    const threadId = state.currentThreadId ?? undefined
     const currentThread = state.currentThreadId ? state.threads[state.currentThreadId] : undefined
     const requestId = currentThread?.streamState?.requestId || currentThread?.executionMeta?.requestId
     const pendingToolCalls = currentThread?.streamState?.pendingApprovalToolCalls
 
     if (!pendingToolCalls || pendingToolCalls.length === 0) {
-      approvalService.approveAll()
+      // 兜底也必须限定在当前会话：队列里可能排着另一条并行会话的待批工具
+      approvalService.approveAll(threadId)
       return
     }
 
@@ -842,12 +876,14 @@ export class AgentClass {
 
   rejectAll(): void {
     const state = useAgentStore.getState()
+    const threadId = state.currentThreadId ?? undefined
     const currentThread = state.currentThreadId ? state.threads[state.currentThreadId] : undefined
     const requestId = currentThread?.streamState?.requestId || currentThread?.executionMeta?.requestId
     const pendingToolCalls = currentThread?.streamState?.pendingApprovalToolCalls
 
     if (!pendingToolCalls || pendingToolCalls.length === 0) {
-      approvalService.rejectAll()
+      // 同 approveAll：只拒绝当前会话排队中的工具
+      approvalService.rejectAll(threadId)
       return
     }
 

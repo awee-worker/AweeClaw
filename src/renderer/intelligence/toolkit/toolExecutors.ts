@@ -2858,13 +2858,14 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
         }
 
-        // 注册中止监听器：信号触发时调用 terminalManager.abortActiveAgentCommands()
-        // 作为 IntelligenceCore.abort() 流程的兜底，确保终端命令被中断
+        // 注册中止监听器：信号触发时回收「本会话」的 Agent 终端
+        // 作为 IntelligenceCore.abort() 流程的兜底，确保终端命令被中断；
+        // 传入线程归属，避免中断本会话时连带杀掉另一条并行会话正在跑的命令
         let abortListener: (() => void) | null = null
         if (abortSignal) {
             abortListener = () => {
                 try {
-                    terminalManager.abortActiveAgentCommands()
+                    terminalManager.abortActiveAgentCommands(ctx.threadId ?? undefined)
                 } catch (err) {
                     logger.agent.warn('[run_command] Abort listener failed to cancel terminal commands:', err)
                 }
@@ -2997,9 +2998,14 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             // 用户可通过命令容器右侧的">_终端"按钮手动打开终端查看当前命令。
             // 长进程也不再自动弹出面板（通过 ToolCallCard 的"运行中"状态和终端按钮提示用户）
 
-            // 获取或复用 Agent 专属终端（初始 cwd 用工作空间根目录，避免反复改变终端目录）
+            // 获取或复用本线程的 Agent 终端（初始 cwd 用工作空间根目录，避免反复改变终端目录）
+            // 第三参是占用方：同一会话跨 tool call 复用，不同会话各用各的，
+            // 否则并行执行时后发起的命令会去抢占并打断前一条会话正在跑的命令
+            const termOwner = ctx.threadId ?? undefined
             const termId = await terminalManager.getOrCreateAgentTerminal(
-                ctx.workspacePath || '/'
+                ctx.workspacePath || '/',
+                undefined,
+                termOwner,
             )
 
             // 不自动激活终端 tab：静默执行，避免打断用户当前关注的终端
@@ -3036,9 +3042,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                     'agent',
                 )
 
-                // 长进程占用了当前终端的 shell，释放 agentTerminalId
+                // 长进程占用了当前终端的 shell，释放本线程的终端绑定
                 // 使下一次 run_command 自动创建新终端，避免命令被 stdin 吞掉
-                terminalManager.releaseAgentTerminal()
+                terminalManager.releaseAgentTerminal(termOwner)
 
                 return {
                     success: true,

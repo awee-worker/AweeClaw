@@ -415,7 +415,10 @@ async function executeToolCall(
 
       logger.agent.info(`[AgentSubLoop] Waiting for approval: ${requestId}_${toolCall.id} (tool: ${toolCall.name})`)
 
-      const approved = await approvalService.waitForApproval(`${requestId}_${toolCall.id}`)
+      const approved = await approvalService.waitForApproval(
+        `${requestId}_${toolCall.id}`,
+        activeThreadId ?? undefined,
+      )
 
       // 从 pendingApprovalToolCalls 中移除当前工具调用
       // 注意：需要重新获取最新状态，因为等待期间状态可能已被其他并行工具调用更新

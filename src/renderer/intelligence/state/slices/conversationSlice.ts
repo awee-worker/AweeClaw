@@ -733,6 +733,13 @@ export const createMessageSlice: StateCreator<
             const thread = state.threads[threadId]
             if (!thread) return state
 
+            // 变更记录由 Checkpoint slice 维护，本 slice 的类型里没有这两个字段，
+            // 这里按实际 store 形状取用（同一 store 的切片，运行时一定存在）
+            const checkpointState = state as typeof state & {
+                pendingChanges?: Array<{ threadId?: string }>
+                fileChangeHistory?: Array<{ threadId?: string }>
+            }
+
             return {
                 threadMessageVersions: bumpThreadMessageVersion(state.threadMessageVersions, threadId),
                 threads: {
@@ -750,10 +757,14 @@ export const createMessageSlice: StateCreator<
                         state: { currentCheckpointIdx: null, isStreaming: false },
                     },
                 },
-                // 同时清理检查点和待确认更改
-                pendingChanges: [],
-                fileChangeHistory: [],
-            }
+                // 同时清理本线程的待确认更改；其他会话并行执行时写下的变更不能一并清掉
+                pendingChanges: (checkpointState.pendingChanges ?? []).filter(
+                    change => (change.threadId ?? undefined) !== threadId,
+                ),
+                fileChangeHistory: (checkpointState.fileChangeHistory ?? []).filter(
+                    entry => (entry.threadId ?? undefined) !== threadId,
+                ),
+            } as Partial<typeof state>
         })
 
         get().clearToolStreamingPreviews(threadId)
@@ -991,9 +1002,10 @@ export const createMessageSlice: StateCreator<
         }
     },
 
-    // 添加推理部分
-    addReasoningPart: (messageId) => {
-        const threadId = get().currentThreadId
+    // 添加推理部分（targetThreadId 必须生效：后台会话流式时由 forThread 转发，
+    // 忽略参数会把思考内容写到当前查看的会话里）
+    addReasoningPart: (messageId, targetThreadId) => {
+        const threadId = targetThreadId || get().currentThreadId
         if (!threadId) return ''
 
         const partId = `reasoning-${crypto.randomUUID()}`
@@ -1398,8 +1410,14 @@ export const createMessageSlice: StateCreator<
     },
 
     // 设置交互式内容（用于 ask_user 工具）
-    setInteractive: (messageId, interactive) => {
-        const threadId = get().currentThreadId
+    // targetThreadId 必须生效：ask_user 的收尾由 loopDetector 通过 forThread(threadId)
+    // 转发，threadId 是发起提问的那个会话。若忽略此参数退回 currentThreadId，
+    // 多会话并发时会发生两件事：选项卡片写进当前查看的会话（找不到对应消息，
+    // 卡片丢失 → 「ask_user 失败」）；且当前会话的 streamState 被强制置 idle，
+    // 输入框状态在下一轮流式更新前短暂错乱。addFormPart / addTaskPlanPart 已是
+    // 同款处理，这里保持一致。
+    setInteractive: (messageId, interactive, targetThreadId) => {
+        const threadId = targetThreadId || get().currentThreadId
         if (!threadId) return
 
         set(state => {
@@ -1614,15 +1632,17 @@ export const createMessageSlice: StateCreator<
         })
     },
 
-    // 添加上下文项
-    addContextItem: (item) => {
-        let threadId = get().currentThreadId
+    // 添加上下文项（targetThreadId 必须生效：后台会话执行时由 forThread 转发，
+    // 忽略参数会把上下文项写到当前查看的会话里；指定 targetThreadId 时目标线程
+    // 不存在按「无目标」处理，不为它新建前台会话）
+    addContextItem: (item, targetThreadId) => {
+        let threadId = targetThreadId || get().currentThreadId
 
-        if (!threadId || !get().threads[threadId]) {
+        if (!targetThreadId && (!threadId || !get().threads[threadId])) {
             threadId = get().createThread()
         }
 
-        if (!threadId) return
+        if (!threadId || !get().threads[threadId]) return
 
         set(state => {
             const thread = state.threads[threadId]
@@ -1890,9 +1910,9 @@ export const createMessageSlice: StateCreator<
         })
     },
 
-    // 移除上下文项
-    removeContextItem: (index) => {
-        const threadId = get().currentThreadId
+    // 移除上下文项（targetThreadId 必须生效，理由同 addContextItem）
+    removeContextItem: (index, targetThreadId) => {
+        const threadId = targetThreadId || get().currentThreadId
         if (!threadId) return
 
         set(state => {
@@ -1911,9 +1931,9 @@ export const createMessageSlice: StateCreator<
         })
     },
 
-    // 清空上下文项
-    clearContextItems: () => {
-        const threadId = get().currentThreadId
+    // 清空上下文项（targetThreadId 必须生效，理由同 addContextItem）
+    clearContextItems: (targetThreadId) => {
+        const threadId = targetThreadId || get().currentThreadId
         if (!threadId) return
 
         set(state => {
