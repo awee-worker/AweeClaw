@@ -56,6 +56,15 @@ const DEVICE_LINK_AI_TASK_EVENT = 'aweeclaw:device-link:ai-task'
 /** 补报结果正文上限（只做留痕，避免撑大事件 payload） */
 const REPORT_OUTPUT_LIMIT = 4000
 
+/**
+ * 空闲后的收尾确认窗口
+ *
+ * 多轮工具调用之间会短暂回到 idle（上一批跑完、下一批还没发出），见到 idle
+ * 就立刻报完成会让面板在中途就跳到「已生成」。等这么一小段再认，期间又忙起来
+ * 就撤掉待定的收尾。
+ */
+const FINISH_SETTLE_MS = 1200
+
 /** 取指定线程（缺省当前线程）最后一条助手消息的纯文本 */
 function collectLastAssistantReply(threadId?: string | null): string {
   try {
@@ -82,6 +91,20 @@ function collectLastAssistantReply(threadId?: string | null): string {
 }
 
 /**
+ * 这张卡片会不会被抛到场景面板上
+ *
+ * 「等用户回答」与「把卡片交给面板」必须同一个口径。只要两者不一致，就会有一类
+ * 卡片既被算作等待、又不被转发：面板停在运行中，却没有任何可点的入口，用户看到
+ * 的就是「一直显示正在生成，结束不了」。续做卡片属于主会话语义，本就不搬，
+ * 所以它不算等待 —— 面板该按完成收尾。
+ */
+function isForwardableInteractive(interactive: AssistantInteractive): boolean {
+  if (interactive.selectedIds?.length) return false
+  if (interactive.kind === 'continue_task') return false
+  return Boolean(interactive.question && interactive.options?.length)
+}
+
+/**
  * 线程里是否有等待用户回答的提问
  *
  * ask_user 会结束当前轮次（工具返回 waitingForUser，主循环据此收尾），看起来
@@ -95,8 +118,7 @@ function hasPendingInteractive(threadId: string): boolean {
     if (message.role !== 'assistant') break
     const interactive = (message as { interactive?: AssistantInteractive }).interactive
     if (!interactive) break
-    if (interactive.selectedIds?.length) return false
-    return Boolean(interactive.question && interactive.options?.length)
+    return isForwardableInteractive(interactive)
   }
   return false
 }
@@ -155,6 +177,8 @@ export function PluginHostBridge() {
     interactiveKey?: string
     unsubscribe?: () => void
     timer?: ReturnType<typeof setTimeout>
+    /** 空闲后的收尾待定：期间又忙起来就取消，避免多轮工具之间被误判成结束 */
+    idleTimer?: ReturnType<typeof setTimeout>
   } | null>(null)
 
   /**
@@ -243,6 +267,7 @@ export function PluginHostBridge() {
       runRef.current = null
       run.unsubscribe?.()
       if (run.timer) clearTimeout(run.timer)
+      if (run.idleTimer) clearTimeout(run.idleTimer)
       // 提问会把这一轮结束掉，但它不是「做完了」：面板要停在等用户回答的状态
       const waiting = phase === 'done' && hasPendingInteractive(run.threadId)
       emitChatState({
@@ -295,6 +320,56 @@ export function PluginHostBridge() {
     }
 
     /**
+     * 取消待定的收尾
+     *
+     * 多轮工具调用之间存在很短的 idle 空档（上一批工具跑完、下一批还没发出）。
+     * 一旦又忙起来就说明没结束，待定的收尾必须撤掉。
+     */
+    function cancelFinish(run: NonNullable<typeof runRef.current>): void {
+      if (run.idleTimer) {
+        clearTimeout(run.idleTimer)
+        run.idleTimer = undefined
+      }
+    }
+
+    /**
+     * 安排一次收尾
+     *
+     * 不能见到 idle 就直接报完成：先等一小段确认，期间没有再忙起来才认。
+     * 这一等待同时兜住「最后一次状态变化发生在 sending 仍为 true 时」的情形 ——
+     * 那一帧不判定结束，之后若再无状态更新，就不会有任何回调来收尾，面板会一直转圈。
+     */
+    function scheduleFinish(
+      run: NonNullable<typeof runRef.current>,
+      phase: string,
+    ): void {
+      if (run.idleTimer) return
+      run.idleTimer = setTimeout(() => {
+        run.idleTimer = undefined
+        if (runRef.current !== run) return
+        const current = useAgentStore.getState().threads[run.threadId]?.streamState
+        const currentPhase = current?.phase ?? 'idle'
+        // 确认窗口内又跑起来了：交给订阅回调继续跟
+        if (currentPhase !== 'idle' && currentPhase !== 'error') return
+        stopTracking(currentPhase === 'error' ? 'error' : 'done')
+      }, FINISH_SETTLE_MS)
+    }
+
+    /**
+     * 投递结束后主动核对一次状态
+     *
+     * sendToThread 返回时本轮可能已经跑完（状态早就落到 idle），此后不会再有
+     * setState 触发订阅回调。这里补一次同步核对，否则收尾判定永远不会被触发。
+     */
+    function nudgeFinish(run: NonNullable<typeof runRef.current>): void {
+      if (runRef.current !== run) return
+      const streamState = useAgentStore.getState().threads[run.threadId]?.streamState
+      const phase = streamState?.phase ?? 'idle'
+      const busy = phase === 'streaming' || phase === 'tool_running' || phase === 'tool_pending'
+      if (!busy && run.started) scheduleFinish(run, phase)
+    }
+
+    /**
      * 开始跟踪一次运行
      *
      * 提问-回答是多轮的：ask_user 结束后本轮结束，用户点完选项再发一条新消息，
@@ -329,9 +404,12 @@ export function PluginHostBridge() {
         if (!busy) {
           // sending=true 表示消息还在投递中（abort 残留 / sendToThread 尚未开始流式），
           // 此时 idle 不代表完成：不判定结束，避免误广播 done 让面板闪一下「已生成」
-          if (run.started && !run.sending) stopTracking(phase === 'error' ? 'error' : 'done')
+          if (run.started && !run.sending) scheduleFinish(run, phase)
           return
         }
+
+        // 又忙起来了：撤掉待定的收尾，继续跟这一轮
+        cancelFinish(run)
 
         run.started = true
         const tool = streamState?.currentToolCall?.name
@@ -400,8 +478,11 @@ export function PluginHostBridge() {
              // 沿用本次生成选的模型：微调是同一件事的延续
              llmOverride: lastModelByPluginRef.current.get(detail.pluginKey),
            })
-           // 投递完成：subscribe 回调从现在开始判定结束，否则 idle 会被误读为「已完成」
-           if (run && runRef.current === run) run.sending = false
+            if (run && runRef.current === run) {
+             run.sending = false
+             // 本轮可能在返回前就跑完了：此后不会有状态更新来触发回调，必须主动核对
+             nudgeFinish(run)
+           }
          })().catch((err: unknown) => {
            if (attempt === 0) {
              setTimeout(() => dispatch(1), 800)
@@ -446,7 +527,11 @@ export function PluginHostBridge() {
           llmOverride: detail.model,
         })
         // 投递完成：subscribe 回调从现在开始判定结束，否则 idle 会被误读为「已完成」
-        if (runRef.current === run) run.sending = false
+        if (runRef.current === run) {
+          run.sending = false
+          // 同上：跑完得早时没有后续状态变化，补一次主动核对
+          nudgeFinish(run)
+        }
       } catch (err) {
         logger.system.error(
           `[PluginHostBridge] scenario run failed (plugin=${detail.pluginKey}, thread=${threadId}):`,
@@ -487,8 +572,7 @@ export function PluginHostBridge() {
         const interactive = (message as { interactive?: AssistantInteractive }).interactive
         if (!interactive) break
         // 已经选过的不再追问；续做卡片属于主会话语义，不往场景面板搬
-        if (interactive.selectedIds?.length || interactive.kind === 'continue_task') return
-        if (!interactive.question || !interactive.options?.length) return
+        if (!isForwardableInteractive(interactive)) return
 
         const key = `${message.id}:${interactive.question}`
         if (run.interactiveKey === key) return

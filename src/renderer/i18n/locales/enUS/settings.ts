@@ -61,6 +61,7 @@ export const en = {
   'settings.causal': 'Causal Reasoning',
   'settings.iot': 'IoT Integration',
   'settings.system': 'System',
+  'settings.lsp': 'Language Servers',
   'settings.cloud': 'Cloud',
   'settings.voice': 'Voice',
   'settings.voiceSettings': 'Voice Settings',

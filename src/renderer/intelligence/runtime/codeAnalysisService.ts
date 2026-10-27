@@ -39,6 +39,14 @@ const LINT_COMMANDS: Record<string, {
 		}),
 		parser: parsePylintOutput,
 	},
+	// Vue 单文件组件：交给项目自带的 ESLint（配合 eslint-plugin-vue）检查
+	vue: {
+		getCommand: () => ({
+			command: getNpxCommand(),
+			args: ['eslint', '--format', 'json'],
+		}),
+		parser: parseEslintOutput,
+	},
 }
 
 interface ResolvedLintCommand {
@@ -100,6 +108,17 @@ async function resolveLintCommand(filePath: string, language: string): Promise<R
 		}
 	}
 
+	if (language === 'vue') {
+		// Vue 只走项目内 ESLint：.vue 的检查依赖项目自己的 eslint-plugin-vue 配置，
+		// 用 npx 临时拉一份 eslint 出来既没有插件也没有配置，报出来的问题不可信。
+		const localEslint = await resolveWorkspaceTool(
+			workspaceRoot,
+			[joinPath('node_modules', '.bin', platform.isWindows ? 'eslint.cmd' : 'eslint')],
+			['--format', 'json', filePath]
+		)
+		return localEslint
+	}
+
 	const lintConfig = LINT_COMMANDS[language]
 	if (!lintConfig) return null
 
@@ -120,6 +139,8 @@ const EXT_TO_LANG: Record<string, string> = {
 	mjs: 'javascript',
 	cjs: 'javascript',
 	py: 'python',
+	vue: 'vue',
+	nvue: 'vue',
 }
 
 /**
@@ -294,6 +315,98 @@ async function getServerStatus(): Promise<Record<string, { installed: boolean }>
 	return _serverStatusCache!
 }
 
+// ── 语言服务器按需安装（B 方案）────────────────────────────────────────
+//
+// 用户遇到 .vue 这类未安装服务器的语言时，看到的只是一条「未安装」提示，
+// 很难意识到要去设置里点一次安装。这里在首次 lint 时静默装一次：
+//   - 同一 serverId 只发起一次安装，后续调用复用同一个 Promise
+//   - 超过等待上限就放行 lint，安装继续在后台跑，下次检查即可用
+//   - 失败在本次会话内记下，不再反复尝试（否则每次 lint 都要卡一个 npm 超时）
+
+const AUTO_INSTALL_WAIT_MS = 25_000
+const autoInstallTasks = new Map<string, Promise<boolean>>()
+const autoInstallFailed = new Set<string>()
+/** 已经等满一次超时、仍在后台安装的服务器 */
+const autoInstallPending = new Set<string>()
+
+type OnDemandInstallOutcome = 'installed' | 'pending' | 'skipped'
+
+function runOnDemandInstall(serverId: string): Promise<boolean> {
+	const existing = autoInstallTasks.get(serverId)
+	if (existing) return existing
+
+	const task = (async () => {
+		try {
+			const result = await api.lsp.installServer(serverId)
+			if (result?.success) {
+				// 状态缓存有 60 秒 TTL，安装成功必须立刻失效，否则还会读到「未安装」
+				_serverStatusCache = null
+				_serverStatusTimestamp = 0
+				logger.agent.info(`[Lint] Language server "${serverId}" installed on demand`)
+				return true
+			}
+			autoInstallFailed.add(serverId)
+			logger.agent.warn(`[Lint] On-demand install failed for "${serverId}": ${result?.error || 'unknown'}`)
+			return false
+		} catch (error) {
+			autoInstallFailed.add(serverId)
+			logger.agent.warn(`[Lint] On-demand install threw for "${serverId}"`, error)
+			return false
+		}
+	})()
+
+	autoInstallTasks.set(serverId, task)
+	return task
+}
+
+async function tryOnDemandInstall(
+	serverId: string,
+	serverDef: typeof LSP_SERVER_DEFINITIONS[number] | undefined,
+): Promise<OnDemandInstallOutcome> {
+	// 不可自动安装的（rust / deno 之类）以及已经失败过的，直接跳过
+	if (!serverDef?.installable || autoInstallFailed.has(serverId)) return 'skipped'
+
+	// 上一轮已经等满过一次超时：安装还在后台跑，这次只做一次状态确认，
+	// 不再阻塞调用方（否则一次慢安装会让连续几次 lint 各卡一个等待周期）
+	if (autoInstallPending.has(serverId)) {
+		const installedNow = await queryServerInstalled(serverId)
+		if (installedNow) {
+			autoInstallPending.delete(serverId)
+			return 'installed'
+		}
+		return 'pending'
+	}
+
+	const task = runOnDemandInstall(serverId)
+	let timer: ReturnType<typeof setTimeout> | undefined
+	const timeout = new Promise<'timeout'>((resolve) => {
+		timer = setTimeout(() => resolve('timeout'), AUTO_INSTALL_WAIT_MS)
+	})
+
+	try {
+		const outcome = await Promise.race([task, timeout])
+		if (outcome === 'timeout') {
+			autoInstallPending.add(serverId)
+			return 'pending'
+		}
+		return outcome ? 'installed' : 'skipped'
+	} finally {
+		if (timer) clearTimeout(timer)
+	}
+}
+
+/** 绕开 TTL 缓存直接查一次安装状态（后台安装完成后用它确认） */
+async function queryServerInstalled(serverId: string): Promise<boolean> {
+	try {
+		const status = await api.lsp.getServerStatus()
+		_serverStatusCache = status
+		_serverStatusTimestamp = Date.now()
+		return !!status[serverId]?.installed
+	} catch {
+		return false
+	}
+}
+
 class LintService {
 	private cache: CacheService<LintError[]>
 
@@ -321,45 +434,59 @@ class LintService {
 		// 2. 检查该语言是否有对应的 LSP 服务器
 		const languageId = getLanguageId(filePath)
 		const serverId = getServerIdForLanguage(languageId)
+		const ext = filePath.split('.').pop()?.toLowerCase() || ''
+		const lang = EXT_TO_LANG[ext]
+		const lintConfig = lang ? LINT_COMMANDS[lang] : undefined
 
 		if (serverId) {
+			const serverDef = LSP_SERVER_DEFINITIONS.find(s => s.id === serverId)
 			const status = await getServerStatus()
-			const serverStatus = status[serverId]
-			if (!serverStatus || !serverStatus.installed) {
-				// LSP 未安装 → 提示用户
-				const serverDef = LSP_SERVER_DEFINITIONS.find(s => s.id === serverId)
-				const serverName = serverDef?.name || serverId
-				const serverDesc = serverDef?.description || serverId
-				return {
-					errors: [],
-					notInstalled: `Language server "${serverName}" (${serverDesc}) is not installed. Install it in Settings > LSP to enable lint checking for ${languageId} files.`,
+			let installed = !!status[serverId]?.installed
+
+			if (!installed) {
+				// 首次遇到未安装的服务器时静默装一次（B 方案）。
+				// 用户通常不知道要去设置里点安装，只有一句「未安装」提示等于什么都不做。
+				const outcome = await tryOnDemandInstall(serverId, serverDef)
+				if (outcome === 'installed') {
+					installed = true
+				} else if (!lintConfig) {
+					// 既装不上、也没有 CLI 兜底 → 只能引导用户手动处理
+					const serverName = serverDef?.name || serverId
+					const serverDesc = serverDef?.description || serverId
+					const state = outcome === 'pending'
+						? `is being installed in the background, so ${languageId} files were not lint-checked this time. Retry in a moment.`
+						: `is not installed, so ${languageId} files were not lint-checked. Install it in Settings > Language Servers (设置 → 语言服务器) to enable lint checking for these files.`
+					return { errors: [], notInstalled: `Language server "${serverName}" (${serverDesc}) ${state}` }
 				}
+				// 有 CLI 兜底的语言（如 .vue → 项目内 ESLint）继续往下走
 			}
 
-			// 主动向常驻语言服务要一次诊断（不再限于强制刷新）。
-			//
-			// 写文件后的诊断是异步推送的：紧接着发生的 lint 调用往往还没在诊断
-			// store 里看到结果。若此时直接走 CLI 回退，就会为一次检查拉起
-			// `npm exec tsc --noEmit` 全量编译（实测单次就要 20-30s、占满 2-3 个
-			// 核，是整个会话里最大的单项 CPU 开销）；而语言服务是常驻且增量更新的，
-			// 要一次诊断只需毫秒级。因此先问 LSP，确实拿不到再考虑 CLI。
-			// waitForDiagnostics 在语言服务侧有 3 秒超时，最坏情况也只是多等一次超时。
-			try {
-				const serverReady = await ensureServerForFile(filePath)
-				if (serverReady) {
-					await waitForDiagnostics(filePath)
-					const refreshedErrors = getLspDiagnosticsForFile(filePath)
-					if (refreshedErrors !== null) {
-						return { errors: refreshedErrors }
+			if (installed) {
+				// 主动向常驻语言服务要一次诊断（不再限于强制刷新）。
+				//
+				// 写文件后的诊断是异步推送的：紧接着发生的 lint 调用往往还没在诊断
+				// store 里看到结果。若此时直接走 CLI 回退，就会为一次检查拉起
+				// `npm exec tsc --noEmit` 全量编译（实测单次就要 20-30s、占满 2-3 个
+				// 核，是整个会话里最大的单项 CPU 开销）；而语言服务是常驻且增量更新的，
+				// 要一次诊断只需毫秒级。因此先问 LSP，确实拿不到再考虑 CLI。
+				// waitForDiagnostics 在语言服务侧有 3 秒超时，最坏情况也只是多等一次超时。
+				try {
+					const serverReady = await ensureServerForFile(filePath)
+					if (serverReady) {
+						await waitForDiagnostics(filePath)
+						const refreshedErrors = getLspDiagnosticsForFile(filePath)
+						if (refreshedErrors !== null) {
+							return { errors: refreshedErrors }
+						}
 					}
+				} catch (error) {
+					logger.agent.warn('[Lint] Failed to refresh diagnostics via LSP, falling back if available:', error)
 				}
-			} catch (error) {
-				logger.agent.warn('[Lint] Failed to refresh diagnostics via LSP, falling back if available:', error)
 			}
 		}
 
 
-		// 3. 该语言没有 LSP 服务器定义 → 尝试 CLI 回退
+		// 3. 没有可用的 LSP 诊断 → 尝试 CLI 回退
 		if (languageId === 'plaintext') {
 			return { errors: [], notInstalled: `Unsupported file type for lint checking.` }
 		}
@@ -372,17 +499,22 @@ class LintService {
 			}
 		}
 
-		const ext = filePath.split('.').pop()?.toLowerCase() || ''
-		const lang = EXT_TO_LANG[ext]
-		const lintConfig = lang ? LINT_COMMANDS[lang] : undefined
-
-		if (!lintConfig) {
+		if (!lintConfig || !lang) {
 			return { errors: [] }
 		}
+
 
 		try {
 			const resolvedCommand = await resolveLintCommand(filePath, lang)
 			if (!resolvedCommand) {
+				// .vue 两条路都断了：LSP 没装上、项目内也没有 ESLint。
+				// 说清楚原因，否则空结果会被误读成「检查通过」。
+				if (lang === 'vue') {
+					return {
+						errors: [],
+						notInstalled: 'No Vue lint backend available: the Vue language server is not installed and this project has no local ESLint, so .vue files were not lint-checked. Install the Vue language server in Settings > Language Servers, or add eslint-plugin-vue to the project. (当前项目未安装 Vue 语言服务器，也没有本地 ESLint，.vue 文件未做检查。)',
+					}
+				}
 				return { errors: [] }
 			}
 

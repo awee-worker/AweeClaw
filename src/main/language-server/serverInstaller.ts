@@ -190,7 +190,17 @@ async function npmInstall(packageNames: string | string[], targetDir: string): P
     const npmCmd = getNpmCommand()
     const resolvedNpmCmd = resolveCommandPath(npmCmd) || resolveCommandPath('npm')
     const packages = Array.isArray(packageNames) ? packageNames : [packageNames]
-    const installArgs = ['install', ...packages, '--no-save', '--no-package-lock']
+    // --save 而不是 --no-save：包必须写进 package.json 的 dependencies，
+    // 否则下一次安装别的服务器时，npm 会按 package.json 做 prune，
+    // 把上一次装好的服务器悄悄删掉（先装 pyright 再装 vue，pyright 就没了）。
+    const installArgs = [
+      'install',
+      ...packages,
+      '--save',
+      '--no-package-lock',
+      '--no-audit',
+      '--no-fund',
+    ]
     const env = {
       ...process.env,
       PATH: getAugmentedPathEnv(),
@@ -217,6 +227,35 @@ async function npmInstall(packageNames: string | string[], targetDir: string): P
         logger.lsp.error(`[LSP Installer] Failed to create target directory: ${targetDir}`, err)
         resolve(false)
         return
+      }
+    }
+
+    // npm 在找不到 package.json 时会把 local prefix 定成 HOME（npm 11 实测：
+    // 在该目录下 `npm prefix` 返回 /Users/<user>），于是 `npm install` 把包写进
+    // $HOME/node_modules，目标目录始终是空的。表现就是 exit code 0、日志显示安装
+    // 成功，但紧接着探测服务器文件时找不到——每次都失败且原因不明。
+    // 写一份最小 package.json，让 npm 以目标目录作为项目根。
+    const anchorPkgPath = path.join(targetDir, 'package.json')
+    if (!fs.existsSync(anchorPkgPath)) {
+      try {
+        fs.writeFileSync(
+          anchorPkgPath,
+          JSON.stringify(
+            {
+              name: 'aweeclaw-lsp-servers',
+              version: '1.0.0',
+              private: true,
+              description: 'Language servers managed by AweeClaw',
+            },
+            null,
+            2,
+          ) + '\n',
+          'utf8',
+        )
+        logger.lsp.debug(`[LSP Installer] Wrote package.json anchor: ${anchorPkgPath}`)
+      } catch (err) {
+        const error = toAppError(err)
+        logger.lsp.warn(`[LSP Installer] Failed to write package.json anchor: ${error.code}`, error)
       }
     }
 
@@ -547,8 +586,16 @@ const SERVER_PATHS: Record<string, ServerPathConfig> = {
     ],
   },
   python: {
-    userPaths: ['node_modules/pyright/dist/pyright-langserver.js'],
-    builtinPaths: ['pyright/dist/pyright-langserver.js'],
+    userPaths: [
+      // pyright 的 package.json bin 指向包根的 langserver.index.js（1.1.x 实测），
+      // 旧版布局才是 dist/pyright-langserver.js，两个都留着按顺序探测
+      'node_modules/pyright/langserver.index.js',
+      'node_modules/pyright/dist/pyright-langserver.js',
+    ],
+    builtinPaths: [
+      'pyright/langserver.index.js',
+      'pyright/dist/pyright-langserver.js',
+    ],
     systemCommand: 'pylsp',
   },
   vue: {
@@ -819,7 +866,8 @@ export async function installVueServer(): Promise<LspInstallResult> {
   const binDir = getLspBinDir()
   logger.lsp.info(`[LSP Installer] Installing to: ${binDir}`)
 
-  const success = await npmInstall('@vue/language-server', binDir)
+  // typescript 是 vue-language-server 的 peer 依赖，缺了会在启动时 require 失败
+  const success = await npmInstall(['@vue/language-server', 'typescript'], binDir)
 
   if (success) {
     logger.lsp.debug('[LSP Installer] npm install completed, verifying installation...')

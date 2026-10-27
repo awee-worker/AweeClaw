@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback, useEffect, useRef, useSyncExternalStore, useState } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send, Lock, GitBranch, GraduationCap } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send, Lock, GitBranch, GraduationCap, Braces } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -51,6 +51,9 @@ const SecurityPolicyPanel = lazy(() =>
 )
 const SystemPreferencesPanel = lazy(() =>
     import('./tabs/SystemPreferencesPanel').then(m => ({ default: m.SystemPreferencesPanel })),
+)
+const LspSettingsPanel = lazy(() =>
+    import('./tabs/LspSettingsPanel').then(m => ({ default: m.LspSettingsPanel })),
 )
 const ChannelSettings = lazy(() =>
     import('./tabs/ChannelSettings').then(m => ({ default: m.ChannelSettings })),
@@ -307,6 +310,7 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         { id: 'powerGuard', label: language === 'zh' ? '防休眠' : 'Sleep Guard', icon: <Coffee className="w-4 h-4" /> },
         { id: 'git', label: t('settings.git', language as Language), icon: <GitBranch className="w-4 h-4" /> },
         { id: 'sandbox', label: language === 'zh' ? '代码沙箱' : 'Code Sandbox', icon: <Box className="w-4 h-4" /> },
+        { id: 'lsp', label: t('settings.lsp', language as Language) || '语言服务器', icon: <Braces className="w-4 h-4" /> },
 
     ], [language])
 
@@ -498,6 +502,8 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                         setEnableFileLogging={(value) => dispatch({ type: 'SET_LOCAL_ENABLE_FILE_LOGGING', value })}
                     />
                 )
+            case 'lsp':
+                return <LspSettingsPanel language={language} />
             case 'voice':
                 return <VoiceSettingsPanel language={language} />
             case 'local-voice':

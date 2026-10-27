@@ -61,6 +61,7 @@ export const zh = {
   'settings.causal': '因果推理',
   'settings.iot': 'IoT 集成',
   'settings.system': '系统设置',
+  'settings.lsp': '语言服务器',
   'settings.cloud': '云端服务',
   'settings.voice': '语音',
   'settings.voiceSettings': '语音设置',
