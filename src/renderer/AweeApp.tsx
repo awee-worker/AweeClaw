@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { MotionConfig } from 'framer-motion'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, useWorkspaceRuntimeBootstrap, usePreviewDiscoveryToasts, useChannelBridge, usePluginUpdateChecker, useFloatingAvatarSync, useVrmCompanionSync, usePptPreviewIpc, useVtsSync } from '@hooks'
+import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, useWorkspaceRuntimeBootstrap, usePreviewDiscoveryToasts, useChannelBridge, usePluginUpdateChecker, useScenarioUpdateChecker, useFloatingAvatarSync, useVrmCompanionSync, usePptPreviewIpc, useVtsSync } from '@hooks'
 import AppTitleBar from './components/layout/AppTitleBar'
 import NavigationRail from './components/layout/NavigationRail'
 import SidebarSection from './components/layout/SidebarSection'
@@ -266,6 +266,7 @@ function AppContent() {
   usePreviewDiscoveryToasts(hasWorkspace && isInitialized && activeScenarioId === 'dev-assistant')
   useChannelBridge()
   usePluginUpdateChecker()
+  useScenarioUpdateChecker()
   useFloatingAvatarSync()
   // 桌面伴侣（VRM）联动：AI 回复时驱动角色口型 + 提取好感度
   useVrmCompanionSync()

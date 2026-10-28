@@ -209,7 +209,11 @@ export default function ApiPayloadConfigurator({ providerId, scenarioId, request
       </div>
 
       <p className="text-[12px] text-text-muted leading-relaxed opacity-60 ml-1">
-        {t('modals.scenarioawareapipayloadconfigurationwill', language as Language, { p0: SCENARIO_LABELS[activeScenario]?.en || activeScenario, p1: SCENARIO_LABELS[activeScenario]?.zh || activeScenario })}
+        {t('modals.scenarioawareapipayloadconfigurationwill', language as Language, {
+          scenarioName: (language === 'zh'
+            ? SCENARIO_LABELS[activeScenario]?.zh
+            : SCENARIO_LABELS[activeScenario]?.en) || activeScenario,
+        })}
       </p>
 
       <div className="relative group">

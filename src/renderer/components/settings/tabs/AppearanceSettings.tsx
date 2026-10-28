@@ -272,7 +272,11 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                     </div>
                     {themeMode === 'system' && (
                         <p className="text-[11px] text-text-muted mt-2 ml-1">
-                            {t('settings.systempreferencethemeappliedautomatically', language as Language, { p0: systemPrefersDark ? 'Dark' : 'Light', p1: systemPrefersDark ? '暗色' : '亮色' })}
+                            {t('settings.systempreferencethemeappliedautomatically', language as Language, {
+                                preference: systemPrefersDark
+                                    ? (language === 'zh' ? '暗色' : 'Dark')
+                                    : (language === 'zh' ? '亮色' : 'Light'),
+                            })}
                         </p>
                     )}
                 </div>

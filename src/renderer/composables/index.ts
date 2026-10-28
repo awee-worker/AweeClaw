@@ -26,6 +26,11 @@ export { useToolCardExpansion } from './useToolCardExpansion'
 export { useChatScrollController } from './useChatScrollController'
 export { useChannelBridge } from './useChannelBridge'
 export { usePluginUpdateChecker } from './usePluginUpdateChecker'
+export {
+  useScenarioUpdateChecker,
+  isScenarioAutoUpdateEnabled,
+  setScenarioAutoUpdateEnabled,
+} from './useScenarioUpdateChecker'
 export { useImProcessingStatus } from './useImProcessingStatus'
 export { useVoiceInput } from './useVoiceInput'
 export { useVoiceOutput } from './useVoiceOutput'

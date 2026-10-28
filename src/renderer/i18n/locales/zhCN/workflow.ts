@@ -270,7 +270,7 @@ export const zh = {
   'wf.loadingmetrics': '加载监控数据...',
   'wf.executing': '正在执行...',
   'wf.restoredtoversion': '已恢复到版本 {version}',
-  'wf.restorefailed': '恢复失败: {(err as Error).message}',
+  'wf.restorefailed': '恢复失败: {message}',
   'wf.versions': '版本管理',
   'wf.loading': '加载中...',
   'wf.noversionsyet': '暂无版本记录',

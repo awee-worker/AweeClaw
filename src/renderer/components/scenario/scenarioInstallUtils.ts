@@ -16,6 +16,7 @@ import { scenarioLoader } from '@scenario-system/core/ScenarioLoader'
 import { DeclarativeScenarioModule } from '@scenario-system/core/DeclarativeScenarioModule'
 import { loadProgrammaticScenario } from '@scenario-system/core/ProgrammaticScenarioLoader'
 import { api } from '../../adapters/electronBridge'
+import { linkMarketplaceScenario } from '../../adapters/scenarioMarketplaceMap'
 import type { ScenarioPlugin } from '@shared/protocols/scenario'
 import { useStore } from '@store'
 
@@ -51,6 +52,8 @@ interface ScenarioConfigData {
   minAppVersion?: string
   homepage?: string
   license?: string
+  /** 会话边界：随清单一起落盘，bundle 未就绪时也不至于退化成「无边界」 */
+  sessionScope?: Record<string, unknown>
 }
 
 /**
@@ -117,15 +120,20 @@ export async function registerInstalledScenario(
     scenarioId: string
     source: 'local' | 'marketplace'
     version?: string
+    /** 来源市场条目 ID（与 config.id 可能不同），用于市场页判断安装状态与查询更新 */
+    marketplaceId?: string
   },
 ): Promise<void> {
-  const { scenarioId, source, version } = options
+  const { scenarioId, source, version, marketplaceId } = options
   const isProgrammatic = config.packageType === 'programmatic'
 
   // 注册到 registry/loader 的 key 是 config.id（可能与市场场景 ID/目录名不一致），
   // 因此加载场景文件必须以 config.id 为准；主进程 loadScenarioFiles 已支持
   // 目录名与 config.id 不一致时按 config.id 扫描匹配实际目录。
   const loadScenarioId = config.id || scenarioId
+  const resolvedVersion = config.version || version || '1.0.0'
+  /** 实际注册进 registry 的场景 ID，用于建立市场 ID 映射 */
+  let registeredId = loadScenarioId
 
   try {
     const filesResult = await api.scenarioInstall.loadScenarioFiles(loadScenarioId)
@@ -134,7 +142,13 @@ export async function registerInstalledScenario(
       // ============================================
       // 编程式场景：加载 ESM bundle
       // ============================================
-      await registerProgrammaticScenario(config, scenarioId, source, version)
+      registeredId = await registerProgrammaticScenario(
+        config,
+        scenarioId,
+        source,
+        version,
+        marketplaceId,
+      )
     } else if (filesResult.success && filesResult.files) {
       // ============================================
       // 声明式场景：创建 DeclarativeScenarioModule
@@ -149,13 +163,16 @@ export async function registerInstalledScenario(
       const plugin: ScenarioPlugin = {
         ...modulePlugin,
         source,
-        version: config.version || version || '1.0.0',
+        version: resolvedVersion,
+        marketplaceId,
       }
       scenarioRegistry.registerAndPersist(plugin)
+      registeredId = plugin.id
     } else {
       // 文件加载失败，使用基础配置注册
-      const plugin = buildBasePlugin(config, scenarioId, source, version)
+      const plugin = { ...buildBasePlugin(config, scenarioId, source, version), marketplaceId }
       scenarioRegistry.registerAndPersist(plugin)
+      registeredId = plugin.id
     }
   } catch (moduleErr) {
     logger.scenario.warn('[ScenarioInstall] Failed to register scenario module:', moduleErr)
@@ -163,11 +180,17 @@ export async function registerInstalledScenario(
     // 避免空配置（sidebarItems=[]）被持久化导致 NavigationRail 显示默认菜单而非场景菜单。
     // 对于 declarative 场景，保留 fallback 行为（声明式场景的 sidebarItems 可由 UI 默认渲染）。
     if (!isProgrammatic) {
-      const fallbackPlugin = buildBasePlugin(config, scenarioId, source, version)
+      const fallbackPlugin = { ...buildBasePlugin(config, scenarioId, source, version), marketplaceId }
       scenarioRegistry.registerAndPersist(fallbackPlugin)
     }
     // 重新抛出错误，让调用方知道安装失败并显示错误提示
     throw moduleErr
+  }
+
+  // 记录市场条目与本地场景的对应关系：config.id 与市场 ID 不一致时，
+  // 市场页只有拿到这条映射才知道该条目已经安装
+  if (marketplaceId) {
+    linkMarketplaceScenario(marketplaceId, registeredId, resolvedVersion)
   }
 
   // 执行安装脚本（初始化数据库表）
@@ -203,7 +226,8 @@ async function registerProgrammaticScenario(
   scenarioId: string,
   source: 'local' | 'marketplace',
   version: string | undefined,
-): Promise<void> {
+  marketplaceId?: string,
+): Promise<string> {
   // 调用 loadProgrammaticScenario 加载 ESM bundle
   const loadResult = await loadProgrammaticScenario(scenarioId)
 
@@ -240,9 +264,11 @@ async function registerProgrammaticScenario(
     ...fullPlugin,
     source,
     version: config.version || version || '1.0.0',
+    marketplaceId,
   }
   scenarioRegistry.registerAndPersist(plugin)
   logger.scenario.info(
     `[ScenarioInstall] Registered programmatic scenario "${scenarioId}" with ${plugin.ui?.sidebarItems?.length || 0} sidebar items`
   )
+  return plugin.id
 }

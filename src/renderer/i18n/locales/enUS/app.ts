@@ -444,7 +444,7 @@ export const en = {
   'modals.resettoscenariodefault': 'Reset to scenario default',
   'modals.reset': 'RESET',
   'modals.scenario': 'Scenario',
-  'modals.scenarioawareapipayloadconfigurationwill': 'Scenario-aware API payload configuration. \\`{{model}}\\` will be replaced by current model. Active: {SCENARIO_LABELS[activeScenario]?.en || activeScenario}',
+  'modals.scenarioawareapipayloadconfigurationwill': 'Scenario-aware API payload configuration. \\`{{model}}\\` will be replaced by current model. Active: {scenarioName}',
   'modals.commonfields': 'Common fields:',
   'modals.tokenbudget': 'Token Budget',
   'modals.norecentcommandsyet': 'No recent commands yet',

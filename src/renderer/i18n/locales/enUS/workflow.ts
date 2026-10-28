@@ -270,7 +270,7 @@ export const en = {
   'wf.loadingmetrics': 'Loading metrics...',
   'wf.executing': 'Executing...',
   'wf.restoredtoversion': 'Restored to version {version}',
-  'wf.restorefailed': 'Restore failed: {(err as Error).message}',
+  'wf.restorefailed': 'Restore failed: {message}',
   'wf.versions': 'Versions',
   'wf.loading': 'Loading...',
   'wf.noversionsyet': 'No versions yet',

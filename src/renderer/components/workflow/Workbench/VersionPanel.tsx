@@ -107,7 +107,7 @@ export default function VersionPanel({
       onRestored()
     } catch (err) {
       setRestoreMessage(
-        t('wf.restorefailed', language as Language, { p0: (err as Error).message }),
+        t('wf.restorefailed', language as Language, { message: (err as Error).message }),
       )
     } finally {
       setRestoring(false)

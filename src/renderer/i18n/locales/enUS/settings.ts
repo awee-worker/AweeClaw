@@ -87,7 +87,7 @@ export const en = {
   'settings.thememode': 'Theme Mode',
   'settings.themecolor': 'Theme Color',
   'settings.themecolorHint': 'Both light and dark themes support 4 colors; color persists when switching modes',
-  'settings.systempreferencethemeappliedautomatically': 'System preference: {systemPrefersDark ? \'Dark\' : \'Light\'}, theme applied automatically',
+  'settings.systempreferencethemeappliedautomatically': 'System preference: {preference}, theme applied automatically',
   'settings.typographylayout': 'Typography & Layout',
   'settings.fontsize': 'Font Size',
   'settings.tabsize': 'Tab Size',

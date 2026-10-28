@@ -314,7 +314,11 @@ export function PlanPanel({ language }: PlanPanelProps) {
         }
         if (order?.status === 'CANCELLED' || order?.status === 'EXPIRED') {
           stopPolling()
-          setPaymentError(t('user.order', language as Language, { status: order.status.toLowerCase(), status2: order.status === 'CANCELLED' ? '取消' : '过期' }))
+          setPaymentError(t('user.order', language as Language, {
+            status: order.status === 'CANCELLED'
+              ? (language === 'zh' ? '取消' : 'cancelled')
+              : (language === 'zh' ? '过期' : 'expired'),
+          }))
           return
         }
       } catch (e) { logger.ui.warn('Failed to poll order status:', e) }

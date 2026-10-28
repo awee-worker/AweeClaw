@@ -11,14 +11,14 @@ import {
     PackageX, Download, Info, HardDrive, Tag,
     Layers, Activity, Loader2, FolderOpen, CheckCircle2, XCircle,
     AlertTriangle, RotateCcw, Star, RefreshCw, ArrowLeft, Clock,
-    ArrowUpCircle,
+    ArrowUpCircle, ChevronRight,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { scenarioLoader } from '@scenario-system/core/ScenarioLoader'
 import { scenarioDatabaseManager } from '@scenario-system/core/ScenarioDatabaseManager'
 import { api } from '../../adapters/electronBridge'
-import { ActionButton, OverlayDialog } from '../ui'
+import { ActionButton, OverlayDialog, HintOverlay } from '../ui'
 import DecisionOverlay from '@components/foundation/DecisionOverlay'
 import { PermissionConfirmDialog } from './PermissionConfirmDialog'
 import { ScenarioReviewPanel } from './ScenarioReviewPanel'
@@ -26,6 +26,13 @@ import { ScenePromptConfigDialog } from './ScenePromptConfigDialog'
 import type { ScenarioPlugin, UILayout } from '@shared/protocols/scenario'
 import { activateScenarioPanels, switchToFirstPanel } from './panelUtils'
 import { registerInstalledScenario } from './scenarioInstallUtils'
+import {
+    applyInstalledScenarioUpdate,
+    checkInstalledScenarioUpdates,
+    findInstalledScenarioId,
+    resolveMarketplaceId,
+    unlinkMarketplaceScenario,
+} from '../../adapters/scenarioMarketplaceMap'
 import type { ScenarioHealthReport } from '@shared/protocols/scenario-arch'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -142,6 +149,8 @@ export function ScenarioManagerView() {
 
     const [scenarioUpdates, setScenarioUpdates] = useState<Map<string, MarketplaceUpdateInfo>>(new Map())
     const [updatingScenarioId, setUpdatingScenarioId] = useState<string | null>(null)
+    /** 已安装列表的手动「检查更新」是否进行中 */
+    const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
     function translateInstallError(error: string): string {
         if (language !== 'zh') return error
         const map: Record<string, string> = {
@@ -194,12 +203,17 @@ export function ScenarioManagerView() {
         if (!isAuthenticated) return
         const doCheck = async () => {
             try {
-                const installed = scenarioRegistry.getInstalled()
-                const checkList = installed.map(s => ({ id: s.id, version: s.version || '1.0.0' }))
+                // 内置场景随客户端发版更新，只有市场安装的场景需要检查
+                const installed = scenarioRegistry.getInstalled().filter(s => !s.isBuiltin)
+                const checkList = installed.map(s => ({ id: resolveMarketplaceId(s), version: s.version || '1.0.0' }))
                 if (checkList.length === 0) return
                 const results = await checkScenarioUpdates(checkList)
+                // 后端按市场 ID 返回结果，卡片按本地场景 ID 取用，这里换回本地 ID
                 const map = new Map<string, MarketplaceUpdateInfo>()
-                results.forEach(r => map.set(r.scenarioId, r))
+                results.forEach(r => {
+                    const target = installed.find(s => resolveMarketplaceId(s) === r.scenarioId)
+                    if (target) map.set(target.id, r)
+                })
                 setScenarioUpdates(map)
             } catch { /* ignore */ }
         }
@@ -213,8 +227,26 @@ export function ScenarioManagerView() {
         if (!updateInfo) return
         setUpdatingScenarioId(scenarioId)
         try {
-            const result = await updateScenarioFromMarketplace(scenarioId, updateInfo.latestVersion)
+            // 后端按市场 ID 查包，本地场景 ID 未必等于市场 ID
+            const scenario = scenarioRegistry.get(scenarioId)
+            const marketId = scenario ? resolveMarketplaceId(scenario) : scenarioId
+            const result = await updateScenarioFromMarketplace(marketId, updateInfo.latestVersion)
             if (result.success) {
+                // 更新只替换磁盘文件，重新注册让新版本的场景配置立即生效
+                const config = result.config as Record<string, unknown> | undefined
+                if (config) {
+                    try {
+                        await registerInstalledScenario(config as any, {
+                            scenarioId: result.scenarioId || scenarioId,
+                            source: 'marketplace',
+                            version: result.version,
+                            marketplaceId: marketId,
+                        })
+                    } catch (registerErr) {
+                        logger.scenario.warn('[ScenarioManager] Re-register after update failed:', registerErr)
+                        scenarioRegistry.updateScenario(scenarioId, { version: result.version })
+                    }
+                }
                 toast.success(t('scenario.scenarioupdatedtov', language as Language, { version: result.version }))
                 setScenarioUpdates(prev => {
                     const next = new Map(prev)
@@ -244,6 +276,101 @@ export function ScenarioManagerView() {
             setUpdatingScenarioId(null)
         }
     }, [scenarioUpdates, language])
+
+    /**
+     * 检查已安装场景的更新并直接升级
+     *
+     * 与插件与技能市场的「检查更新」保持一致：查出新版本后不再让用户逐条点，
+     * 而是串行自动升级（并发写运行时目录会互相打断），最后统一汇总结果。
+     */
+    const handleCheckAllUpdates = useCallback(async () => {
+        if (isCheckingUpdates) return
+        setIsCheckingUpdates(true)
+        try {
+            const candidates = await checkInstalledScenarioUpdates()
+            if (candidates.length === 0) {
+                toast.success(language === 'zh' ? '所有场景均为最新版本' : 'All scenarios are up to date')
+                return
+            }
+
+            const updated: string[] = []
+            const failed: string[] = []
+            const nextUpdates = new Map(scenarioUpdates)
+
+            for (const candidate of candidates) {
+                setUpdatingScenarioId(candidate.installedId)
+                const outcome = await applyInstalledScenarioUpdate(candidate)
+                if (!outcome.success) {
+                    failed.push(`${language === 'zh' ? candidate.nameZh : candidate.name}：${translateInstallError(outcome.error || '')}`)
+                    continue
+                }
+
+                // 更新只替换磁盘文件，重新注册让新版本配置立即生效
+                const config = outcome.config
+                try {
+                    if (config) {
+                        await registerInstalledScenario(config as any, {
+                            scenarioId: outcome.resolvedScenarioId || candidate.installedId,
+                            source: 'marketplace',
+                            version: candidate.latestVersion,
+                            marketplaceId: candidate.marketId,
+                        })
+                    } else {
+                        scenarioRegistry.updateScenario(candidate.installedId, { version: candidate.latestVersion })
+                    }
+                } catch (registerErr) {
+                    logger.scenario.warn('[ScenarioManager] Re-register after update failed:', registerErr)
+                    scenarioRegistry.updateScenario(candidate.installedId, { version: candidate.latestVersion })
+                }
+                nextUpdates.delete(candidate.installedId)
+                updated.push(`${language === 'zh' ? candidate.nameZh : candidate.name} v${candidate.latestVersion}`)
+            }
+
+            setScenarioUpdates(nextUpdates)
+            setUpdatingScenarioId(null)
+
+            if (failed.length === 0) {
+                toast.card({
+                    type: 'success',
+                    title: language === 'zh'
+                        ? `${updated.length} 个场景已更新`
+                        : `${updated.length} scenario(s) updated`,
+                    message: updated.join(language === 'zh' ? '、' : ', '),
+                    duration: 8000,
+                    source: 'ScenarioMarketplace',
+                })
+            } else {
+                const parts: string[] = []
+                if (updated.length > 0) {
+                    parts.push(language === 'zh'
+                        ? `已更新 ${updated.length} 个：${updated.join('、')}`
+                        : `${updated.length} updated: ${updated.join(', ')}`)
+                }
+                parts.push(language === 'zh'
+                    ? `失败 ${failed.length} 个：${failed.join('；')}`
+                    : `${failed.length} failed: ${failed.join('; ')}`)
+                toast.card({
+                    type: 'error',
+                    title: language === 'zh' ? '部分场景更新失败' : 'Some scenarios failed to update',
+                    message: parts.join('；'),
+                    duration: 10000,
+                    source: 'ScenarioMarketplace',
+                })
+            }
+        } catch (err) {
+            logger.scenario.warn('[ScenarioManager] Check updates failed:', err)
+            toast.card({
+                type: 'error',
+                title: t('app.failedtocheckupdates', language as Language),
+                message: err instanceof Error ? err.message : String(err),
+                duration: 5000,
+                source: 'ScenarioMarketplace',
+            })
+        } finally {
+            setUpdatingScenarioId(null)
+            setIsCheckingUpdates(false)
+        }
+    }, [isCheckingUpdates, scenarioUpdates, language])
 
     const scenarios = scenarioRegistry.getInstalled()
     const builtinScenarios = scenarios.filter(s => s.isBuiltin).sort((a, b) => {
@@ -329,6 +456,8 @@ export function ScenarioManagerView() {
             }
 
             await scenarioRegistry.uninstallScenario(uninstallState.scenarioId)
+            // 清掉市场条目映射，避免市场页仍显示「已安装」
+            unlinkMarketplaceScenario(uninstallState.scenarioId)
 
             // 卸载后同步当前 activeScenarioId（若卸载的是当前场景，registry 已回退到默认）
             const activeId = scenarioRegistry.getActiveId()
@@ -534,153 +663,148 @@ export function ScenarioManagerView() {
         const showSettings = scenario.hasSettings === true
         const updateInfo = scenarioUpdates.get(scenario.id)
         const isUpdating = updatingScenarioId === scenario.id
+        const displayName = language === 'zh' ? scenario.nameZh : scenario.name
+        const description = language === 'zh' ? scenario.descriptionZh : scenario.description
+
+        /**
+         * 底部工具按钮：图标态，hover 才出底色，避免一排按钮把卡片压垮
+         *
+         * 说明文字走 HintOverlay，不用 title —— 原生 title 有 1s 以上延迟、
+         * 样式跟随系统且无法控制位置，与卡片底部贴边时容易被窗口裁掉。
+         * 提示固定在上方，Icon 仍保留 aria-label 供读屏使用。
+         */
+        const toolButton = (
+            icon: LucideIcon,
+            label: string,
+            onClick: () => void,
+            danger = false,
+        ) => {
+            const ToolIcon = icon
+            return (
+                <HintOverlay key={label} content={label} side="top">
+                    <button
+                        aria-label={label}
+                        onClick={(e) => { e.stopPropagation(); onClick() }}
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                            danger
+                                ? 'text-text-muted/70 hover:text-red-400 hover:bg-red-400/10'
+                                : 'text-text-muted hover:text-accent hover:bg-accent/10'
+                        }`}
+                    >
+                        <ToolIcon className="w-3.5 h-3.5" strokeWidth={1.75} />
+                    </button>
+                </HintOverlay>
+            )
+        }
 
         return (
             <div
                 key={scenario.id}
-                className={`
-                    rounded-2xl border transition-all duration-200 overflow-hidden shadow-sm
-                    ${isActive
-                        ? 'border-accent/30 bg-accent/[0.06] shadow-accent/5'
-                        : 'border-border/15 bg-surface/20 hover:bg-surface/40 hover:border-border/30 shadow-black/5'}
-                `}
+                onClick={() => handleOpenDetail(scenario.id)}
+                className={`group flex flex-col rounded-xl border bg-surface overflow-hidden cursor-pointer transition-all duration-200 hover:border-accent/50 hover:shadow-lg hover:shadow-black/10 hover:-translate-y-0.5 ${
+                    isActive ? 'border-accent/50' : 'border-border/60'
+                }`}
             >
-                <div className="p-5">
-                    <div className="flex items-start gap-4">
+                {/* 头部：图标 + 名称 + 徽章 + 元信息 */}
+                <div className="flex items-start gap-3 px-4 pt-4">
+                    <span className={`w-11 h-11 flex-shrink-0 rounded-xl overflow-hidden flex items-center justify-center border ${
+                        isActive ? 'bg-accent/10 border-accent/25' : 'bg-accent/10 border-accent/20'
+                    }`}>
                         {scenario.icon ? (
                             isImageIcon(scenario.icon) ? (
-                                <img src={scenario.icon} alt="" className="w-12 h-12 flex-shrink-0 rounded-xl object-cover bg-background/50" />
+                                <img src={scenario.icon} alt="" className="w-full h-full object-cover" />
                             ) : (
-                                <IconComponent className={`w-12 h-12 flex-shrink-0 ${isActive ? 'text-accent' : 'text-text-muted'}`} strokeWidth={1.5} />
+                                <IconComponent className="w-5 h-5 text-accent" strokeWidth={1.75} />
                             )
                         ) : (
-                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 transition-colors overflow-hidden ${isActive ? 'bg-accent/15' : 'bg-surface/60'}`}>
-                                <IconComponent className={`w-6 h-6 ${isActive ? 'text-accent' : 'text-text-muted'}`} strokeWidth={1.5} />
-                            </div>
+                            <span className="text-base font-bold text-accent">{displayName?.[0]?.toUpperCase()}</span>
                         )}
-                        <div className="flex-1 min-w-0 pt-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-base font-semibold text-text-primary truncate">
-                                    {language === 'zh' ? scenario.nameZh : scenario.name}
-                                </span>
-                                {isActive && (
-                                    <span className="flex items-center gap-0.5 text-xs font-medium text-accent bg-accent/10 px-2 py-0.5 rounded-lg">
-                                        <Check className="w-2.5 h-2.5" />
-                                        {t('scenario.active', language as Language)}
-                                    </span>
-                                )}
-                                {isBuiltin && (
-                                    <span className="flex items-center gap-1 text-xs font-medium text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-lg">
-                                        <Shield className="w-3 h-3" />
-                                        {t('scenario.builtin', language as Language)}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2 mt-2 text-xs text-text-muted">
-                                <span className={`flex items-center gap-0.5 ${catLabel.color}`}>
-                                    {language === 'zh' ? catLabel.zh : catLabel.en}
-                                </span>
-                                <span>·</span>
-                                <span>v{scenario.version}</span>
-                                <span>·</span>
-                                <SourceIcon className="w-3.5 h-3.5" />
-                                <span>{language === 'zh' ? sourceInfo?.zh : sourceInfo?.en}</span>
-                            </div>
-                        </div>
-                    </div>
+                    </span>
 
-                    <p className="text-xs text-text-muted/80 mt-4 line-clamp-2 leading-relaxed">
-                        {language === 'zh' ? scenario.descriptionZh : scenario.description}
-                    </p>
-
-                    {updateInfo && (
-                        <div className="flex items-center gap-2 mt-3 px-3 py-2 rounded-xl bg-blue-500/5 border border-blue-500/15">
-                            <ArrowUpCircle className="w-4 h-4 text-blue-400 shrink-0" />
-                            <span className="text-xs text-blue-400 font-medium">
-                                {t('scenario.vavailable', language as Language, { latestVersion: updateInfo.latestVersion })}
-                            </span>
-                            {isUpdating ? (
-                                <Loader2 className="w-4 h-4 animate-spin text-blue-400 ml-auto" />
-                            ) : (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleUpdateScenario(scenario.id) }}
-                                    className="ml-auto text-xs px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors font-medium"
-                                >
-                                    {t('scenario.update', language as Language)}
-                                </button>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-semibold text-text-primary truncate">{displayName}</span>
+                            {isActive && (
+                                <span className="flex items-center gap-0.5 text-[11px] font-medium text-accent bg-accent/10 px-1.5 py-0.5 rounded-md flex-shrink-0">
+                                    <Check className="w-2.5 h-2.5" />
+                                    {t('scenario.active', language as Language)}
+                                </span>
+                            )}
+                            {isBuiltin && (
+                                <span className="flex items-center gap-0.5 text-[11px] font-medium text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-md flex-shrink-0">
+                                    <Shield className="w-2.5 h-2.5" />
+                                    {t('scenario.builtin', language as Language)}
+                                </span>
                             )}
                         </div>
-                    )}
+                        <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-text-muted">
+                            <span className={catLabel.color}>
+                                {language === 'zh' ? catLabel.zh : catLabel.en}
+                            </span>
+                            <span className="text-border/60">·</span>
+                            <span>v{scenario.version}</span>
+                            <span className="text-border/60">·</span>
+                            <SourceIcon className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{language === 'zh' ? sourceInfo?.zh : sourceInfo?.en}</span>
+                        </div>
+                    </div>
+                </div>
 
-                    <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-border/10">
-                        {!isActive && (
-                            <ActionButton
-                                variant="primary"
-                                size="sm"
-                                className="h-8 text-xs gap-1.5 px-4 rounded-xl"
+                <p className="px-4 pt-3 text-xs leading-relaxed text-text-secondary line-clamp-2">
+                    {description}
+                </p>
+
+                {updateInfo && (
+                    <div className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/5 border border-blue-500/15">
+                        <ArrowUpCircle className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        <span className="text-[11px] text-blue-400 font-medium truncate">
+                            {t('scenario.vavailable', language as Language, { latestVersion: updateInfo.latestVersion })}
+                        </span>
+                        {isUpdating ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 ml-auto flex-shrink-0" />
+                        ) : (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); handleUpdateScenario(scenario.id) }}
+                                className="ml-auto text-[11px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors font-medium flex-shrink-0"
+                            >
+                                {t('scenario.update', language as Language)}
+                            </button>
+                        )}
+                    </div>
+                )}
+
+                {/* 底部操作栏：主操作在左，工具在右 */}
+                <div className="mt-auto flex items-center justify-between gap-2 px-4 py-2.5 border-t border-border/40 bg-background-secondary/50">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        {!isActive ? (
+                            <button
                                 onClick={(e) => { e.stopPropagation(); handleSwitch(scenario) }}
+                                className="h-7 px-2.5 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 text-[11px] font-medium flex items-center gap-1 transition-colors"
                             >
-                                <Check className="w-3.5 h-3.5" />
+                                <Check className="w-3 h-3" />
                                 {t('scenario.switch', language as Language)}
-                            </ActionButton>
+                            </button>
+                        ) : (
+                            <span className="text-[11px] text-text-muted flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-accent" />
+                                {language === 'zh' ? '当前使用中' : 'In use'}
+                            </span>
                         )}
-                        {showSettings && (
-                            <ActionButton
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 text-xs gap-1.5 px-4 rounded-xl"
-                                onClick={(e) => { e.stopPropagation(); handleOpenSettings(scenario.id) }}
-                            >
-                                <Settings className="w-3.5 h-3.5" />
-                                {t('scenario.settings', language as Language)}
-                            </ActionButton>
-                        )}
-                        <ActionButton
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 text-xs gap-1.5 px-4 rounded-xl"
-                            onClick={(e) => { e.stopPropagation(); handleOpenPromptConfig(scenario.id) }}
-                            title={language === 'zh' ? '配置此场景的 Prompt' : 'Configure Prompt for this scene'}
-                        >
-                            <FileText className="w-3.5 h-3.5" />
-                            {language === 'zh' ? 'Prompt' : 'Prompt'}
-                        </ActionButton>
-                        <ActionButton
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 text-xs gap-1.5 px-4 rounded-xl"
-                            onClick={(e) => { e.stopPropagation(); handleOpenDetail(scenario.id) }}
-                        >
-                            <Info className="w-3.5 h-3.5" />
-                            {t('scenario.details', language as Language)}
-                        </ActionButton>
-                        {!isBuiltin && (
-                            <ActionButton
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 text-xs gap-1.5 px-4 rounded-xl text-red-400/60 hover:text-red-400 hover:bg-red-400/10 ml-auto"
-                                onClick={(e) => { e.stopPropagation(); handleRequestUninstall(scenario) }}
-                            >
-                                <PackageX className="w-3.5 h-3.5" />
-                                {t('scenario.uninstall', language as Language)}
-                            </ActionButton>
-                        )}
-                        {isBuiltin && !scenario.isDefault && (
-                            <ActionButton
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 text-xs gap-1.5 px-4 rounded-xl text-red-400/60 hover:text-red-400 hover:bg-red-400/10 ml-auto"
-                                onClick={(e) => { e.stopPropagation(); handleRequestUninstall(scenario) }}
-                            >
-                                <PackageX className="w-3.5 h-3.5" />
-                                {t('scenario.uninstall2', language as Language)}
-                            </ActionButton>
-                        )}
+                    </div>
+
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                        {showSettings && toolButton(Settings, t('scenario.settings', language as Language), () => handleOpenSettings(scenario.id))}
+                        {toolButton(FileText, language === 'zh' ? '配置 Prompt' : 'Configure Prompt', () => handleOpenPromptConfig(scenario.id))}
+                        {toolButton(Info, t('scenario.details', language as Language), () => handleOpenDetail(scenario.id))}
+                        {isBuiltin
+                            ? (!scenario.isDefault && toolButton(PackageX, t('scenario.uninstall2', language as Language), () => handleRequestUninstall(scenario), true))
+                            : toolButton(PackageX, t('scenario.uninstall', language as Language), () => handleRequestUninstall(scenario), true)}
                     </div>
                 </div>
             </div>
         )
     }
+
 
     return (
         <div className="flex h-full w-full relative">
@@ -768,6 +892,9 @@ export function ScenarioManagerView() {
                                 setFilterCategory={setFilterCategory}
                                 sortedCategories={sortedCategories}
                                 renderScenarioCard={renderScenarioCard}
+                                onCheckUpdates={handleCheckAllUpdates}
+                                isCheckingUpdates={isCheckingUpdates}
+                                hasInstalledScenarios={installedScenarios.length > 0}
                             />
                         ) : (
                             <MarketplaceTab language={language} isAuthenticated={isAuthenticated} />
@@ -882,8 +1009,7 @@ export function ScenarioManagerView() {
             <DecisionOverlay
                 isOpen={uninstallState?.isConfirming === true}
                 title={t('scenario.confirmuninstall', language as Language)}
-                message={t('scenario.areyousureyouwant', language as Language, { p0: uninstallState?.scenarioName })
-                }
+                message={t('scenario.areyousureyouwant', language as Language, { name: uninstallState?.scenarioName ?? '' })}
                 confirmText={t('scenario.uninstall3', language as Language)}
                 cancelText={t('scenario.cancel2', language as Language)}
                 severity="danger"
@@ -1087,8 +1213,10 @@ export function ScenarioManagerView() {
                                             {t('scenario.rollbackavailable', language as Language)}
                                         </h4>
                                         <p className="text-[11px] text-text-muted mt-1">
-                                            {t('scenario.rollbacktovbacked', language as Language, { previousVersion: rollbackInfo.previousVersion, backedUpAt: new Date(rollbackInfo.backedUpAt).toLocaleString('en-US'), backedUpAt2: new Date(rollbackInfo.backedUpAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US') })
-                                            }
+                                            {t('scenario.rollbacktovbacked', language as Language, {
+                                                previousVersion: rollbackInfo.previousVersion,
+                                                backedUpAt: new Date(rollbackInfo.backedUpAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US'),
+                                            })}
                                         </p>
                                     </div>
                                     <ActionButton
@@ -1165,8 +1293,10 @@ export function ScenarioManagerView() {
             <OverlayDialog
                 isOpen={settingsScenarioId !== null}
                 onClose={() => setSettingsScenarioId(null)}
-                title={t('scenario.settings2', language as Language, { name: settingsScenario ? settingsScenario.name : '', nameZh: settingsScenario ? (language === 'zh' ? settingsScenario.nameZh : settingsScenario.name) : '' })
-                }
+                title={t('scenario.settings2', language as Language, {
+                    name: settingsScenario?.name ?? '',
+                    nameZh: settingsScenario?.nameZh || settingsScenario?.name || '',
+                })}
                 size="md"
             >
                 {settingsScenario && SettingsComponent ? (
@@ -1218,6 +1348,9 @@ function InstalledTab({
     setFilterCategory,
     sortedCategories,
     renderScenarioCard,
+    onCheckUpdates,
+    isCheckingUpdates,
+    hasInstalledScenarios,
 }: {
     language: Language
     scenarios: ScenarioPlugin[]
@@ -1227,81 +1360,139 @@ function InstalledTab({
     setFilterCategory: (cat: string | null) => void
     sortedCategories: string[]
     renderScenarioCard: (scenario: ScenarioPlugin) => React.ReactNode
+    onCheckUpdates: () => void
+    isCheckingUpdates: boolean
+    hasInstalledScenarios: boolean
 }) {
     return (
-        <div className="flex flex-col flex-1 min-h-0 overflow-auto px-8 pt-6 pb-8">
-            {sortedCategories.length > 1 && (
-                <div className="flex items-center gap-2 mb-6 overflow-x-auto no-scrollbar">
-                    <button
-                        onClick={() => setFilterCategory(null)}
-                        className={`text-xs px-4 py-2 rounded-xl whitespace-nowrap transition-all font-medium ${
-                            !filterCategory
-                                ? 'bg-accent/15 text-accent border border-accent/20'
-                                : 'text-text-muted hover:text-text-primary border border-border/20 hover:border-border/40'
-                        }`}
-                    >
-                        {t('scenario.all', language as Language)}
-                    </button>
-                    {sortedCategories.map(cat => {
-                        const catLabel = CATEGORY_LABELS[cat] || CATEGORY_LABELS.custom
-                        return (
-                            <button
-                                key={cat}
-                                onClick={() => setFilterCategory(filterCategory === cat ? null : cat)}
-                                className={`text-xs px-4 py-2 rounded-xl whitespace-nowrap transition-all font-medium ${
-                                    filterCategory === cat
-                                        ? 'bg-accent/15 text-accent border border-accent/20'
-                                        : `${catLabel.color} hover:opacity-80 border border-border/20 hover:border-border/40`
-                                }`}
-                            >
-                                {language === 'zh' ? catLabel.zh : catLabel.en}
-                            </button>
-                        )
-                    })}
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            {/* 顶部工具栏：与场景市场同一层级，固定不随内容滚动 */}
+            <div className="shrink-0 px-6 py-4 border-b border-border/60 bg-background-secondary">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                            <Package className="w-4 h-4 text-accent" strokeWidth={1.75} />
+                            <h2 className="text-sm font-semibold text-text-primary">
+                                {t('scenario.installed2', language as Language)}
+                            </h2>
+                            <span className="text-xs text-text-muted">({scenarios.length})</span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-text-muted/70 truncate">
+                            {language === 'zh'
+                                ? '检查到新版本会自动更新已安装的场景'
+                                : 'Installed scenarios are updated automatically when a new version is found'}
+                        </p>
+                    </div>
+                    {hasInstalledScenarios && (
+                        <ActionButton
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-3 gap-1.5 rounded-lg border border-border/30 hover:border-accent/30 hover:text-accent flex-shrink-0"
+                            onClick={onCheckUpdates}
+                            disabled={isCheckingUpdates}
+                        >
+                            {isCheckingUpdates ? (
+                                <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    {language === 'zh' ? '检查中…' : 'Checking…'}
+                                </>
+                            ) : (
+                                <>
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    {language === 'zh' ? '检查更新' : 'Check updates'}
+                                </>
+                            )}
+                        </ActionButton>
+                    )}
                 </div>
-            )}
 
-            {filteredBuiltin.length > 0 && (
-                <div className="mb-8">
-                    <div className="flex items-center gap-2 mb-4">
-                        <Shield className="w-4 h-4 text-amber-400/70" strokeWidth={1.5} />
-                        <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-                            {t('scenario.builtin3', language as Language)}
-                        </span>
-                        <span className="text-[11px] text-text-muted/50">({filteredBuiltin.length})</span>
+                {/* 分类筛选：带图标与数量，与市场分类栏保持一致 */}
+                {sortedCategories.length > 1 && (
+                    <div className="flex items-center gap-2 mt-4 overflow-x-auto no-scrollbar">
+                        <button
+                            onClick={() => setFilterCategory(null)}
+                            className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 border ${
+                                !filterCategory
+                                    ? 'bg-accent/15 text-accent border-accent/20'
+                                    : 'text-text-muted hover:text-text-secondary border-border/20 hover:border-border/40'
+                            }`}
+                        >
+                            {t('scenario.all', language as Language)}
+                            <span className="opacity-60">{scenarios.length}</span>
+                        </button>
+                        {sortedCategories.map(cat => {
+                            const catLabel = CATEGORY_LABELS[cat] || CATEGORY_LABELS.custom
+                            const count = scenarios.filter(s => s.category === cat).length
+                            return (
+                                <button
+                                    key={cat}
+                                    onClick={() => setFilterCategory(filterCategory === cat ? null : cat)}
+                                    className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 border ${
+                                        filterCategory === cat
+                                            ? 'bg-accent/15 text-accent border-accent/20'
+                                            : 'text-text-muted hover:text-text-secondary border-border/20 hover:border-border/40'
+                                    }`}
+                                >
+                                    <span className="w-4 h-4 flex items-center justify-center">
+                                        {CATEGORY_ICONS[cat] || <Sparkles className="w-4 h-4" />}
+                                    </span>
+                                    <span>{language === 'zh' ? catLabel.zh : catLabel.en}</span>
+                                    <span className="opacity-60">{count}</span>
+                                </button>
+                            )
+                        })}
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {filteredBuiltin.map(renderScenarioCard)}
-                    </div>
-                </div>
-            )}
+                )}
+            </div>
 
-            {filteredInstalled.length > 0 && (
-                <div className="mb-8">
-                    <div className="flex items-center gap-2 mb-4">
-                        <Package className="w-4 h-4 text-accent/70" strokeWidth={1.5} />
-                        <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-                            {t('scenario.installed2', language as Language)}
-                        </span>
-                        <span className="text-[11px] text-text-muted/50">({filteredInstalled.length})</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {filteredInstalled.map(renderScenarioCard)}
-                    </div>
-                </div>
-            )}
+            {/* 内容区：滚动只发生在这一层 */}
+            <div className="flex-1 min-h-0 overflow-auto p-5">
+                {filteredBuiltin.length > 0 && (
+                    <section className="mb-8">
+                        <div className="flex items-center gap-2 mb-3">
+                            <span className="w-6 h-6 rounded-lg bg-amber-400/15 border border-amber-400/25 flex items-center justify-center">
+                                <Shield className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.75} />
+                            </span>
+                            <h3 className="text-sm font-semibold text-text-primary">
+                                {t('scenario.builtin3', language as Language)}
+                            </h3>
+                            <span className="text-xs text-text-muted font-normal">({filteredBuiltin.length})</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {filteredBuiltin.map(renderScenarioCard)}
+                        </div>
+                    </section>
+                )}
 
-            {scenarios.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-24 text-center">
-                    <Package className="w-16 h-16 text-text-muted/15 mb-5" strokeWidth={1} />
-                    <p className="text-base text-text-muted/70 font-medium">
-                        {t('scenario.noscenariosinstalled', language as Language)}
-                    </p>
-                    <p className="text-xs text-text-muted/40 mt-2">
-                        {t('scenario.installfrommarketplaceorclick', language as Language)}
-                    </p>
-                </div>
-            )}
+                {filteredInstalled.length > 0 && (
+                    <section className="mb-8">
+                        <div className="flex items-center gap-2 mb-3">
+                            <span className="w-6 h-6 rounded-lg bg-accent/15 border border-accent/25 flex items-center justify-center">
+                                <Package className="w-3.5 h-3.5 text-accent" strokeWidth={1.75} />
+                            </span>
+                            <h3 className="text-sm font-semibold text-text-primary">
+                                {t('scenario.installed2', language as Language)}
+                            </h3>
+                            <span className="text-xs text-text-muted font-normal">({filteredInstalled.length})</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {filteredInstalled.map(renderScenarioCard)}
+                        </div>
+                    </section>
+                )}
+
+                {scenarios.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-24 text-center">
+                        <Package className="w-16 h-16 text-text-muted/15 mb-5" strokeWidth={1} />
+                        <p className="text-base text-text-muted/70 font-medium">
+                            {t('scenario.noscenariosinstalled', language as Language)}
+                        </p>
+                        <p className="text-xs text-text-muted/40 mt-2">
+                            {t('scenario.installfrommarketplaceorclick', language as Language)}
+                        </p>
+                    </div>
+                )}
+            </div>
         </div>
     )
 }
@@ -1367,7 +1558,8 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
         try { const c = await getMarketplaceCategories(); setCategories(c || []) } catch { /* ignore */ }
     }
     function handleInstall(item: MarketplaceScenario) {
-        if (scenarioRegistry.has(item.id)) { toast.warning(t('scenario.alreadyinstalled', language as Language)); return }
+        // 市场条目 ID 与本地场景 ID 可能不同，统一走映射判断
+        if (findInstalledScenarioId(item)) { toast.warning(t('scenario.alreadyinstalled', language as Language)); return }
         if ((item.permissions?.length ?? 0) > 0) { setPermissionPending(item); return }
         doInstall(item)
     }
@@ -1378,7 +1570,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
             if (result.success) {
                 const config = result.config
                 const scenarioId = result.scenarioId || item.id
-                if (config) await registerInstalledScenario(config as any, { scenarioId, source: 'marketplace', version: result.version })
+                if (config) await registerInstalledScenario(config as any, { scenarioId, source: 'marketplace', version: result.version, marketplaceId: item.id })
                 toast.success(t('scenario.scenarioinstalledsuccessfully', language as Language, { name: item.name, nameZh: item.nameZh }))
                 setSelectedItem(null)
                 await loadItems()
@@ -1398,6 +1590,95 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
         const stars = []
         for (let i = 1; i <= 5; i++) stars.push(<Star key={i} className={`w-3 h-3 ${i <= Math.round(rating) ? 'text-yellow-300 fill-yellow-300' : 'text-border/40'}`} />)
         return <div className="flex items-center gap-0.5">{stars}</div>
+    }
+
+    /**
+     * 市场卡片
+     *
+     * 卡面用实心 surface 配清晰描边压出层次：低透明度叠加在 background 上几乎没有
+     * 色差，卡片会和背景糊成一片。hover 只做轻微上浮与描边提亮，不做缩放 ——
+     * 网格整体缩放时相邻卡片会跟着抖。
+     */
+    function renderMarketplaceCard(item: MarketplaceScenario) {
+        const displayName = language === 'zh' ? item.nameZh : item.name
+        const description = language === 'zh' ? item.descriptionZh : item.description
+        const installed = !!findInstalledScenarioId(item)
+        const iconFallback = (
+            <span className="w-11 h-11 flex-shrink-0 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-base font-bold text-accent">
+                {displayName?.[0]?.toUpperCase()}
+            </span>
+        )
+
+        return (
+            <button
+                key={item.id}
+                onClick={() => setSelectedItem(item)}
+                className="group flex flex-col rounded-xl border border-border/60 bg-surface text-left overflow-hidden transition-all duration-200 hover:border-accent/50 hover:shadow-lg hover:shadow-black/10 hover:-translate-y-0.5"
+            >
+                <div className="flex items-start gap-3 px-4 pt-4">
+                    {item.icon ? (
+                        isImageIcon(item.icon) ? (
+                            <img
+                                src={item.icon}
+                                alt={item.name}
+                                className="w-11 h-11 flex-shrink-0 rounded-xl object-contain bg-background border border-border/50"
+                            />
+                        ) : (
+                            (() => {
+                                const I = ICON_MAP[item.icon]
+                                return I ? (
+                                    <span className="w-11 h-11 flex-shrink-0 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
+                                        <I className="w-5 h-5 text-accent" strokeWidth={1.75} />
+                                    </span>
+                                ) : iconFallback
+                            })()
+                        )
+                    ) : (
+                        iconFallback
+                    )}
+
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-semibold text-text-primary truncate">{displayName}</span>
+                            {installed && <CheckCircle2 className="w-3.5 h-3.5 text-accent flex-shrink-0" />}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1.5">
+                            {renderStars(item.rating)}
+                            <span className="text-[11px] text-text-muted">
+                                {item.downloads} {t('app.dl', language as Language)}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <p className="px-4 pt-3 pb-4 text-xs leading-relaxed text-text-secondary line-clamp-2">
+                    {description}
+                </p>
+
+                <div className="mt-auto flex items-center justify-between gap-2 px-4 py-2.5 border-t border-border/40 bg-background-secondary/50">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        {item.isFree ? (
+                            <span className="px-2 py-0.5 text-[11px] rounded-md bg-emerald-500/15 text-emerald-400 font-medium">
+                                {t('app.free', language as Language)}
+                            </span>
+                        ) : (
+                            <span className="px-2 py-0.5 text-[11px] rounded-md bg-amber-500/15 text-amber-400 font-medium">
+                                ¥{item.price}
+                            </span>
+                        )}
+                        {item.category && (
+                            <span className="text-[11px] text-text-muted truncate">
+                                {CATEGORY_LABELS[item.category]?.[language === 'zh' ? 'zh' : 'en'] || item.category}
+                            </span>
+                        )}
+                    </div>
+                    <span className="flex items-center gap-0.5 text-[11px] text-text-muted transition-colors group-hover:text-accent flex-shrink-0">
+                        {language === 'zh' ? '详情' : 'Details'}
+                        <ChevronRight className="w-3 h-3" />
+                    </span>
+                </div>
+            </button>
+        )
     }
 
     /**
@@ -1475,13 +1756,14 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
     // ── 详情视图 ──
     if (selectedItem) {
         return (
-            <div className="p-6">
+            <div className="p-6 max-w-5xl mx-auto">
                 <button onClick={() => setSelectedItem(null)} className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary mb-4 transition-colors">
                     <ArrowLeft className="w-3.5 h-3.5" />{t('app.backtolist', language as Language)}
                 </button>
                 <div>
                     {/* 头部卡片 */}
-                    <div className="rounded-2xl border border-border/15 bg-surface/20 p-6 mb-6 shadow-sm shadow-black/5">
+                    <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-surface p-6 mb-6 shadow-sm shadow-black/10">
+                        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-accent/[0.07] to-transparent" />
                         <div className="flex items-start gap-5">
                             {selectedItem.icon ? (
                                 isImageIcon(selectedItem.icon) ? (
@@ -1518,17 +1800,17 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
 
                     {/* 统计卡片 */}
                     <div className="grid grid-cols-3 gap-4 mb-6">
-                        <div className="text-center p-4 rounded-2xl bg-surface/20 border border-border/15">
+                        <div className="text-center p-4 rounded-xl bg-surface border border-border/50">
                             <div className="text-xl font-bold text-text-primary flex items-center justify-center gap-1.5">
                                 {selectedItem.rating.toFixed(1)} <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
                             </div>
                             <div className="text-xs text-text-muted mt-1">{t('app.rating', language as Language)}</div>
                         </div>
-                        <div className="text-center p-4 rounded-2xl bg-surface/20 border border-border/15">
+                        <div className="text-center p-4 rounded-xl bg-surface border border-border/50">
                             <div className="text-xl font-bold text-text-primary">{selectedItem.downloads}</div>
                             <div className="text-xs text-text-muted mt-1">{t('app.downloads', language as Language)}</div>
                         </div>
-                        <div className="text-center p-4 rounded-2xl bg-surface/20 border border-border/15">
+                        <div className="text-center p-4 rounded-xl bg-surface border border-border/50">
                             <div className="text-xl font-bold text-text-primary">v{selectedItem.version}</div>
                             <div className="text-xs text-text-muted mt-1">{t('app.version', language as Language)}</div>
                         </div>
@@ -1539,7 +1821,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                             <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">{t('app.tags', language as Language)}</h4>
                             <div className="flex flex-wrap gap-2">
                                 {selectedItem.tags.map(tag => (
-                                    <span key={tag} className="px-3 py-1 text-xs rounded-lg bg-surface/30 text-text-secondary border border-border/15 flex items-center gap-1.5"><Tag className="w-3 h-3" />{tag}</span>
+                                    <span key={tag} className="px-3 py-1 text-xs rounded-lg bg-background-secondary text-text-secondary border border-border/50 flex items-center gap-1.5"><Tag className="w-3 h-3" />{tag}</span>
                                 ))}
                             </div>
                         </div>
@@ -1549,7 +1831,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                     <div className="flex items-center gap-2 text-sm text-text-muted mb-6"><Shield className="w-4 h-4 text-green-400" /><span>{t('app.securityreviewpassed', language as Language)}</span></div>
 
                     <div className="flex items-center gap-3 mb-8">
-                        {scenarioRegistry.has(selectedItem.id) ? (
+                        {findInstalledScenarioId(selectedItem) ? (
                             <ActionButton className="h-10 text-sm gap-2 px-6 rounded-xl" disabled><CheckCircle2 className="w-4 h-4" />{t('app.installed', language as Language)}</ActionButton>
                         ) : (
                             <ActionButton className="h-10 text-sm gap-2 px-6 rounded-xl" onClick={() => handleInstall(selectedItem)} disabled={installing === selectedItem.id}>
@@ -1571,7 +1853,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
     return (
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
             {/* 顶部搜索栏 */}
-            <div className="shrink-0 px-6 py-4 border-b border-border/10 bg-surface/20">
+            <div className="shrink-0 px-6 py-4 border-b border-border/60 bg-background-secondary">
                 <div className="flex items-center gap-3">
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
@@ -1579,7 +1861,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                             type="text" value={searchQuery}
                             onChange={e => { setSearchQuery(e.target.value); setPage(1) }}
                             placeholder={t('app.searchscenarios', language as Language)}
-                            className="w-full h-9 pl-9 pr-3 rounded-xl bg-surface/40 border border-border/20 text-sm text-text-primary placeholder:text-text-muted/50 outline-none focus:border-accent/40 transition-colors"
+                            className="w-full h-9 pl-9 pr-3 rounded-xl bg-surface border border-border/60 text-sm text-text-primary placeholder:text-text-muted/60 outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/15 transition-all"
                         />
                     </div>
                     <button onClick={() => { loadItems(); loadFeatured(); loadCategories(); }}
@@ -1609,45 +1891,19 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                 <div className="flex-1 min-h-0 overflow-auto p-5">
                 {/* 精选推荐 */}
                 {featured.length > 0 && !searchQuery && !selectedCategory && (
-                    <div className="mb-6">
+                    <section className="mb-8">
                         <div className="flex items-center gap-2 mb-3">
-                            <Sparkles className="w-4 h-4 text-accent" />
+                            <span className="w-6 h-6 rounded-lg bg-accent/15 border border-accent/25 flex items-center justify-center">
+                                <Sparkles className="w-3.5 h-3.5 text-accent" />
+                            </span>
                             <h3 className="text-sm font-semibold text-text-primary">{t('app.featured', language as Language)}</h3>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            {featured.slice(0, 8).map(item => (
-                                <button key={item.id} onClick={() => setSelectedItem(item)}
-                                    className="rounded-2xl border border-border/15 bg-surface/20 hover:bg-surface/40 hover:border-accent/20 transition-all duration-200 group text-left overflow-hidden shadow-sm shadow-black/5">
-                                    <div className="p-5">
-                                        <div className="flex items-start gap-4">
-                                            {item.icon ? (
-                                                isImageIcon(item.icon) ? (
-                                                    <img src={item.icon} alt={item.name} className="w-12 h-12 flex-shrink-0 object-contain rounded-xl bg-background/50" />
-                                                ) : (() => {
-                                                    const I = ICON_MAP[item.icon]
-                                                    return I
-                                                        ? <I className="w-12 h-12 text-accent flex-shrink-0 group-hover:scale-105 transition-transform" strokeWidth={1.5} />
-                                                        : <span className="text-2xl font-bold text-accent flex-shrink-0">{(language === 'zh' ? item.nameZh : item.name)?.[0]?.toUpperCase()}</span>
-                                                })()
-                                            ) : (
-                                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center text-accent flex-shrink-0 border border-accent/10">
-                                                    <span className="text-xl font-bold">{(language === 'zh' ? item.nameZh : item.name)?.[0]?.toUpperCase()}</span>
-                                                </div>
-                                            )}
-                                            <div className="flex-1 min-w-0 pt-1">
-                                                <span className="text-base font-semibold text-text-primary truncate block">{language === 'zh' ? item.nameZh : item.name}</span>
-                                                <div className="flex items-center gap-2 mt-1.5">
-                                                    {renderStars(item.rating)}
-                                                    <span className="text-xs text-text-muted">{item.downloads} {t('app.dl', language as Language)}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </button>
-                            ))}
+                            {featured.slice(0, 8).map(renderMarketplaceCard)}
                         </div>
-                    </div>
+                    </section>
                 )}
+
 
                 {/* 搜索结果 / 全部 */}
                 <div>
@@ -1667,44 +1923,8 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                     )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {items.map(item => (
-                            <button key={item.id} onClick={() => setSelectedItem(item)}
-                                className="rounded-2xl border border-border/15 bg-surface/20 hover:bg-surface/40 hover:border-accent/20 transition-all duration-200 group text-left overflow-hidden shadow-sm shadow-black/5">
-                                <div className="p-5">
-                                    <div className="flex items-start gap-4">
-                                        {item.icon ? (
-                                            isImageIcon(item.icon) ? (
-                                                <img src={item.icon} alt={item.name} className="w-12 h-12 flex-shrink-0 object-contain rounded-xl bg-background/50" />
-                                            ) : (() => {
-                                                const I = ICON_MAP[item.icon]
-                                                return I
-                                                    ? <I className="w-12 h-12 text-accent flex-shrink-0 group-hover:scale-105 transition-transform" strokeWidth={1.5} />
-                                                    : <span className="text-2xl font-bold text-accent flex-shrink-0">{(language === 'zh' ? item.nameZh : item.name)?.[0]?.toUpperCase()}</span>
-                                            })()
-                                        ) : (
-                                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center text-accent flex-shrink-0 border border-accent/10">
-                                                <span className="text-xl font-bold">{(language === 'zh' ? item.nameZh : item.name)?.[0]?.toUpperCase()}</span>
-                                            </div>
-                                        )}
-                                        <div className="flex-1 min-w-0 pt-1">
-                                            <span className="text-base font-semibold text-text-primary truncate block">{language === 'zh' ? item.nameZh : item.name}</span>
-                                            <div className="flex items-center gap-2 mt-1.5">
-                                                {renderStars(item.rating)}
-                                                <span className="text-xs text-text-muted">{item.downloads} {t('app.dl', language as Language)}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 mt-2">
-                                                {item.isFree && <span className="px-2 py-0.5 text-xs rounded-lg bg-green-500/10 text-green-400 font-medium">{t('app.free', language as Language)}</span>}
-                                                {!item.isFree && <span className="px-2 py-0.5 text-xs rounded-lg bg-amber-500/10 text-amber-400 font-medium">¥{item.price}</span>}
-                                                {scenarioRegistry.has(item.id) && <span className="px-2 py-0.5 text-xs rounded-lg bg-accent/10 text-accent font-medium">{t('app.installed2', language as Language)}</span>}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <p className="text-xs text-text-muted/70 mt-4 line-clamp-2 leading-relaxed">
-                                        {language === 'zh' ? item.descriptionZh : item.description}
-                                    </p>
-                                </div>
-                            </button>
-                        ))}
+                        {items.map(renderMarketplaceCard)}
+
                     </div>
 
                     {total > 20 && (

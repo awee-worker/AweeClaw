@@ -453,7 +453,7 @@ export const zh = {
   'modals.resettoscenariodefault': '重置为场景默认',
   'modals.reset': '重置',
   'modals.scenario': '场景模板',
-  'modals.scenarioawareapipayloadconfigurationwill': '场景化 API 载荷配置。\\`{{model}}\\` 将被当前模型替换。当前场景: {SCENARIO_LABELS[activeScenario]?.zh || activeScenario}',
+  'modals.scenarioawareapipayloadconfigurationwill': '场景化 API 载荷配置。\\`{{model}}\\` 将被当前模型替换。当前场景: {scenarioName}',
   'modals.commonfields': '常用参数：',
   'modals.tokenbudget': 'Token 预算',
   'modals.norecentcommandsyet': '暂无最近使用的命令',

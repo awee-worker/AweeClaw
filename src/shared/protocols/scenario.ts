@@ -514,6 +514,13 @@ export interface ScenarioPlugin {
   settingsComponent?: string
   source?: 'builtin' | 'marketplace' | 'local' | 'url'
   sourceUrl?: string
+  /**
+   * 来源市场条目 ID
+   *
+   * 场景包里的 config.id 可以与市场条目 ID 不同，安装后必须把这个对应关系带上，
+   * 否则市场页无法判断「已安装」，更新检查也查不到新版本。
+   */
+  marketplaceId?: string
   installSize?: string
   changelog?: string
 

@@ -211,7 +211,11 @@ export function CloudSettings({ language }: { language: Language }) {
         if (order?.status === 'CANCELLED' || order?.status === 'EXPIRED') {
           setPolling(false)
           setPaymentError(
-            t('settings.order', language as Language, { status: order.status.toLowerCase(), status2: order.status === 'CANCELLED' ? '取消' : '过期' }),
+            t('settings.order', language as Language, {
+              status: order.status === 'CANCELLED'
+                ? (language === 'zh' ? '取消' : 'cancelled')
+                : (language === 'zh' ? '过期' : 'expired'),
+            }),
           )
           return
         }

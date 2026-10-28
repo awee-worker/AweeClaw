@@ -533,6 +533,53 @@ function validateTarHeader(buffer: Buffer): boolean {
   return storedChecksum === calculatedChecksum
 }
 
+/**
+ * 判断一个目录是否构成可运行的场景根
+ *
+ * 判据是 entryPoint（与 styleFile）在该目录下能落地，而不是「有没有 dist 目录」：
+ * 包内层级由打包方式决定，只有入口能解析出来才算落在了正确位置。
+ */
+function isCompleteScenarioRoot(dir: string): boolean {
+  const hit = readScenarioConfigFile(dir)
+  if (!hit) return false
+  if (isDeclarativeScenario(hit.config)) return true
+
+  const entry = (hit.config.entryPoint || '').replace(/^\.\//, '')
+  if (!entry) return false
+  if (!fs.existsSync(path.join(dir, entry))) return false
+
+  const style = (hit.config.styleFile || '').replace(/^\.\//, '')
+  if (style && !fs.existsSync(path.join(dir, style))) return false
+
+  return true
+}
+
+/**
+ * 在解压结果里定位真正的场景根
+ *
+ * 发布包顶层形态取决于打包方式，三种都要认：
+ * - 单一工程目录：pkg/config/scenario.json + pkg/dist/index.js
+ * - 产物目录作顶层：dist/config/scenario.json + dist/bundle/index.js
+ * - 配置与产物各占一个顶层目录：config/scenario.json + dist/index.js
+ *
+ * 第三种本身就是场景根，不能再往里剥一层：剥掉之后 entryPoint 指向的
+ * dist/index.js 会与落到根目录的 index.js 错位，表现为安装成功、
+ * 启动加载时报 bundle 404。
+ */
+function locateScenarioRoot(dir: string): string | null {
+  if (isCompleteScenarioRoot(dir)) return dir
+
+  const subdirs = fs
+    .readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+    .map((entry) => path.join(dir, entry.name))
+
+  const complete = subdirs.filter(isCompleteScenarioRoot)
+  if (complete.length === 1) return complete[0]
+
+  return null
+}
+
 async function extractTarGz(archivePath: string, targetDir: string): Promise<void> {
   const fileBuffer = fs.readFileSync(archivePath)
 
@@ -551,17 +598,37 @@ async function extractTarGz(archivePath: string, targetDir: string): Promise<voi
     throw new Error('TAR_BAD_ARCHIVE: Unrecognized archive format')
   }
 
-  if (fs.existsSync(targetDir)) {
-    fs.rmSync(targetDir, { recursive: true, force: true })
+  // 解压到临时目录再定位场景根：包内层级在解压前无法判断，
+  // 固定 strip 层数会把「配置与产物各占一个顶层目录」的包拆散。
+  const stagingDir = path.join(getTempDir(), `extract-${path.basename(targetDir)}-${Date.now()}`)
+  if (fs.existsSync(stagingDir)) {
+    fs.rmSync(stagingDir, { recursive: true, force: true })
   }
-  fs.mkdirSync(targetDir, { recursive: true })
+  fs.mkdirSync(stagingDir, { recursive: true })
 
-  return tar.x({
-    file: archivePath,
-    cwd: targetDir,
-    strip: 1,
-  })
+  try {
+    await tar.x({ file: archivePath, cwd: stagingDir })
+
+    const root = locateScenarioRoot(stagingDir)
+    if (!root) {
+      throw new Error(
+        'SCENARIO_ROOT_NOT_FOUND: Package does not contain a runnable scenario ' +
+          '(config/scenario.json whose entryPoint exists in the package)'
+      )
+    }
+
+    if (fs.existsSync(targetDir)) {
+      fs.rmSync(targetDir, { recursive: true, force: true })
+    }
+    fs.mkdirSync(path.dirname(targetDir), { recursive: true })
+    fs.renameSync(root, targetDir)
+  } finally {
+    if (fs.existsSync(stagingDir)) {
+      fs.rmSync(stagingDir, { recursive: true, force: true })
+    }
+  }
 }
+
 
 export function registerScenarioInstallIpcHandlers(
   getMainWindow: () => BrowserWindow | null
@@ -861,6 +928,8 @@ export function registerScenarioInstallIpcHandlers(
     const tmpDir = getTempDir()
     const archivePath = path.join(tmpDir, `${scenarioId}-${version}.tar.gz`)
     const targetDir = getScenarioDir(scenarioId)
+    // 备份目录在函数级声明：安装失败时 catch 需要用它把旧版本放回去
+    const backupDir = path.join(getScenariosDir(), '.backups', scenarioId)
 
     try {
       logger.agent.info(`[ScenarioMarketplace] Downloading scenario "${scenarioId}" v${version} from ${downloadUrl}`)
@@ -927,7 +996,6 @@ export function registerScenarioInstallIpcHandlers(
       })
 
       // 备份旧版本（用于回滚）
-      const backupDir = path.join(getScenariosDir(), '.backups', scenarioId)
       if (fs.existsSync(targetDir)) {
         if (!fs.existsSync(path.dirname(backupDir))) {
           fs.mkdirSync(path.dirname(backupDir), { recursive: true })
@@ -1003,9 +1071,26 @@ export function registerScenarioInstallIpcHandlers(
         try { fs.rmSync(targetDir, { recursive: true, force: true }) } catch (e) { logger.system.warn('Failed to remove target dir:', e) }
       }
 
+      // 解压或校验中途失败时，把备份的旧版本放回原位。
+      // 不做这一步，用户在升级一个已安装场景失败后会连旧版本一起丢掉。
+      if (fs.existsSync(backupDir)) {
+        try {
+          fs.mkdirSync(path.dirname(targetDir), { recursive: true })
+          fs.renameSync(backupDir, targetDir)
+          logger.agent.info(`[ScenarioMarketplace] Rolled back "${scenarioId}" to the previously installed version`)
+        } catch (e) {
+          logger.system.warn('Failed to restore backup after install failure:', e)
+        }
+      }
+
       const rawError = err instanceof Error ? err.message : String(err)
       let friendlyError = rawError
-      if (rawError.includes('TAR_BAD_ARCHIVE') || rawError.includes('Unrecognized archive format')) {
+      if (rawError.includes('SCENARIO_ROOT_NOT_FOUND')) {
+        friendlyError =
+          'This package does not contain a runnable scenario: config/scenario.json is present but its ' +
+          'entryPoint (e.g. dist/index.js) is missing inside the archive. Repackage it with the scenario ' +
+          'root as the single top-level directory, then republish.'
+      } else if (rawError.includes('TAR_BAD_ARCHIVE') || rawError.includes('Unrecognized archive format')) {
         friendlyError = 'Package archive is corrupted or in an unsupported format. Please verify the scenario package.'
       } else if (rawError.includes('TAR_ENTRY_INVALID') || rawError.includes('checksum failure')) {
         friendlyError = 'Package archive is corrupted or contains invalid entries. Please verify the scenario package.'

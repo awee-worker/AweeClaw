@@ -15,10 +15,19 @@ import path from 'node:path'
 import { toolPackRegistry } from '@configuration/toolPacks'
 import { getToolsForContext } from '@configuration/toolCategoryDefs'
 import { TOOL_DEFINITIONS } from '@configuration/toolDefinitions'
-import { BUILTIN_TOOL_OPTIONS } from '../../../src/scenarios/scenario-builder/config/scenarioOptionCatalog'
 
 const ROOT = path.resolve(__dirname, '../../..')
 const SRC = path.join(ROOT, 'src')
+
+/**
+ * 场景构建器已迁到 scenario-dev 独立项目，其配置选项目录不在客户端内。
+ * 该文件通过 fs 读取而非 import：跨项目引用会让客户端的类型检查依赖
+ * 外部目录是否存在，单独检出客户端时会直接编译失败。
+ */
+const SCENARIO_BUILDER_CATALOG = path.join(
+  ROOT,
+  '../aweeclaw-scenario-dev/scenario-builder/config/scenarioOptionCatalog.ts',
+)
 
 /**
  * 工具由场景项目自身通过 toolRegistry.registerScenarioTool() 注册的工具包，
@@ -34,15 +43,52 @@ function extractBuiltinExecutorNames(): Set<string> {
   return new Set(names)
 }
 
-/** 递归扫描 src，收集所有 `toolPacks: [...]` 字面量声明 */
+interface BuiltinToolOptionEntry {
+  value: string
+  reserved: boolean
+}
+
+/**
+ * 静态提取场景构建器的内置工具勾选项
+ *
+ * 只解析 BUILTIN_TOOL_OPTIONS 数组内部的条目，其他选项清单（图标、分类、
+ * 权限）同样带 value 字段，按数组边界截断可避免误收。
+ */
+function readBuiltinToolOptions(): BuiltinToolOptionEntry[] {
+  if (!fs.existsSync(SCENARIO_BUILDER_CATALOG)) return []
+
+  const src = fs.readFileSync(SCENARIO_BUILDER_CATALOG, 'utf8')
+  const afterDecl = src.split('export const BUILTIN_TOOL_OPTIONS')[1]
+  if (!afterDecl) return []
+
+  const body = afterDecl.split(/\n\]/)[0]
+  const entries: BuiltinToolOptionEntry[] = []
+
+  for (const line of body.split('\n')) {
+    const matched = line.match(/value:\s*'([^']+)'/)
+    if (!matched) continue
+    entries.push({ value: matched[1], reserved: /reserved:\s*true/.test(line) })
+  }
+
+  return entries
+}
+
+/**
+ * 递归扫描 src，收集所有 `toolPacks: [...]` 字面量声明
+ *
+ * 跳过测试目录与测试文件：那里面的 toolPacks 是构造出的夹具，
+ * 用来验证白名单匹配等逻辑，并非真实场景的能力声明。
+ */
 function collectDeclaredToolPacks(): Array<{ file: string; packs: string[] }> {
   const result: Array<{ file: string; packs: string[] }> = []
   const walk = (dir: string): void => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name)
       if (entry.isDirectory()) {
+        if (entry.name === '__tests__' || entry.name === '__mocks__') continue
         walk(full)
       } else if (/\.tsx?$/.test(entry.name)) {
+        if (/\.(test|spec)\.tsx?$/.test(entry.name)) continue
         const src = fs.readFileSync(full, 'utf8')
         for (const m of src.matchAll(/toolPacks:\s*\[([^\]]*)\]/g)) {
           const packs = [...m[1].matchAll(/'([^']+)'|"([^"]+)"/g)].map(x => x[1] ?? x[2])
@@ -191,12 +237,15 @@ describe('ToolPack 完整性', () => {
  * （= AVAILABLE_BUILTIN_TOOLS.has(name) && toolRegistry.has(name)）过滤。
  * 若某工具没有执行器却能在 UI 勾选，用户会得到「勾了但场景拿不到」的配置。
  */
-describe('场景构建器内置工具选项完整性', () => {
+/** 场景构建器勾选项；目录未检出时为空，相关用例自动跳过 */
+const scenarioBuilderToolOptions = readBuiltinToolOptions()
+
+describe.skipIf(scenarioBuilderToolOptions.length === 0)('场景构建器内置工具选项完整性', () => {
   it('UI 可勾选的内置工具必须同时具备工具定义与执行器', () => {
     const executors = extractBuiltinExecutorNames()
     const violations: string[] = []
 
-    for (const opt of BUILTIN_TOOL_OPTIONS) {
+    for (const opt of scenarioBuilderToolOptions) {
       if (opt.reserved) continue
       const hasDefinition = opt.value in TOOL_DEFINITIONS
       const hasExecutor = executors.has(opt.value)
@@ -214,7 +263,7 @@ describe('场景构建器内置工具选项完整性', () => {
 
   it('标记 reserved 的内置工具必须确实没有执行器（实现后须移除标记）', () => {
     const executors = extractBuiltinExecutorNames()
-    const stale = BUILTIN_TOOL_OPTIONS
+    const stale = scenarioBuilderToolOptions
       .filter(opt => opt.reserved && executors.has(opt.value))
       .map(opt => opt.value)
 

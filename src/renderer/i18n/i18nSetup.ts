@@ -147,6 +147,57 @@ export function getTranslations(lang: Language): Record<string, string> {
   return merged
 }
 
+/**
+ * 是否为开发态。
+ *
+ * 惰性求值：首次使用时读一次 import.meta.env，之后走缓存，
+ * 避免每个 t() 调用都去触碰构建期注入的对象。
+ */
+let devFlag: boolean | undefined
+
+function isDevBuild(): boolean {
+  if (devFlag === undefined) {
+    try {
+      devFlag = Boolean((import.meta as any)?.env?.DEV)
+    } catch {
+      devFlag = false
+    }
+  }
+  return devFlag
+}
+
+/** 已告警过的 key，避免同一处文案在每次渲染时刷屏 */
+const warnedResidualKeys = new Set<string>()
+
+/**
+ * 开发期兜底：替换完成后若仍残留 {xxx}，说明模板与调用处的参数名对不上。
+ *
+ * t() 只做字面替换，不解析表达式，所以模板里若写了三元、属性访问之类的
+ * JS 代码，占位符永远替换不掉，用户看到的就是原样花括号。
+ * 这类问题在开发阶段就该暴露，而不是等上线后从界面上发现。
+ *
+ * 两类合法字面量需要放行，不能误报：
+ * - {{model}}：载荷级占位符，故意留给下游替换
+ * - ${1:placeholder}：代码片段示例里的模板字面量
+ */
+function assertNoResidualPlaceholder(key: string, text: string): void {
+  if (warnedResidualKeys.has(key)) return
+
+  const scrubbed = text
+    .replace(/\{\{[^{}]*\}\}/g, '')
+    .replace(/\$\{[^{}]*\}/g, '')
+
+  const residue = scrubbed.match(/\{[^{}]+\}/)
+  if (!residue) return
+
+  warnedResidualKeys.add(key)
+  console.warn(
+    `[i18n] 文案 "${key}" 残留未替换的占位符 ${residue[0]}。` +
+    `模板只能用 {name} 形式的参数名，不能写表达式；` +
+    `请核对该模板与调用处传入的参数名是否一致。`,
+  )
+}
+
 export function t(key: string, lang: Language, params?: Record<string, string | number | undefined>): string {
   const dict = getTranslations(lang)
   let text: string = dict[key]
@@ -161,6 +212,9 @@ export function t(key: string, lang: Language, params?: Record<string, string | 
     Object.entries(params).forEach(([k, v]) => {
       text = text.replace(`{${k}}`, String(v))
     })
+  }
+  if (isDevBuild()) {
+    assertNoResidualPlaceholder(key, text)
   }
   return text
 }

@@ -842,7 +842,7 @@ export function PptxPreview({ path }: PptxPreviewProps) {
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/30 shrink-0">
         <Presentation className="w-4 h-4 text-accent" />
         <span className="text-sm text-text-secondary">
-          {t('editor.slide', language as Language, { p0: activeSlide + 1, length: slides.length })}
+          {t('editor.slide', language as Language, { activeSlide: activeSlide + 1, length: slides.length })}
         </span>
         <div className="flex-1" />
         <ActionButton variant="ghost" size="sm" onClick={() => setActiveSlide(Math.max(0, activeSlide - 1))} disabled={activeSlide === 0}>

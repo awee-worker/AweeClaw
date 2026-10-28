@@ -243,6 +243,14 @@ function invokeModePostProcessor(
  */
 const MAX_LOOP_ITERATIONS = 200
 
+/**
+ * 单次用户请求内，lint 自动修复报告的连续回灌上限。
+ * lint 结果改为静默回灌给模型后，界面上不再有卡片提示这一中间态，
+ * 因此必须自己兜住「反复改不好、来回空转」的情况：超过次数就不再回灌，
+ * 让这轮循环按正常流程收尾，而不是一直隐式续跑。
+ */
+const MAX_LINT_AUTO_FIX_ROUNDS = 3
+
 async function invokeModelCall(
   config: LLMConfig,
   messages: LLMMessage[],
@@ -531,6 +539,8 @@ export async function executeAgentCycle(
   const threadStore = store.forThread(threadId)
   const agentConfig = getAgentConfig()
   const enableAutoFix = mainStore.agentConfig.enableAutoFix
+  // 本请求内 lint 报告已回灌给模型的次数，用于限制连续自动修复轮次
+  let lintAutoFixRounds = 0
   const enableLLMSummary = mainStore.agentConfig.enableLLMSummary
   const autoHandoff = mainStore.agentConfig.autoHandoff ?? agentConfig.autoHandoff
   const contextLimit = config.contextLimit || 128_000
@@ -1554,7 +1564,11 @@ export async function executeAgentCycle(
       }
     }
 
-    if (enableAutoFix && !userRejected && context.workspacePath) {
+    // lint 自动修复：检测结果只回灌给模型，不在会话界面渲染检查卡片。
+    // 会话界面出现「Found N errors in N file」会让用户误以为是执行失败在报错，
+    // 实际上这只是 AI 自我校正的中间态，改完就正常收尾。
+    // 轮次用尽后连检测一并跳过，避免反复扫描却在空转。
+    if (enableAutoFix && !userRejected && context.workspacePath && lintAutoFixRounds < MAX_LINT_AUTO_FIX_ROUNDS) {
       // 自动修复检查涉及文件读写与 lint 服务，失败不应中断主循环
       let lintIssueReport: Awaited<ReturnType<typeof detectLintIssues>> = null
       try {
@@ -1563,11 +1577,15 @@ export async function executeAgentCycle(
         logger.agent.warn('[Loop] Lint auto-check failed, continuing main loop:', lintErr)
       }
       if (lintIssueReport) {
-        threadStore.addLintCheckPart(assistantId)
-        threadStore.updateLintCheckPart(assistantId, {
-          files: lintIssueReport.files,
-          status: 'failed',
+        lintAutoFixRounds += 1
+        logger.agent.info('[Loop] Lint auto-fix report fed back to model', {
+          round: lintAutoFixRounds,
+          limit: MAX_LINT_AUTO_FIX_ROUNDS,
+          filesWithErrors: lintIssueReport.files.filter(f => f.errors.length > 0).length,
         })
+        if (lintAutoFixRounds >= MAX_LINT_AUTO_FIX_ROUNDS) {
+          logger.agent.warn('[Loop] Lint auto-fix round limit reached, further reports will not be fed back')
+        }
         llmMessages.push({ role: 'user', content: lintIssueReport.content })
         shouldContinue = true
         threadStore.setStreamPhase('streaming')
@@ -1576,6 +1594,7 @@ export async function executeAgentCycle(
         continue
       }
     }
+
 
     if (userRejected) {
       const { language } = useStore.getState()
