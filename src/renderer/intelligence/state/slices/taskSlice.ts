@@ -193,10 +193,27 @@ export const createPlanSlice: StateCreator<
             activePlanId: state.activePlanId === planId ? null : state.activePlanId,
         }))
 
-        // Graph Runtime 阶段五：plan 删除时联动清理 runtime 持久化文件
-        // 避免残留 runtime.json 在恢复时尝试恢复已删除的 plan
+        // 取消尚未落盘的防抖写入：否则排队中的 savePlan 会把刚删掉的计划重新写回磁盘
+        const pendingTimer = saveTimers.get(planId)
+        if (pendingTimer) {
+            clearTimeout(pendingTimer)
+            saveTimers.delete(planId)
+        }
+        latestQueuedRevision.delete(planId)
+
         const workspacePath = useStore.getState().workspacePath
         if (workspacePath) {
+            // 计划文件必须一并删除：只清内存的话，下次切换工作空间
+            // loadPlansFromDisk 会把 JSON 重新读回来，删除等于没做
+            for (const dirName of [PLAN_DIR_NAME, LEGACY_PLAN_DIR_NAME]) {
+                const planPath = `${workspacePath}/${BRAND.dirName}/${dirName}/${planId}.json`
+                void api.file.delete(planPath).catch((err: unknown) => {
+                    logger.plan.warn(`[PlanSlice] Failed to delete plan file ${planPath}:`, err)
+                })
+            }
+
+            // Graph Runtime 阶段五：plan 删除时联动清理 runtime 持久化文件
+            // 避免残留 runtime.json 在恢复时尝试恢复已删除的 plan
             void deleteRuntimeState(workspacePath, planId).catch(err => {
                 logger.plan.warn(`[PlanSlice] Failed to delete runtime file for plan ${planId}:`, err)
             })
@@ -221,12 +238,17 @@ export const createPlanSlice: StateCreator<
                 }
             }
 
-            if (plans.length > 0) {
-                // 去重：同 id 保留 updatedAt 更新的
-                const deduped = dedupePlansById(plans)
-                deduped.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-                set({ plans: deduped })
-            }
+            // 即使是空列表也必须写回：切换到一个没有计划的工作空间时，
+            // 不清理会让上一个工作空间的计划继续挂在界面上
+            const deduped = dedupePlansById(plans)
+            deduped.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+            set((state) => ({
+                plans: deduped,
+                activePlanId: deduped.some(plan => plan.id === state.activePlanId)
+                    ? state.activePlanId
+                    : null,
+                currentTaskId: null,
+            }))
         } catch (e) {
             logger.plan.warn('[PlanSlice] Failed to load plans from disk:', e)
         }

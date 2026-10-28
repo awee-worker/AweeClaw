@@ -71,33 +71,20 @@ const TaskStatusIcon = memo(function TaskStatusIcon({
 }) {
     // HITL 等待审批：优先于 running 显示（task.status 仍为 running，由 awaitingApproval 标记区分）
     if (isAwaitingApproval) {
-        return (
-            <motion.div
-                animate={{ opacity: [0.5, 1, 0.5] }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-            >
-                <UserCheck className="w-4 h-4 text-amber-500" />
-            </motion.div>
-        )
+        return <UserCheck className="w-4 h-4 text-amber-500 plan-badge-pulse" />
     }
     switch (status) {
         case 'completed':
             return <CheckCircle2 className="w-4 h-4 text-green-500" />
         case 'running':
+            // 纯 CSS 双层指示：外层呼吸光晕 + 内层环形 spinner。
+            // 不经过 framer-motion —— 它在 reducedMotion 生效时会跳过 transform 动画，
+            // 旋转会直接消失；对应 keyframes 也不在 globals.css 的收敛名单内。
             return (
-                <div className="relative">
-                    <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
-                    >
-                        <Loader2 className="w-4 h-4 text-blue-500" />
-                    </motion.div>
-                    <motion.div
-                        className="absolute inset-0 rounded-full bg-blue-500/20"
-                        animate={{ scale: [1, 1.6, 1], opacity: [0.6, 0, 0.6] }}
-                        transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-                    />
-                </div>
+                <span className="relative inline-flex items-center justify-center w-4 h-4">
+                    <span className="absolute inset-0 rounded-full bg-blue-500/20 plan-task-halo-pulse" />
+                    <Loader2 className="w-4 h-4 text-blue-500 plan-task-ring-spin" />
+                </span>
             )
         case 'failed':
             return <AlertCircle className="w-4 h-4 text-red-500" />
@@ -308,22 +295,17 @@ const TaskCard = memo(function TaskCard({
                                 : 'bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500'
                         }`}
                     />
-                    <motion.div
-                        className="absolute inset-0 rounded-lg pointer-events-none"
-                        animate={{
+                    {/* 呼吸光晕：boxShadow 是静态的，只让这一层的 opacity 循环。
+                        逐帧改 boxShadow 会让整张卡片按模糊半径重新栅格化，改 opacity
+                        则留在合成器上；且 opacity 动画不经过 framer-motion 的
+                        reducedMotion 过滤，任何偏好下都保留「在跑」的可见反馈。 */}
+                    <div
+                        className="absolute inset-0 rounded-lg pointer-events-none plan-card-glow"
+                        style={{
                             boxShadow: isAwaitingApproval
-                                ? [
-                                    'inset 0 0 0 0 rgba(245,158,11,0)',
-                                    'inset 0 0 20px 0 rgba(245,158,11,0.08)',
-                                    'inset 0 0 0 0 rgba(245,158,11,0)',
-                                ]
-                                : [
-                                    'inset 0 0 0 0 rgba(59,130,246,0)',
-                                    'inset 0 0 20px 0 rgba(59,130,246,0.08)',
-                                    'inset 0 0 0 0 rgba(59,130,246,0)',
-                                ]
+                                ? 'inset 0 0 20px 0 rgba(245,158,11,0.10)'
+                                : 'inset 0 0 20px 0 rgba(59,130,246,0.10)',
                         }}
-                        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                     />
                 </>
             )}
@@ -338,34 +320,22 @@ const TaskCard = memo(function TaskCard({
                     <div className="font-medium text-sm text-text-primary truncate flex items-center gap-2">
                         {task.title}
                         {isAwaitingApproval && (
-                            <motion.span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[12px] font-medium"
-                                animate={{ opacity: [0.4, 1, 0.4] }}
-                                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                            >
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[12px] font-medium plan-badge-pulse">
                                 <UserCheck className="w-3 h-3" />
                                 等待审批
-                            </motion.span>
+                            </span>
                         )}
                         {isActive && !isAwaitingApproval && (
-                            <motion.span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[12px] font-medium"
-                                animate={{ opacity: [1, 0.5, 1] }}
-                                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-                            >
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[12px] font-medium plan-badge-pulse">
                                 <Zap className="w-3 h-3" />
                                 执行中
-                            </motion.span>
+                            </span>
                         )}
                         {isPending && isExecuting && (
-                            <motion.span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[12px] font-medium"
-                                animate={{ opacity: [0.4, 1, 0.4] }}
-                                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                            >
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[12px] font-medium plan-badge-pulse">
                                 <Clock className="w-3 h-3" />
                                 等待中
-                            </motion.span>
+                            </span>
                         )}
                     </div>
                     <div className="text-xs text-muted-foreground truncate">{task.description}</div>

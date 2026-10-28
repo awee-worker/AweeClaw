@@ -326,6 +326,56 @@ describe('Plan Validator (阶段六)', () => {
         })
     })
 
+    describe('依赖完整性（两种版本都校验）', () => {
+        it('悬空依赖 → error（graphVersion=1 也拦截）', () => {
+            const plan = makeGraphPlan({
+                graphVersion: 1,
+                tasks: [makeTask({ id: 'task-1', dependencies: ['task-missing'] })],
+            })
+
+            const result = validatePlan(plan)
+
+            expect(result.valid).toBe(false)
+            expect(result.issues).toContainEqual(expect.objectContaining({
+                severity: 'error',
+                code: 'DEPENDENCY_NOT_FOUND',
+            }))
+        })
+
+        it('依赖成环 → error', () => {
+            const plan = makeGraphPlan({
+                graphVersion: 1,
+                tasks: [
+                    makeTask({ id: 'task-1', dependencies: ['task-2'] }),
+                    makeTask({ id: 'task-2', dependencies: ['task-1'] }),
+                ],
+            })
+
+            const result = validatePlan(plan)
+
+            expect(result.valid).toBe(false)
+            expect(result.issues).toContainEqual(expect.objectContaining({
+                severity: 'error',
+                code: 'DEPENDENCY_CYCLE',
+            }))
+        })
+
+        it('正常链式依赖 → 通过', () => {
+            const plan = makeGraphPlan({
+                graphVersion: 1,
+                tasks: [
+                    makeTask({ id: 'task-1' }),
+                    makeTask({ id: 'task-2', dependencies: ['task-1'] }),
+                ],
+            })
+
+            const result = validatePlan(plan)
+
+            expect(result.valid).toBe(true)
+            expect(result.issues).toHaveLength(0)
+        })
+    })
+
     describe('formatValidationIssues', () => {
         it('空 issues → 空字符串', () => {
             const result = formatValidationIssues({ valid: true, issues: [] })

@@ -76,6 +76,61 @@ function collectAllEdges(tasks: PlanTask[]): GraphEdge[] {
 // ============================================
 
 /**
+ * 依赖完整性校验（两种执行模式都适用）
+ *
+ * 悬空依赖与依赖成环在运行期不会抛错，只会让调度器永远取不到可执行任务，
+ * 计划表面停在「执行中」而实际没有任何任务在跑。启动前拦截比运行期兜底更省事。
+ */
+function validateDependencies(plan: TaskPlan): ValidationIssue[] {
+    const issues: ValidationIssue[] = []
+    const taskById = new Map(plan.tasks.map(task => [task.id, task]))
+
+    for (const task of plan.tasks) {
+        for (const depId of task.dependencies || []) {
+            if (!taskById.has(depId)) {
+                issues.push({
+                    severity: 'error',
+                    code: 'DEPENDENCY_NOT_FOUND',
+                    message: `Task "${task.id}" depends on unknown task "${depId}"`,
+                    ref: task.id,
+                })
+            }
+        }
+    }
+
+    // 环检测：三色标记 DFS，只沿 dependencies 走（loop 边是有意的回边，不在此列）
+    const GRAY = 1
+    const BLACK = 2
+    const color = new Map<string, number>()
+    const hasCycle = (id: string): boolean => {
+        const state = color.get(id)
+        if (state === GRAY) return true
+        if (state === BLACK) return false
+
+        color.set(id, GRAY)
+        for (const depId of taskById.get(id)?.dependencies || []) {
+            if (taskById.has(depId) && hasCycle(depId)) return true
+        }
+        color.set(id, BLACK)
+        return false
+    }
+
+    for (const task of plan.tasks) {
+        if (hasCycle(task.id)) {
+            issues.push({
+                severity: 'error',
+                code: 'DEPENDENCY_CYCLE',
+                message: `Dependency cycle detected involving task "${task.id}"`,
+                ref: task.id,
+            })
+            break
+        }
+    }
+
+    return issues
+}
+
+/**
  * 校验 plan 结构完整性
  *
  * @param plan 待校验的计划
@@ -84,9 +139,12 @@ function collectAllEdges(tasks: PlanTask[]): GraphEdge[] {
 export function validatePlan(plan: TaskPlan): ValidationResult {
     const issues: ValidationIssue[] = []
 
+    // 依赖完整性对两种版本都校验（成环/悬空依赖会让调度器卡死）
+    issues.push(...validateDependencies(plan))
+
     // graphVersion=1 跳过图校验（现有行为，零破坏）
     if (plan.graphVersion !== 2) {
-        return { valid: true, issues: [] }
+        return { valid: !issues.some(issue => issue.severity === 'error'), issues }
     }
 
     // 空任务列表

@@ -324,12 +324,19 @@ function getSessionByPlanId(planId: string): ExecutionSession | null {
 
 function createSession(planId: string, workspacePath: string): ExecutionSession {
     const sessionId = crypto.randomUUID()
+    const scheduler = new ExecutionScheduler()
+    // 依赖失败导致的任务自动跳过：调度器改完内存状态后回写 store，
+    // 否则跳过这件事只停留在内存对象上，界面不刷新、磁盘也不落
+    scheduler.onTaskAutoSkipped = (taskId, reason) => {
+        useAgentStore.getState().markTaskSkipped(planId, taskId, reason)
+    }
+
     const session: ExecutionSession = {
         id: sessionId,
         planId,
         workspacePath,
         startedAt: Date.now(),
-        scheduler: new ExecutionScheduler(),
+        scheduler,
         status: 'running',
         bindings: new Map(),
         abortControllers: new Map(),
@@ -686,7 +693,14 @@ export function stopPlanExecution(planId?: string): void {
     if (!plan) return
 
     const session = getSessionByPlanId(plan.id)
-    if (!session) return
+    if (!session) {
+        // 没有活动 session（应用重载、session 已回收）：状态仍必须落成 stopped，
+        // 否则计划会停在「执行中」，既不能继续也不能重新开始
+        if (plan.status === 'executing' || plan.status === 'pausing' || plan.status === 'stopping') {
+            store.stopExecution(plan.id, 'stopped')
+        }
+        return
+    }
 
     session.status = 'stopping'
     session.scheduler.stop()
@@ -704,7 +718,14 @@ export function pausePlanExecution(planId?: string): void {
     if (!plan) return
 
     const session = getSessionByPlanId(plan.id)
-    if (!session) return
+    if (!session) {
+        // 同 stop：没有活动 session 时也要把状态落成 paused，
+        // 否则界面停在「执行中」，用户既点不了继续也点不了开始
+        if (plan.status === 'executing' || plan.status === 'pausing') {
+            store.pauseExecution(plan.id)
+        }
+        return
+    }
 
     session.status = 'pausing'
     session.scheduler.pause()
@@ -1138,49 +1159,123 @@ export function getCurrentPhase(): 'planning' | 'executing' {
 async function runExecutionLoop(session: ExecutionSession): Promise<void> {
     const store = useAgentStore.getState()
 
-    while (session.status === 'running' && !session.scheduler.isAborted) {
-        const plan = store.getPlan(session.planId)
-        if (!plan) {
-            throw new Error(`Plan ${session.planId} not found during execution`)
-        }
+    try {
+        while (session.status === 'running' && !session.scheduler.isAborted) {
+            const plan = store.getPlan(session.planId)
+            if (!plan) {
+                throw new Error(`Plan ${session.planId} not found during execution`)
+            }
 
-        // Graph Runtime 阶段四：graphVersion=2 使用 graphScheduler 的 boost 感知批次
-        // - graphVersion=1 时 graphScheduler 为 undefined，走原 getParallelBatch（零变化）
-        // - graphVersion=2 时优先用 getParallelBatchWithBoost，合并边路由 boost 节点
-        const useGraphScheduler = !!session.graphScheduler && isDynamicGraphPlan(plan)
+            // Graph Runtime 阶段四：graphVersion=2 使用 graphScheduler 的 boost 感知批次
+            // - graphVersion=1 时 graphScheduler 为 undefined，走原 getParallelBatch（零变化）
+            // - graphVersion=2 时优先用 getParallelBatchWithBoost，合并边路由 boost 节点
+            const useGraphScheduler = !!session.graphScheduler && isDynamicGraphPlan(plan)
 
-        if (plan.executionMode === 'parallel') {
-            const batch = useGraphScheduler
-                ? session.graphScheduler!.getParallelBatchWithBoost(plan as ExecutionGraph)
-                : session.scheduler.getParallelBatch(plan)
-            if (batch.length === 0) {
-                if (session.scheduler.isComplete(plan) || !session.scheduler.hasRunningTasks()) {
-                    await completeExecution(session, plan)
+            if (plan.executionMode === 'parallel') {
+                const batch = useGraphScheduler
+                    ? session.graphScheduler!.getParallelBatchWithBoost(plan as ExecutionGraph)
+                    : session.scheduler.getParallelBatch(plan)
+                if (batch.length === 0) {
+                    await settleIdleExecution(session)
+                    break
                 }
-                break
-            }
-            await Promise.all(batch.map(task => executeTask(session, task, plan)))
-            // Graph Runtime 阶段四：批次完成后执行边路由后处理（boost 下一批节点）
-            if (useGraphScheduler) {
-                await routeAfterBatch(session, plan as ExecutionGraph, batch)
-            }
-        } else {
-            const task = useGraphScheduler
-                ? session.graphScheduler!.getNextTaskWithBoost(plan as ExecutionGraph)
-                : session.scheduler.getNextTask(plan)
-            if (!task) {
-                if (session.scheduler.isComplete(plan) || !session.scheduler.hasRunningTasks()) {
-                    await completeExecution(session, plan)
+                await Promise.all(batch.map(task => executeTask(session, task, plan)))
+                // Graph Runtime 阶段四：批次完成后执行边路由后处理（boost 下一批节点）
+                if (useGraphScheduler) {
+                    await routeAfterBatch(session, plan as ExecutionGraph, batch)
                 }
-                break
-            }
-            await executeTask(session, task, plan)
-            // Graph Runtime 阶段四：单任务完成后边路由后处理
-            if (useGraphScheduler) {
-                await routeAfterBatch(session, plan as ExecutionGraph, [task])
+            } else {
+                const task = useGraphScheduler
+                    ? session.graphScheduler!.getNextTaskWithBoost(plan as ExecutionGraph)
+                    : session.scheduler.getNextTask(plan)
+                if (!task) {
+                    await settleIdleExecution(session)
+                    break
+                }
+                await executeTask(session, task, plan)
+                // Graph Runtime 阶段四：单任务完成后边路由后处理
+                if (useGraphScheduler) {
+                    await routeAfterBatch(session, plan as ExecutionGraph, [task])
+                }
             }
         }
+    } finally {
+        // 循环因暂停/停止等外部状态退出时，session 可能还挂在内存表里：
+        // 不清理会让计划永久处于「已在执行中」，再次点开始直接被拒
+        releaseIdleSession(session)
     }
+}
+
+/**
+ * 没有任务可以继续调度时的收尾
+ *
+ * 三种情况必须区分开：
+ * 1. 所有任务都已到终态 → 正常完成
+ * 2. 还有 pending 但依赖永远无法满足（依赖 id 缺失、依赖被跳过、成环）→ 不能当作「已完成」，
+ *    静态计划按失败上报，动态图按未激活跳过（边路由没有走到这条分支）
+ * 3. 仍有任务在跑 → 不处理，交给任务自身的收尾逻辑
+ */
+async function settleIdleExecution(session: ExecutionSession): Promise<void> {
+    const store = useAgentStore.getState()
+    const plan = store.getPlan(session.planId)
+    if (!plan) return
+
+    if (session.scheduler.hasRunningTasks()) return
+
+    const stalled = session.scheduler.isComplete(plan)
+        ? []
+        : plan.tasks.filter(task => task.status === 'pending')
+
+    if (stalled.length > 0) {
+        const graphMode = isDynamicGraphPlan(plan)
+        for (const task of stalled) {
+            const reason = graphMode
+                ? 'Not activated: upstream route not taken'
+                : 'Dependency could not be satisfied (missing, failed or cyclic dependency)'
+            if (graphMode) {
+                session.scheduler.markTaskSkipped(task, reason)
+                store.markTaskSkipped(plan.id, task.id, reason)
+            } else {
+                session.scheduler.markTaskFailed(task, reason)
+                store.markTaskFailed(plan.id, task.id, reason)
+            }
+        }
+        logger.agent.warn(
+            `[PlanExecutor] Plan ${plan.id} stalled with ${stalled.length} unschedulable task(s): ` +
+            stalled.map(task => task.id).join(', '),
+        )
+    }
+
+    // 状态以上一次落库后的 plan 为准，避免统计读到被直接改写的旧对象
+    await completeExecution(session, store.getPlan(plan.id) || plan)
+}
+
+/**
+ * 执行循环退出后的会话收尾
+ *
+ * completeExecution / 暂停分支已经做过收尾的 session 在这里是 no-op（已从表里移除）；
+ * awaiting_approval 必须保留 session，否则人工放行时找不到执行上下文。
+ */
+function releaseIdleSession(session: ExecutionSession): void {
+    if (!sessions.has(session.id)) return
+    if (session.status === 'awaiting_approval') return
+
+    const store = useAgentStore.getState()
+
+    if (session.status === 'pausing' || session.status === 'paused') {
+        session.status = 'paused'
+        store.pauseExecution(session.planId)
+        EventBus.emit({ type: 'plan:paused', planId: session.planId, sessionId: session.id })
+        // deleteRuntime=false 保留 runtime 文件（paused 可恢复，非终态）
+        clearSession(session, { deleteRuntime: false })
+        return
+    }
+
+    // stopping/stopped，以及 isAborted 导致循环退出但状态还留在 running 的兜底：
+    // 一律收敛成「已停止」，避免 session 残留在内存表里
+    session.status = 'stopped'
+    store.stopExecution(session.planId, 'stopped')
+    clearSession(session)
 }
 
 /**
@@ -1210,11 +1305,14 @@ async function routeAfterBatch(
     const state = new StoreGraphStateAdapter(graph.id)
 
     for (const task of batch) {
+        // 调度器返回的批次是任务副本，执行状态只写在 store 里的真实对象上；
+        // 这里必须以 store 的最新状态为准，否则 completed 判断永远不成立、边路由形同失效
+        const current = useAgentStore.getState().getPlan(graph.id)?.tasks.find(candidate => candidate.id === task.id)
         // 仅对已完成的 GraphNode 做边路由（failed 走 LoopController，pending 走 boost）
-        if (task.status !== 'completed') continue
-        if (!isGraphNode(task)) continue
+        if (!current || current.status !== 'completed') continue
+        if (!isGraphNode(current)) continue
 
-        const node = task as GraphNode
+        const node = current as GraphNode
         // 无显式 edges 的节点走原拓扑推进，跳过（dependencies 由 base scheduler 处理）
         if (!node.edges || node.edges.length === 0) continue
 
@@ -1466,6 +1564,8 @@ async function executeTask(
         return
     }
 
+    // attempt 由 markTaskRunning 递增（改的是同一个 store 对象），此处不能再加一次，
+    // 否则每跑一轮计数会跳 2
     session.scheduler.markTaskRunning(existingTask)
     store.setCurrentTask(existingTask.id)
     store.updateTask(plan.id, existingTask.id, {
@@ -1473,7 +1573,6 @@ async function executeTask(
         startedAt: Date.now(),
         threadId,
         requestId,
-        attempt: (existingTask.attempt || 0) + 1,
         dependencySummary: existingTask.dependencySummary,
         executionClass: existingTask.executionClass,
     })
@@ -1829,6 +1928,12 @@ async function runTaskWithAgent(
             } else {
                 break
             }
+        }
+
+        // 循环因暂停/停止而退出（不是走到 break）时任务并没有做完，
+        // 不能按成功上报，否则暂停中的任务会被标成已完成
+        if (session.status !== 'running') {
+            return { success: false, output: '', error: 'aborted', threadId, requestId: activeRequestId }
         }
 
         return { success: true, output: finalOutput, threadId, assistantId: lastAssistantId, requestId: activeRequestId }

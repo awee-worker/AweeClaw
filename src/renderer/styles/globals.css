@@ -481,6 +481,57 @@ textarea,
 .wait-dot:nth-child(2) { animation-delay: 0.2s; }
 .wait-dot:nth-child(3) { animation-delay: 0.4s; }
 
+/* --- Plan Task Running Indicator ---
+ *
+ * 任务看板里「在跑」的反馈由这组动画承担。它们刻意不进入文件末尾的
+ * prefers-reduced-motion 收敛名单：这里旋转与脉冲不是装饰，而是用户判断
+ * 任务仍在执行的唯一信号，停掉会让看板看起来像卡死。
+ *
+ * 成本取舍：全部是 transform / opacity 动画，元素尺寸 16px 级、处在一个
+ * 不裁剪的绝对定位层内，走合成器逐帧不重排重绘，与「减少动态效果」开关
+ * 无关地保留是安全的。 */
+@keyframes plan-task-ring-spin {
+  to { transform: rotate(360deg); }
+}
+.plan-task-ring-spin {
+  animation: plan-task-ring-spin 1.2s linear infinite;
+}
+
+@keyframes plan-task-halo-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.6); }
+}
+.plan-task-halo-pulse {
+  animation: plan-task-halo-pulse 1.5s ease-in-out infinite;
+}
+
+/* 卡片呼吸光晕：boxShadow 放在静态样式里，只让 opacity 循环，
+ * 避免每帧按模糊半径重新栅格化整张卡片。 */
+@keyframes plan-card-glow-breathe {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+.plan-card-glow {
+  animation: plan-card-glow-breathe 2s ease-in-out infinite;
+}
+
+/* 状态徽标（执行中 / 等待中 / 等待审批）的呼吸。纯 opacity，
+ * 不改变字重与外框尺寸，避免文字抖动。 */
+@keyframes plan-badge-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.plan-badge-pulse {
+  animation: plan-badge-pulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 只把幅度收小，不停动画：仍在动，但不再大幅缩放。 */
+  .plan-task-halo-pulse {
+    animation-name: plan-badge-pulse;
+  }
+}
+
 /* --- Thinking Block Styles --- */
 
 @keyframes thinking-dot-pulse {

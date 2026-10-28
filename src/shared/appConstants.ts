@@ -108,7 +108,11 @@ export const APP_TEMP_ROOT_NAME = 'tmp'
  * - uploads / attachments：用户上传与项目附件，用户有权清理；
  * - temp：AI 执行过程产生的临时文件目录，用户与 AI 均可清理；
  * - agent-temp / python-temp：旧版内联脚本临时目录（已统一迁移到 temp），
- *   在此保留是为了让历史遗留目录也能被删除。
+ *   在此保留是为了让历史遗留目录也能被删除；
+ * - planner / plan：任务计划的方案文件（planner 为当前目录，plan 为旧版目录），
+ *   用户在会话页删除任务计划时必须能删掉对应 JSON，否则下次加载会重新读回来；
+ * - runtime：任务计划的运行时快照（{planId}.runtime.json），随计划一起清理，
+ *   残留文件会让恢复流程尝试恢复已删除的计划。
  *
  * .aweeclaw 根目录及其余子目录仍一律禁止删除。
  */
@@ -118,6 +122,9 @@ export const DELETABLE_APP_SUBDIRS = [
   'temp',
   'agent-temp',
   'python-temp',
+  'planner',
+  'plan',
+  'runtime',
 ] as const
 
 /** 删除类命令动词（覆盖 POSIX / Windows / PowerShell） */
@@ -139,7 +146,7 @@ export function isProtectedAppDirPath(targetPath: string): boolean {
   // .aweeclaw 目录本身（无下级子路径）始终受保护
   const subDir = segments[appDirIndex + 1]
   if (!subDir) return true
-  // .aweeclaw 下的可删除子目录放行（用户上传、项目附件、临时产物）
+  // .aweeclaw 下的可删除子目录放行（用户上传、项目附件、临时产物、任务计划）
   return !(DELETABLE_APP_SUBDIRS as readonly string[]).includes(subDir)
 }
 
@@ -182,7 +189,7 @@ function isOnlyDeletableAppDirTarget(command: string): boolean {
  * 命令是否为删除受保护应用目录（.aweeclaw）核心数据的操作
  *
  * 用于安全底线静默拦截：命中即拒绝执行且不弹窗，避免 AI 自主执行任务时频繁误触打扰用户。
- * 例外：仅删除 DELETABLE_APP_SUBDIRS 中的子目录（uploads / attachments / temp 等）时放行，
+ * 例外：仅删除 DELETABLE_APP_SUBDIRS 中的子目录（uploads / attachments / temp / planner 等）时放行，
  * 与 isProtectedAppDirPath 的保护范围保持一致。
  */
 export function isProtectedAppDirDeletion(command: string): boolean {

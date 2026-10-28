@@ -81,6 +81,14 @@ export class ExecutionScheduler {
     private paused = false
     private stopped = false
 
+    /**
+     * 依赖失败被自动跳过时的回调
+     *
+     * 调度器只负责判定与改内存状态，落库（store 通知 + 磁盘持久化）属于执行层职责，
+     * 由 createSession 注入；没有回调时退化为纯内存标记。
+     */
+    onTaskAutoSkipped?: (taskId: string, reason: string) => void
+
     constructor(config: Partial<PlanConfig> = {}) {
         this.config = { ...DEFAULT_PLAN_CONFIG, ...config }
     }
@@ -103,7 +111,9 @@ export class ExecutionScheduler {
                     executionClass: normalizeExecutionClass(task),
                 })
             } else if (depStatus === 'blocked' && this.config.autoSkipOnDependencyFailure) {
-                this.markTaskSkipped(task, 'Dependency failed or skipped')
+                const reason = 'Dependency failed or skipped'
+                this.markTaskSkipped(task, reason)
+                this.onTaskAutoSkipped?.(task.id, reason)
             }
         }
 
@@ -147,10 +157,11 @@ export class ExecutionScheduler {
             }))
     }
 
-    private markTaskSkipped(task: PlanTask, reason: string): void {
+    markTaskSkipped(task: PlanTask, reason: string): void {
         task.status = 'skipped'
         task.error = reason
         task.completedAt = Date.now()
+        this.runningTasks.delete(task.id)
         logger.agent.info(`[Scheduler] Task skipped: ${task.id} - ${reason}`)
     }
 

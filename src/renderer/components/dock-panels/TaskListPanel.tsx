@@ -1,9 +1,7 @@
 import { memo, useMemo, useCallback } from 'react'
-import { logger } from '@shared/toolkit/LogEngine'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
-import { useStore } from '@store'
-import { BRAND } from '@shared/brand'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
+import { deletePlanCompletely } from '@components/plan/planPanelActions'
 import {
     PlayCircle,
     CheckCircle2,
@@ -173,10 +171,8 @@ export default memo(function PlanListContent({
     const plans = useAgentStore(state => state.plans)
     const activePlanId = useAgentStore(state => state.activePlanId)
     const setActivePlan = useAgentStore(state => state.setActivePlan)
-    const deletePlan = useAgentStore(state => state.deletePlan)
     const threads = useAgentStore(state => state.threads)
     const switchThread = useAgentStore(state => state.switchThread)
-    const workspacePath = useStore(state => state.workspacePath)
 
     const sortedPlans = useMemo(() => {
         const priorityMap: Partial<Record<PlanStatus, number>> = {
@@ -217,15 +213,9 @@ export default memo(function PlanListContent({
         })
         if (!confirmed) return
 
-        deletePlan(plan.id)
-        if (workspacePath) {
-            try {
-                const planPath = `${workspacePath}/${BRAND.dirName}/planner/${plan.id}.json`
-                const { api } = await import('@services/electronBridge')
-                await api.file.delete(planPath)
-            } catch (e) { logger.plan.warn('Failed to delete plan file:', e) }
-        }
-    }, [deletePlan, workspacePath, language])
+        // 统一走 deletePlanCompletely：停掉可能在跑的线程、删内存、删磁盘计划文件、收起面板
+        deletePlanCompletely(plan.id)
+    }, [language])
 
     if (plans.length === 0) {
         return (

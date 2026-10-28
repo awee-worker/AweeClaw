@@ -91,3 +91,58 @@ export async function confirmAndDeletePlan(
 
     deletePlanCompletely(planId)
 }
+
+/**
+ * 一键清空当前工作空间的全部计划任务
+ *
+ * 运行中的计划不参与批量删除：中途删除会让正在跑的子任务线程失去归属，
+ * 因此只清空可删除的部分，并在提示里说明被跳过的数量。
+ *
+ * @param confirm 确认弹窗函数（由调用组件通过 useConfirmDialog 提供）
+ * @param isZh 是否中文界面
+ */
+export async function confirmAndDeleteAllPlans(
+    confirm: (options: PlanConfirmOptions) => Promise<boolean>,
+    isZh: boolean,
+): Promise<void> {
+    const plans = useAgentStore.getState().plans
+    if (plans.length === 0) return
+
+    const runningPlans = plans.filter((plan) => isPlanRunning(plan.status))
+    const deletablePlans = plans.filter((plan) => !isPlanRunning(plan.status))
+
+    if (deletablePlans.length === 0) {
+        toast.error(
+            isZh ? '当前任务正在执行中，不能删除' : 'Task is running and cannot be deleted',
+            isZh ? '请先暂停并停止该任务，再删除。' : 'Pause and stop it first, then delete.',
+        )
+        return
+    }
+
+    const ok = await confirm({
+        title: isZh ? '删除全部任务计划' : 'Delete all task plans',
+        message: runningPlans.length > 0
+            ? (isZh
+                ? `将删除 ${deletablePlans.length} 个任务计划，无法恢复。另有 ${runningPlans.length} 个正在执行，将被保留。`
+                : `${deletablePlans.length} plan(s) will be deleted and cannot be recovered. ${runningPlans.length} running plan(s) will be kept.`)
+            : (isZh
+                ? `将删除全部 ${deletablePlans.length} 个任务计划，删除后无法恢复。`
+                : `All ${deletablePlans.length} plan(s) will be deleted and cannot be recovered.`),
+        confirmText: isZh ? '全部删除' : 'Delete all',
+        variant: 'danger',
+    })
+    if (!ok) return
+
+    for (const plan of deletablePlans) {
+        deletePlanCompletely(plan.id)
+    }
+
+    if (runningPlans.length > 0) {
+        toast.warning(
+            isZh
+                ? `${runningPlans.length} 个执行中的计划已跳过`
+                : `${runningPlans.length} running plan(s) skipped`,
+            isZh ? '请先停止它们再删除。' : 'Stop them first, then delete.',
+        )
+    }
+}

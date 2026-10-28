@@ -9,14 +9,15 @@
  *
  * 计划数量不定，chip 在固定宽度内横向滚动，不挤压对话区也不换行撑高状态栏。
  */
-import { memo, useMemo } from 'react'
-import { ListTodo, Loader2, CheckCircle2, Pause, XCircle, Clock, X } from 'lucide-react'
+import { memo, useCallback, useMemo, useState } from 'react'
+import { ListTodo, Loader2, CheckCircle2, Pause, XCircle, Clock, X, Trash2, PanelRightClose } from 'lucide-react'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { useStore } from '@store'
 import type { TaskPlan, PlanStatus } from '@intelligence/planner/providerTypes'
 import type { Language } from '@renderer/i18n'
 import { useConfirmDialog } from '@components/foundation'
-import { confirmAndDeletePlan } from './planPanelActions'
+import { FloatingMenu, type ContextMenuItem } from '@components/ui'
+import { confirmAndDeletePlan, confirmAndDeleteAllPlans, isPlanRunning } from './planPanelActions'
 
 /** 处于「进行中」的计划状态：用于运行指示点与芯片状态图标 */
 const ACTIVE_STATUSES: PlanStatus[] = ['executing', 'pausing', 'stopping']
@@ -57,12 +58,14 @@ const PlanChip = memo(function PlanChip({
   language,
   onOpen,
   onDelete,
+  onContextMenu,
 }: {
   plan: TaskPlan
   isActive: boolean
   language: Language
   onOpen: () => void
   onDelete: () => void
+  onContextMenu: (event: React.MouseEvent) => void
 }) {
   const total = plan.tasks.length
   const completed = plan.tasks.filter((t) => t.status === 'completed').length
@@ -71,6 +74,7 @@ const PlanChip = memo(function PlanChip({
 
   return (
     <div
+      onContextMenu={onContextMenu}
       className={`group flex items-center gap-1 shrink-0 max-w-[230px] rounded-lg border pl-2.5 pr-1 py-1 transition-colors ${
         isActive
           ? 'border-accent/40 bg-accent/10 text-text-primary'
@@ -122,8 +126,19 @@ export const PlanStatusBar = memo(function PlanStatusBar() {
   const openPlanPanel = useStore((s) => s.openPlanPanel)
   const language = useStore((s) => s.language) as Language
   const isZh = language === 'zh'
+  const closePlanPanel = useStore((s) => s.closePlanPanel)
   // 删除前的二次确认弹窗（组件内自渲染，无需全局 Provider）
   const { confirm, DialogComponent } = useConfirmDialog()
+
+  // 右键菜单：落在 chip 上时带该计划，落在状态栏空白处时只提供「全部删除」
+  const [menu, setMenu] = useState<{ x: number; y: number; planId?: string } | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
+
+  const handleContextMenu = useCallback((event: React.MouseEvent, planId?: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setMenu({ x: event.clientX, y: event.clientY, planId })
+  }, [])
 
   // 排序：进行中优先，其次暂停/待执行，终态靠后；同档按更新时间倒序
   const sorted = useMemo(() => {
@@ -144,11 +159,53 @@ export const PlanStatusBar = memo(function PlanStatusBar() {
     })
   }, [plans])
 
+  const menuItems = useMemo<ContextMenuItem[]>(() => {
+    if (!menu) return []
+    const target = menu.planId ? plans.find((plan) => plan.id === menu.planId) : undefined
+    const items: ContextMenuItem[] = []
+
+    if (target) {
+      const running = isPlanRunning(target.status)
+      items.push({
+        id: 'delete-plan',
+        label: isZh ? `删除「${target.name}」` : `Delete "${target.name}"`,
+        icon: Trash2,
+        danger: true,
+        disabled: running,
+        onClick: () => { void confirmAndDeletePlan(target.id, confirm, isZh) },
+      })
+
+      if (planPanelPlanId === target.id) {
+        items.push({
+          id: 'close-panel',
+          label: isZh ? '收起任务面板' : 'Collapse panel',
+          icon: PanelRightClose,
+          onClick: closePlanPanel,
+        })
+      }
+
+      items.push({ id: 'sep-plan', label: '', separator: true })
+    }
+
+    items.push({
+      id: 'delete-all',
+      label: isZh ? '全部删除' : 'Delete all plans',
+      icon: Trash2,
+      danger: true,
+      onClick: () => { void confirmAndDeleteAllPlans(confirm, isZh) },
+    })
+
+    return items
+  }, [menu, plans, isZh, confirm, planPanelPlanId, closePlanPanel])
+
   if (sorted.length === 0) return null
 
   return (
     <>
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/30 bg-surface/20 shrink-0">
+      <div
+        onContextMenu={(event) => handleContextMenu(event)}
+        className="flex items-center gap-2 px-3 py-1.5 border-b border-border/30 bg-surface/20 shrink-0"
+      >
         <ListTodo className="w-3.5 h-3.5 text-text-muted shrink-0" />
         {/* 计划数量不定：横向滚动，宽度随会话面板自适应，不换行撑高 */}
         <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
@@ -160,10 +217,12 @@ export const PlanStatusBar = memo(function PlanStatusBar() {
               language={language}
               onOpen={() => openPlanPanel(plan.id)}
               onDelete={() => confirmAndDeletePlan(plan.id, confirm, isZh)}
+              onContextMenu={(event) => handleContextMenu(event, plan.id)}
             />
           ))}
         </div>
       </div>
+      {menu && <FloatingMenu x={menu.x} y={menu.y} items={menuItems} onClose={closeMenu} />}
       {DialogComponent}
     </>
   )
