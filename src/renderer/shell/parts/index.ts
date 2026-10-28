@@ -30,7 +30,6 @@ import RailUserPart from './RailUserPart'
 import RailPart from './RailPart'
 import SidebarPart from './SidebarPart'
 import EditorPart from './EditorPart'
-import StatusbarPart from './StatusbarPart'
 
 export {
   SceneSwitcherPart,
@@ -46,7 +45,6 @@ export {
   RailPart,
   SidebarPart,
   EditorPart,
-  StatusbarPart,
 }
 
 let registered = false
@@ -69,5 +67,4 @@ export function registerDefaultHostParts(): void {
   registerHostPart('rail', RailPart)
   registerHostPart('sidebar', SidebarPart)
   registerHostPart('editor', EditorPart)
-  registerHostPart('statusbar', StatusbarPart)
 }

@@ -82,7 +82,7 @@ function validateCheckpointNodes(state: { checkpoint: { nodeId: string; complete
 /**
  * 应用启动时从磁盘恢复图执行状态
  *
- * 调用时机：WorkspaceStatusBar.tsx 中 loadPlansFromDisk 完成后调用。
+ * 调用时机：应用启动引导（useWorkspaceRuntimeBootstrap）在 loadPlansFromDisk 完成后调用。
  *
  * @param workspacePath 工作空间路径
  * @returns 恢复统计（成功/失败/跳过数量）

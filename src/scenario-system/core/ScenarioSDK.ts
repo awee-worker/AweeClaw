@@ -278,6 +278,11 @@ export function createScenarioSDK(
   version: string,
   workspacePath: string | null,
   declaredPermissions: ScenarioPermission[] = [],
+  /**
+   * 工作空间可以在场景运行期间切换，传一个读取函数可以让 context.workspacePath
+   * 始终反映当前值；只传快照会让「先开场景再打开文件夹」的场景永远拿不到路径。
+   */
+  resolveWorkspacePath?: () => string | null,
 ): ScenarioSDK {
   const storagePrefix = `scenario:${scenarioId}:`
 
@@ -337,7 +342,9 @@ export function createScenarioSDK(
     scenarioId,
     version,
     appVersion: sharedDeps?.appVersion || '0.0.0',
-    workspacePath,
+    get workspacePath(): string | null {
+      return resolveWorkspacePath ? resolveWorkspacePath() : workspacePath
+    },
     platform: navigator.platform.toLowerCase().includes('mac') ? 'darwin'
       : navigator.platform.toLowerCase().includes('win') ? 'win32'
       : 'linux',

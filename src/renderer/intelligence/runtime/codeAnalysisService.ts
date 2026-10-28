@@ -256,7 +256,7 @@ function parsePylintOutput(output: string, file: string): LintError[] {
 
 /**
  * 从 useDiagnosticsStore 中查找指定文件路径对应的 LSP 诊断。
- * 与 WorkspaceStatusBar/ProblemsView 使用完全相同的数据源和路径规范化逻辑。
+ * 与 ProblemsView 使用完全相同的数据源和路径规范化逻辑。
  */
 function getLspDiagnosticsForFile(filePath: string): LintError[] | null {
 	const { diagnostics } = useDiagnosticsStore.getState()

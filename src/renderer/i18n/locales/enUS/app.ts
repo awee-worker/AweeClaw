@@ -31,8 +31,6 @@ export const en = {
   
     // Editor
   
-    // WorkspaceStatusBar
-  
     // CommandPalette
   
     // QuickOpen

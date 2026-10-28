@@ -28,9 +28,10 @@ import { scenarioDataBus } from './ScenarioDataBus'
 import { scenarioVersionManager, compareVersions } from './ScenarioVersionManager'
 import { scenarioMonitor } from './ScenarioMonitor'
 import { logger } from '@shared/toolkit/LogEngine'
+import { resolveAppVersion } from '@shared/toolkit/appVersion'
 import { ScenarioLifecycleManager } from './ScenarioLifecycleManager'
 
-const APP_VERSION = '1.7.41'
+const APP_VERSION = resolveAppVersion()
 
 class ScenarioLoaderClass {
   private entries = new Map<string, ScenarioRegistryEntry>()

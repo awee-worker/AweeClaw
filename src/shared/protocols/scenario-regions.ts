@@ -1,7 +1,7 @@
 /**
  * 外壳区域树（Region Tree）
  *
- * 主窗口的固定槽位（导航栏 / 标题栏 / 侧边栏 / 主内容区 / 状态栏）在这里被描述成
+ * 主窗口的固定槽位（导航栏 / 标题栏 / 侧边栏 / 主内容区）在这里被描述成
  * 一棵可递归的布局树，由 RegionRenderer 逐层渲染。渲染器只负责摆放，槽位里放什么
  * 由调用方通过 slot 映射提供。
  *
@@ -14,7 +14,7 @@ import type { ReactNode } from 'react'
 /**
  * 外壳可摆放的槽位。
  *
- * rail / titlebar / sidebar / main / statusbar 由外壳层直接摆放；
+ * rail / titlebar / sidebar / main 由外壳层直接摆放；
  * chat / editor 位于主内容区内部，由主内容区自己的区域树消费，外壳层不直接使用。
  */
 export type UISlot =
@@ -22,7 +22,6 @@ export type UISlot =
   | 'titlebar'
   | 'sidebar'
   | 'main'
-  | 'statusbar'
   | 'chat'
   | 'editor'
 
@@ -140,7 +139,6 @@ export interface PartPropsById {
   'window-controls': Record<string, never>
   'drag-region': Record<string, never>
   editor: Record<string, never>
-  statusbar: Record<string, never>
 }
 
 /** 宿主部件 id，与 PartPropsById 的键一一对应 */
@@ -161,7 +159,6 @@ export const HOST_PART_IDS: readonly HostPartId[] = [
   'drag-region',
   'divider',
   'editor',
-  'statusbar',
 ]
 
 /**
@@ -240,7 +237,7 @@ export type RegionSlotMap = Partial<Record<UISlot, ReactNode>>
  * 没有它们的内容，场景若把它们写进外壳树，渲染结果是一块空白而不是报错，因此
  * 校验时需要显式限定允许范围。
  */
-export const SHELL_SLOTS: readonly UISlot[] = ['rail', 'titlebar', 'sidebar', 'main', 'statusbar']
+export const SHELL_SLOTS: readonly UISlot[] = ['rail', 'titlebar', 'sidebar', 'main']
 
 /** 区域树最大嵌套深度，防御异常数据导致渲染栈溢出 */
 export const REGION_MAX_DEPTH = 8
@@ -448,8 +445,6 @@ export function validateRegionTree(
 export interface DefaultShellRegionOptions {
   /** 是否显示左侧导航栏 */
   showActivityBar: boolean
-  /** 是否显示底部状态栏 */
-  showStatusBar: boolean
   /**
    * 布局切换时的淡入淡出类名。
    *
@@ -461,11 +456,11 @@ export interface DefaultShellRegionOptions {
 /**
  * 生成默认外壳区域树
  *
- * 结构与改造前的 JSX 完全一致：根容器横排 [导航栏, 主列]，
- * 主列纵排 [标题栏, 中间行, 状态栏]，中间行横排 [侧边栏, 主内容区]。
+ * 根容器横排 [导航栏, 主列]，主列纵排 [标题栏, 中间行]，
+ * 中间行横排 [侧边栏, 主内容区]。
  */
 export function buildDefaultShellRegions(options: DefaultShellRegionOptions): RegionNode {
-  const { showActivityBar, showStatusBar, animateClass = '' } = options
+  const { showActivityBar, animateClass = '' } = options
 
   return {
     type: 'split',
@@ -492,7 +487,6 @@ export function buildDefaultShellRegions(options: DefaultShellRegionOptions): Re
               },
             ],
           },
-          { type: 'slot', slot: 'statusbar', visible: showStatusBar },
         ],
       },
     ],

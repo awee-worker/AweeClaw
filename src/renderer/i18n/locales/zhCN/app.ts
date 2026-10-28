@@ -41,8 +41,6 @@ export const zh = {
   
     // Editor
   
-    // WorkspaceStatusBar
-  
     // CommandPalette
   
     // QuickOpen

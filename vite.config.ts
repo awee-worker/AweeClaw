@@ -4,6 +4,11 @@ import electron from 'vite-plugin-electron'
 import path from 'path'
 import fs from 'fs'
 
+// 客户端版本号：构建期注入到产物，供场景兼容性校验读取
+const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8')) as {
+  version: string
+}
+
 // 外部依赖（不打包到 bundle）
 const EXTERNAL_DEPS = [
   'electron',
@@ -133,6 +138,12 @@ function shouldSilenceWarning(warning: { code?: string; id?: string; message?: s
 }
 
 export default defineConfig({
+  // 注入客户端真实版本号（来源 package.json，与 electron app.getVersion() 同源）。
+  // 场景 minAppVersion 校验读取该值，避免版本号在模块内硬编码后随发版失同步。
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    'globalThis.__APP_VERSION__': JSON.stringify(pkg.version),
+  },
   plugins: [
     // 构建前清理 dist 目录（跨平台，替代 rimraf dist）
     {

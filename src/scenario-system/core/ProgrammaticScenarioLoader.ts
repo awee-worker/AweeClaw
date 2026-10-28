@@ -33,6 +33,7 @@ import { createScenarioSDK, injectScenarioSDK, removeScenarioSDK } from './Scena
 import { sharedDependencyProvider, injectSharedDependencies } from './SharedDependencyProvider'
 import { logger } from '@shared/toolkit/LogEngine'
 import { fetchAndRewriteBundle } from '@renderer/plugins/rewriteBareSpecifiers'
+import { useStore } from '@renderer/state'
 
 interface LoadScenarioFilesResult {
   success: boolean
@@ -97,7 +98,17 @@ export async function loadProgrammaticScenario(scenarioId: string): Promise<{
     // SDK 中的 shared 字段直接引用 sharedDependencyProvider 的模块，确保数据一致。
     // 传入 manifest 声明的 permissions，供 mcp/tools 命名空间做前置权限校验。
     const declaredPermissions = (config.permissions || []) as import('@shared/protocols/scenario-arch').ScenarioPermission[]
-    const sdk = createScenarioSDK(scenarioId, config.version || '1.0.0', null, declaredPermissions)
+    // 场景的 context.workspacePath 决定它自己的产物（素材、导出）落在哪里。
+    // 传 null 会让场景退化成相对路径（如 assets/xxx.mp4），写入与预览都指向
+    // 进程工作目录而不是用户工作空间，表现为「导入成功但预览加载失败」。
+    const resolveWorkspacePath = (): string | null => useStore.getState().workspacePath ?? null
+    const sdk = createScenarioSDK(
+      scenarioId,
+      config.version || '1.0.0',
+      resolveWorkspacePath(),
+      declaredPermissions,
+      resolveWorkspacePath,
+    )
     injectScenarioSDK(sdk)
     logger.agent.info(`[ProgrammaticLoader] Injected ScenarioSDK for "${scenarioId}" (permissions: ${declaredPermissions.join(',') || 'none'})`)
 

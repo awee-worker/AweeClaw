@@ -2,13 +2,12 @@ import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { MotionConfig } from 'framer-motion'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge, usePluginUpdateChecker, useFloatingAvatarSync, useVrmCompanionSync, usePptPreviewIpc, useVtsSync } from '@hooks'
+import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, useWorkspaceRuntimeBootstrap, usePreviewDiscoveryToasts, useChannelBridge, usePluginUpdateChecker, useFloatingAvatarSync, useVrmCompanionSync, usePptPreviewIpc, useVtsSync } from '@hooks'
 import AppTitleBar from './components/layout/AppTitleBar'
 import NavigationRail from './components/layout/NavigationRail'
 import SidebarSection from './components/layout/SidebarSection'
 import MainContentArea from './components/layout/MainContentArea'
 import GlobalOverlays from './components/layout/GlobalOverlays'
-import WorkspaceStatusBar from './components/layout/WorkspaceStatusBar'
 import { ExecutionStatusDock } from './components/layout/ExecutionStatusDock'
 import { scenarioRegistry, initializeScenarios } from '@shared/configuration/scenarios'
 import { resolveVisibleMenuIds } from '@shared/protocols/scenario'
@@ -104,6 +103,8 @@ function ToastInitializer() {
 
 function AppContent() {
   useAppShutdownState()
+  // 索引线程与 plan / 图执行状态恢复：与界面无关，进主界面就要跑
+  useWorkspaceRuntimeBootstrap()
 
   // 全局动效开关：由 Agent 执行状态、窗口可见性与实测帧率三者共同驱动
   useEffect(() => initRenderBudget(), [])
@@ -439,10 +440,9 @@ function AppContent() {
   const shellRegions = useMemo(
     () => layoutConfig.regions ?? buildDefaultShellRegions({
       showActivityBar: layoutConfig.showActivityBar,
-      showStatusBar: layoutConfig.showStatusBar,
       animateClass: layoutAnimating ? 'opacity-0' : 'opacity-100',
     }),
-    [layoutConfig.regions, layoutConfig.showActivityBar, layoutConfig.showStatusBar, layoutAnimating],
+    [layoutConfig.regions, layoutConfig.showActivityBar, layoutAnimating],
   )
 
   // 槽位内容：渲染器只负责摆放，每个槽位挂什么由这里决定
@@ -457,7 +457,6 @@ function AppContent() {
         scenarioWelcomeComponent={scenarioWelcomeComponent}
       />
     ),
-    statusbar: <WorkspaceStatusBar />,
   }), [sidebarHidden, layoutConfig, isWideModePanel, scenarioWelcomeComponent])
 
   return (
@@ -484,7 +483,7 @@ function AppContent() {
         ) : (
           (showSettingsPage || showUserProfilePage || showBillingCenterPage || showSessionHistoryPage || showPluginCenterPage || showScenarioPage || showContactsPage) ? (
             // 全屏页面：设置/用户中心/费用中心/历史会话/插件/工作场景
-            // 绕过 NavigationRail / AppTitleBar / SidebarSection / WorkspaceStatusBar
+            // 绕过 NavigationRail / AppTitleBar / SidebarSection
             <div className="flex h-full w-full overflow-hidden">
               <ErrorBoundary>
                 <Suspense fallback={<FullScreenLoading />}>

@@ -114,7 +114,7 @@ export interface DeclarativeUI {
    *
    * 声明后整棵外壳布局由场景决定，而非 layout 预设。结构见 RegionNode 定义：
    * split 容器按行/列排布子区域，slot 引用外壳槽位（rail / titlebar / sidebar /
-   * main / statusbar，各最多一次）。校验不通过时回退 layout 预设。
+   * main，各最多一次）。校验不通过时回退 layout 预设。
    */
   regions?: unknown
 

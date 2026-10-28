@@ -65,7 +65,7 @@ function collectSlots(node: RegionNode, out: string[] = []): string[] {
 
 describe('buildDefaultShellRegions', () => {
   it('生成的结构层级与改造前的外壳 JSX 一致', () => {
-    const root = buildDefaultShellRegions({ showActivityBar: true, showStatusBar: true }) as RegionSplitNode
+    const root = buildDefaultShellRegions({ showActivityBar: true }) as RegionSplitNode
 
     expect(root.type).toBe('split')
     expect(root.dir).toBe('row')
@@ -74,13 +74,12 @@ describe('buildDefaultShellRegions', () => {
     // 第一层：导航栏 + 主列
     expect(root.children[0]).toMatchObject({ type: 'slot', slot: 'rail' })
 
-    // 第二层：主列纵向排布 标题栏 / 中间行 / 状态栏
+    // 第二层：主列纵向排布 标题栏 / 中间行
     const column = root.children[1] as RegionSplitNode
     expect(column.dir).toBe('col')
     expect(column.children.map((c) => (c as RegionSlotNode).slot ?? c.type)).toEqual([
       'titlebar',
       expect.anything(),
-      'statusbar',
     ])
 
     // 第三层：中间行横向排布 侧边栏 / 主内容区
@@ -89,45 +88,44 @@ describe('buildDefaultShellRegions', () => {
     expect(middleRow.children.map((c) => (c as RegionSlotNode).slot)).toEqual(['sidebar', 'main'])
   })
 
-  it('五个外壳槽位各出现一次', () => {
-    const root = buildDefaultShellRegions({ showActivityBar: true, showStatusBar: true })
+  it('四个外壳槽位各出现一次', () => {
+    const root = buildDefaultShellRegions({ showActivityBar: true })
     const slots = collectSlots(root)
 
-    expect(slots).toHaveLength(5)
-    expect(new Set(slots).size).toBe(5)
-    expect(slots).toEqual(['rail', 'titlebar', 'sidebar', 'main', 'statusbar'])
+    expect(slots).toHaveLength(4)
+    expect(new Set(slots).size).toBe(4)
+    expect(slots).toEqual(['rail', 'titlebar', 'sidebar', 'main'])
   })
 
-  it('导航栏与状态栏按开关隐藏，但不从树上移除', () => {
-    const root = buildDefaultShellRegions({ showActivityBar: false, showStatusBar: false })
+  it('导航栏按开关隐藏，但不从树上移除', () => {
+    const root = buildDefaultShellRegions({ showActivityBar: false })
 
     expect(findBySlot(root, 'rail')?.visible).toBe(false)
-    expect(findBySlot(root, 'statusbar')?.visible).toBe(false)
-    // 结构保持不变，仅可见性变化：槽位数量仍为 5
-    expect(collectSlots(root)).toHaveLength(5)
+    // 结构保持不变，仅可见性变化：槽位数量仍为 4
+    expect(collectSlots(root)).toHaveLength(4)
   })
 
   it('淡入淡出类名拼进根容器，且不留多余空白', () => {
     const animating = buildDefaultShellRegions({
       showActivityBar: true,
-      showStatusBar: true,
       animateClass: 'opacity-0',
     }) as RegionSplitNode
     expect(animating.className).toBe(
       'flex h-full w-full overflow-hidden transition-opacity duration-300 opacity-0',
     )
 
-    const idle = buildDefaultShellRegions({ showActivityBar: true, showStatusBar: true }) as RegionSplitNode
+    const idle = buildDefaultShellRegions({ showActivityBar: true }) as RegionSplitNode
     expect(idle.className).toBe(
       'flex h-full w-full overflow-hidden transition-opacity duration-300',
     )
   })
 })
 
+
 describe('validateRegionTree', () => {
   it('默认区域树通过校验', () => {
     const result = validateRegionTree(
-      buildDefaultShellRegions({ showActivityBar: true, showStatusBar: true }),
+      buildDefaultShellRegions({ showActivityBar: true }),
     )
     expect(result.ok).toBe(true)
     expect(result.errors).toEqual([])
@@ -194,8 +192,8 @@ describe('validateRegionTree', () => {
     expect(result.errors[0]).toContain('槽位 "chat" 不属于当前层')
   })
 
-  it('外壳层五个槽位全部在允许范围内', () => {
-    const root = buildDefaultShellRegions({ showActivityBar: true, showStatusBar: true })
+  it('外壳层四个槽位全部在允许范围内', () => {
+    const root = buildDefaultShellRegions({ showActivityBar: true })
     expect(validateRegionTree(root, SHELL_SLOTS).ok).toBe(true)
   })
 

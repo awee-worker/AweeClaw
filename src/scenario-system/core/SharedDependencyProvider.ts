@@ -14,6 +14,7 @@
 
 import type React from 'react'
 import { logger } from '@shared/toolkit/LogEngine'
+import { resolveAppVersion } from '@shared/toolkit/appVersion'
 
 export interface SharedDependencyMeta {
   version: string
@@ -58,7 +59,7 @@ class SharedDependencyProviderClass {
       return
     }
 
-    const appVersion = ((globalThis as any).__APP_VERSION__ as string) || '0.0.0'
+    const appVersion = resolveAppVersion()
 
     const sharedMap: SharedDependencyMap = {
       modules: modules as SharedDependencyRegistry,

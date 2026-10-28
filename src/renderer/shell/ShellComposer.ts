@@ -23,7 +23,6 @@ import { logger } from '@shared/toolkit/LogEngine'
 export interface LayoutConfig {
   layout: UILayout
   showActivityBar: boolean
-  showStatusBar: boolean
   showSidebar: boolean
   showEditor: boolean
   showChat: boolean
@@ -115,7 +114,6 @@ function buildEditorCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'editor-centric',
     showActivityBar: true,
-    showStatusBar: false,
     showSidebar: true,
     showEditor: true,
     showChat: true,
@@ -142,7 +140,6 @@ function buildChatCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'chat-centric',
     showActivityBar: true,
-    showStatusBar: false,
     showSidebar: hasSidebarItems,
     showEditor: false,
     showChat: true,
@@ -168,7 +165,6 @@ function buildDashboardCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig
   return {
     layout: 'dashboard-centric',
     showActivityBar: true,
-    showStatusBar: false,
     showSidebar: true,
     showEditor: false,
     showChat: true,
@@ -194,7 +190,6 @@ function buildAnalyticsCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig
   return {
     layout: 'analytics-centric',
     showActivityBar: true,
-    showStatusBar: false,
     showSidebar: true,
     showEditor: false,
     showChat: true,
@@ -220,7 +215,6 @@ function buildCanvasCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'canvas-centric',
     showActivityBar: true,
-    showStatusBar: false,
     showSidebar: true,
     showEditor: false,
     showChat: true,
@@ -246,7 +240,6 @@ function buildFullscreenChatConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'fullscreen-chat',
     showActivityBar: false,
-    showStatusBar: false,
     showSidebar: false,
     showEditor: false,
     showChat: true,
@@ -272,7 +265,6 @@ function buildMinimalConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'minimal',
     showActivityBar: false,
-    showStatusBar: false,
     showSidebar: false,
     showEditor: false,
     showChat: true,
@@ -299,7 +291,6 @@ function buildResearchCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig 
   return {
     layout: 'research-centric',
     showActivityBar: true,
-    showStatusBar: false,
     showSidebar: hasSidebarItems,
     showEditor: true,
     showChat: true,
@@ -325,7 +316,6 @@ function buildFocusCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'focus-centric',
     showActivityBar: false,
-    showStatusBar: false,
     showSidebar: false,
     showEditor: true,
     showChat: true,
@@ -351,7 +341,6 @@ function buildSplitCentricConfig(scenario: ScenarioPlugin): BaseLayoutConfig {
   return {
     layout: 'split-centric',
     showActivityBar: true,
-    showStatusBar: false,
     showSidebar: true,
     showEditor: true,
     showChat: true,
