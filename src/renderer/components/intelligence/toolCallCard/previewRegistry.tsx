@@ -297,7 +297,7 @@ const renderEditFile: PreviewRenderer = (ctx) => {
       </div>
       {isLargeWrite && !isStreaming ? (
         <div className="ml-1 rounded-md border border-amber-500/20 bg-amber-500/5 px-2 py-2 text-[12px] text-text-muted">
-          Large file preview deferred. Open the file to inspect the full content safely.
+          {t('diff.deferredPreview', language as any)} · {t('diff.deferredPreviewHint', language as any)}
         </div>
       ) : (
         <div className="max-h-64 overflow-auto custom-scrollbar pl-2 ml-1">

@@ -609,12 +609,12 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                                 <div className="p-4 space-y-3">
                                   <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-text-secondary">
                                     <div className="font-bold text-amber-400">
-                                      Large file diff preview is deferred.
+                                      {t('diff.deferredPreview', language as Language)}
                                     </div>
                                     <div className="mt-1 opacity-80">
                                       {typeof change.oldContentLength === 'number' || typeof change.newContentLength === 'number'
-                                        ? `Size: ${change.oldContentLength || 0} -> ${change.newContentLength || 0} chars`
-                                        : 'Open the file to inspect the full content safely.'}
+                                        ? `${change.oldContentLength || 0} → ${change.newContentLength || 0} chars`
+                                        : t('diff.deferredPreviewHint', language as Language)}
                                     </div>
                                   </div>
                                   <div>

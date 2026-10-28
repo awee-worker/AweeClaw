@@ -34,6 +34,8 @@ interface InlineDiffPreviewProps {
   filePath: string
   isStreaming?: boolean
   maxLines?: number
+  /** 内容超出可比对规模时的出口：在编辑器中查看完整文件 */
+  onOpenFullFile?: () => void
 }
 
 /** 调度帧类型 */
@@ -216,9 +218,13 @@ function useAsyncDiff(
   const [diffLines, setDiffLines] = useState<DiffLine[] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** 内容超出可比对规模：属于正常降级，不代表失败 */
+  const [oversized, setOversized] = useState(false)
   const pendingFrameRef = useRef<ScheduledFrame | null>(null)
 
   useEffect(() => {
+    setOversized(false)
+
     if (!enabled) {
       setDiffLines(null)
       return
@@ -252,11 +258,13 @@ function useAsyncDiff(
       }
     }
 
-    // 完整模式：超出单边上限直接报错，不进入 diff 计算
+    // 完整模式：超出单边上限时不做逐行比对，改为降级提示（不是错误）
     if (!isDiffableSize(oldContent, newContent)) {
       perfTrace.bump(PERF_TRACE_COUNTERS.diffSkippedTooLarge)
-      setError('File too large for inline diff. Open in editor to view changes.')
+      setDiffLines(null)
       setIsLoading(false)
+      setError(null)
+      setOversized(true)
       return
     }
 
@@ -283,7 +291,7 @@ function useAsyncDiff(
     }
   }, [oldContent, newContent, isStreaming, enabled, maxLines])
 
-  return { diffLines, isLoading, error }
+  return { diffLines, isLoading, error, oversized }
 }
 
 /** 行视觉配置 */
@@ -440,6 +448,51 @@ function ErrorState({ message }: { message: string }) {
   )
 }
 
+/** 字符规模的人类可读表示 */
+function formatCharCount(count: number): string {
+  if (count < 1000) return String(count)
+  if (count < 1_000_000) return `${(count / 1000).toFixed(count < 10_000 ? 1 : 0)}k`
+  return `${(count / 1_000_000).toFixed(1)}M`
+}
+
+/**
+ * 内容超限的降级提示
+ *
+ * 逐行比对在内容规模过大时会被跳过，这是刻意的性能取舍而非工具失败：
+ * 因此用中性提示加出口按钮呈现，不进入错误态，避免被误读成写入失败。
+ */
+function SkippedDiffNotice({
+  language,
+  charCount,
+  onOpenFullFile,
+}: {
+  language: string
+  charCount: number
+  onOpenFullFile?: () => void
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-border/60 bg-white/[0.03] px-3 py-2.5 text-[11px]">
+      <div className="min-w-0 flex-1">
+        <div className="text-text-secondary">{t('diff.tooLarge', language as any)}</div>
+        <div className="mt-0.5 text-text-muted/80">
+          {t('diff.tooLargeHint', language as any, { size: formatCharCount(charCount) })}
+        </div>
+      </div>
+      {onOpenFullFile && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenFullFile()
+          }}
+          className="shrink-0 rounded-md border border-border bg-surface-hover px-2 py-1 text-[11px] font-medium text-text-primary transition-colors hover:border-accent hover:text-accent"
+        >
+          {t('diff.openInEditor', language as any)}
+        </button>
+      )}
+    </div>
+  )
+}
+
 export const DiffSkeleton = CodeSkeleton
 
 export default function InlineDiffPreview({
@@ -448,6 +501,7 @@ export default function InlineDiffPreview({
   filePath,
   isStreaming = false,
   maxLines = 100,
+  onOpenFullFile,
 }: InlineDiffPreviewProps) {
   const language = useMemo(() => resolveLanguageFromPath(filePath), [filePath])
   const currentTheme = useStore((s) => s.currentTheme)
@@ -455,7 +509,13 @@ export default function InlineDiffPreview({
   const isLight = currentTheme.endsWith('-light')
   const isDark = !isLight
 
-  const { diffLines, isLoading, error } = useAsyncDiff(oldContent, newContent, isStreaming, true, maxLines)
+  const { diffLines, isLoading, error, oversized } = useAsyncDiff(
+    oldContent,
+    newContent,
+    isStreaming,
+    true,
+    maxLines,
+  )
 
   const displayLines = useMemo<DisplayDiffLine[]>(() => {
     if (!diffLines) return []
@@ -471,6 +531,15 @@ export default function InlineDiffPreview({
   }, [diffLines, maxLines, isStreaming])
 
   if (isLoading && !isStreaming) return <DiffSkeleton />
+  if (oversized && !isStreaming) {
+    return (
+      <SkippedDiffNotice
+        language={appLanguage}
+        charCount={Math.max(oldContent.length, newContent.length)}
+        onOpenFullFile={onOpenFullFile}
+      />
+    )
+  }
   if (error) return <ErrorState message={error} />
   if (!diffLines || displayLines.length === 0) {
     return <EmptyState isStreaming={isStreaming} language={appLanguage} />

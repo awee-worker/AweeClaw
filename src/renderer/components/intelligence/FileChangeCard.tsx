@@ -185,19 +185,21 @@ function DiffStatsBadge({ stats, isNewFile }: { stats: DiffStats; isNewFile: boo
 }
 
 /** 大文件延迟提示 */
-function LargeFileDeferred({ meta, onOpen }: {
+function LargeFileDeferred({ meta, language, onOpen }: {
   meta: Record<string, unknown> | undefined
+  language: string
   onOpen: () => void
 }) {
+  const hasSize = typeof meta?.oldContentLength === 'number' || typeof meta?.newContentLength === 'number'
   return (
     <div className="rounded-lg border border-status-warning/20 bg-status-warning/5 p-3 text-[12px] text-text-secondary">
       <div className="font-medium text-status-warning">
-        Large file preview is deferred to keep the UI responsive.
+        {t('diff.deferredPreview', language as any)}
       </div>
       <div className="mt-1 opacity-80">
-        {typeof meta?.oldContentLength === 'number' || typeof meta?.newContentLength === 'number'
-          ? `Size: ${meta?.oldContentLength || 0} -> ${meta?.newContentLength || 0} chars`
-          : 'Open the file in the editor to inspect the full result.'}
+        {hasSize
+          ? `${meta?.oldContentLength || 0} → ${meta?.newContentLength || 0} chars`
+          : t('diff.deferredPreviewHint', language as any)}
       </div>
       <div className="mt-3">
         <button
@@ -207,7 +209,7 @@ function LargeFileDeferred({ meta, onOpen }: {
           }}
           className="rounded-md border border-border bg-surface-hover px-2.5 py-1.5 text-[12px] font-medium text-text-primary transition-colors hover:border-accent hover:text-accent"
         >
-          Open full file
+          {t('diff.openInEditor', language as any)}
         </button>
       </div>
     </div>
@@ -544,7 +546,7 @@ function FileChangeCard({
             }`}
           >
             {isLargeWrite && !isStreaming && !isRunning ? (
-              <LargeFileDeferred meta={meta} onOpen={() => void openFullFile()} />
+              <LargeFileDeferred meta={meta} language={language} onOpen={() => void openFullFile()} />
             ) : (
               <InlineDiffPreview
                 oldContent={oldContent}
@@ -552,6 +554,7 @@ function FileChangeCard({
                 filePath={filePath}
                 isStreaming={isActive}
                 maxLines={50}
+                onOpenFullFile={() => void openFullFile()}
               />
             )}
           </div>
