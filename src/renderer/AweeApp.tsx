@@ -333,17 +333,27 @@ function AppContent() {
   // 若隐藏是用户手动所为，则不恢复，避免覆盖用户的选择。
   const autoHiddenChatRef = useRef(false)
 
+  /** 默认工作台的场景 id：落回它时要补一次对话可见性 */
+  const defaultWorkbenchId = useMemo(
+    () => scenarioRegistry.getDefault()?.id ?? null,
+    [scenarioConfigVersion],
+  )
+
   /**
    * 场景切换时重算对话初值
    *
-   * 两个问题都在这里收口：
+   * 三个问题都在这里收口：
    * - 上一场景的「自动隐藏」标记会被带到新场景，离开该面板时把抽屉重新顶开，
    *   表现为刚切进一个对话默认收起的场景，抽屉却是展开的；
-   * - 声明了区域树的场景由自己的 chat 部件（defaultOpen）决定初值，宿主不应插手。
+   * - 声明了区域树的场景由自己的 chat 部件（defaultOpen）决定初值，宿主不应插手；
+   * - 别的场景可能把对话收起且不还原：抽屉形态的场景（原型工坊、短剧工坊）激活
+   *   时直接把 chatVisible 置 false，还有些场景的区域树根本不摆对话部件。这些收起
+   *   发生在场景内部，用户切回默认工作台时没有任何入口把它叫回来 —— 而默认工作台
+   *   的主区域就是对话本身，收着等于整片区域空着。
    *
    * 因此切换时先清掉标记，再分别处理：场景自带 chat 部件就交给部件；当前面板
-   * 仍需要自动收起就保持收起；其余情况只在上一场景确实自动收起过时恢复可见，
-   * 用户自己关掉的对话不会被强行打开。
+   * 仍需要自动收起就保持收起；其余情况在上一场景确实自动收起过、或落回默认
+   * 工作台时恢复可见，用户自己关掉的对话不会被强行打开。
    */
   const prevChatScenarioRef = useRef(activeScenarioId)
   useEffect(() => {
@@ -355,8 +365,15 @@ function AppContent() {
 
     if (regionsDeclareChat(layoutConfig.regions)) return
     if (activeSidePanel && layoutConfig.autoHideChatPanelIds.includes(activeSidePanel)) return
-    if (wasAutoHidden) setChatVisible(true)
-  }, [activeScenarioId, layoutConfig, activeSidePanel, setChatVisible])
+    if (wasAutoHidden) {
+      setChatVisible(true)
+      return
+    }
+    // 切回默认工作台：对话被别的场景收起了就补回来
+    if (activeScenarioId === defaultWorkbenchId && !useStore.getState().chatVisible) {
+      setChatVisible(true)
+    }
+  }, [activeScenarioId, layoutConfig, activeSidePanel, setChatVisible, defaultWorkbenchId])
 
   useEffect(() => {
     if (activeSidePanel && layoutConfig.autoHideChatPanelIds.includes(activeSidePanel)) {
