@@ -28,9 +28,12 @@ import { activateScenarioPanels, switchToFirstPanel } from './panelUtils'
 import { registerInstalledScenario } from './scenarioInstallUtils'
 import {
     applyInstalledScenarioUpdate,
+    cacheMarketplaceIcons,
     checkInstalledScenarioUpdates,
     findInstalledScenarioId,
     resolveMarketplaceId,
+    resolveScenarioIcon,
+    syncInstalledScenarioIcons,
     unlinkMarketplaceScenario,
 } from '../../adapters/scenarioMarketplaceMap'
 import type { ScenarioHealthReport } from '@shared/protocols/scenario-arch'
@@ -151,6 +154,22 @@ export function ScenarioManagerView() {
     const [updatingScenarioId, setUpdatingScenarioId] = useState<string | null>(null)
     /** 已安装列表的手动「检查更新」是否进行中 */
     const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
+    /**
+     * 图标补齐后的重渲染标记
+     *
+     * 市场图标缓存写在 localStorage，registry 本身不是响应式的，补完图标必须主动
+     * 触发一次渲染，否则卡片还停在场景包自带的旧图标上。
+     */
+    const [, setIconSyncTick] = useState(0)
+    useEffect(() => {
+        let cancelled = false
+        void syncInstalledScenarioIcons()
+            .then((applied) => {
+                if (!cancelled && applied > 0) setIconSyncTick((v) => v + 1)
+            })
+            .catch(() => { /* 补图失败不阻断页面 */ })
+        return () => { cancelled = true }
+    }, [])
     function translateInstallError(error: string): string {
         if (language !== 'zh') return error
         const map: Record<string, string> = {
@@ -241,6 +260,7 @@ export function ScenarioManagerView() {
                             source: 'marketplace',
                             version: result.version,
                             marketplaceId: marketId,
+                            icon: updateInfo.scenarioIcon,
                         })
                     } catch (registerErr) {
                         logger.scenario.warn('[ScenarioManager] Re-register after update failed:', registerErr)
@@ -314,6 +334,7 @@ export function ScenarioManagerView() {
                             source: 'marketplace',
                             version: candidate.latestVersion,
                             marketplaceId: candidate.marketId,
+                            icon: scenarioUpdates.get(candidate.installedId)?.scenarioIcon,
                         })
                     } else {
                         scenarioRegistry.updateScenario(candidate.installedId, { version: candidate.latestVersion })
@@ -647,6 +668,8 @@ export function ScenarioManagerView() {
     })
 
     const detailScenario = detailScenarioId ? scenarioRegistry.get(detailScenarioId) : null
+    /** 详情页图标同样以市场图标为准 */
+    const detailIcon = detailScenario ? resolveScenarioIcon(detailScenario) : undefined
     const detailManifest = detailScenarioId ? scenarioLoader.getManifest(detailScenarioId) : null
     const detailEntry = detailScenarioId ? scenarioLoader.getEntry(detailScenarioId) : null
 
@@ -654,7 +677,9 @@ export function ScenarioManagerView() {
     const SettingsComponent = settingsScenarioId ? getSettingsComponent(settingsScenarioId) : null
 
     const renderScenarioCard = (scenario: ScenarioPlugin) => {
-        const IconComponent = ICON_MAP[scenario.icon] || Sparkles
+        // 已安装场景展示它在场景应用市场里的图标，避免与市场卡片对不上
+        const cardIcon = resolveScenarioIcon(scenario)
+        const IconComponent = ICON_MAP[cardIcon || ''] || Sparkles
         const isActive = scenario.id === activeScenarioId
         const isBuiltin = scenario.isBuiltin === true
         const catLabel = CATEGORY_LABELS[scenario.category] || CATEGORY_LABELS.custom
@@ -710,9 +735,9 @@ export function ScenarioManagerView() {
                     <span className={`w-11 h-11 flex-shrink-0 rounded-xl overflow-hidden flex items-center justify-center border ${
                         isActive ? 'bg-accent/10 border-accent/25' : 'bg-accent/10 border-accent/20'
                     }`}>
-                        {scenario.icon ? (
-                            isImageIcon(scenario.icon) ? (
-                                <img src={scenario.icon} alt="" className="w-full h-full object-cover" />
+                        {cardIcon ? (
+                            isImageIcon(cardIcon) ? (
+                                <img src={cardIcon} alt="" className="w-full h-full object-cover" />
                             ) : (
                                 <IconComponent className="w-5 h-5 text-accent" strokeWidth={1.75} />
                             )
@@ -1043,12 +1068,12 @@ export function ScenarioManagerView() {
                 {detailScenario && (
                     <div className="space-y-5">
                         <div className="flex items-center gap-4">
-                            {detailScenario.icon ? (
+                            {detailIcon ? (
                                 (() => {
-                                    if (isImageIcon(detailScenario.icon)) {
-                                        return <img src={detailScenario.icon} alt="" className="w-10 h-10 flex-shrink-0 rounded object-cover" />
+                                    if (isImageIcon(detailIcon)) {
+                                        return <img src={detailIcon} alt="" className="w-10 h-10 flex-shrink-0 rounded object-cover" />
                                     }
-                                    const Icon = ICON_MAP[detailScenario.icon] || Sparkles
+                                    const Icon = ICON_MAP[detailIcon] || Sparkles
                                     return <Icon className="w-10 h-10 text-accent flex-shrink-0" strokeWidth={1.5} />
                                 })()
                             ) : (
@@ -1547,12 +1572,18 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
         setIsLoading(true)
         try {
             const result = await browseScenarios({ category: selectedCategory || undefined, search: searchQuery || undefined, page, limit: 20 })
+            // 市场条目自带图标，顺手缓存给已安装场景用，省掉逐个请求详情
+            cacheMarketplaceIcons(result.scenarios || [])
             setItems(result.scenarios || [])
             setTotal(result.total || 0)
         } catch { setItems([]); setTotal(0) } finally { setIsLoading(false) }
     }
     async function loadFeatured() {
-        try { const f = await getFeaturedScenarios(); setFeatured(f || []) } catch { /* ignore */ }
+        try {
+            const f = await getFeaturedScenarios()
+            cacheMarketplaceIcons(f || [])
+            setFeatured(f || [])
+        } catch { /* ignore */ }
     }
     async function loadCategories() {
         try { const c = await getMarketplaceCategories(); setCategories(c || []) } catch { /* ignore */ }
@@ -1570,7 +1601,15 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
             if (result.success) {
                 const config = result.config
                 const scenarioId = result.scenarioId || item.id
-                if (config) await registerInstalledScenario(config as any, { scenarioId, source: 'marketplace', version: result.version, marketplaceId: item.id })
+                if (config) {
+                    await registerInstalledScenario(config as any, {
+                        scenarioId,
+                        source: 'marketplace',
+                        version: result.version,
+                        marketplaceId: item.id,
+                        icon: item.icon,
+                    })
+                }
                 toast.success(t('scenario.scenarioinstalledsuccessfully', language as Language, { name: item.name, nameZh: item.nameZh }))
                 setSelectedItem(null)
                 await loadItems()

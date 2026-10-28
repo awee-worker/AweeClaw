@@ -14,6 +14,7 @@ import { resolveVisibleMenuIds } from '@shared/protocols/scenario'
 import { scenarioLoader, registerBuiltinScenarios } from '@/scenarios'
 import { loadExternalScenarios, setExternalScenarioLoadFunctions } from '@scenario-system/core/ExternalScenarioLoader'
 import { api } from './adapters/electronBridge'
+import { syncInstalledScenarioIcons } from './adapters/scenarioMarketplaceMap'
 import { shellComposer, type LayoutConfig } from './shell/ShellComposer'
 import { getPanelComponent } from '@components/explorer/PanelRegistry'
 import { ToastProvider, useToast, setGlobalToast } from '@components/foundation/NotificationProvider'
@@ -89,6 +90,23 @@ loadExternalScenarios()
   })
   .catch(() => {
     /* 单个场景加载失败已在 loader 内部记录，不阻断首屏 */
+  })
+
+/**
+ * 已安装场景图标补齐
+ *
+ * 已安装场景要显示它在场景应用市场里的图标，早前安装的场景本地只有场景包自带的
+ * icon。这里在首屏之后补一次，补到图标才触发重渲染，避免顶部场景切换器一直
+ * 停在旧图标上。离线或未登录时静默跳过。
+ */
+syncInstalledScenarioIcons()
+  .then((applied) => {
+    if (applied > 0) {
+      useStore.getState().incrementScenarioConfigVersion()
+    }
+  })
+  .catch(() => {
+    /* 补图失败不影响启动 */
   })
 
 function ToastInitializer() {

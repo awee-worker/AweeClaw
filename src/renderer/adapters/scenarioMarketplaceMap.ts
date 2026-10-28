@@ -14,7 +14,11 @@
 import { scenarioRegistry } from '@configuration/scenarios'
 import { logger } from '@toolkit/LogEngine'
 import type { ScenarioPlugin } from '@protocols/scenario'
-import { checkScenarioUpdates, updateScenarioFromMarketplace } from './marketplaceService'
+import {
+  checkScenarioUpdates,
+  getScenarioDetail,
+  updateScenarioFromMarketplace,
+} from './marketplaceService'
 
 const MARKET_MAP_STORAGE_KEY = 'aweeclaw:scenario-market-map'
 
@@ -24,6 +28,13 @@ interface MarketScenarioLink {
   /** 建立映射时的场景版本 */
   version: string
   linkedAt: number
+  /**
+   * 市场条目图标（图片地址或 lucide 图标名）
+   *
+   * 场景包自带的 icon 未必与市场条目一致，已安装场景要展示「场景自身的图标」，
+   * 因此把市场图标一并缓存下来，供列表与切换器直接读取。
+   */
+  icon?: string
 }
 
 type MarketMap = Record<string, MarketScenarioLink>
@@ -48,15 +59,56 @@ function writeMap(map: MarketMap): void {
 }
 
 /** 记录「市场条目 → 本地场景」的对应关系 */
-export function linkMarketplaceScenario(marketId: string, installedId: string, version?: string): void {
+export function linkMarketplaceScenario(
+  marketId: string,
+  installedId: string,
+  version?: string,
+  icon?: string,
+): void {
   if (!marketId || !installedId) return
   const map = readMap()
+  const previous = map[marketId]
   map[marketId] = {
     installedId,
-    version: version || map[marketId]?.version || '',
+    version: version || previous?.version || '',
     linkedAt: Date.now(),
+    icon: icon || previous?.icon,
   }
   writeMap(map)
+}
+
+/**
+ * 批量缓存市场图标
+ *
+ * 市场列表、精选列表返回的每个条目都带 icon，浏览过市场即可把已安装场景的
+ * 图标补齐，无需再逐个请求详情。
+ */
+export function cacheMarketplaceIcons(items: Array<{ id?: string; icon?: string }>): void {
+  if (!Array.isArray(items) || items.length === 0) return
+  const map = readMap()
+  let changed = false
+
+  for (const item of items) {
+    if (!item?.id || !item.icon) continue
+    const link = map[item.id]
+    if (!link || link.icon === item.icon) continue
+    map[item.id] = { ...link, icon: item.icon }
+    changed = true
+  }
+
+  if (changed) writeMap(map)
+}
+
+/**
+ * 取场景最终展示的图标
+ *
+ * 优先用市场条目图标（场景应用市场里对应场景的图标），没有缓存时回落到
+ * 场景包自己声明的 icon。
+ */
+export function resolveScenarioIcon(scenario: ScenarioPlugin): string | undefined {
+  const marketId = resolveMarketplaceId(scenario)
+  const cached = readMap()[marketId]?.icon
+  return cached || scenario.icon || undefined
 }
 
 /** 场景被卸载后清掉对应的映射，避免市场页误判为已安装 */
@@ -232,4 +284,41 @@ export async function applyInstalledScenarioUpdate(
       error: err instanceof Error ? err.message : String(err),
     }
   }
+}
+
+/**
+ * 补齐已安装场景的市场图标
+ *
+ * 早前安装的场景只保留了场景包自带的 icon，本地没有市场图标缓存。这里对缺少
+ * 缓存的场景逐个拉一次市场详情，把图标写回注册表并持久化，让「已安装」列表、
+ * 详情页与顶部切换器都显示它在市场里的图标。
+ *
+ * 未登录、离线或场景已下架时静默跳过，不阻断启动流程。
+ */
+export async function syncInstalledScenarioIcons(): Promise<number> {
+  const installed = scenarioRegistry.getInstalled().filter((s) => !s.isBuiltin)
+  if (installed.length === 0) return 0
+
+  const map = readMap()
+  const pending = installed.filter((scenario) => !map[resolveMarketplaceId(scenario)]?.icon)
+  if (pending.length === 0) return 0
+
+  let applied = 0
+  for (const scenario of pending) {
+    const marketId = resolveMarketplaceId(scenario)
+    try {
+      const detail = await getScenarioDetail(marketId)
+      if (!detail?.icon) continue
+
+      linkMarketplaceScenario(marketId, scenario.id, scenario.version, detail.icon)
+      if (scenario.icon !== detail.icon) {
+        scenarioRegistry.updateScenario(scenario.id, { icon: detail.icon })
+      }
+      applied++
+    } catch {
+      // 单个场景补图失败不影响其它场景
+    }
+  }
+
+  return applied
 }

@@ -7,6 +7,8 @@ import { Sparkles, ChevronDown, Check, Store } from 'lucide-react'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { activateScenarioPanels, switchToFirstPanel } from '@components/scenario/panelUtils'
+import { getLucideIcon } from '@components/foundation/IconMap'
+import { resolveScenarioIcon } from '../../adapters/scenarioMarketplaceMap'
 
 interface ScenarioSelectorProps {
     className?: string
@@ -16,6 +18,8 @@ interface ScenarioSelectorProps {
 export default function ScenarioSelector({ className = '', onOpenMarketplace }: ScenarioSelectorProps) {
     const language = useStore(s => s.language)
     const activeScenarioId = useStore(s => s.activeScenarioId)
+    /** 场景图标在启动后异步补齐，跟着配置版本号一起刷新 */
+    const scenarioConfigVersion = useStore(s => s.scenarioConfigVersion)
     const [isOpen, setIsOpen] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
     const isZh = language === 'zh'
@@ -24,8 +28,10 @@ export default function ScenarioSelector({ className = '', onOpenMarketplace }: 
         return scenarioRegistry.getAll().map((s) => ({
             id: s.id,
             name: isZh ? s.nameZh || s.name : s.name,
+            // 场景自身的图标：已安装场景取场景应用市场里对应条目的图标
+            icon: resolveScenarioIcon(s),
         }))
-    }, [isZh])
+    }, [isZh, scenarioConfigVersion])
 
     // 点击外部关闭
     useEffect(() => {
@@ -55,6 +61,18 @@ export default function ScenarioSelector({ className = '', onOpenMarketplace }: 
     const currentName = activeScenarioId
         ? scenarios.find(s => s.id === activeScenarioId)?.name || (isZh ? '默认场景' : 'Default')
         : (isZh ? '默认场景' : 'Default')
+    const currentIcon = activeScenarioId
+        ? scenarios.find(s => s.id === activeScenarioId)?.icon
+        : undefined
+
+    /** 图片图标直接渲染，其余按 lucide 名称解析 */
+    const renderScenarioIcon = (icon: string | undefined, className: string) => {
+        if (icon && (icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('data:'))) {
+            return <img src={icon} alt="" className={`${className} rounded object-cover`} />
+        }
+        const Icon = icon ? getLucideIcon(icon) : Sparkles
+        return <Icon className={className} />
+    }
 
     return (
         <div className={`no-drag relative ${className}`} ref={containerRef}>
@@ -63,7 +81,7 @@ export default function ScenarioSelector({ className = '', onOpenMarketplace }: 
                 className="flex items-center gap-1.5 px-2 h-[28px] rounded-md hover:bg-text-primary/[0.06] transition-all duration-200 text-text-muted hover:text-text-primary"
                 title={isZh ? '切换场景应用' : 'Switch Scenario'}
             >
-                <Sparkles className="w-3.5 h-3.5" />
+                {renderScenarioIcon(currentIcon, 'w-3.5 h-3.5')}
                 <span className="text-xs max-w-[80px] truncate">{currentName}</span>
                 <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -84,7 +102,7 @@ export default function ScenarioSelector({ className = '', onOpenMarketplace }: 
                                             : 'text-text-primary hover:bg-surface-hover'
                                     }`}
                                 >
-                                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                                    {renderScenarioIcon(scenario.icon, 'w-3.5 h-3.5 shrink-0')}
                                     <span className="truncate">{scenario.name}</span>
                                     {isActive && <Check className="w-3.5 h-3.5 ml-auto" />}
                                 </button>

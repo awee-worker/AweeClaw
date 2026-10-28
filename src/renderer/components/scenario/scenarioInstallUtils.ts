@@ -122,9 +122,16 @@ export async function registerInstalledScenario(
     version?: string
     /** 来源市场条目 ID（与 config.id 可能不同），用于市场页判断安装状态与查询更新 */
     marketplaceId?: string
+    /**
+     * 市场条目图标
+     *
+     * 已安装场景要展示它在场景应用市场里的图标，而场景包自带的 icon 未必一致，
+     * 因此安装/更新时把市场图标一并写进注册信息。
+     */
+    icon?: string
   },
 ): Promise<void> {
-  const { scenarioId, source, version, marketplaceId } = options
+  const { scenarioId, source, version, marketplaceId, icon } = options
   const isProgrammatic = config.packageType === 'programmatic'
 
   // 注册到 registry/loader 的 key 是 config.id（可能与市场场景 ID/目录名不一致），
@@ -148,6 +155,7 @@ export async function registerInstalledScenario(
         source,
         version,
         marketplaceId,
+        icon,
       )
     } else if (filesResult.success && filesResult.files) {
       // ============================================
@@ -162,6 +170,7 @@ export async function registerInstalledScenario(
       const modulePlugin = declarativeModule.getPlugin()
       const plugin: ScenarioPlugin = {
         ...modulePlugin,
+        icon: icon || modulePlugin.icon,
         source,
         version: resolvedVersion,
         marketplaceId,
@@ -169,8 +178,11 @@ export async function registerInstalledScenario(
       scenarioRegistry.registerAndPersist(plugin)
       registeredId = plugin.id
     } else {
-      // 文件加载失败，使用基础配置注册
-      const plugin = { ...buildBasePlugin(config, scenarioId, source, version), marketplaceId }
+      const plugin: ScenarioPlugin = {
+        ...buildBasePlugin(config, scenarioId, source, version),
+        icon: icon || config.icon || scenarioId,
+        marketplaceId,
+      }
       scenarioRegistry.registerAndPersist(plugin)
       registeredId = plugin.id
     }
@@ -180,7 +192,11 @@ export async function registerInstalledScenario(
     // 避免空配置（sidebarItems=[]）被持久化导致 NavigationRail 显示默认菜单而非场景菜单。
     // 对于 declarative 场景，保留 fallback 行为（声明式场景的 sidebarItems 可由 UI 默认渲染）。
     if (!isProgrammatic) {
-      const fallbackPlugin = { ...buildBasePlugin(config, scenarioId, source, version), marketplaceId }
+      const fallbackPlugin: ScenarioPlugin = {
+        ...buildBasePlugin(config, scenarioId, source, version),
+        icon: icon || config.icon || scenarioId,
+        marketplaceId,
+      }
       scenarioRegistry.registerAndPersist(fallbackPlugin)
     }
     // 重新抛出错误，让调用方知道安装失败并显示错误提示
@@ -190,7 +206,7 @@ export async function registerInstalledScenario(
   // 记录市场条目与本地场景的对应关系：config.id 与市场 ID 不一致时，
   // 市场页只有拿到这条映射才知道该条目已经安装
   if (marketplaceId) {
-    linkMarketplaceScenario(marketplaceId, registeredId, resolvedVersion)
+    linkMarketplaceScenario(marketplaceId, registeredId, resolvedVersion, icon)
   }
 
   // 执行安装脚本（初始化数据库表）
@@ -227,6 +243,7 @@ async function registerProgrammaticScenario(
   source: 'local' | 'marketplace',
   version: string | undefined,
   marketplaceId?: string,
+  icon?: string,
 ): Promise<string> {
   // 调用 loadProgrammaticScenario 加载 ESM bundle
   const loadResult = await loadProgrammaticScenario(scenarioId)
@@ -245,13 +262,6 @@ async function registerProgrammaticScenario(
   // 拿到 undefined，若继续兜底注册，会把空 ui（sidebarItems=[]）持久化进 localStorage，
   // 左侧导航因此回退到默认菜单，而界面仍显示「安装成功」——用户完全无从判断。
   // 这里必须显式失败，把真实原因交给 UI。
-  if (!scenarioLoader.has(scenarioId)) {
-    throw new Error(
-      `场景未能注册：它要求客户端版本不低于 ${config.minAppVersion || '未声明'}，` +
-        `当前客户端版本较低。请升级客户端后重试。`,
-    )
-  }
-
   // 从 scenarioLoader 获取完整的 plugin 配置
   // ProgrammaticScenarioModule.getPlugin() 会合并 bundle 的 getPlugin() 返回值
   const fullPlugin = scenarioLoader.getPlugin(scenarioId)
@@ -262,6 +272,7 @@ async function registerProgrammaticScenario(
   // 注册完整 plugin（含 bundle 提供的 sidebarItems、systemPrompt 等）
   const plugin: ScenarioPlugin = {
     ...fullPlugin,
+    icon: icon || fullPlugin.icon,
     source,
     version: config.version || version || '1.0.0',
     marketplaceId,
