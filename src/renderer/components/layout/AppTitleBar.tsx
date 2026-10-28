@@ -28,6 +28,7 @@ import { updaterService, type UpdateStatus } from '@renderer/adapters/updateAdap
 import { PluginTopActions } from '@renderer/plugins/PluginTopActions'
 import { HintOverlay } from '@components/ui/HintOverlay'
 import { useClickOutside, useEscapeKey } from '@hooks/usePerformance'
+import { BreathingDot } from '@components/ui/BreathingDot'
 import { getThreadDisplayTitle, type ChatThread } from '@intelligence/providerTypes'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import ImStatusFloating from './ImStatusFloating'
@@ -147,7 +148,7 @@ function RunningTasksIndicator() {
               : 'text-accent hover:text-accent-hover hover:bg-accent/10'
           }`}
         >
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <BreathingDot className="w-3.5 h-3.5" />
           <span className="text-xs">{label}</span>
         </button>
       </HintOverlay>
@@ -174,7 +175,7 @@ function RunningTasksIndicator() {
                 onClick={() => handleOpenThread(thread.id)}
                 className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-text-primary/[0.06] transition-colors text-left"
               >
-                <Loader2 className="w-3.5 h-3.5 shrink-0 text-accent animate-spin" />
+                <BreathingDot className="w-3.5 h-3.5 shrink-0" />
                 <span className="flex-1 min-w-0 text-[13px] text-text-primary truncate">
                   {getThreadDisplayTitle(thread)}
                 </span>

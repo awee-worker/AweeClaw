@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Edit2, Loader2, MessageSquare, MoreHorizontal, PackageOpen, Trash2 } from 'lucide-react'
+import { Edit2, MessageSquare, MoreHorizontal, PackageOpen, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
@@ -24,6 +24,7 @@ import { useAgentActions, useAllThreads, isThreadExecuting } from '@hooks/useAge
 import { getMessageText, getThreadDisplayTitle } from '@intelligence/providerTypes'
 import type { ChatThread } from '@intelligence/providerTypes'
 import { HintOverlay } from '@components/ui/HintOverlay'
+import { BreathingDot } from '@components/ui/BreathingDot'
 import type { HostPartComponentProps } from '../HostPartRegistry'
 
 /** 展开态最多直接列出多少条，超出的引导到历史会话页 */
@@ -87,9 +88,9 @@ function ThreadListItem({
       } ${menuOpen ? 'z-30 bg-surface-hover/50' : 'z-0'}`}
       onClick={onSelect}
     >
-      {/* 正在执行的会话把入口图标换成旋转指示，用户切走后也能看出这条还在跑 */}
+      {/* 正在执行的会话把入口图标换成呼吸圆点，用户切走后也能看出这条还在跑 */}
       {running ? (
-        <Loader2 className="w-3.5 h-3.5 shrink-0 text-accent animate-spin" strokeWidth={1.5} />
+        <BreathingDot className="w-3.5 h-3.5" />
       ) : (
         <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-50" strokeWidth={1.5} />
       )}
@@ -244,7 +245,7 @@ export function ChatHistoryPart({ expanded }: ChatHistoryPartProps) {
                   }`}
                 >
                   {isThreadExecuting(thread) ? (
-                    <Loader2 className="w-3.5 h-3.5 text-accent animate-spin" strokeWidth={1.5} />
+                    <BreathingDot className="w-3.5 h-3.5" />
                   ) : (
                     <MessageSquare className="w-3.5 h-3.5 opacity-50" strokeWidth={1.5} />
                   )}

@@ -81,6 +81,10 @@ export default {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'pulse-glow': 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'shimmer': 'shimmer 2s linear infinite',
+        // 执行中状态用的圆点呼吸：缩放与透明度同相位，读起来是「在跳」而不是「在转」
+        'dot-breath': 'dotBreath 1.5s ease-in-out infinite',
+        // 与呼吸同周期的外圈扩散，落在圆点膨到最大那一刻
+        'dot-ripple': 'dotRipple 1.5s ease-out infinite',
       },
       keyframes: {
         fadeIn: {
@@ -111,10 +115,18 @@ export default {
           '0%, 100%': { opacity: '1', boxShadow: '0 0 0px rgb(var(--accent) / 0)' },
           '50%': { opacity: '0.9', boxShadow: '0 0 15px rgb(var(--accent) / 0.3)' },
         },
+        dotBreath: {
+          '0%, 100%': { transform: 'scale(0.65)', opacity: '0.4' },
+          '50%': { transform: 'scale(1)', opacity: '1' },
+        },
+        dotRipple: {
+          '0%': { transform: 'scale(1)', opacity: '0.55' },
+          '70%, 100%': { transform: 'scale(2.6)', opacity: '0' },
+        },
         shimmer: {
           '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(50%)' },
-        }
+        },
       },
       backdropBlur: {
         xs: '2px',
