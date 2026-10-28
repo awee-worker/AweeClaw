@@ -75,7 +75,8 @@ export function createScenarioApi() {
     scenarioMarketplaceCheckUpdates: (
       installedScenarios: Array<{ id: string; version: string }>,
       backendUrl?: string,
-    ) => invoke('scenario:marketplaceCheckUpdates')(installedScenarios, backendUrl),
+      accessToken?: string,
+    ) => invoke('scenario:marketplaceCheckUpdates')(installedScenarios, backendUrl, accessToken),
     scenarioMarketplaceUpdate: (params: {
       scenarioId: string
       downloadUrl: string

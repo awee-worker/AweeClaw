@@ -245,7 +245,7 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   scenarioMarketplaceCategories: () => Promise<unknown[]>
   scenarioMarketplaceDownload: (scenarioId: string) => Promise<{ success: boolean; error?: string; path?: string }>
   scenarioMarketplaceInstall: (params: { scenarioId: string; downloadUrl: string; checksum: string; signature?: string; version: string; fileSize: number; packageType: string }) => Promise<{ success: boolean; scenarioId?: string; version?: string; targetDir?: string; config?: Record<string, unknown>; packageType?: string; error?: string }>
-  scenarioMarketplaceCheckUpdates: (installedScenarios: Array<{ id: string; version: string }>, backendUrl?: string) => Promise<Array<{ scenarioId: string; currentVersion: string; latestVersion?: string; changelog?: string; needsUpdate: boolean }>>
+  scenarioMarketplaceCheckUpdates: (installedScenarios: Array<{ id: string; version: string }>, backendUrl?: string, accessToken?: string) => Promise<Array<{ scenarioId: string; currentVersion: string; latestVersion?: string; changelog?: string; needsUpdate: boolean }>>
   scenarioMarketplaceUpdate: (params: { scenarioId: string; downloadUrl: string; checksum: string; signature?: string; version: string; fileSize: number; packageType: string }) => Promise<{ success: boolean; scenarioId?: string; version?: string; targetDir?: string; config?: Record<string, unknown>; packageType?: string; error?: string }>
   scenarioGetRollbackInfo: (scenarioId: string) => Promise<{ available: boolean; previousVersion?: string; backedUpAt?: string }>
   scenarioRollbackScenario: (scenarioId: string) => Promise<{ success: boolean; scenarioId?: string; version?: string; targetDir?: string; config?: Record<string, unknown>; error?: string }>
@@ -904,7 +904,7 @@ function createGroupedAPI() {
       getCategories: () => raw.scenarioMarketplaceCategories(),
       download: (scenarioId: string) => raw.scenarioMarketplaceDownload(scenarioId),
       install: (params: { scenarioId: string; downloadUrl: string; checksum: string; signature?: string; version: string; fileSize: number; packageType: string }) => raw.scenarioMarketplaceInstall(params),
-      checkUpdates: (installedScenarios: Array<{ id: string; version: string }>, backendUrl?: string) => raw.scenarioMarketplaceCheckUpdates(installedScenarios, backendUrl),
+      checkUpdates: (installedScenarios: Array<{ id: string; version: string }>, backendUrl?: string, accessToken?: string) => raw.scenarioMarketplaceCheckUpdates(installedScenarios, backendUrl, accessToken),
       update: (params: { scenarioId: string; downloadUrl: string; checksum: string; signature?: string; version: string; fileSize: number; packageType: string }) => raw.scenarioMarketplaceUpdate(params),
     },
 

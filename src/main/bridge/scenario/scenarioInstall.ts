@@ -472,6 +472,18 @@ async function makeHttpRequest(
     request.end()
   })
 }
+/** 后端 /marketplace/check-updates 返回的单条更新记录 */
+interface UpdatePayload {
+  scenarioId: string
+  scenarioName?: string
+  scenarioNameZh?: string
+  scenarioIcon?: string
+  currentVersion: string
+  latestVersion: string
+  changelog?: string
+  minAppVersion?: string
+  fileSize?: number
+}
 
 function verifyChecksum(filePath: string, expectedChecksum: string): boolean {
   const fileBuffer = fs.readFileSync(filePath)
@@ -1117,6 +1129,7 @@ export function registerScenarioInstallIpcHandlers(
     _event,
     installedScenarios: Array<{ id: string; version: string }>,
     backendUrl?: string,
+    accessToken?: string,
   ) => {
     if (!backendUrl || installedScenarios.length === 0) {
       return installedScenarios.map(s => ({
@@ -1131,19 +1144,25 @@ export function registerScenarioInstallIpcHandlers(
         `${backendUrl}/api/v1/marketplace/check-updates`,
         'POST',
         { scenarios: installedScenarios },
+        // 后端 check-updates 受 JwtAuthGuard 保护：不带 token 会直接 401，
+        // 异常被下面的 catch 吞掉后就变成「没有更新」，表现是所有场景永远提示已是最新
+        accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
       )
 
-      const updates = JSON.parse(response) as Array<{
-        scenarioId: string
-        scenarioName?: string
-        scenarioNameZh?: string
-        scenarioIcon?: string
-        currentVersion: string
-        latestVersion: string
-        changelog?: string
-        minAppVersion?: string
-        fileSize?: number
-      }>
+      const payload = JSON.parse(response) as
+        | UpdatePayload[]
+        | { data?: UpdatePayload[]; items?: UpdatePayload[] }
+
+      // 后端统一用 { success, data } 信封返回，data 才是更新列表。
+      // 直接对信封调用 map 会抛 TypeError，被下面的 catch 吞成「无更新」，
+      // 结果是任何新版本都检测不到——市场里已发版、客户端永远提示已是最新。
+      const updates: UpdatePayload[] = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.items)
+            ? payload.items
+            : []
 
       return updates.map(u => ({
         scenarioId: u.scenarioId,

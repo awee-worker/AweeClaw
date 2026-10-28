@@ -13,7 +13,13 @@
  *   4. checkUpdates → IPC(scenario:marketplaceCheckUpdates) → 主进程调用后端API
  */
 
-import { backendApi, isAuthenticated, getServerUrl } from '@services/backendApi'
+import {
+  backendApi,
+  isAuthenticated,
+  getServerUrl,
+  getAccessToken,
+  tryRefreshToken,
+} from '@services/backendApi'
 import { logger } from '@shared/toolkit/LogEngine'
 import { getAPI } from '@services/electronBridge'
 import type {
@@ -341,7 +347,12 @@ export async function checkScenarioUpdates(
   try {
     const api = getAPI()
     const serverUrl = getServerUrl()
-    const results = await api.scenarioMarketplace.checkUpdates(scenarios, serverUrl)
+    // check-updates 受 JwtAuthGuard 保护，主进程拿不到渲染层的登录态，
+    // 必须把 accessToken 一并透传，否则请求恒为 401、被吞成「无更新」。
+    // 先确保 token 未过期（tryRefreshToken 仅在临近过期时才真正刷新）
+    await tryRefreshToken()
+    const accessToken = getAccessToken()
+    const results = await api.scenarioMarketplace.checkUpdates(scenarios, serverUrl, accessToken || undefined)
     // 过滤掉不需要更新的，映射为 MarketplaceUpdateInfo
     return results
       .filter(r => r.needsUpdate)
@@ -356,7 +367,10 @@ export async function checkScenarioUpdates(
         minAppVersion: (r as any).minAppVersion,
         fileSize: (r as any).fileSize,
       }))
-  } catch {
+  } catch (err) {
+    // 不能静默返回空数组：上层会把「没有更新」直接展示成「已是最新」，
+    // 鉴权失败、网络异常都会因此伪装成「无更新」
+    logger.scenario.warn('[Marketplace] Check scenario updates failed:', err)
     return []
   }
 }
