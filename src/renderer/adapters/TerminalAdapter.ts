@@ -1654,13 +1654,35 @@ export class TerminalManagerClass {
           }, timeoutMs)
         : null
 
+      const START_MARKER = `${OSC}${START_PAYLOAD}${BEL}`
+
       const unsubRaw = this.onRawData((event) => {
         if (event.id !== termId || settled) return
         perfTrace.bump(PERF_TRACE_COUNTERS.terminalChunks)
-        rawAccumulator = appendRetained(rawAccumulator, event.data, MAX_RAW_SENTINEL_BUFFER_CHARS)
-        textAccumulator = appendRetained(textAccumulator, stripAnsi(event.data), MAX_COMMAND_OUTPUT_CHARS)
 
-        if (textAtStart === -1 && rawAccumulator.includes(`${OSC}${START_PAYLOAD}${BEL}`)) {
+        const chunk = event.data
+        rawAccumulator = appendRetained(rawAccumulator, chunk, MAX_RAW_SENTINEL_BUFFER_CHARS)
+
+        // 可见文本按 marker 在本块内的位置切分，只取「START 之后、END 之前」的片段。
+        // 短命令（echo / pwd / ffmpeg -version）的输出往往与两端 marker 落在同一批
+        // PTY 数据里，若先整块追加再判断是否出现过 START，切分点会被记成整块末尾，
+        // 该命令的输出就被整体切掉 —— 表现为命令执行成功、退出码 0，但拿到的输出是空串。
+        let visibleChunk = chunk
+        let startSeen = false
+        if (textAtStart === -1) {
+          const startIdx = chunk.indexOf(START_MARKER)
+          if (startIdx !== -1) {
+            visibleChunk = chunk.slice(startIdx + START_MARKER.length)
+            startSeen = true
+          } else if (rawAccumulator.includes(START_MARKER)) {
+            // START 被拆到前一块（跨块边界）：本块整体属于命令输出
+            startSeen = true
+          }
+        }
+        const endIdxInChunk = visibleChunk.indexOf(RAW_END_MARKER)
+        if (endIdxInChunk !== -1) visibleChunk = visibleChunk.slice(0, endIdxInChunk)
+
+        if (textAtStart === -1 && startSeen) {
           textAtStart = textAccumulator.length
           this.updateCurrentCommandSession(termId, (session) => ({
             ...session,
@@ -1668,6 +1690,11 @@ export class TerminalManagerClass {
             captureStartSeq: event.seq,
           }))
         }
+        textAccumulator = appendRetained(
+          textAccumulator,
+          stripAnsi(visibleChunk),
+          MAX_COMMAND_OUTPUT_CHARS,
+        )
 
         // 逐块只登记一次待刷新，实际处理与推送由节拍器合并执行
         scheduleUiFlush()

@@ -23,6 +23,7 @@ import {
   loadLocalEngineConfig,
   resolveVoiceRoute,
 } from '@renderer/services/localVoiceEngine'
+import { getBuiltinVoicesForModel } from '@shared/localVoiceVoices'
 import {
   HOST_NAVIGATE_REQUEST_EVENT,
   HOST_NAVIGATE_RESULT_EVENT,
@@ -87,6 +88,22 @@ const CLOUD_VOICE_PRESETS: Record<string, HostVoiceOption[]> = {
   ].map((item) => ({ ...item, group: 'CosyVoice' })),
 }
 
+/**
+ * 补齐当前配置的音色
+ *
+ * 服务商没有音色查询接口，只能给预设表。预设里没有这家（自建代理、新上的
+ * 服务商）时，下拉会只剩「默认音色」，用户看不到自己配的那个。把配置值并进
+ * 列表既不编造也不缺项。
+ */
+function withConfiguredVoice(
+  presets: HostVoiceOption[],
+  voice: string,
+  label: string,
+): HostVoiceOption[] {
+  if (!voice || presets.some((item) => item.id === voice)) return presets
+  return [{ id: voice, name: `${voice} · 当前配置`, group: label }, ...presets]
+}
+
 /** ArrayBuffer → base64，分块处理避免超长参数把调用栈撑爆 */
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
@@ -148,17 +165,24 @@ async function readVoiceStatus(): Promise<Omit<HostVoiceStatusDetail, 'requestId
     logger.system.warn('[HostCapabilitiesBridge] 读取语音配置失败:', err)
   }
 
-  /** 本地引擎做主路径：音色由本地设置决定，这里不返回音色表 */
+  /** 本地引擎做主路径：音色由「设置 → 本地语音」选的模型决定，与其下拉同源 */
   if (route.primary === 'local') {
-    const localVoice = engineConfig?.tts?.defaultVoice ?? ''
+    const localVoice = engineConfig?.tts?.defaultVoice ?? '';
+    const modelName = engineConfig?.tts?.modelName ?? '';
     return {
       configured: Boolean(engineConfig?.tts?.enabled),
       engine: 'local',
       provider: 'local-engine',
       providerLabel: '本地语音引擎',
-      model: '',
+      model: modelName,
       voice: localVoice,
-      voices: [],
+      voices: getBuiltinVoicesForModel(modelName).map(
+        (item: { voice: string; displayName: string; group: string }) => ({
+          id: item.voice,
+          name: item.displayName,
+          group: item.group,
+        }),
+      ),
       reason: engineConfig?.tts?.enabled
         ? undefined
         : '本地语音引擎未开启 TTS，或优先级设置让本地语音不可用',
@@ -175,7 +199,11 @@ async function readVoiceStatus(): Promise<Omit<HostVoiceStatusDetail, 'requestId
       providerLabel: '云端语音（后端代理）',
       model,
       voice,
-      voices: CLOUD_VOICE_PRESETS[provider] ?? [],
+      voices: withConfiguredVoice(
+        CLOUD_VOICE_PRESETS[provider] ?? [],
+        voice,
+        '云端语音（后端代理）',
+      ),
       settingsTarget: 'voice',
     }
   }
@@ -183,7 +211,7 @@ async function readVoiceStatus(): Promise<Omit<HostVoiceStatusDetail, 'requestId
   // 各服务商的直连链路都需要 Key（阿里云走专有协议但同样要鉴权）
   const needsKey = !hasApiKey
   const configured = ttsEnabled && !needsKey
-  const presets = CLOUD_VOICE_PRESETS[provider] ?? []
+  const presets = withConfiguredVoice(CLOUD_VOICE_PRESETS[provider] ?? [], voice, provider || '当前配置')
 
   return {
     configured,

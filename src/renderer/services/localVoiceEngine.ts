@@ -57,7 +57,14 @@ interface LocalVoiceConfigShape {
   enabled?: boolean;
   priority?: LocalEnginePriority;
   asr?: { enabled?: boolean; numThreads?: number };
-  tts?: { enabled?: boolean; defaultVoice?: string; defaultSpeed?: number };
+  tts?: {
+    enabled?: boolean;
+    engine?: string;
+    /** 当前 TTS 模型 id，决定可用音色集合 */
+    modelName?: string;
+    defaultVoice?: string;
+    defaultSpeed?: number;
+  };
 }
 
 /** 主进程引擎运行状态 */
