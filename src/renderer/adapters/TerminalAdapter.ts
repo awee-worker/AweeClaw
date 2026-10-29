@@ -1645,7 +1645,17 @@ export class TerminalManagerClass {
             // SIGINT 可能被 python/node 等进程忽略（C 扩展、守护线程、无超时的网络脚本），
             // 仅靠 Ctrl+C 会让命令进程继续占用 CPU。宽限期后强制关闭终端，
             // 由主进程终止整棵进程树（含忽略信号残留的子进程）。
+            //
+            // 关闭前必须确认这台终端上仍是「刚刚超时的那一条命令」：settle 已经把
+            // activeExecutions 清干净并 resolve，调用方（例如能力探测、串行批处理）
+            // 往往紧接着复用同一台终端下发下一条。若不看归属就关，那条新命令会被
+            // 这次关闭当成「终端被用户关闭」结算成 cancelled 且没有输出，调用方只
+            // 看到一条「超时」和一条「取消」交替出现，完全看不出是同一台终端在互相踩。
+            const timedOutSessionId = commandSessionId
             setTimeout(() => {
+              const active = this.activeExecutions.get(termId)
+              // 已有新命令在跑，说明终端没被超时的残留进程占死，不关闭
+              if (active && active.commandSessionId !== timedOutSessionId) return
               const target = this.state.terminals.find(t => t.id === termId)
               if (target?.isAgent) {
                 this.closeTerminal(termId)
