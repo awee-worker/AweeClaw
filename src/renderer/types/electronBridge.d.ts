@@ -2624,6 +2624,8 @@ export interface ElectronAPI {
     /** 是否在新建任务界面显示（缺省视为显示） */
     newTaskVisible?: boolean
     types: string[]
+    /** 插件图标（市场详情登记）：图片地址或 lucide 图标名，manifest.icon 缺失时的回退来源 */
+    icon?: string
     manifest: unknown
     mcpServerId?: string
   }>>

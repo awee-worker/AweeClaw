@@ -478,6 +478,8 @@ Timeout policy:
 - Regular commands: 120s
 - Broad filesystem scans (e.g. \`find /\`, \`grep -r x /\`, \`du -sh /\`): 60s — avoid them; scope the search to the workspace (e.g. \`find . -name ...\`) or use search_files instead
 - Install / build / test commands: 10 minutes
+- System package installs (brew / winget / choco / apt / dnf / pacman, including absolute-path calls like \`/opt/homebrew/bin/brew install ffmpeg\`): 30 minutes
+- An explicit \`timeout\` parameter (seconds, 0 = no limit) overrides the above, capped at 30 minutes
 For long-running servers or watch tasks:
 - Set is_background=true to run in a UI terminal panel
 - The command returns a terminal ID immediately

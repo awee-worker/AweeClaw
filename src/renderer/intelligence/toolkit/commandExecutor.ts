@@ -40,7 +40,7 @@ export const LONG_RUNNING_COMMAND_PATTERN = /(?:^|&&|;|\|\|)\s*(?:(?:nohup|setsi
  * - python 版本号兼容：python、python3、python3.11、python3.12 等都匹配
  * - pip 和 pip3 都兼容
  */
-export const EXTENDED_TIMEOUT_COMMAND_PATTERN = /(?:^|&&|;|\|\|)\s*(?:(?:npm|yarn|pnpm|bun)\s+(?:install|ci|i|add|install-save|install-save-dev)\b|(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?(?:build|test|tsc|lint)\b|pip3?\s+install\b|python\d*(?:\.\d+)*\s+-m\s+pip\s+install\b|(?:cargo|go)\s+(?:build|test|mod)\b|(?:apt|apt-get)\s+(?:install|update|upgrade)\b|aptitude\s+install\b|brew\s+(?:install|upgrade|reinstall)\b|(?:yum|dnf)\s+(?:install|upgrade)\b|pacman\s+-S\b|docker\s+(?:build|compose\s+build)\b|make\b|cmake\b|ninja\b)/
+export const EXTENDED_TIMEOUT_COMMAND_PATTERN = /(?:^|&&|;|\|\|)\s*(?:(?:npm|yarn|pnpm|bun)\s+(?:install|ci|i|add|install-save|install-save-dev)\b|(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?(?:build|test|tsc|lint)\b|pip3?\s+install\b|python\d*(?:\.\d+)*\s+-m\s+pip\s+install\b|(?:cargo|go)\s+(?:build|test|mod)\b|(?:apt|apt-get)\s+(?:install|update|upgrade)\b|aptitude\s+install\b|brew\s+(?:install|upgrade|reinstall)\b|winget\s+(?:install|upgrade|source)\b|choco(?:latey)?\s+install\b|scoop\s+install\b|snap\s+install\b|(?:yum|dnf|zypper)\s+(?:install|upgrade)\b|pacman\s+-S\b|docker\s+(?:build|compose\s+build)\b|make\b|cmake\b|ninja\b)/
 
 /** 安装/构建类命令的扩展超时时间（10 分钟）
  *
@@ -48,6 +48,49 @@ export const EXTENDED_TIMEOUT_COMMAND_PATTERN = /(?:^|&&|;|\|\|)\s*(?:(?:npm|yar
  * 提升到 10 分钟，覆盖绝大多数安装场景，同时仍保留超时兜底防止命令卡死。
  */
 export const EXTENDED_TIMEOUT_MS = 600000
+
+/** 系统包管理器安装命令：可选的可执行文件路径前缀
+ *
+ * 场景 / 调用方为了避免 GUI 进程 PATH 缺失，常常用绝对路径调包管理器
+ * （如 `/opt/homebrew/bin/brew install ffmpeg`）。EXTENDED_TIMEOUT_COMMAND_PATTERN
+ * 只认裸名，这类命令会掉进 2 分钟默认超时，在编译依赖中途被杀。
+ */
+const OPTIONAL_BIN_PATH = '(?:\\S*[\\\\/])?'
+
+/** 系统包管理器安装命令：前置包装器（nohup / sudo / env 等） */
+const PM_WRAPPER = '(?:(?:nohup|setsid|env|caffeinate|stdbuf|time|exec|sudo)\\s+)*'
+
+/** 系统包管理器安装动作（不含路径前缀，供组合正则复用） */
+const SYSTEM_INSTALL_VERB =
+  '(?:brew\\s+(?:install|upgrade|reinstall)' +
+  '|winget\\s+(?:install|upgrade|source)' +
+  '|choco(?:latey)?\\s+install' +
+  '|scoop\\s+install' +
+  '|snap\\s+install' +
+  '|apt(?:-get)?\\s+(?:install|update|upgrade)' +
+  '|aptitude\\s+install' +
+  '|(?:yum|dnf|zypper)\\s+(?:install|upgrade)' +
+  '|pacman\\s+-S)'
+
+/**
+ * 系统包管理器安装命令模式（允许绝对路径前缀）
+ *
+ * 与 EXTENDED_TIMEOUT_COMMAND_PATTERN 的区别只有一点：`brew` / `winget` / `choco`
+ * 等命令名前允许出现路径前缀。项目里唯一的高频用法就是装 ffmpeg 这类系统依赖，
+ * 而这条命令几乎总是带绝对路径，裸名正则在真实调用里从来没命中过。
+ */
+export const SYSTEM_PACKAGE_INSTALL_PATTERN = new RegExp(
+  `(?:^|&&|;|\\|\\|)\\s*${PM_WRAPPER}${OPTIONAL_BIN_PATH}${SYSTEM_INSTALL_VERB}\\b`,
+)
+
+/** 系统包管理器安装的超时时间（30 分钟）
+ *
+ * brew 装 ffmpeg 会连带几十个依赖（x264 / x265 / libvpx / sdl2 …），
+ * 其中多为源码编译，弱网 + 低配机器上十几分钟是常态，偶发超过 20 分钟。
+ * 10 分钟的构建档对这个场景仍然偏紧，单独抬到 30 分钟；
+ * 其余构建 / 测试类命令继续沿用 10 分钟，避免无谓拉长失败反馈。
+ */
+export const SYSTEM_INSTALL_TIMEOUT_MS = 1800000
 
 /** 普通命令的默认超时时间（2 分钟）
  *
@@ -69,6 +112,13 @@ export const DEFAULT_TIMEOUT_MS = 120000
  * 让 AI 立刻改用限定在工作空间目录的写法重试。
  */
 export const BROAD_SCAN_TIMEOUT_MS = 60000
+
+/** 显式 timeout 参数的上限（30 分钟）
+ *
+ * 调用方可以传 timeout 覆盖分层策略，但不能借此无限挂起：超过上限一律截断到 30 分钟。
+ * 典型场景是系统包管理器安装（brew install ffmpeg 连带几十个依赖，十几分钟常见）。
+ */
+export const MAX_EXPLICIT_TIMEOUT_MS = 1800000
 
 export type InteractiveTerminalBackend = 'pty' | 'pipe'
 
@@ -145,6 +195,11 @@ export function matchesExtendedTimeoutCommand(command: string): boolean {
   return EXTENDED_TIMEOUT_COMMAND_PATTERN.test(command.trim())
 }
 
+/** 命令是否命中「系统包管理器安装」类（使用 SYSTEM_INSTALL_TIMEOUT_MS，允许绝对路径前缀） */
+export function matchesSystemPackageInstall(command: string): boolean {
+  return SYSTEM_PACKAGE_INSTALL_PATTERN.test(command.trim())
+}
+
 /**
  * 检测「全盘 / 大范围扫描」类命令
  *
@@ -174,11 +229,16 @@ export function matchesBroadScanCommand(command: string, workspacePath?: string)
  * 命令超时解析（分层策略）
  *
  * - 长进程 / 显式后台 → 0（不设超时；run_command 会走 detached 通道立即返回，不会进入等待）
+ * - 系统包管理器安装（brew / winget / choco / apt / dnf / pacman）→ SYSTEM_INSTALL_TIMEOUT_MS（30 分钟）
  * - 安装 / 构建 / 测试类 → EXTENDED_TIMEOUT_MS（10 分钟）
  * - 全盘 / 大范围扫描类 → BROAD_SCAN_TIMEOUT_MS（60 秒，快速失败并给出诊断）
  * - 其余命令 → DEFAULT_TIMEOUT_MS（2 分钟）
  *
- * 这样把「所有命令都可能等 10 分钟」收敛为「只有构建类才等 10 分钟」，
+ * 系统包管理器单独一档的原因：brew 装 ffmpeg 连带几十个源码编译依赖，
+ * 十几分钟是常态，10 分钟档仍会在中途被杀；且这类命令几乎总是带绝对路径调用，
+ * 裸名正则匹配不到，此前实际落在 2 分钟档上。
+ *
+ * 这样把「所有命令都可能等 30 分钟」收敛为「只有系统装包才等 30 分钟」，
  * 从根上消除「命令一直在执行、AI 长时间卡住」的问题。
  */
 export function resolveCommandTimeout(
@@ -186,6 +246,7 @@ export function resolveCommandTimeout(
   options?: { isLongRunning?: boolean; workspacePath?: string },
 ): number {
   if (options?.isLongRunning) return 0
+  if (matchesSystemPackageInstall(command)) return SYSTEM_INSTALL_TIMEOUT_MS
   if (matchesExtendedTimeoutCommand(command)) return EXTENDED_TIMEOUT_MS
   if (matchesBroadScanCommand(command, options?.workspacePath)) return BROAD_SCAN_TIMEOUT_MS
   return DEFAULT_TIMEOUT_MS

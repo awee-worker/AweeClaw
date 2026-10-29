@@ -65,6 +65,14 @@ const REPORT_OUTPUT_LIMIT = 4000
  */
 const FINISH_SETTLE_MS = 1200
 
+/**
+ * 摘要上限
+ *
+ * 插件面板靠这段文字判断「是在等用户确认，还是只出了方案」。判断依据常在
+ * 结尾（「请你确认这个方向」），截太短等于把结论切掉，面板只能猜。
+ */
+const SUMMARY_LIMIT = 1200
+
 /** 取指定线程（缺省当前线程）最后一条助手消息的纯文本 */
 function collectLastAssistantReply(threadId?: string | null): string {
   try {
@@ -91,6 +99,90 @@ function collectLastAssistantReply(threadId?: string | null): string {
 }
 
 /**
+ * 收集本线程最后一条用户消息之后失败的工具调用
+ *
+ * 一轮对话的边界是用户消息。工具循环会产生多条助手消息，失败的那次调用可能落在
+ * 中间某条里，所以要一路往前翻到边界为止，而不是只看最后一条。模型也未必会把
+ * 失败写进回复正文 —— 工具被权限拦下、插件没装，它可能照样回一句「已开始生成」，
+ * 面板只靠摘要判断就会把失败误报成「在等你确认」。
+ */
+function collectFailedTools(
+  threadId?: string | null,
+  limit = 5,
+): Array<{ name: string; error: string }> {
+  try {
+    const state = useAgentStore.getState()
+    const targetId = threadId ?? state.currentThreadId
+    const messages = targetId ? state.threads[targetId]?.messages : undefined
+    if (!messages?.length) return []
+
+    const out: Array<{ name: string; error: string }> = []
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i]
+      if (message.role === 'user') break
+      if (message.role !== 'assistant') continue
+      const parts = (
+        message as {
+          parts?: Array<{
+            type: string
+            toolCall?: { name?: string; status?: string; error?: string; result?: string }
+          }>
+        }
+      ).parts
+      if (!parts?.length) continue
+      for (const part of parts) {
+        const call = part.toolCall
+        if (part.type !== 'tool_call' || !call) continue
+        if (call.status !== 'error') continue
+        out.push({
+          name: call.name || 'unknown',
+          error: (call.error || call.result || '').trim().slice(0, 300),
+        })
+        if (out.length >= limit) return out
+      }
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 收集本线程最后一条用户消息之后调用过的工具名
+ *
+ * 只给名字不给结果：插件要判断的是「走到哪一步」。例如调过脚本工具、却没
+ * 成功生成镜头，说明这一轮停在「脚本待确认」，面板可以就地给确认入口，
+ * 而不是让用户把脚本复制回输入框再点一次生成。
+ */
+function collectCalledTools(threadId?: string | null, limit = 30): string[] {
+  try {
+    const state = useAgentStore.getState()
+    const targetId = threadId ?? state.currentThreadId
+    const messages = targetId ? state.threads[targetId]?.messages : undefined
+    if (!messages?.length) return []
+
+    const names: string[] = []
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i]
+      if (message.role === 'user') break
+      if (message.role !== 'assistant') continue
+      const parts = (message as {
+        parts?: Array<{ type: string; toolCall?: { name?: string } }>
+      }).parts
+      if (!parts?.length) continue
+      for (const part of parts) {
+        if (part.type !== 'tool_call' || !part.toolCall?.name) continue
+        names.push(part.toolCall.name)
+      }
+    }
+    // 倒着收的，翻回调用顺序再截尾
+    return names.reverse().slice(-limit)
+  } catch {
+    return []
+  }
+}
+
+/**
  * 这张卡片会不会被抛到场景面板上
  *
  * 「等用户回答」与「把卡片交给面板」必须同一个口径。只要两者不一致，就会有一类
@@ -101,7 +193,9 @@ function collectLastAssistantReply(threadId?: string | null): string {
 function isForwardableInteractive(interactive: AssistantInteractive): boolean {
   if (interactive.selectedIds?.length) return false
   if (interactive.kind === 'continue_task') return false
-  return Boolean(interactive.question && interactive.options?.length)
+  // 只要求有提问正文：选项为空时面板退化成一句自由输入框，用户照样能作答。
+  // 把「没有选项」判成不可转发，会让这一轮既算完成又没有可点入口，面板只能干等。
+  return Boolean(interactive.question)
 }
 
 /**
@@ -270,14 +364,20 @@ export function PluginHostBridge() {
       if (run.idleTimer) clearTimeout(run.idleTimer)
       // 提问会把这一轮结束掉，但它不是「做完了」：面板要停在等用户回答的状态
       const waiting = phase === 'done' && hasPendingInteractive(run.threadId)
+      // 失败的工具调用同样取自本次运行的线程，理由与摘要一致
+      const failedTools = phase === 'done' && !waiting ? collectFailedTools(run.threadId) : []
+      // 调用链同样只在这一轮有意义：面板靠它判断「停在脚本」还是「真的跑完了」
+      const calledTools = phase === 'done' && !waiting ? collectCalledTools(run.threadId) : []
       emitChatState({
         pluginKey: run.pluginKey,
         phase: waiting ? 'running' : phase,
         statusText: waiting ? '等待你确认' : undefined,
         // 摘要取自本次运行的线程：主聊天线程此时可能是别的会话，读错会给出无关文案
         summary: phase === 'done' && !waiting
-          ? collectLastAssistantReply(run.threadId).slice(0, 200)
+          ? collectLastAssistantReply(run.threadId).slice(0, SUMMARY_LIMIT)
           : undefined,
+        failedTools: failedTools.length > 0 ? failedTools : undefined,
+        calledTools: calledTools.length > 0 ? calledTools : undefined,
         error: extra?.error,
       })
     },
@@ -341,7 +441,7 @@ export function PluginHostBridge() {
      */
     function scheduleFinish(
       run: NonNullable<typeof runRef.current>,
-      phase: string,
+      _phase: string,
     ): void {
       if (run.idleTimer) return
       run.idleTimer = setTimeout(() => {
@@ -574,14 +674,18 @@ export function PluginHostBridge() {
         // 已经选过的不再追问；续做卡片属于主会话语义，不往场景面板搬
         if (!isForwardableInteractive(interactive)) return
 
-        const key = `${message.id}:${interactive.question}`
+        const question = interactive.question?.trim()
+        if (!question) return
+
+        const key = `${message.id}:${question}`
         if (run.interactiveKey === key) return
         run.interactiveKey = key
         emitInteractive({
           pluginKey: run.pluginKey,
           messageId: message.id,
-          question: interactive.question,
-          options: interactive.options,
+          question,
+          // 没有选项时给空数组：面板据此收成自由输入，而不是丢掉这次提问
+          options: interactive.options ?? [],
           multiSelect: interactive.multiSelect === true,
           allowCustom: interactive.allowCustom !== false,
         })

@@ -47,6 +47,7 @@ import {
     matchesLongRunningCommand,
     matchesBroadScanCommand,
     resolveCommandTimeout,
+    MAX_EXPLICIT_TIMEOUT_MS,
 } from './commandExecutor'
 import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
@@ -2942,15 +2943,30 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             ))
 
         // ── 分层超时 ──────────────────────────────────────────────
-        // 见 commandExecutor.resolveCommandTimeout。核心目的：让 AI 不再对慢命令干等 10 分钟。
+        // 见 commandExecutor.resolveCommandTimeout。核心目的：让 AI 不再对慢命令干等。
         //   • 长进程 → 0（走 detached 通道，不受超时约束）
+        //   • 系统包管理器安装（含绝对路径调用，如 /opt/homebrew/bin/brew install ffmpeg）→ 30 分钟
         //   • 安装/构建/测试 → 10 分钟
         //   • 全盘/大范围扫描（find /、grep -r /...）→ 60 秒快速失败并给出诊断
         //   • 其余命令 → 2 分钟
-        const timeout = resolveCommandTimeout(command, {
-            isLongRunning: isLongRunningProcess,
-            workspacePath: ctx.workspacePath || undefined,
-        })
+        //
+        // 显式 timeout 参数优先：工具文档声明 timeout（秒，0 = 不设超时），但此前
+        // 执行器完全忽略它，导致调用方（如场景里的包管理器安装）传 900 秒仍按 2 分钟
+        // 被杀。这里改为调用方显式声明时以其为准，并设一个上限防止无限挂起。
+        // 兼容字符串数字：跨 bundle / 序列化通道传过来时 1800 可能变成 "1800"，
+        // 严格 typeof 判断会把调用方明确声明的超时丢掉，退回默认档。
+        const rawTimeout = args.timeout
+        const parsedTimeout = typeof rawTimeout === 'number'
+            ? rawTimeout
+            : typeof rawTimeout === 'string' && rawTimeout.trim() !== '' && Number.isFinite(Number(rawTimeout))
+                ? Number(rawTimeout)
+                : undefined
+        const timeout = parsedTimeout !== undefined && parsedTimeout >= 0
+            ? Math.min(parsedTimeout * 1000, MAX_EXPLICIT_TIMEOUT_MS)
+            : resolveCommandTimeout(command, {
+                isLongRunning: isLongRunningProcess,
+                workspacePath: ctx.workspacePath || undefined,
+            })
         // 供超时诊断使用：命中全盘扫描时可给出针对性的改写建议
         const isBroadScan = matchesBroadScanCommand(command, ctx.workspacePath || undefined)
 

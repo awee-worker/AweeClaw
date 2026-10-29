@@ -55,6 +55,7 @@ import type { PluginConfigField, PluginConfigValues } from './PluginConfigForm'
 import { PluginCategoryFilter } from './PluginCategoryFilter'
 import { PluginFeaturedSection } from './PluginFeaturedSection'
 import { PluginPopularSection } from './PluginPopularSection'
+import { consumePluginMarketQuery, onPluginMarketQuery } from './pluginMarketIntent'
 
 /** 插件类型徽章颜色配置（标签文本走 i18n） */
 const TYPE_COLORS: Record<string, string> = {
@@ -135,6 +136,17 @@ export function PluginMarketplacePanel() {
       loadItems()
     }
   }, [searchQuery, selectedCategory, page, authenticated])
+
+  // 接住外部带来的搜索词：场景引导「去装某个插件」时应当直接落到目标条目
+  useEffect(() => {
+    const initial = consumePluginMarketQuery()
+    if (initial) setSearchQuery(initial)
+    return onPluginMarketQuery((query) => {
+      setSearchQuery(query)
+      setSelectedCategory(null)
+      setPage(1)
+    })
+  }, [])
 
   // 订阅安装进度
   useEffect(() => {

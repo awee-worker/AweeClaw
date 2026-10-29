@@ -273,6 +273,22 @@ declare global {
 
 const SDK_GLOBAL_KEY = '__AWEECLAW_SDK__'
 
+/**
+ * 解析运行平台，作为场景 context.platform 的正源
+ *
+ * 以 UA 为准而不是 navigator.platform：后者在 Chromium 的 User-Agent Reduction
+ * 下已被削减为固定值、部分环境甚至为空串，据此判断会把 macOS 落到 linux 分支，
+ * 场景随之给出 apt 安装命令。UA 里的 Macintosh / Windows / X11 是稳定的。
+ */
+function resolveRuntimePlatform(): 'darwin' | 'win32' | 'linux' {
+  if (typeof navigator === 'undefined') return 'linux'
+  const ua = `${navigator.userAgent || ''} ${navigator.platform || ''}`.toLowerCase()
+  if (ua.includes('mac os x') || ua.includes('macintosh') || ua.includes('macintel')) return 'darwin'
+  if (ua.includes('windows') || ua.includes('win32') || ua.includes('win64')) return 'win32'
+  if (ua.includes('linux') || ua.includes('x11')) return 'linux'
+  return 'linux'
+}
+
 export function createScenarioSDK(
   scenarioId: string,
   version: string,
@@ -345,9 +361,7 @@ export function createScenarioSDK(
     get workspacePath(): string | null {
       return resolveWorkspacePath ? resolveWorkspacePath() : workspacePath
     },
-    platform: navigator.platform.toLowerCase().includes('mac') ? 'darwin'
-      : navigator.platform.toLowerCase().includes('win') ? 'win32'
-      : 'linux',
+    platform: resolveRuntimePlatform(),
     locale: navigator.language || 'en',
   }
 
