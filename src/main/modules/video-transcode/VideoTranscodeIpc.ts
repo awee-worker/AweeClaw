@@ -21,8 +21,13 @@ import {
   type TranscodeProgress,
 } from './VideoTranscodeService'
 
-/** 当前活跃的转码任务（用于取消） */
-const activeTranscodes = new Map<string, { aborted: boolean }>()
+/**
+ * 当前活跃的转码任务（用于取消）
+ *
+ * kill 由转码服务在子进程就绪后回填：有了它取消才能立刻生效，
+ * 否则要等 ffmpeg 下一次向 stderr 写东西才有机会检查中断标记。
+ */
+const activeTranscodes = new Map<string, { aborted: boolean; kill?: () => void }>()
 
 export function registerVideoTranscodeIpc(): void {
   // ── 探测视频编码 ──
@@ -43,7 +48,7 @@ export function registerVideoTranscodeIpc(): void {
     'video-transcode:transcode',
     async (event: IpcMainInvokeEvent, filePath: string): Promise<{ outputPath: string; fromCache: boolean; elapsedMs: number }> => {
       const taskId = filePath
-      const signal = { aborted: false }
+      const signal: { aborted: boolean; kill?: () => void } = { aborted: false }
       activeTranscodes.set(taskId, signal)
 
       try {
@@ -69,6 +74,8 @@ export function registerVideoTranscodeIpc(): void {
     const signal = activeTranscodes.get(filePath)
     if (signal) {
       signal.aborted = true
+      // 直接终止子进程：等它自己收尾可能要几分钟，用户早已认定「点了没反应」
+      signal.kill?.()
       activeTranscodes.delete(filePath)
     }
   })

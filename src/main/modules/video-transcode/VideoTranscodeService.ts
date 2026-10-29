@@ -33,6 +33,15 @@ const FFMPEG_PATH = ffmpegStatic
 /** 转码缓存目录 */
 const CACHE_DIR = join(tmpdir(), 'aweeclaw-video-cache')
 
+/**
+ * 进度静默超时
+ *
+ * ffmpeg 正常每 0.5 秒吐一块进度；超过这个时长一条都没有，说明进程已经挂住
+ * （源文件异常、网络盘读不动、编码器死锁）。没有这条线，转码会无限期停在
+ * 最后一条进度上，界面上表现为「进度不动，也没报错」。
+ */
+const PROGRESS_IDLE_TIMEOUT_MS = 120_000
+
 /** Chromium 原生支持的视频编码（codecs） */
 const CHROMIUM_SUPPORTED_VIDEO_CODECS = new Set([
   'h264',      // H.264 / AVC（最通用）
@@ -68,9 +77,14 @@ export interface VideoProbeResult {
 export interface TranscodeProgress {
   /** 已转码时间（秒） */
   currentTime: number
-  /** 总时长（秒） */
+  /** 总时长（秒），探测不到时为 0 */
   duration: number
-  /** 进度百分比（0-100） */
+  /**
+   * 进度百分比（0-100），-1 表示总时长未知
+   *
+   * 时长拿不到时若把百分比报成 0，调用方的进度条会永远停在 0%，
+   * 看起来就像转码卡住了。用 -1 明确区分「未知」，调用方改用自己手里的时长换算。
+   */
   percent: number
   /** 转码速度（如 '2.5x'） */
   speed: string | null
@@ -296,7 +310,14 @@ function getCachePath(sourcePath: string): string {
 export function transcodeToH264(
   sourcePath: string,
   onProgress?: (progress: TranscodeProgress) => void,
-  signal?: { aborted: boolean },
+  /**
+   * 中断信号
+   *
+   * kill 由本函数在子进程起来后回填：取消要能立刻生效，只靠 stderr 回调里
+   * 检查 aborted 是不够的 —— ffmpeg 在读大文件或收尾阶段可能长时间没有输出，
+   * 等不到下一次回调，用户点「取消」后会一直没反应。
+   */
+  signal?: { aborted: boolean; kill?: () => void },
 ): Promise<TranscodeResult> {
   const ffmpegPath = ensureFfmpeg()
   ensureCacheDir()
@@ -323,6 +344,9 @@ export function transcodeToH264(
       const tmpPath = `${cachePath}.tmp.${process.pid}.mp4`
 
       const args = [
+        // 结构化进度：每 0.5 秒把 out_time_us / speed 等写成 key=value 行，
+        // 比解析 stderr 的自然语言统计行稳定得多（不受日志语言与列宽影响）
+        '-progress', 'pipe:1',
         '-i', sourcePath,
         // 视频编码：H.264
         '-c:v', 'libx264',
@@ -346,27 +370,90 @@ export function transcodeToH264(
         windowsHide: true,
       })
 
+      // 取消直接落到进程上：见 signal 的说明
+      if (signal) {
+        signal.kill = () => {
+          try {
+            proc.kill('SIGKILL')
+          } catch {
+            // 进程可能已经退出
+          }
+        }
+      }
+
       let stderrOutput = ''
+
+      /** -progress 输出的半行缓冲：一条记录可能被拆进两个数据块 */
+      let progressTail = ''
+      /** 最近上报的转码时间点，保证进度只前进不后退 */
+      let reportedTime = 0
+      /** 当前速度，speed 字段排在时间字段之后，留到下一块一起上报 */
+      let lastSpeed: string | null = null
+      /** 最近一次收到任何进度信号的时刻，供静默看门狗判断 */
+      let lastSignalAt = Date.now()
+      /** -progress 通道已经出过数据：此后不再解析 stderr，避免同一进度报两遍 */
+      let progressStreamWorks = false
+      /** 是否因为长时间无进度被强制终止 */
+      let stalled = false
+
+      const report = (currentTime: number, speed: string | null): void => {
+        if (!onProgress) return
+        if (!Number.isFinite(currentTime) || currentTime <= 0) return
+        if (currentTime < reportedTime) return
+        reportedTime = currentTime
+        lastSignalAt = Date.now()
+        onProgress({
+          currentTime,
+          duration,
+          // 时长未知时报 -1 而不是 0，避免调用方把进度条钉在 0%
+          percent: duration > 0 ? Math.min(100, (currentTime / duration) * 100) : -1,
+          speed,
+        })
+      }
+
+      proc.stdout?.on('data', (data: Buffer) => {
+        progressTail += data.toString()
+        const lines = progressTail.split('\n')
+        progressTail = lines.pop() ?? ''
+
+        // 一块进度里 speed 排在时间字段之后，先把值记下，到 progress= 行再一起提交
+        let blockTime = 0
+        for (const line of lines) {
+          const eq = line.indexOf('=')
+          if (eq < 0) continue
+          const key = line.slice(0, eq).trim()
+          const value = line.slice(eq + 1).trim()
+
+          if (key === 'out_time_us' || key === 'out_time_ms') {
+            // 两个键都以微秒计（out_time_ms 是历史遗留的命名错误）
+            const us = Number(value)
+            if (Number.isFinite(us) && us > 0) blockTime = us / 1_000_000
+          } else if (key === 'speed') {
+            lastSpeed = value && value !== 'N/A' ? value : lastSpeed
+          } else if (key === 'progress') {
+            if (blockTime > 0) {
+              report(blockTime, lastSpeed)
+              progressStreamWorks = true
+            }
+            blockTime = 0
+            lastSignalAt = Date.now()
+          }
+        }
+      })
 
       proc.stderr.on('data', (data: Buffer) => {
         const text = data.toString()
         stderrOutput += text
 
-        // 解析进度：frame=  150 fps= 25 q=24.0 size=     256kB time=00:00:05.00 bitrate=...
-        if (onProgress && duration > 0) {
-          const timeMatch = text.match(/time=(\d+):(\d+):(\d+\.?\d*)/)
-          if (timeMatch) {
-            const h = parseInt(timeMatch[1], 10)
-            const m = parseInt(timeMatch[2], 10)
-            const s = parseFloat(timeMatch[3])
-            const currentTime = h * 3600 + m * 60 + s
-            const percent = Math.min(100, (currentTime / duration) * 100)
-
-            const speedMatch = text.match(/speed=\s*(\d+\.?\d*x)/)
-            const speed = speedMatch ? speedMatch[1] : null
-
-            onProgress({ currentTime, duration, percent, speed })
-          }
+        // 兜底：万一某次构建没吐 -progress，仍从统计行取时间
+        // frame=  150 fps= 25 q=24.0 size=     256kB time=00:00:05.00 bitrate=...
+        const timeMatch = !progressStreamWorks && text.match(/time=(\d+):(\d+):(\d+\.?\d*)/)
+        if (timeMatch) {
+          const h = parseInt(timeMatch[1], 10)
+          const m = parseInt(timeMatch[2], 10)
+          const s = parseFloat(timeMatch[3])
+          const speedMatch = text.match(/speed=\s*(\d+\.?\d*x)/)
+          report(h * 3600 + m * 60 + s, speedMatch ? speedMatch[1] : lastSpeed)
         }
 
         // 检查中断
@@ -375,15 +462,37 @@ export function transcodeToH264(
         }
       })
 
+      // 静默看门狗：超过 PROGRESS_IDLE_TIMEOUT_MS 一条进度都没有就判定挂死
+      const watchdog = setInterval(() => {
+        if (stalled || signal?.aborted) return
+        if (Date.now() - lastSignalAt > PROGRESS_IDLE_TIMEOUT_MS) {
+          stalled = true
+          try {
+            proc.kill('SIGKILL')
+          } catch {
+            // 进程可能已经退出
+          }
+        }
+      }, 5_000)
+
       proc.on('error', (err) => {
+        clearInterval(watchdog)
         reject(new Error(`Failed to spawn ffmpeg: ${err.message}`))
       })
 
       proc.on('close', (code) => {
+        clearInterval(watchdog)
+
         if (signal?.aborted) {
           // 清理临时文件
           try { unlinkSync(tmpPath) } catch { /* ignore */ }
           reject(new Error('转码已取消'))
+          return
+        }
+
+        if (stalled) {
+          try { unlinkSync(tmpPath) } catch { /* ignore */ }
+          reject(new Error('转码长时间没有任何进度，已停止。该文件可能已损坏或所在磁盘读取异常'))
           return
         }
 
