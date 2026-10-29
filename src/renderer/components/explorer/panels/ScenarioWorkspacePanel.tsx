@@ -28,6 +28,22 @@ import { getPanelComponent, registerScenarioPanelComponents } from '../PanelRegi
  * 此时回落到本场景的 defaultSidePanel，再不行取 sidebarItems 的第一项。
  * 场景没有声明 sidebarItems 时保持原值，让宿主侧边栏面板照常显示。
  */
+/**
+ * 该面板 id 是否属于其它场景
+ *
+ * 面板组件在 PanelRegistry 里按 id 全局共享，切场景时未必注销。拿到别的场景的 id
+ * 就等于拿到它的组件，渲染结果会是「本场景的工作区位置出现上一个场景的界面」。
+ */
+function isPanelOfOtherScenario(scenarioId: string, panelId: string): boolean {
+  return scenarioRegistry
+    .getAll()
+    .some(
+      (other) =>
+        other.id !== scenarioId &&
+        Boolean(other.ui?.sidebarItems?.some((item) => item.id === panelId)),
+    )
+}
+
 export function resolveWorkspacePanelId(
   scenarioId: string | null,
   activeSidePanel: string | null,
@@ -36,7 +52,12 @@ export function resolveWorkspacePanelId(
 
   const scenario = scenarioRegistry.get(scenarioId)
   const items = scenario?.ui?.sidebarItems ?? []
-  if (items.length === 0) return activeSidePanel
+  if (items.length === 0) {
+    // 场景没有自己的侧栏项时沿用宿主的 activeSidePanel，但要拒绝其它场景的面板 id
+    return activeSidePanel && !isPanelOfOtherScenario(scenarioId, activeSidePanel)
+      ? activeSidePanel
+      : null
+  }
 
   if (activeSidePanel && items.some((item) => item.id === activeSidePanel)) {
     return activeSidePanel

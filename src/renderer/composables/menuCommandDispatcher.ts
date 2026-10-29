@@ -13,6 +13,8 @@ import type { SidePanel } from '@store'
 import { api } from '../adapters/electronBridge'
 import { workspaceManager } from '@services/WorkspaceAdapter'
 import { scenarioLoader } from '@/scenarios'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { activateScenarioPanels, switchToFirstPanel } from '../components/scenario/panelUtils'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { logger } from '@toolkit/LogEngine'
 
@@ -145,6 +147,14 @@ export function dispatchMenuCommand(
         const scenarioId = (payload as { scenarioId?: string })?.scenarioId
         if (scenarioId && scenarioLoader.has(scenarioId)) {
           useStore.getState().set('activeScenarioId', scenarioId)
+          // 与顶部场景选择器走同一条通道：注销上一场景的面板注册，并把侧栏切到本场景的
+          // 首个面板。只改 activeScenarioId 会留下上一场景的面板 id，而它的组件仍在全局
+          // PanelRegistry 里，切回默认工作台后工作空间位置会照这个 id 渲染出上一场景的界面。
+          const scenario = scenarioRegistry.get(scenarioId)
+          if (scenario) {
+            activateScenarioPanels(scenario)
+            switchToFirstPanel(scenario)
+          }
         } else {
           logger.system.warn(`[MenuBridge] Scenario not found: ${scenarioId}`)
         }

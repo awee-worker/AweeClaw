@@ -41,7 +41,15 @@ function useWideModePanelIds(): string[] {
   }, [activeScenarioId])
 }
 
+/** 该面板是否是当前场景声明的侧栏入口 */
+function belongsToScenario(scenarioId: string | null, panelId: string): boolean {
+  if (!scenarioId) return false
+  const items = scenarioRegistry.get(scenarioId)?.ui?.sidebarItems
+  return Boolean(items?.some(item => item.id === panelId))
+}
+
 export default function Sidebar() {
+    const activeScenarioId = useStore(s => s.activeScenarioId)
     const activeSidePanel = useStore(s => s.activeSidePanel)
     const wideModePanelIds = useWideModePanelIds()
 
@@ -51,9 +59,25 @@ export default function Sidebar() {
 
     const BuiltinPanel = BUILTIN_PANELS[activeSidePanel]
 
+    /**
+     * 内置面板优先，其次才看场景面板
+     *
+     * activeSidePanel 是跨场景共享的一个字段：从场景 A 切到场景 B 时它可能还停在 A 的
+     * 某个面板上，而 A 的面板组件仍留在全局 PanelRegistry 里（注册表按 id 共享、切换时
+     * 未必注销）。若不加归属校验，DynamicPanelView 会照着这个 id 把 A 的界面渲染到 B 的
+     * 工作空间位置 —— 表现为切回默认工作台后，左侧出现上一个场景的侧栏。
+     */
+    const body = BuiltinPanel ? (
+        <BuiltinPanel />
+    ) : belongsToScenario(activeScenarioId, activeSidePanel) ? (
+        <DynamicPanelView panelId={activeSidePanel} />
+    ) : null
+
+    if (!body) return null
+
     return (
         <div className="w-full bg-background border-r border-border/30 shadow-[1px_0_15px_rgba(0,0,0,0.03)] flex flex-col h-full animate-fade-in relative z-10">
-            {BuiltinPanel ? <BuiltinPanel /> : <DynamicPanelView panelId={activeSidePanel} />}
+            {body}
         </div>
     )
 }
