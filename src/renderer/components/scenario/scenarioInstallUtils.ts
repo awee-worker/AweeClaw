@@ -14,7 +14,10 @@ import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { logger } from '@shared/toolkit/LogEngine'
 import { scenarioLoader } from '@scenario-system/core/ScenarioLoader'
 import { DeclarativeScenarioModule } from '@scenario-system/core/DeclarativeScenarioModule'
-import { loadProgrammaticScenario } from '@scenario-system/core/ProgrammaticScenarioLoader'
+import {
+  loadProgrammaticScenario,
+  unloadProgrammaticScenario,
+} from '@scenario-system/core/ProgrammaticScenarioLoader'
 import { api } from '../../adapters/electronBridge'
 import { linkMarketplaceScenario } from '../../adapters/scenarioMarketplaceMap'
 import type { ScenarioPlugin } from '@shared/protocols/scenario'
@@ -108,6 +111,35 @@ function buildBasePlugin(
 }
 
 /**
+ * 卸载进程内已注册的旧场景模块
+ *
+ * 场景更新只替换磁盘文件，进程内的模块不会自动失效。不卸载就直接注册，
+ * ScenarioLoader.register 在场景处于激活态时会直接 return，用户看到的是
+ * 「更新成功、版本号也变了，功能还是旧的」，只有重启才恢复。
+ *
+ * 首次安装时 loader 里没有该条目，这里直接返回，不影响正常流程。
+ */
+async function unloadExistingScenarioModule(
+  scenarioId: string,
+  isProgrammatic: boolean,
+): Promise<void> {
+  if (!scenarioLoader.has(scenarioId)) return
+
+  if (isProgrammatic) {
+    await unloadProgrammaticScenario(scenarioId)
+    return
+  }
+
+  // 声明式场景没有独立样式文件，卸载只需退出激活态后注销条目；
+  // 激活中的条目 unregister 会被拒绝，必须先 deactivate。
+  const state = scenarioLoader.getState(scenarioId)
+  if (state === 'activated' || state === 'activating') {
+    await scenarioLoader.deactivate(scenarioId)
+  }
+  scenarioLoader.unregister(scenarioId)
+}
+
+/**
  * 注册已安装的场景
  *
  * 根据 packageType 分发到不同的注册流程：
@@ -142,8 +174,16 @@ export async function registerInstalledScenario(
   /** 实际注册进 registry 的场景 ID，用于建立市场 ID 映射 */
   let registeredId = loadScenarioId
 
+  // 卸载旧模块会把场景退回「已注册未激活」，若用户更新时正在使用这个场景，
+  // 注册完成后必须把激活态还回去，否则面板与工具都会失效
+  const wasActive = scenarioLoader.getState(loadScenarioId) === 'activated'
+
   try {
     const filesResult = await api.scenarioInstall.loadScenarioFiles(loadScenarioId)
+
+    // 更新场景时进程内的旧模块仍然挂着，先卸载再注册，新版本才会真正生效。
+    // 放在读取新文件之后：新文件读不出来时，不该把本来还能用的旧模块摘掉。
+    await unloadExistingScenarioModule(loadScenarioId, isProgrammatic)
 
     if (isProgrammatic) {
       // ============================================
@@ -218,6 +258,17 @@ export async function registerInstalledScenario(
     })
   }
 
+  // 恢复更新前的激活态：用户可能正在使用这个场景，更新完不该把它停在未激活状态
+  if (wasActive) {
+    const activated = await scenarioLoader.activate(
+      loadScenarioId,
+      useStore.getState().workspacePath ?? null,
+    )
+    if (!activated) {
+      logger.scenario.warn(`[ScenarioInstall] 恢复场景 "${loadScenarioId}" 激活态失败`)
+    }
+  }
+
   // 递增场景配置版本号，触发 AweeApp 重新计算 layoutConfig
   // 这确保场景安装/重装后，ShellComposer 缓存被清除，新的 sidebarItems/wideModePanelIds 立即生效
   useStore.getState().incrementScenarioConfigVersion()
@@ -245,8 +296,13 @@ async function registerProgrammaticScenario(
   marketplaceId?: string,
   icon?: string,
 ): Promise<string> {
-  // 调用 loadProgrammaticScenario 加载 ESM bundle
-  const loadResult = await loadProgrammaticScenario(scenarioId)
+  // loader 的 key 是 config.id（可能与市场场景 ID / 目录名不一致）。加载、卸载、
+  // 读取插件配置必须用同一个 key，否则卸载摘不到旧模块、getPlugin 也取不到新配置。
+  const loaderKey = config.id || scenarioId
+
+  // force：走到这里就代表「以磁盘上的 bundle 为准」。已存在的旧模块必须先卸载再加载，
+  // 否则 loadProgrammaticScenario 会命中 has() 短路，直接返回成功而不读新文件。
+  const loadResult = await loadProgrammaticScenario(loaderKey, { force: true })
 
   if (!loadResult.success) {
     logger.scenario.warn(
@@ -264,9 +320,9 @@ async function registerProgrammaticScenario(
   // 这里必须显式失败，把真实原因交给 UI。
   // 从 scenarioLoader 获取完整的 plugin 配置
   // ProgrammaticScenarioModule.getPlugin() 会合并 bundle 的 getPlugin() 返回值
-  const fullPlugin = scenarioLoader.getPlugin(scenarioId)
+  const fullPlugin = scenarioLoader.getPlugin(loaderKey)
   if (!fullPlugin) {
-    throw new Error(`场景 "${scenarioId}" 已加载但未取到插件配置，安装中止`)
+    throw new Error(`场景 "${loaderKey}" 已加载但未取到插件配置，安装中止`)
   }
 
   // 注册完整 plugin（含 bundle 提供的 sidebarItems、systemPrompt 等）

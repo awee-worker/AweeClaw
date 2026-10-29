@@ -34,6 +34,7 @@ import { sharedDependencyProvider, injectSharedDependencies } from './SharedDepe
 import { logger } from '@shared/toolkit/LogEngine'
 import { fetchAndRewriteBundle } from '@renderer/plugins/rewriteBareSpecifiers'
 import { useStore } from '@renderer/state'
+import { unregisterScenarioI18n } from '@renderer/i18n/i18nSetup'
 
 interface LoadScenarioFilesResult {
   success: boolean
@@ -54,7 +55,10 @@ export function setProgrammaticLoadFunction(
 // 共享依赖 bare specifier 重写逻辑已提取到 @renderer/plugins/rewriteBareSpecifiers
 // rewriteBareSpecifiers / fetchAndRewriteBundle 从该模块导入，避免与插件系统重复
 
-export async function loadProgrammaticScenario(scenarioId: string): Promise<{
+export async function loadProgrammaticScenario(
+  scenarioId: string,
+  options: { force?: boolean } = {},
+): Promise<{
   success: boolean
   error?: string
 }> {
@@ -62,7 +66,12 @@ export async function loadProgrammaticScenario(scenarioId: string): Promise<{
     return { success: false, error: 'Programmatic load function not initialized' }
   }
 
-  if (scenarioLoader.has(scenarioId)) {
+  // force 表示「以磁盘上的 bundle 为准重新加载」，场景更新后走这条路径。
+  // 不先摘掉旧模块的话，下面的 has() 会直接返回成功，进程内继续跑旧 bundle：
+  // 界面版本号已经是新的、功能却还是旧的，只有重启才会恢复。
+  if (options.force) {
+    await unloadProgrammaticScenario(scenarioId)
+  } else if (scenarioLoader.has(scenarioId)) {
     return { success: true }
   }
 
@@ -160,6 +169,55 @@ export async function loadProgrammaticScenario(scenarioId: string): Promise<{
       error: err instanceof Error ? err.message : String(err),
     }
   }
+}
+
+/**
+ * 卸载已加载的编程式场景
+ *
+ * 场景更新只替换磁盘文件，进程内的模块不会自动失效。不摘掉旧模块就直接
+ * 重新注册，ScenarioLoader.register 在场景处于激活态时会直接 return，
+ * 表现为「更新成功、版本号也变了，功能还是旧的」，只有重启才恢复。
+ *
+ * 清理顺序有讲究：
+ * 1. 激活中的场景 unregister 会被拒绝，必须先 deactivate
+ * 2. 样式是挂在 document 上的 <link data-scenario-id>，ScenarioLoader 不负责
+ *    摘除，必须由模块自己清理，否则新旧样式会叠加
+ * 3. 最后再 unregister，清掉工具注册、数据总线、版本与监控记录
+ *
+ * @returns 是否确实卸载了某个模块
+ */
+export async function unloadProgrammaticScenario(scenarioId: string): Promise<boolean> {
+  if (!scenarioLoader.has(scenarioId)) return false
+
+  const entry = scenarioLoader.getEntry(scenarioId)
+  const state = scenarioLoader.getState(scenarioId)
+
+  if (state === 'activated' || state === 'activating') {
+    await scenarioLoader.deactivate(scenarioId)
+  }
+
+  // removeStyles 只有编程式模块提供，用鸭子类型调用避免耦合到具体实现类
+  const module = entry?.module as { removeStyles?: () => void } | undefined
+  try {
+    module?.removeStyles?.()
+  } catch (err) {
+    logger.agent.warn(`[ProgrammaticLoader] removeStyles failed for "${scenarioId}":`, err)
+  }
+
+  const removed = scenarioLoader.unregister(scenarioId)
+  if (!removed) {
+    logger.agent.warn(
+      `[ProgrammaticLoader] Could not unregister "${scenarioId}" in state: ${scenarioLoader.getState(scenarioId)}`,
+    )
+    return false
+  }
+
+  // 翻译与 SDK 都是进程级单例，旧版本留下的条目不清掉，新版本重新注册时会读到旧文案
+  unregisterScenarioI18n(scenarioId)
+  removeScenarioSDK()
+
+  logger.agent.info(`[ProgrammaticLoader] Unloaded programmatic scenario: ${scenarioId}`)
+  return true
 }
 
 export async function loadAllProgrammaticScenarios(): Promise<{
