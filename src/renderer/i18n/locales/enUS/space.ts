@@ -17,7 +17,7 @@ export const en = {
   'workspace.invalidTarget': 'Select a folder or a workspace file (.aweeclaw-workspace)',
   'workspace.alreadyOpenElsewhere': 'This folder is already open in another window — switched to that window',
   'workspace.recent': 'Recent',
-  'scenario.scenarioupdatedtov': 'Scenario updated to v{version}',
+  'scenario.scenarioupdatedtov': 'Scenario updated to v{version}. Reopen the scenario to apply it',
   'scenario.unknownerror': 'Unknown error',
   'scenario.updatefailed': 'Update Failed',
   'scenario.updatefailed2': 'Update Failed',

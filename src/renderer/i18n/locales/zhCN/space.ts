@@ -17,7 +17,7 @@ export const zh = {
   'workspace.invalidTarget': '请选择文件夹或工作空间文件 (.aweeclaw-workspace)',
   'workspace.alreadyOpenElsewhere': '该文件夹已在另一个窗口中打开，已为你切换到那个窗口',
   'workspace.recent': '最近',
-  'scenario.scenarioupdatedtov': '场景已更新至 v{version}',
+  'scenario.scenarioupdatedtov': '场景已更新至 v{version}，重新打开该场景后生效',
   'scenario.unknownerror': '未知错误',
   'scenario.updatefailed': '更新失败',
   'scenario.updatefailed2': '更新失败',
