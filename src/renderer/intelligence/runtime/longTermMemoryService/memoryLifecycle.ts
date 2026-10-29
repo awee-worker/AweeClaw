@@ -60,6 +60,42 @@ export function computeRetention(
 }
 
 /**
+ * 内容新鲜度分层（数值越大越新）。
+ *
+ * 依据的是内容产生时间而不是最近召回时间：条目被反复拼进提示词会把召回时间
+ * 刷新到当下，用召回时间衡量新鲜度，等于「越常被引用越像新信息」，同一对象
+ * 的旧结论会一直压在最新结论前面。长期记忆的半衰期是 180/365 天，连续衰减
+ * 在相邻两天之间几乎没有差别，因此这里按天分层，让「昨天」稳定高于「前天」。
+ */
+export function resolveFreshnessTier(createdAtMs: number, now: number = Date.now()): number {
+  if (!Number.isFinite(createdAtMs) || createdAtMs <= 0) return 0
+  const ageDays = Math.max(0, (now - createdAtMs) / 86_400_000)
+  if (ageDays < 1) return 5
+  if (ageDays < 2) return 4
+  if (ageDays < 7) return 3
+  if (ageDays < 30) return 2
+  if (ageDays < 180) return 1
+  return 0
+}
+
+/**
+ * 把记忆的产生时间描述成相对时间，用于在提示词里标注每条记忆的新旧。
+ *
+ * 模型看到「[昨天]」和「[3天前]」才能判断同一个对象的哪条结论更可信；
+ * 只给一堆无时间标记的条目，冲突时只能靠猜。
+ */
+export function describeMemoryAge(createdAtMs: number, now: number = Date.now()): string {
+  if (!Number.isFinite(createdAtMs) || createdAtMs <= 0) return '时间未知'
+  const ageDays = Math.max(0, (now - createdAtMs) / 86_400_000)
+  if (ageDays < 1) return '今天'
+  if (ageDays < 2) return '昨天'
+  if (ageDays < 7) return `${Math.floor(ageDays)}天前`
+  if (ageDays < 30) return `${Math.floor(ageDays / 7)}周前`
+  if (ageDays < 365) return `${Math.floor(ageDays / 30)}个月前`
+  return `${Math.floor(ageDays / 365)}年前`
+}
+
+/**
  * 判断助手回复是否真的用到了某条记忆。
  *
  * 记忆被拼进提示词不等于被使用。这里用片段命中做近似判定：

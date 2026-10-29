@@ -26,6 +26,7 @@ import { rulesService, type ProjectRules } from '../runtime/ruleEngine'
 import type { KnowledgeEntry } from '@intelligence/providerTypes'
 import { UNTRUSTED_CONTENT_TAG, type UntrustedContextSignal } from '@intelligence/types/trustTypes'
 import { longTermMemoryService } from '../runtime/longTermMemoryService'
+import { describeMemoryAge, resolveFreshnessTier } from '../runtime/longTermMemoryService/memoryLifecycle'
 import type { MemoryEntry } from '@intelligence/providerTypes'
 import { contextRetriever } from '../runtime/contextRetriever'
 import { proceduralSkillLearner } from '../runtime/proceduralSkillLearner'
@@ -113,6 +114,11 @@ export interface PromptContext {
   projectRules: ProjectRules | null
   knowledgeEntries: KnowledgeEntry[]
   longTermMemories: MemoryEntry[]
+  /**
+   * 记忆 id → 同主题下被折叠掉的更早条目数。
+   * 折叠只发生在注入环节，旧条目本身保留在库里。
+   */
+  memoryFoldCount?: Record<string, number>
   /** 程序性技能建议方案（命中模板时注入） */
   proceduralSuggestion?: string | null
   userQuery?: string
@@ -535,7 +541,11 @@ function buildKnowledge(entries: KnowledgeEntry[]): string | null {
 ${lines.join('\n')}`
 }
 
-function buildLongTermMemory(entries: MemoryEntry[], tokenBudget: number = 1500): string | null {
+function buildLongTermMemory(
+  entries: MemoryEntry[],
+  tokenBudget: number = 1500,
+  foldCount?: Record<string, number>,
+): string | null {
   const { memoryDomainTag } = useSceneModeStore.getState().getActiveProfile()
   const enabled = entries.filter(e => {
     if (!e.enabled || !e.content.trim()) return false
@@ -546,13 +556,25 @@ function buildLongTermMemory(entries: MemoryEntry[], tokenBudget: number = 1500)
   })
   if (enabled.length === 0) return null
 
-  const longTermFirst = [...enabled.filter(e => e.status === 'long_term'), ...enabled.filter(e => e.status === 'short_term')]
+  // 按内容产生时间倒序排，层级只作同一时间下的次要依据。
+  // 原实现把 long_term 全部排在 short_term 之前，等于让最老的一批条目优先占用
+  // token 预算；同一个对象在昨天和前天的记录里各出现一次时，前天那条反而先进
+  // 上下文，模型没有理由偏向新结论。
+  const ordered = [...enabled].sort((a, b) => {
+    const tierDiff = resolveFreshnessTier(b.createdAt) - resolveFreshnessTier(a.createdAt)
+    if (tierDiff !== 0) return tierDiff
+    if (b.createdAt !== a.createdAt) return b.createdAt - a.createdAt
+    return Number(b.status === 'long_term') - Number(a.status === 'long_term')
+  })
   const lines: string[] = []
   let estimatedTokens = 0
   const recalledIds: string[] = []
 
-  for (const entry of longTermFirst) {
-    const line = `- ${entry.content}`
+  for (const entry of ordered) {
+    // 标注相对时间：模型要能看出「昨天」和「3天前」的差别，才会在冲突时取新的
+    const folded = foldCount?.[entry.id]
+    const foldedNote = folded ? `（同主题另有 ${folded} 条更早记录，已取本条为准）` : ''
+    const line = `- [${describeMemoryAge(entry.createdAt)}] ${entry.content}${foldedNote}`
     const lineTokens = Math.ceil(line.length / 4)
     if (estimatedTokens + lineTokens > tokenBudget) break
     lines.push(line)
@@ -572,9 +594,10 @@ ${lines.join('\n')}
 
 记忆使用规则（优先级从高到低）：
 1. 本轮用户消息 + 当前会话里已经确认的内容，是唯一权威的执行依据。
-2. 上面这些记忆来自历史会话，只是背景参考。它们描述的对象未必是本轮要处理的对象，即使名词相同也不要直接套用。
-3. 当用户指令不够具体、靠记忆无法确定指向哪个对象（例如只说了「这个按钮」，而项目里存在多个相似按钮），先调用 ask_user 让用户确认，不要凭记忆猜测，也不要自行挑选历史会话里提到过的那个。
-4. 记忆与当前会话内容冲突时，以当前会话为准，并可以主动指出这处差异。`
+2. 同一对象在多条记忆里出现时，以标注时间最新的那条为准（今天 > 昨天 > 更早）；更早的记录只作为演进过程参考，不要与新版本并列陈述，也不要据其推翻新版本。
+3. 上面这些记忆来自历史会话，只是背景参考。它们描述的对象未必是本轮要处理的对象，即使名词相同也不要直接套用。
+4. 当用户指令不够具体、靠记忆无法确定指向哪个对象（例如只说了「这个按钮」，而项目里存在多个相似按钮），先调用 ask_user 让用户确认，不要凭记忆猜测，也不要自行挑选历史会话里提到过的那个。
+5. 记忆与当前会话内容冲突时，以当前会话为准，并可以主动指出这处差异。`
 }
 
 function buildCustomInstructions(instructions: string | null): string | null {
@@ -1071,7 +1094,6 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     ctx.taskPlanMode ? buildTaskPlanDirectiveSection() : null,
     buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery, ctx.gitToolsEnabled, ctx.taskPlanMode),
     identity.conventions,
-    identity.workflow,
     GRAPH_PLAN_GUIDE,
     identity.outputFormat,
     buildModeSpecificSections(ctx.modeDescriptor),
@@ -1082,7 +1104,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildUserContext(ctx.userInfo),
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
-    buildLongTermMemory(ctx.longTermMemories),
+    buildLongTermMemory(ctx.longTermMemories, 1500, ctx.memoryFoldCount),
     buildKnowledge(ctx.knowledgeEntries),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildScenarioDynamicContext(ctx.scenarioDynamicContext),
@@ -1108,7 +1130,6 @@ export function buildChatPrompt(ctx: PromptContext): string {
     identity.securityRules,
     buildTrustBoundary(ctx),
     buildCommandBlacklistSection(ctx.deniedShellCommands),
-    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery, ctx.gitToolsEnabled, ctx.taskPlanMode),
     identity.conventions,
     GRAPH_PLAN_GUIDE,
     identity.outputFormat,
@@ -1119,7 +1140,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     buildEnvironment(ctx),
     buildUserContext(ctx.userInfo),
     buildProjectRules(ctx.projectRules),
-    buildLongTermMemory(ctx.longTermMemories),
+    buildLongTermMemory(ctx.longTermMemories, 1500, ctx.memoryFoldCount),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildScenarioDynamicContext(ctx.scenarioDynamicContext),
     buildPerceptionContext(ctx.perceptionContext),
@@ -1202,7 +1223,7 @@ export async function buildAgentSystemPrompt(
     loadScenarioDynamicContext(),
   ])
 
-  const { knowledgeEntries, longTermMemories } = retrieved
+  const { knowledgeEntries, longTermMemories, memoryFoldCount } = retrieved
 
   // 程序性技能匹配：命中模板时生成建议方案注入上下文
   let proceduralSuggestion: string | null = null
@@ -1328,6 +1349,7 @@ export async function buildAgentSystemPrompt(
     projectRules,
     knowledgeEntries,
     longTermMemories,
+    memoryFoldCount,
     userQuery: userMessage,
     autoSkills: indexOnlySkills,
     mentionedSkills: fullInjectionSkills,

@@ -3550,6 +3550,34 @@ export interface ElectronAPI {
         allReady: boolean
       }
     }>
+    /**
+     * 探测命令是否安装（只读，按 PATH 遍历文件系统，不经终端）
+     *
+     * 场景判断 ffmpeg / ffprobe 这类本地依赖时用它。相比下发 run_command，
+     * 少一次 shell 启动与终端往返，也不会被用户 shell 配置阻塞。
+     */
+    environmentProbeBinary: (
+      command: string,
+      options?: {
+        withVersion?: boolean
+        versionArgs?: string[]
+        versionTimeoutMs?: number
+        force?: boolean
+      },
+    ) => Promise<{
+      success: boolean
+      result: {
+        found: boolean
+        command: string
+        path: string | null
+        version: string | null
+        versionError?: string
+        source: 'absolute' | 'common' | 'path' | 'shell' | 'none'
+        searchedDirs: number
+        elapsedMs: number
+      } | null
+      error?: string
+    }>
     /** 订阅安装进度事件（返回取消订阅函数） */
     onEnvironmentProgress: (
       callback: (payload: {

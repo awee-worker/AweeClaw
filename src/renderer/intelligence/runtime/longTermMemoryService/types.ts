@@ -89,6 +89,16 @@ export interface MemorySearchParams {
 export interface MemorySearchResult {
   entry: MemoryEntry
   score: number
+  /**
+   * 与当前问题的词面重合度。只用于同一主题内的比较，
+   * 跨主题不可比 —— 不同对象的记忆相关度高低没有意义。
+   */
+  relevance?: number
+  /**
+   * 本次注入时，同主题下被折叠掉的更早条目数量。
+   * 折叠只影响注入，不修改库里的数据。
+   */
+  supersededCount?: number
 }
 
 export interface MemoryStore {

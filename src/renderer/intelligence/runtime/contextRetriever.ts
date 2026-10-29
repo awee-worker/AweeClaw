@@ -49,6 +49,11 @@ export interface ContextRetrievalResult {
   knowledgeEntries: KnowledgeEntry[]
   /** 注入上下文的长期记忆（verified + 检索命中） */
   longTermMemories: MemoryEntry[]
+  /**
+   * 记忆 id → 同主题下被折叠掉的更早条目数。
+   * 折叠只影响本次注入，库里的旧条目保持不动。
+   */
+  memoryFoldCount: Record<string, number>
   /** 检索模式：'retrieval' 按 query 检索 / 'fallback' 无 query 或异常降级 */
   mode: 'retrieval' | 'fallback'
 }
@@ -74,16 +79,21 @@ class ContextRetriever {
 
     try {
       if (hasQuery) {
-        const [knowledgeEntries, longTermMemories] = await Promise.all([
+        const [knowledgeEntries, memoryResult] = await Promise.all([
           this.retrieveKnowledge(query.trim(), knowledgeLimit),
           this.retrieveMemory(query.trim(), activeFile, memoryLimit),
         ])
 
         logger.agent.info(
-          `[ContextRetriever] retrieval mode: knowledge=${knowledgeEntries.length}, memory=${longTermMemories.length}`,
+          `[ContextRetriever] retrieval mode: knowledge=${knowledgeEntries.length}, memory=${memoryResult.entries.length}`,
         )
 
-        return { knowledgeEntries, longTermMemories, mode: 'retrieval' }
+        return {
+          knowledgeEntries,
+          longTermMemories: memoryResult.entries,
+          memoryFoldCount: memoryResult.foldCount,
+          mode: 'retrieval',
+        }
       }
 
       // 无 query 降级
@@ -96,7 +106,7 @@ class ContextRetriever {
         `[ContextRetriever] fallback mode (no query): knowledge=${knowledgeEntries.length}, memory=${longTermMemories.length}`,
       )
 
-      return { knowledgeEntries, longTermMemories, mode: 'fallback' }
+      return { knowledgeEntries, longTermMemories, memoryFoldCount: {}, mode: 'fallback' }
     } catch (err) {
       // 兜底：检索整体失败时回退全量 enabled，绝不阻断主流程
       logger.agent.warn('[ContextRetriever] Retrieval failed, falling back to full enabled entries:', err)
@@ -104,7 +114,7 @@ class ContextRetriever {
         knowledgeService.getEnabledEntries(),
         longTermMemoryService.getEnabledEntries(),
       ])
-      return { knowledgeEntries, longTermMemories, mode: 'fallback' }
+      return { knowledgeEntries, longTermMemories, memoryFoldCount: {}, mode: 'fallback' }
     }
   }
 
@@ -141,7 +151,7 @@ class ContextRetriever {
     query: string,
     currentFile: string | null,
     limit: number,
-  ): Promise<MemoryEntry[]> {
+  ): Promise<{ entries: MemoryEntry[]; foldCount: Record<string, number> }> {
     const results = await longTermMemoryService.contextAwareSearch(
       { query, currentFile: currentFile ?? undefined },
       limit,
@@ -149,17 +159,27 @@ class ContextRetriever {
     const retrieved = results.map(r => r.entry)
     const retrievedIds = new Set(retrieved.map(e => e.id))
 
+    // 同主题折叠的条数随注入结果一起带出，供提示词说明「该主题另有更早记录」
+    const foldCount: Record<string, number> = {}
+    for (const result of results) {
+      if (result.supersededCount && result.supersededCount > 0) {
+        foldCount[result.entry.id] = result.supersededCount
+      }
+    }
+
     const all = await longTermMemoryService.getEnabledEntries()
     const missedVerified = all
       .filter(e => e.verificationStatus === 'verified' && !retrievedIds.has(e.id))
-      // 用户明确交代的事实（source=user）优先，其次是最近更新过的
+      // 用户明确交代的事实（source=user）优先，其次是内容较新写下的。
+      // 这里按 createdAt 而不是 updatedAt：召回会刷新 updatedAt，
+      // 用更新时间排序等于让「最常被引用」的旧记忆长期占位。
       .sort((a, b) => {
         const userFirst = Number(b.source === 'user') - Number(a.source === 'user')
-        return userFirst !== 0 ? userFirst : b.updatedAt - a.updatedAt
+        return userFirst !== 0 ? userFirst : b.createdAt - a.createdAt
       })
       .slice(0, MAX_VERIFIED_MEMORIES)
 
-    return [...missedVerified, ...retrieved]
+    return { entries: [...missedVerified, ...retrieved], foldCount }
   }
 
   /**

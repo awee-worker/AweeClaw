@@ -33,7 +33,7 @@ import { ruleBasedClassify, type MemoryCategory } from '../memoryClassifier'
 import { guardMemoryWrite, isEligibleForPromotion, originFromEntryInput } from '../memoryWriteGuard'
 import { mergeOriginTrust, parseTrustChannel, parseTrustLevel } from './originTrust'
 import { classifyMemoryDomain, domainFromTag } from '../knowledgeService/memoryDomainClassifier'
-import { computeRetention, isContentReferenced, resolveHalfLifeDays } from './memoryLifecycle'
+import { computeRetention, isContentReferenced, resolveFreshnessTier, resolveHalfLifeDays } from './memoryLifecycle'
 import { resolveRetentionDays, resolveRetentionTier } from './retentionPolicy'
 import { getMemorySettings } from './memorySettings'
 import { buildMemoryRelations, compareText, effectiveGrams, MIN_SHARED_GRAMS } from '../knowledgeService/memoryRelationBuilder'
@@ -55,6 +55,22 @@ function resolveDomainTag(content: string, activeDomainTag: string): string {
 
 /** 有效二元组覆盖率下限：低于此值说明只是撞了零星几个字 */
 const MIN_GRAM_COVERAGE = 0.2
+
+/**
+ * 视为「同一主题」的词面相关度容差。
+ *
+ * 问 A 的时候，A 昨天与前天两条记忆的相关度几乎相同（都直接命中了 A），
+ * 差距远小于这个容差；而 A 与不相干内容的差距要大得多。因此同主题内让时间
+ * 决定先后，跨主题仍以相关度为准 —— 否则一条刚写下但不相干的记忆会挤掉
+ * 真正对题的历史结论。
+ */
+const SAME_TOPIC_RELEVANCE_GAP = 1.5
+
+/** 同一主题的相似度下限（二元组 Jaccard） */
+const SAME_TOPIC_SIMILARITY = 0.7
+
+/** 同一主题要求的最低重合二元组数：重合过少时相似度容易被套话抬高 */
+const SAME_TOPIC_MIN_SHARED_GRAMS = 6
 
 /**
  * 度量一条记忆与当前 query 的词面相关度，0 表示毫无关系。
@@ -674,14 +690,16 @@ class LongTermMemoryService {
         // 此前 importance / 长期状态 / 置信度等基线分会让零匹配的记忆照样入选，
         // 检索退化成了「按重要度固定注入」，历史会话里提到的对象就被反复带进来。
         if (requireLexicalHit && (relevance <= 0 || relevance < minRelevance)) {
-          return { entry, score: 0 }
+          return { entry, score: 0, relevance }
         }
 
         let score = relevance
         score += entry.confidence * 2
         score += Math.min(entry.recallCount * 0.5, 5)
-        const recencyBoost = Math.max(0, 1 - (Date.now() - entry.lastRecalledAt) / (entry.halfLifeDays * 86_400_000))
-        score += recencyBoost * 2
+        // 新鲜度按内容产生时间分层。
+        // 旧实现用 lastRecalledAt 做连续衰减：被反复注入的旧条目召回时间一直是
+        // 「刚刚」，同一对象的旧结论反而拿到最高新鲜度，新结论压不过它。
+        score += resolveFreshnessTier(entry.createdAt) * 0.8
 
         if (entry.status === 'long_term') score += 3
 
@@ -702,7 +720,7 @@ class LongTermMemoryService {
         })
         score += importance * 3
 
-        return { entry, score }
+        return { entry, score, relevance }
       })
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
@@ -755,12 +773,56 @@ class LongTermMemoryService {
         if (topicMatch) contextScore += 1
       }
 
-      return { entry, score: contextScore }
+      return { entry, score: contextScore, relevance: result.relevance }
     })
 
-    return enrichedResults
-      .sort((a, b) => b.score - a.score)
+    // 同一对象的多个版本只留最新的：昨天与前天对 A 的记录会同时命中查询，
+    // 全部注入等于把「已作废的旧结论」和新结论并列摆给模型，冲突时只能靠猜。
+    const collapsed = this.collapseSameTopic(enrichedResults)
+
+    return collapsed
+      .sort((a, b) => {
+        // 同主题内时间优先，最新版本排最前
+        const relevanceGap = Math.abs((a.relevance ?? 0) - (b.relevance ?? 0))
+        if (relevanceGap <= SAME_TOPIC_RELEVANCE_GAP) {
+          const tierDiff =
+            resolveFreshnessTier(b.entry.createdAt) - resolveFreshnessTier(a.entry.createdAt)
+          if (tierDiff !== 0) return tierDiff
+        }
+        return b.score - a.score
+      })
       .slice(0, limit)
+  }
+
+  /**
+   * 把讲同一件事的记忆按产生时间归组，每组只保留最新一条。
+   *
+   * 只影响本次注入结果，不改库里的数据 —— 旧条目依然保留，需要时可以正常召回，
+   * 只是不和新版本抢同一轮上下文。保留的条目的 supersededCount 记录被折叠掉的
+   * 数量，供提示词层说明「该主题存在更早记录」。
+   */
+  private collapseSameTopic(results: MemorySearchResult[]): MemorySearchResult[] {
+    if (results.length < 2) return results
+
+    const groups: MemorySearchResult[][] = []
+    for (const item of results) {
+      const group = groups.find(members =>
+        members.some(member => {
+          const { similarity, sharedGrams } = compareText(member.entry.content, item.entry.content)
+          return similarity >= SAME_TOPIC_SIMILARITY && sharedGrams >= SAME_TOPIC_MIN_SHARED_GRAMS
+        }),
+      )
+      if (group) group.push(item)
+      else groups.push([item])
+    }
+
+    if (groups.length === results.length) return results
+
+    return groups.map(members => {
+      if (members.length === 1) return members[0]
+      const ordered = [...members].sort((a, b) => b.entry.createdAt - a.entry.createdAt)
+      return { ...ordered[0], supersededCount: ordered.length - 1 }
+    })
   }
 
   async promoteToLongTerm(id: string): Promise<boolean> {
