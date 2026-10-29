@@ -10,7 +10,7 @@
  * 因此换一棵树就能换一套布局，渲染路径保持不变。
  */
 
-import { Fragment } from 'react'
+import { Fragment, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type {
   RegionNode,
@@ -18,7 +18,12 @@ import type {
   RegionSplitNode,
 } from '@shared/protocols/scenario-regions'
 import { REGION_MAX_DEPTH } from '@shared/protocols/scenario-regions'
-import { getPanelComponent, getPanelHost } from '@components/explorer/PanelRegistry'
+import {
+  getPanelComponent,
+  getPanelHost,
+  getPanelRegistryVersion,
+  subscribePanelRegistry,
+} from '@components/explorer/PanelRegistry'
 import { getHostPart } from './HostPartRegistry'
 import SandboxFrame from './SandboxFrame'
 
@@ -193,6 +198,11 @@ export function RegionRenderer({
   onSandboxExit,
   maxDepth,
 }: RegionRendererProps) {
+  // 面板组件在运行时才注册（场景切换、插件 ui.js 懒加载、外部场景 bundle 异步加载）。
+  // 订阅注册表版本，注册补齐后重渲染这棵树，否则已经画出来的节点会一直停在
+  // 「该面板未注册」占位上 —— 冷启动恢复整壳场景（如视频工坊）时尤其明显。
+  useSyncExternalStore(subscribePanelRegistry, getPanelRegistryVersion, getPanelRegistryVersion)
+
   const ctx: RenderContext = {
     slots,
     maxDepth: maxDepth ?? REGION_MAX_DEPTH,

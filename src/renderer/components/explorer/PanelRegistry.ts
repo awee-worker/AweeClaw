@@ -47,6 +47,39 @@ interface PanelRegistryEntry {
 
 const panelComponentRegistry = new Map<string, PanelRegistryEntry>()
 
+/**
+ * 注册表变更订阅
+ *
+ * 面板组件是运行时注册的：场景切换、插件 ui.js 懒加载、外部场景 bundle 异步
+ * 加载完成都会往这里塞组件。注册表本身不是响应式的，读它的渲染层（区域树、
+ * 欢迎页）不会因为注册而重渲染，画面就停在「该面板未注册」占位上。
+ * 这里用版本号 + 订阅把这些变化显式广播出去。
+ */
+const panelRegistryListeners = new Set<() => void>()
+let panelRegistryVersion = 0
+
+function notifyPanelRegistryChanged(): void {
+  panelRegistryVersion += 1
+  for (const listener of panelRegistryListeners) {
+    try {
+      listener()
+    } catch {}
+  }
+}
+
+/** 注册表版本号：供 useSyncExternalStore 判断是否需要重渲染 */
+export function getPanelRegistryVersion(): number {
+  return panelRegistryVersion
+}
+
+/** 订阅注册表变更，返回取消订阅函数 */
+export function subscribePanelRegistry(listener: () => void): () => void {
+  panelRegistryListeners.add(listener)
+  return () => {
+    panelRegistryListeners.delete(listener)
+  }
+}
+
 // 场景内置工具面板：全局注册，任何场景下均可通过 panelId='scene-tools' 激活
 registerPanelComponent('scene-tools', SceneToolsPanel)
 
@@ -66,7 +99,13 @@ export function registerPanelComponent(
   component: PanelComponent,
   host?: PluginHostApi,
 ): void {
+  const existing = panelComponentRegistry.get(panelId)
+  // 同一个组件重复注册是常态（每次场景切换 / 渲染都会调一次），
+  // 直接返回可以避免无谓的订阅通知与随之而来的整树重渲染。
+  if (existing && existing.component === component && existing.host === host) return
+
   panelComponentRegistry.set(panelId, { component, host })
+  notifyPanelRegistryChanged()
 }
 
 export function getPanelComponent(panelId: string): PanelComponent | undefined {
@@ -88,7 +127,9 @@ export function hasPanelComponent(panelId: string): boolean {
 }
 
 export function unregisterPanelComponent(panelId: string): boolean {
-  return panelComponentRegistry.delete(panelId)
+  const removed = panelComponentRegistry.delete(panelId)
+  if (removed) notifyPanelRegistryChanged()
+  return removed
 }
 
 export function registerScenarioPanelComponents(scenarioId: string): void {

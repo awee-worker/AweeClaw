@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
+import { lazy, Suspense, useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { MotionConfig } from 'framer-motion'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -16,7 +16,12 @@ import { loadExternalScenarios, setExternalScenarioLoadFunctions } from '@scenar
 import { api } from './adapters/electronBridge'
 import { syncInstalledScenarioIcons } from './adapters/scenarioMarketplaceMap'
 import { shellComposer, type LayoutConfig } from './shell/ShellComposer'
-import { getPanelComponent } from '@components/explorer/PanelRegistry'
+import {
+  getPanelComponent,
+  getPanelRegistryVersion,
+  registerScenarioPanelComponents,
+  subscribePanelRegistry,
+} from '@components/explorer/PanelRegistry'
 import { ToastProvider, useToast, setGlobalToast } from '@components/foundation/NotificationProvider'
 import { MonitoringToastSubscriber } from '@components/foundation/MonitoringToastSubscriber'
 import { GlobalDecisionOverlay } from '@components/foundation/DecisionOverlay'
@@ -294,6 +299,28 @@ function AppContent() {
   // v2.3：监听 PPT 预览 IPC 事件，在主窗口打开内嵌 Tab
   usePptPreviewIpc()
 
+  /**
+   * 恢复场景时的面板组件注册
+   *
+   * PanelRegistry 是渲染进程里的内存表，退出客户端即清空。冷启动恢复场景时
+   * 只有当前场景生效，但没有任何组件会去补注册：整壳场景（视频工坊这类
+   * shellMode='full'）的区域树直接把 panel 节点摆出来，绕开了 DynamicPanelView
+   * 与 ScenarioWorkspacePanel 那两条副作用路径，于是整屏都落到「该面板未注册」。
+   *
+   * 放在 useMemo 而不是 useEffect，是为了在首帧渲染前完成注册，避免先闪一帧占位；
+   * 外部场景 bundle 是异步加载的，加载完成后 scenarioConfigVersion 递增，这里会重跑。
+   */
+  useMemo(() => {
+    if (activeScenarioId) registerScenarioPanelComponents(activeScenarioId)
+  }, [activeScenarioId, scenarioConfigVersion])
+
+  /** 注册表版本：注册是在渲染期间发生的，依赖它的派生值需要跟着重算 */
+  const panelRegistryVersion = useSyncExternalStore(
+    subscribePanelRegistry,
+    getPanelRegistryVersion,
+    getPanelRegistryVersion,
+  )
+
   const layoutConfig = useMemo<LayoutConfig>(() => {
     // 场景安装/重装后，scenarioConfigVersion 递增，强制重新计算布局配置
     // 同时清除 ShellComposer 缓存，确保读取最新的 sidebarItems / wideModePanelIds
@@ -415,7 +442,8 @@ function AppContent() {
     const scenario = scenarioRegistry.get(activeScenarioId)
     if (!scenario?.ui?.welcomeComponent) return null
     return getPanelComponent(`welcome-${activeScenarioId}`) ?? null
-  }, [activeScenarioId])
+    // panelRegistryVersion：欢迎组件也是注册表里的运行时条目，注册补齐后要重算
+  }, [activeScenarioId, panelRegistryVersion])
 
   const [layoutAnimating, setLayoutAnimating] = useState(false)
   const prevLayoutRef = useRef(layoutConfig.layout)
