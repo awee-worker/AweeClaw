@@ -3018,8 +3018,11 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             // 第三参是占用方：同一会话跨 tool call 复用，不同会话各用各的，
             // 否则并行执行时后发起的命令会去抢占并打断前一条会话正在跑的命令
             const termOwner = ctx.threadId ?? undefined
+            // 不要退化成 '/'：主进程会校验终端目录是否位于工作空间内，
+            // 传根目录必然被拒（「终端只能在工作空间内创建」），命令根本不会启动。
+            // 传空串让主进程回落到工作空间根目录。
             const termId = await terminalManager.getOrCreateAgentTerminal(
-                ctx.workspacePath || '/',
+                ctx.workspacePath || '',
                 undefined,
                 termOwner,
             )

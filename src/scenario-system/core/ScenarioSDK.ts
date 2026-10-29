@@ -514,9 +514,12 @@ export function createScenarioSDK(
       } catch (err) {
         logger.agent.warn(`[SDK:Tools] initializeTools failed (will try execute anyway):`, err)
       }
-      // 构造场景专用执行上下文：skipMainApproval 确保不走 HITL 审批
+      // 构造场景专用执行上下文：skipMainApproval 确保不走 HITL 审批。
+      // workspacePath 必须读 getter 而不是闭包里的快照：场景常在工作空间恢复之前
+      // 就完成加载，快照会一直是 null，之后即便用户打开了工作空间，场景下发的命令
+      // 仍拿不到合法目录，表现为 run_command 报「终端只能在工作空间内创建」。
       const ctx: ToolExecutionContext = {
-        workspacePath,
+        workspacePath: contextApi.workspacePath,
         chatMode: 'agent',
         toolCallId: `scenario-${scenarioId}-${Date.now()}`,
         assistantId: `scenario:${scenarioId}`,

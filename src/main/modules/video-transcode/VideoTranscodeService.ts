@@ -40,7 +40,7 @@ const CACHE_DIR = join(tmpdir(), 'aweeclaw-video-cache')
  * （源文件异常、网络盘读不动、编码器死锁）。没有这条线，转码会无限期停在
  * 最后一条进度上，界面上表现为「进度不动，也没报错」。
  */
-const PROGRESS_IDLE_TIMEOUT_MS = 120_000
+const PROGRESS_IDLE_TIMEOUT_MS = 60_000
 
 /** Chromium 原生支持的视频编码（codecs） */
 const CHROMIUM_SUPPORTED_VIDEO_CODECS = new Set([
@@ -398,7 +398,9 @@ export function transcodeToH264(
 
       const report = (currentTime: number, speed: string | null): void => {
         if (!onProgress) return
-        if (!Number.isFinite(currentTime) || currentTime <= 0) return
+        // 0 秒是合法值：ffmpeg 起来后的头几块进度就是这样。以前把它当无效值丢掉，
+        // 调用方在真正出帧之前收不到任何信号，界面上分不清「刚开始」和「通道断了」。
+        if (!Number.isFinite(currentTime) || currentTime < 0) return
         if (currentTime < reportedTime) return
         reportedTime = currentTime
         lastSignalAt = Date.now()
