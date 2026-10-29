@@ -38,6 +38,60 @@ function getScenarioDir(scenarioId: string): string {
   return path.join(getScenariosDir(), scenarioId)
 }
 
+/**
+ * 把解压出的新版本落到场景实际使用的目录
+ *
+ * 包内 config.id 与市场 id 不一致时（常见于市场 id 为随机串的场景），必须把目录
+ * 改名成 config.id：加载侧按 scene id 拼路径且「存在即用」，新版本留在市场 id 目录
+ * 的话，运行起来仍是 config.id 目录里的旧代码 —— 安装日志显示成功，用户端毫无变化。
+ *
+ * 目标目录已存在说明这是覆盖升级，先把旧版本挪到备份位再落位，供失败时还原。
+ * 移动新版本失败时把旧版本放回原位，避免两头空。
+ *
+ * @param extractedDir 新版本解压到的目录（通常按市场 id 命名）
+ * @param configId     包内 config.id，读不到时传 undefined
+ * @param marketId     本次安装使用的市场 id
+ * @returns finalDir 最终落地目录；replacedBackup 被替换掉的旧版本备份路径（无覆盖为 null）
+ */
+function placeExtractedScenario(
+  extractedDir: string,
+  configId: string | undefined,
+  marketId: string,
+): { finalDir: string; replacedBackup: string | null } {
+  if (!configId || configId === marketId) {
+    return { finalDir: extractedDir, replacedBackup: null }
+  }
+
+  const canonicalDir = getScenarioDir(configId)
+  if (!fs.existsSync(canonicalDir)) {
+    fs.renameSync(extractedDir, canonicalDir)
+    logger.agent.info(
+      `[ScenarioInstall] Placed scenario dir "${extractedDir}" → "${canonicalDir}" to match config.id "${configId}"`,
+    )
+    return { finalDir: canonicalDir, replacedBackup: null }
+  }
+
+  // 目录已存在：覆盖升级。旧版本先让位，否则新版本只能退回市场 id 目录
+  const backup = `${canonicalDir}.bak.${Date.now()}`
+  fs.renameSync(canonicalDir, backup)
+  try {
+    fs.renameSync(extractedDir, canonicalDir)
+  } catch (err) {
+    try {
+      fs.renameSync(backup, canonicalDir)
+    } catch (restoreErr) {
+      logger.system.error(
+        `[ScenarioInstall] Failed to restore "${canonicalDir}" from "${backup}": ${restoreErr}`,
+      )
+    }
+    throw err
+  }
+  logger.agent.info(
+    `[ScenarioInstall] Replaced scenario dir "${canonicalDir}" with new version, previous kept at "${backup}"`,
+  )
+  return { finalDir: canonicalDir, replacedBackup: backup }
+}
+
 function getTempDir(): string {
   const tmp = path.join(app.getPath('userData'), 'tmp', 'scenario-downloads')
   if (!fs.existsSync(tmp)) {
@@ -942,6 +996,9 @@ export function registerScenarioInstallIpcHandlers(
     const targetDir = getScenarioDir(scenarioId)
     // 备份目录在函数级声明：安装失败时 catch 需要用它把旧版本放回去
     const backupDir = path.join(getScenariosDir(), '.backups', scenarioId)
+    // 覆盖升级后才有值：catch 据此撤掉新版本、把被替换的旧版本放回原位
+    let replacedCanonicalDir: string | null = null
+    let replacedBackup: string | null = null
 
     try {
       logger.agent.info(`[ScenarioMarketplace] Downloading scenario "${scenarioId}" v${version} from ${downloadUrl}`)
@@ -1036,28 +1093,20 @@ export function registerScenarioInstallIpcHandlers(
         logger.agent.warn(`[ScenarioMarketplace] No scenario.json found after extraction for "${scenarioId}", but files are in place`)
       }
 
-      // 根因修复：市场场景的包内 config.id 可能与市场场景 ID 不一致
+      // 市场场景的包内 config.id 可能与市场场景 ID 不一致
       // （例如市场 ID 为 2j01rqaAydQx，config.id 为 education-assistant）。
       // 统一以 config.id 作为场景目录名，确保 registry/loader 的 key 与磁盘目录一致，
       // 否则应用重启后 loadExternalScenarios 按 config.id 找不到目录，场景无法加载到 scenarioLoader。
-      let finalScenarioId = scenarioId
-      let finalTargetDir = targetDir
-      if (config?.id && config.id !== scenarioId) {
-        const canonicalDir = getScenarioDir(config.id)
-        if (!fs.existsSync(canonicalDir)) {
-          fs.renameSync(targetDir, canonicalDir)
-          finalScenarioId = config.id
-          finalTargetDir = canonicalDir
-          logger.agent.info(
-            `[ScenarioMarketplace] Renamed scenario dir "${targetDir}" → "${canonicalDir}" to match config.id "${config.id}"`
-          )
-        } else {
-          // 目标目录已存在（如历史安装过），保留原目录并回退用 config.id 作为返回 ID
-          finalScenarioId = config.id
-          logger.agent.warn(
-            `[ScenarioMarketplace] Scenario dir "${canonicalDir}" already exists, keeping "${targetDir}" but returning config.id "${config.id}"`
-          )
-        }
+      //
+      // 目录已存在时必须覆盖它，不能退回市场 ID 目录：加载侧按 scene id 直拼并且
+      // 「存在即用」，新版本留在市场 ID 目录的话，运行起来仍是 config.id 目录里的旧代码，
+      // 安装日志显示成功、用户端却毫无变化。
+      const placement = placeExtractedScenario(targetDir, config?.id, scenarioId)
+      const finalScenarioId = placement.finalDir === targetDir ? scenarioId : (config?.id ?? scenarioId)
+      const finalTargetDir = placement.finalDir
+      if (placement.replacedBackup) {
+        replacedCanonicalDir = placement.finalDir
+        replacedBackup = placement.replacedBackup
       }
 
       if (fs.existsSync(archivePath)) {
@@ -1077,6 +1126,21 @@ export function registerScenarioInstallIpcHandlers(
 
       if (fs.existsSync(archivePath)) {
         try { fs.unlinkSync(archivePath) } catch (e) { logger.system.warn('Failed to delete archive:', e) }
+      }
+
+      // 覆盖升级失败：新版本若已落到 config.id 目录，撤掉它并把被替换的旧版本放回原位
+      if (replacedBackup && replacedCanonicalDir) {
+        try {
+          if (fs.existsSync(replacedCanonicalDir)) {
+            fs.rmSync(replacedCanonicalDir, { recursive: true, force: true })
+          }
+          fs.renameSync(replacedBackup, replacedCanonicalDir)
+          logger.agent.info(
+            `[ScenarioMarketplace] Restored previous "${replacedCanonicalDir}" after failed install`,
+          )
+        } catch (e) {
+          logger.system.warn('Failed to restore replaced scenario dir after install failure:', e)
+        }
       }
 
       if (fs.existsSync(targetDir)) {
@@ -1195,6 +1259,9 @@ export function registerScenarioInstallIpcHandlers(
     const archivePath = path.join(tmpDir, `${scenarioId}-${version}.tar.gz`)
     const targetDir = getScenarioDir(scenarioId)
     const backupDir = `${targetDir}.bak.${Date.now()}`
+    // 覆盖升级后才有值：catch 据此撤掉新版本、把被替换的旧版本放回原位
+    let replacedCanonicalDir: string | null = null
+    let replacedBackup: string | null = null
 
     try {
       let previousVersion = ''
@@ -1250,24 +1317,24 @@ export function registerScenarioInstallIpcHandlers(
         logger.agent.warn(`[ScenarioMarketplace] No scenario.json found after update for "${scenarioId}"`)
       }
 
-      // 与安装流程一致：config.id 与目录名不一致时统一目录名，保证重启后按 config.id 可找到场景
-      let finalScenarioId = scenarioId
-      let finalTargetDir = targetDir
-      if (config?.id && config.id !== scenarioId) {
-        const canonicalDir = getScenarioDir(config.id)
-        if (!fs.existsSync(canonicalDir)) {
-          fs.renameSync(targetDir, canonicalDir)
-          finalScenarioId = config.id
-          finalTargetDir = canonicalDir
-          logger.agent.info(
-            `[ScenarioMarketplace] Normalized update dir for "${config.id}" → "${canonicalDir}"`
-          )
-        } else {
-          finalScenarioId = config.id
-          logger.agent.warn(
-            `[ScenarioMarketplace] Scenario dir "${canonicalDir}" already exists for update, returning config.id "${config.id}"`
-          )
+      // 与安装流程一致：config.id 与目录名不一致时统一目录名，保证重启后按 config.id 可找到场景。
+      //
+      // 覆盖升级场景下必须先补一次 previousVersion：解压前的备份取的是市场 ID 目录，
+      // 而那个目录常常只是历史残留，真正在用的版本号写在 config.id 目录里。不补的话
+      // 回滚信息会记成空或错误版本。
+      if (!previousVersion && config?.id && config.id !== scenarioId) {
+        const existingDir = getScenarioDir(config.id)
+        if (fs.existsSync(existingDir)) {
+          previousVersion = readScenarioConfig(existingDir)?.version || ''
         }
+      }
+
+      const placement = placeExtractedScenario(targetDir, config?.id, scenarioId)
+      const finalScenarioId = placement.finalDir === targetDir ? scenarioId : (config?.id ?? scenarioId)
+      const finalTargetDir = placement.finalDir
+      if (placement.replacedBackup) {
+        replacedCanonicalDir = placement.finalDir
+        replacedBackup = placement.replacedBackup
       }
 
       if (fs.existsSync(archivePath)) {
@@ -1287,9 +1354,15 @@ export function registerScenarioInstallIpcHandlers(
         backedUpAt: new Date().toISOString(),
       }, null, 2))
 
+      // 回滚数据取真正在用的那份旧版本（被覆盖掉的），没有覆盖时退回解压目标的备份
+      const rollbackSource =
+        replacedBackup && fs.existsSync(replacedBackup) ? replacedBackup : backupDir
+      if (fs.existsSync(rollbackSource)) {
+        fs.renameSync(rollbackSource, path.join(rollbackDir, 'data'))
+      }
+      // 两头都留的备份清掉，否则 .bak.<时间戳> 会在 scenarios 目录里越积越多
       if (fs.existsSync(backupDir)) {
-        const rollbackDataDir = path.join(rollbackDir, 'data')
-        fs.renameSync(backupDir, rollbackDataDir)
+        fs.rmSync(backupDir, { recursive: true, force: true })
       }
 
       logger.agent.info(`[ScenarioMarketplace] Updated scenario "${scenarioId}" to v${version}, rollback data preserved`)
@@ -1304,6 +1377,21 @@ export function registerScenarioInstallIpcHandlers(
       }
     } catch (err) {
       logger.agent.error(`[ScenarioMarketplace] Update failed for "${scenarioId}":`, err)
+
+      // 新版本若已落到 config.id 目录，撤掉它并还原被替换的旧版本
+      if (replacedBackup && replacedCanonicalDir && fs.existsSync(replacedBackup)) {
+        try {
+          if (fs.existsSync(replacedCanonicalDir)) {
+            fs.rmSync(replacedCanonicalDir, { recursive: true, force: true })
+          }
+          fs.renameSync(replacedBackup, replacedCanonicalDir)
+          logger.agent.info(
+            `[ScenarioMarketplace] Restored previous "${replacedCanonicalDir}" after failed update`,
+          )
+        } catch (e) {
+          logger.system.warn('Failed to restore replaced scenario dir after update failure:', e)
+        }
+      }
 
       if (fs.existsSync(backupDir)) {
         logger.agent.info(`[ScenarioMarketplace] Rolling back "${scenarioId}" from backup`)
@@ -1371,12 +1459,19 @@ export function registerScenarioInstallIpcHandlers(
       return { success: false, error: 'No rollback data found for this scenario' }
     }
 
+    // 实际在用的目录可能按 config.id 命名（市场 id 与 config.id 不一致的场景）。
+    // 回滚数据里带着 config，据此定位目标：按市场 id 恢复的话，运行中的 config.id
+    // 目录仍是待回滚的新版本，回滚等于没做，还会在磁盘上多出一份旧目录造成双份混淆。
+    const dataConfig = readScenarioConfig(dataDir)
+    const restoreDir =
+      dataConfig?.id && dataConfig.id !== scenarioId ? getScenarioDir(dataConfig.id) : targetDir
+
     try {
-      if (fs.existsSync(targetDir)) {
-        fs.rmSync(targetDir, { recursive: true, force: true })
+      if (fs.existsSync(restoreDir)) {
+        fs.rmSync(restoreDir, { recursive: true, force: true })
       }
 
-      copyDirRecursive(dataDir, targetDir)
+      copyDirRecursive(dataDir, restoreDir)
 
       if (fs.existsSync(metaPath)) {
         const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
@@ -1386,14 +1481,14 @@ export function registerScenarioInstallIpcHandlers(
 
       fs.rmSync(rollbackDir, { recursive: true, force: true })
 
-      const config = readScenarioConfig(targetDir)
-      logger.agent.info(`[ScenarioMarketplace] Rolled back scenario "${scenarioId}"`)
+      const config = readScenarioConfig(restoreDir)
+      logger.agent.info(`[ScenarioMarketplace] Rolled back scenario "${scenarioId}" into "${restoreDir}"`)
 
       return {
         success: true,
         scenarioId,
         version: config?.version || '',
-        targetDir,
+        targetDir: restoreDir,
         config,
       }
     } catch (err) {
