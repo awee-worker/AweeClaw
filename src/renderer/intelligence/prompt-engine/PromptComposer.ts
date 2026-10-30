@@ -409,12 +409,37 @@ const BROWSER_AUTOMATION_GUIDE = `## Built-in Browser Automation (PREFERRED for 
 - Changing how a page LOOKS: when the page comes from the local workspace (dev server or local static preview), locate the source component and edit the CODE — that survives a reload and is what the user actually wants. Use \`browser_edit_element\` only when there is no local source to find, or to preview a change before touching code; reloading discards runtime edits. Never hand-write DOM mutations through \`browser_evaluate\` when these structural tools can do the job.
 - When the user asks to open a webpage and see what is on it ("看看这个页面有什么内容"), or to verify a rendered page: \`open_preview\` (if not open yet) then \`browser_snapshot\`. Do NOT fall back to the system browser, and do NOT rely on \`read_url\` for JS-rendered pages (it returns no DOM content).
 - Browser exclusivity: do not open the same page with the system browser while the built-in preview tab shows it. Prefer the built-in browser; switch to the system browser only when the built-in one cannot fulfill the request, and close the built-in tab when you do.
-- Read-only tools (snapshot / screenshot / console / network / list_tabs / element_context) are auto-approved; click / type / navigate / back / evaluate / set_device / edit_element / undo_edits require user confirmation.`
+- Read-only tools (snapshot / screenshot / console / network / list_tabs / element_context) are auto-approved; click / type / navigate / back / evaluate / set_device / edit_element / undo_edits require user confirmation.
+- WAITING ON THE USER — use \`ask_user\`, do not poll: whenever the page needs the user themselves (signing in, scanning a QR code, entering a one-time / SMS code, approving a consent or authorization screen, or any step you have no way to perform), call \`ask_user\` to hand control back — e.g. "请在浏览器标签页里完成登录/验证，完成后点继续". Never invent credentials or ask the user to paste a password into the chat. Never call \`browser_wait_for\` in a loop hoping the page will pass the gate on its own: it won't. After the user confirms, take a fresh \`browser_snapshot\` and continue from the new state.`
+
+/**
+ * 外部浏览器自动化指引（仅当 Playwright / Puppeteer MCP 已连接时注入）
+ *
+ * 这类服务器拉起的是自己的浏览器窗口，页面上的登录、扫码、验证码同样只有用户本人能过。
+ * 内置浏览器那段指引覆盖不到它们，所以单独给一段，核心是同一条规则：等人就 ask_user，
+ * 不要自己猜凭据，也不要反复轮询等墙自己消失。
+ */
+const EXTERNAL_BROWSER_AUTOMATION_GUIDE = `## External Browser Automation (Playwright / Puppeteer)
+- These servers drive their OWN browser window, not the app's built-in preview. The pages are real and the user can see and operate them.
+- WAITING ON THE USER — use \`ask_user\` instead of guessing or polling: whenever a step needs the user themselves (signing in, scanning a QR code, entering an SMS / one-time code, approving a consent or authorization screen, finishing a CAPTCHA), stop and call \`ask_user\` — e.g. "请在 Playwright 打开的浏览器窗口里完成登录/验证，完成后点继续".
+- Never invent credentials and never ask the user to paste a password into the chat. Never loop \`browser_wait_for\` or repeated snapshots hoping a login wall clears on its own: it will not.
+- After the user confirms, take a fresh snapshot and continue from the new state.
+- Prefer the built-in browser (\`open_preview\` + \`mcp_builtin-browser__browser_*\`) for pages that already live in the app; use the external servers for cross-browser checks or isolated sessions.`
 
 /** builtin-browser MCP 服务器当前是否已连接（决定自动化指引是否注入提示词） */
 function isBuiltinBrowserAutomationConnected(): boolean {
   const servers = useStore.getState().mcpServers || []
   return servers.some((server) => server.id === 'builtin-browser' && server.status === 'connected')
+}
+
+/** 外部浏览器自动化 MCP（Playwright / Puppeteer）是否已连接 */
+function isExternalBrowserAutomationConnected(): boolean {
+  const servers = useStore.getState().mcpServers || []
+  return servers.some((server) => {
+    if (server.status !== 'connected') return false
+    const key = String(server.id || '').toLowerCase()
+    return key.includes('playwright') || key.includes('puppeteer')
+  })
 }
 
 
@@ -445,8 +470,15 @@ function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' 
   const { toolGuidelines } = getActiveScenarioIdentity()
   // 预览指引跟随工具可见性：工具不可用时不必占用提示词
   const previewGuide = allowedTools.includes('open_preview') ? PAGE_PREVIEW_GUIDE : null
-  // 浏览器自动化指引跟随 MCP 连接状态：未连接时不注入，避免指向不存在的工具
-  const browserAutomationGuide = isBuiltinBrowserAutomationConnected() ? BROWSER_AUTOMATION_GUIDE : null
+  // 浏览器自动化指引跟随 MCP 连接状态：未连接时不注入，避免指向不存在的工具。
+  // 内置与外部两套各自独立判断 —— 只装了 Playwright 时也要拿到「等人就 ask_user」这条规则
+  const browserAutomationGuides = [
+    isBuiltinBrowserAutomationConnected() ? BROWSER_AUTOMATION_GUIDE : null,
+    isExternalBrowserAutomationConnected() ? EXTERNAL_BROWSER_AUTOMATION_GUIDE : null,
+  ].filter((guide): guide is string => Boolean(guide))
+  const browserAutomationGuide = browserAutomationGuides.length > 0
+    ? browserAutomationGuides.join('\n\n')
+    : null
 
   return `## Available Tools
 

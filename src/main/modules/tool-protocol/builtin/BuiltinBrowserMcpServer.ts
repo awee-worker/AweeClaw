@@ -200,6 +200,96 @@ function formatElement(el: SnapshotResult['elements'][number]): string {
   return parts.join(' ')
 }
 
+// ============ 需要用户本人介入的页面闸门 ============
+
+/**
+ * 页面闸门类型
+ *
+ * password：要账号密码
+ * opt-code：要短信 / 动态验证码
+ * qr：要扫码
+ * oauth：第三方授权同意页
+ */
+type AuthGateKind = 'password' | 'opt-code' | 'qr' | 'oauth'
+
+interface AuthGate {
+  kind: AuthGateKind
+  /** 命中的页面证据，写进提示里让模型知道凭什么判断 */
+  signals: string[]
+}
+
+/** 页面文本里的验证码、扫码、授权线索 */
+const OTP_HINT = /(验证码|动态码|短信码|短信验证|one[- ]?time (password|code)|verification code|\botp\b|2fa|two[- ]factor)/
+const QR_HINT = /(扫码|二维码|扫描二维码|scan (the )?qr|qr code)/
+const OAUTH_HINT = /(授权登录|授权访问|确认授权|authorize|authorization code|allow access|使用.{0,12}(账号|帐号)登录|sign in with|continue with (google|apple|github|wechat|microsoft))/
+
+/**
+ * 判断当前页面是不是「非得用户本人动手」的闸门
+ *
+ * 登录、验证码、扫码、授权这四类页面 AI 无论怎么点都过不去：账号密码不在它手里，
+ * 扫码要人拿手机，验证码只发到用户手机上。命中时把理由讲清楚，模型就不会反复
+ * snapshot / wait_for 干耗，而是转去 ask_user 让用户在内置浏览器里自己完成。
+ *
+ * 判定只用快照已有的数据，零额外页面开销；宁可漏报也不多报 —— 误判会让模型
+ * 把本来能自己填的表单也推给用户。
+ */
+function detectAuthGate(snapshot: SnapshotResult): AuthGate | null {
+  const signals: string[] = []
+
+  // 密码框是最硬的证据，优先按登录页处理
+  const passwordField = snapshot.elements.find((el) => el.type === 'password')
+  if (passwordField) {
+    const label = passwordField.placeholder || passwordField.name || passwordField.id || ''
+    signals.push(label ? `password field (${label})` : 'password field')
+    return { kind: 'password', signals }
+  }
+
+  const text = [
+    snapshot.textSample,
+    ...snapshot.elements.map((el) => `${el.text || ''} ${el.placeholder || ''}`),
+  ]
+    .join(' ')
+    .toLowerCase()
+
+  // 登录 / 验证页是「窄页面」：整页就一个表单，交互元素屈指可数。
+  // 内容丰富的落地页也常带「扫码登录」入口，单看关键词会误判成闸门，
+  // 用元素密度把这类页面挡掉。
+  const sparsePage = snapshot.interactiveCount <= 12
+  if (!sparsePage) return null
+
+  if (OTP_HINT.test(text)) {
+    signals.push('one-time code prompt')
+    return { kind: 'opt-code', signals }
+  }
+  if (QR_HINT.test(text)) {
+    signals.push('QR code prompt')
+    return { kind: 'qr', signals }
+  }
+  if (OAUTH_HINT.test(text)) {
+    signals.push('third-party authorization screen')
+    return { kind: 'oauth', signals }
+  }
+
+  return null
+}
+
+/** 把闸门判定结果写成给模型看的行动指令 */
+function formatAuthGateHint(gate: AuthGate): string {
+  const action: Record<AuthGateKind, string> = {
+    password: 'the account credentials are not yours to enter',
+    'opt-code': 'the code is delivered to the user, not to you',
+    qr: 'scanning the QR code requires the user',
+    oauth: 'granting access requires the user themselves',
+  }
+  return (
+    `Needs the user: this page looks like a login / verification gate (${gate.signals.join(', ')}) — ` +
+    `${action[gate.kind]}. ` +
+    'Do NOT type credentials, do NOT try to bypass it, and do NOT call browser_wait_for in a loop. ' +
+    'Call ask_user now ("请在浏览器标签页里完成登录 / 验证，完成后点继续"), then take a fresh ' +
+    'browser_snapshot once the user confirms and continue from there.'
+  )
+}
+
 function formatSnapshot(snapshot: SnapshotResult): string {
   const lines: string[] = []
   lines.push(`Page: ${snapshot.title || '(untitled)'}`)
@@ -244,6 +334,7 @@ export function createBuiltinBrowserMcpServer(): {
         'Always call browser_snapshot before interacting, then use the returned [index] for browser_click / browser_type.',
         'browser_console_messages and browser_network_requests read the live health monitor data of the tab.',
         'Omit session_id / url to act on the most recently used preview tab.',
+        'When a page needs the user themselves — logging in, scanning a QR code, entering a one-time code, approving a consent screen — stop acting and call ask_user so the user can finish it in the tab. Never invent credentials and never poll in a loop.',
       ].join(' '),
     },
   )
@@ -287,7 +378,8 @@ function registerTabTools(server: McpServer): void {
   /** browser_navigate：在预览标签页中加载新地址 */
   server.tool(
     'browser_navigate',
-    'Navigate a preview tab in the built-in browser to an http/https URL. Waits for the page to finish loading.',
+    'Navigate a preview tab in the built-in browser to an http/https URL. Waits for the page to finish loading. ' +
+      'If the destination turns out to be a login / authorization wall, take a browser_snapshot and hand it to the user through ask_user.',
     {
       session_id: z.string().optional().describe('Target preview session id (default: most recent tab)'),
       url: z.string().min(1).describe('URL to load (http/https only)'),
@@ -434,7 +526,9 @@ function registerReadTools(server: McpServer): void {
 
       const result = await runProbe<SnapshotResult>(target.guest, SNAPSHOT_PROBE)
       if (!result.ok) return err(result.error)
-      return ok(text(formatSnapshot(result.data)))
+      const gate = detectAuthGate(result.data)
+      const body = formatSnapshot(result.data)
+      return ok(text(gate ? `${body}\n\n${formatAuthGateHint(gate)}` : body))
     },
   )
 
@@ -573,7 +667,9 @@ function registerInteractionTools(server: McpServer): void {
   /** browser_wait_for：等待文本出现或固定时长 */
   server.tool(
     'browser_wait_for',
-    'Wait until the given text appears in the preview tab (polling the page text), or just wait a fixed time.',
+    'Wait until the given text appears in the preview tab (polling the page text), or just wait a fixed time. ' +
+      'Only for page-side timing. If you are waiting on the USER (login, QR scan, one-time code, consent), ' +
+      'call ask_user instead of polling.',
     {
       session_id: z.string().optional().describe('Target preview session id (default: most recent tab)'),
       url: z.string().optional().describe('Match tab by url substring instead'),
@@ -603,7 +699,12 @@ function registerInteractionTools(server: McpServer): void {
         await delay(WAIT_POLL_INTERVAL_MS)
       }
 
-      return err(`Timed out after ${args.timeout}s waiting for text: "${args.text}"`)
+      return err(
+        `Timed out after ${args.timeout}s waiting for text: "${args.text}". ` +
+          'If that text only appears after the user acts (signing in, scanning a QR code, ' +
+          'entering a one-time code, approving a consent screen), stop polling and call ask_user ' +
+          'so the user can finish it in this tab, then retry once they confirm.',
+      )
     },
   )
 }
