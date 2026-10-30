@@ -10,6 +10,7 @@ import { ScheduleExplorer } from './panels/ScheduleExplorer'
 import { SceneToolsPanel } from '../scene-tools/SceneToolsPanel'
 import { DynamicPanelView } from './AdaptivePanelView'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
 import { useMemo } from 'react'
 
 /**
@@ -34,10 +35,15 @@ const BUILTIN_PANELS: Record<string, React.ComponentType> = {
 function useWideModePanelIds(): string[] {
   const activeScenarioId = useStore(s => s.activeScenarioId)
   return useMemo(() => {
-    if (!activeScenarioId) return []
-    const scenario = scenarioRegistry.get(activeScenarioId)
-    if (!scenario?.ui?.sidebarItems) return []
-    return scenario.ui.sidebarItems.filter(item => item.wideMode).map(item => item.id)
+    const scenarioIds = (() => {
+      if (!activeScenarioId) return []
+      const scenario = scenarioRegistry.get(activeScenarioId)
+      if (!scenario?.ui?.sidebarItems) return []
+      return scenario.ui.sidebarItems.filter(item => item.wideMode).map(item => item.id)
+    })()
+    // 插件面板的宽模式来自 manifest，不在场景配置里；这里合并进来，
+    // 宽模式的插件面板才不会被侧栏重复渲染
+    return [...new Set([...scenarioIds, ...pluginUiRegistry.getWideModePanelIds()])]
   }, [activeScenarioId])
 }
 
@@ -67,9 +73,13 @@ export default function Sidebar() {
      * 未必注销）。若不加归属校验，DynamicPanelView 会照着这个 id 把 A 的界面渲染到 B 的
      * 工作空间位置 —— 表现为切回默认工作台后，左侧出现上一个场景的侧栏。
      */
+    // 场景面板与插件面板共用 DynamicPanelView；插件面板不属于任何场景，
+    // 需要用注册表单独判定，否则点击插件导航项时这里返回 null，整片空白。
+    const isPluginPanel = !BuiltinPanel && pluginUiRegistry.isPluginPanel(activeSidePanel)
+
     const body = BuiltinPanel ? (
         <BuiltinPanel />
-    ) : belongsToScenario(activeScenarioId, activeSidePanel) ? (
+    ) : belongsToScenario(activeScenarioId, activeSidePanel) || isPluginPanel ? (
         <DynamicPanelView panelId={activeSidePanel} />
     ) : null
 

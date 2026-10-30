@@ -34,6 +34,7 @@ import { ThemeManager } from '@components/workspace-editor/EditorThemeProvider'
 import { FullScreenLoading } from './components/ui/ProgressIndicator'
 import { startupMetrics } from '@shared/toolkit/bootMetrics'
 import { PluginHostBridge } from '@renderer/plugins/PluginHostBridge'
+import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
 import { HostCapabilitiesBridge } from '@renderer/plugins/HostCapabilitiesBridge'
 import PluginDrawerHost from '@renderer/plugins/PluginDrawerHost'
 import { TodoHubCollector } from '@components/todo-hub/TodoHubCollector'
@@ -420,7 +421,11 @@ function AppContent() {
   const isWideModePanel = useMemo(() => {
     if (!activeSidePanel) return false
     if (activeSidePanel === 'scenarios') return true
-    return layoutConfig.wideModePanelIds.includes(activeSidePanel)
+    if (layoutConfig.wideModePanelIds.includes(activeSidePanel)) return true
+    // 插件面板的宽模式由 manifest 的 sidebarPanels[].wideMode 声明，
+    // 不在场景配置里，需要单独问一次注册表。缺了这一步，插件的管理型面板
+    // 既不会接管主内容区、也不会被侧栏渲染，点击后是一片空白。
+    return pluginUiRegistry.isWideModePluginPanel(activeSidePanel)
   }, [activeSidePanel, layoutConfig.wideModePanelIds])
 
   /**

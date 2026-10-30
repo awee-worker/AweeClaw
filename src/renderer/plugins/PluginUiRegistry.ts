@@ -82,6 +82,12 @@ class PluginUiRegistryImpl {
    */
   private sidebarItemsCache: SidebarItemDescriptor[] | null = null
   /**
+   * 插件宽模式面板 id 缓存（引用稳定）
+   *
+   * 与 sidebarItemsCache 同理，仅在 discovered 变化时重建。
+   */
+  private wideModePanelIdsCache: string[] | null = null
+  /**
    * 合并后的顶部按钮缓存（引用稳定，供 useSyncExternalStore 使用）
    *
    * 同样仅在 discovered/loaded 变化时重建。
@@ -312,6 +318,7 @@ class PluginUiRegistryImpl {
    */
   private invalidateCache(): void {
     this.sidebarItemsCache = null
+    this.wideModePanelIdsCache = null
     this.topActionsCache = null
     this.settingsTabsCache = null
     this.widgetCardsCache.clear()
@@ -702,6 +709,33 @@ class PluginUiRegistryImpl {
       }
     }
     return false
+  }
+
+  /**
+   * 收集所有插件面板中声明为宽模式的 id
+   *
+   * 场景面板的宽模式由 ShellComposer 从 scenario.ui.sidebarItems 提取，
+   * 插件面板不在场景配置里，若不在这里单独收集，AweeApp 判断
+   * isWideModePanel 时永远为 false，插件的管理型面板就既不会接管主内容区、
+   * 也不会被侧栏渲染（侧栏只认内置与场景面板），表现为点击后整片空白。
+   */
+  getWideModePanelIds(): string[] {
+    if (this.wideModePanelIdsCache) return this.wideModePanelIdsCache
+    const ids: string[] = []
+    for (const [, contribution] of this.discovered) {
+      const panels = contribution.contributes.sidebarPanels
+      if (!panels) continue
+      for (const panel of panels) {
+        if (panel.wideMode === true) ids.push(panel.id)
+      }
+    }
+    this.wideModePanelIdsCache = ids
+    return ids
+  }
+
+  /** 指定面板是否为宽模式插件面板 */
+  isWideModePluginPanel(panelId: string): boolean {
+    return this.getWideModePanelIds().includes(panelId)
   }
 
   /**
