@@ -187,6 +187,15 @@ export interface PluginModelsDetail {
 export const PLUGIN_CLOSE_DRAWER_EVENT = 'aweeclaw:plugin-close-drawer'
 
 /**
+ * 插件 → 宿主「关闭插件侧边栏面板」事件的 CustomEvent 名称。
+ *
+ * 与 closeDrawer 的区别：抽屉是盖在界面上的浮层，侧边栏面板是常驻的导航项。
+ * 后者由 layoutSlice 的 activeSidePanel 持有，插件不该直接 import store，
+ * 同样走事件解耦，由 PluginHostBridge 转译成 setActiveSidePanel(null)。
+ */
+export const PLUGIN_CLOSE_PANEL_EVENT = 'aweeclaw:plugin-close-panel'
+
+/**
  * 插件 → 宿主「记录操作结果到会话上下文」事件的 CustomEvent 名称。
  *
  * 与 sendChatMessage 的区别：只更新上下文，不发送消息、不触发 AI 回复。
@@ -338,6 +347,25 @@ export function createPluginHostApi(opts: {
         )
       } catch (err) {
         console.warn(`[PluginHostApi] closeDrawer failed (plugin=${pluginKey}):`, err)
+      }
+    },
+
+    /**
+     * 关闭承载本插件的侧边栏面板。
+     *
+     * 与 closeDrawer 分开实现：抽屉是浮层（pluginDrawerStore），面板是导航项
+     * （layoutSlice.activeSidePanel），两者状态不同源，不能共用一个事件。
+     * 插件面板据此在自己的头部放关闭按钮。
+     */
+    closePanel: () => {
+      try {
+        window.dispatchEvent(
+          new CustomEvent<{ pluginKey: string }>(PLUGIN_CLOSE_PANEL_EVENT, {
+            detail: { pluginKey },
+          }),
+        )
+      } catch (err) {
+        console.warn(`[PluginHostApi] closePanel failed (plugin=${pluginKey}):`, err)
       }
     },
 

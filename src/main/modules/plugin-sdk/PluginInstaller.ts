@@ -313,7 +313,7 @@ export class PluginInstaller {
           userConfig,
         )
         if (result.success) {
-          this.discardPendingBackup(pluginDetail.pluginKey)
+          this.discardPendingBackup(pluginDetail.pluginKey, targetDir)
         } else {
           this.cleanupFailedInstall(pluginDetail.pluginKey, targetDir)
         }
@@ -380,7 +380,7 @@ export class PluginInstaller {
       )
       if (result.success) {
         // 新版本已落地可用，备份槽不再需要
-        this.discardPendingBackup(pluginDetail.pluginKey)
+        this.discardPendingBackup(pluginDetail.pluginKey, pluginDir)
       } else {
         this.cleanupFailedInstall(pluginDetail.pluginKey, pluginDir)
       }
@@ -1705,17 +1705,59 @@ export class PluginInstaller {
    *
    * @param pluginKey 插件 key，用于定位备份槽
    */
-  private discardPendingBackup(pluginKey: string): void {
+  private discardPendingBackup(pluginKey: string, targetDir?: string): void {
     const backup = this.pendingBackups.get(pluginKey)
     this.pendingBackups.delete(pluginKey)
     if (!backup) return
+
+    // 先把旧版本的运行期数据搬到新版本目录，再删备份
+    if (targetDir) {
+      this.carryOverRuntimeData(backup.backupDir, targetDir)
+    }
 
     try {
       if (fs.existsSync(backup.backupDir)) {
         fs.rmSync(backup.backupDir, { recursive: true, force: true })
       }
     } catch (err) {
-      logger.system.warn(`[PluginInstaller] Failed to clean backup ${backup.backupDir}: ${err}`)
+      logger.system.warn(
+        `[PluginInstaller] Failed to clean backup ${backup.backupDir}: ${err}`,
+      )
+    }
+  }
+
+  /**
+   * 把旧版本目录里的运行期数据（`data/`）搬到新版本目录。
+   *
+   * 插件的运行数据——主机清单、审计流水、本地凭据密钥——写在自身 `data/` 下，
+   * 而升级时旧版本目录先进备份槽、成功后整目录删除。不搬移的话，用户每升级一次
+   * 就丢一次服务器列表；更麻烦的是密钥文件一起消失，已保存的密码将永久无法解密。
+   *
+   * 新目录若已带 `data/`（插件包自带静态数据，或此前已迁移过）则保持现状不覆盖。
+   *
+   * @param backupDir 旧版本目录在备份槽中的位置
+   * @param targetDir 本次安装落地的新版本目录
+   */
+  private carryOverRuntimeData(backupDir: string, targetDir: string): void {
+    const RUNTIME_DATA_DIR = 'data'
+    const source = path.join(backupDir, RUNTIME_DATA_DIR)
+    const dest = path.join(targetDir, RUNTIME_DATA_DIR)
+
+    if (!fs.existsSync(source) || fs.existsSync(dest)) return
+
+    try {
+      fs.mkdirSync(path.dirname(dest), { recursive: true })
+      // rename 在同一分区上是原子操作，备份槽与插件目录同属 pluginsRoot
+      fs.renameSync(source, dest)
+      logger.system.info(`[PluginInstaller] Carried over runtime data ${source} -> ${dest}`)
+    } catch (err) {
+      // 跨设备等场景 rename 会失败，退回复制
+      try {
+        fs.cpSync(source, dest, { recursive: true })
+        logger.system.info(`[PluginInstaller] Copied runtime data ${source} -> ${dest}`)
+      } catch (copyErr) {
+        logger.system.warn(`[PluginInstaller] Failed to carry over runtime data: ${copyErr}`)
+      }
     }
   }
 

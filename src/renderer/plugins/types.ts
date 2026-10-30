@@ -121,6 +121,13 @@ export interface PluginHostApi {
    * 宿主未提供该方法时（旧版本客户端）插件应做存在性判断。
    */
   closeDrawer: () => void
+  /**
+   * 关闭承载本插件的侧边栏面板（导航项），回到对话 / 主视图。
+   *
+   * 与 closeDrawer 的区别：抽屉是浮层，面板是常驻导航项。面板自身带关闭按钮时
+   * 用它收起自己。宿主未提供该方法时（旧版本客户端）插件应做存在性判断。
+   */
+  closePanel?: () => void
   /** 当前界面语言 */
   language: 'zh' | 'en'
   /** 受控日志（前缀 [Plugin:pluginKey]） */

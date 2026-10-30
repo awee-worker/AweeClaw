@@ -30,6 +30,7 @@ import {
   PLUGIN_CHAT_SEND_EVENT,
   PLUGIN_CHAT_STATE_EVENT,
   PLUGIN_CLOSE_DRAWER_EVENT,
+  PLUGIN_CLOSE_PANEL_EVENT,
   PLUGIN_CONTEXT_NOTE_EVENT,
   PLUGIN_MODELS_EVENT,
   PLUGIN_MODELS_REQUEST_EVENT,
@@ -762,6 +763,22 @@ export function PluginHostBridge() {
     }
 
     /**
+     * 处理插件请求关闭侧边栏面板。
+     *
+     * 面板本身是导航项，收起即 setActiveSidePanel(null)：主区域回到对话 / 主视图。
+     * 只认承载该插件的面板，避免插件误关其它面板。
+     */
+    const handleClosePanel = (event: Event) => {
+      const detail = (event as CustomEvent<{ pluginKey?: string }>).detail
+      const state = useStore.getState()
+      const active = state.activeSidePanel
+      if (!active) return
+      // 面板 id 形如「mcp-remote-server:panel」，插件 key 是它的前缀
+      if (detail?.pluginKey && !String(active).startsWith(detail.pluginKey)) return
+      state.setActiveSidePanel(null)
+    }
+
+    /**
      * 处理插件写回的操作结果。
      *
      * 两件事：写进会话上下文让 AI 知道（不触发对话），
@@ -800,6 +817,7 @@ export function PluginHostBridge() {
     window.addEventListener(PLUGIN_CHAT_ANSWER_EVENT, handleAnswer as EventListener)
     window.addEventListener(PLUGIN_CHAT_ABORT_EVENT, handleAbort as EventListener)
     window.addEventListener(PLUGIN_CLOSE_DRAWER_EVENT, handleCloseDrawer as EventListener)
+    window.addEventListener(PLUGIN_CLOSE_PANEL_EVENT, handleClosePanel as EventListener)
     window.addEventListener(PLUGIN_CONTEXT_NOTE_EVENT, handleContextNote as EventListener)
     window.addEventListener(DEVICE_LINK_AI_TASK_EVENT, handleDeviceLinkAiTask as EventListener)
     window.addEventListener(BROWSER_AI_EDIT_EVENT, handleBrowserAiEdit as EventListener)
@@ -814,6 +832,7 @@ export function PluginHostBridge() {
       window.removeEventListener(PLUGIN_CHAT_ANSWER_EVENT, handleAnswer as EventListener)
       window.removeEventListener(PLUGIN_CHAT_ABORT_EVENT, handleAbort as EventListener)
       window.removeEventListener(PLUGIN_CLOSE_DRAWER_EVENT, handleCloseDrawer as EventListener)
+      window.removeEventListener(PLUGIN_CLOSE_PANEL_EVENT, handleClosePanel as EventListener)
       window.removeEventListener(PLUGIN_CONTEXT_NOTE_EVENT, handleContextNote as EventListener)
       window.removeEventListener(DEVICE_LINK_AI_TASK_EVENT, handleDeviceLinkAiTask as EventListener)
       window.removeEventListener(BROWSER_AI_EDIT_EVENT, handleBrowserAiEdit as EventListener)
