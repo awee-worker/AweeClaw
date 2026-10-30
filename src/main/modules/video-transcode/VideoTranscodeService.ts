@@ -121,6 +121,80 @@ function ensureCacheDir(): void {
 }
 
 /**
+ * 硬件编码器探测结果
+ *
+ * undefined 表示还没探过，null 表示确认没有可用硬件编码器。
+ */
+let hardwareEncoderCache: string | null | undefined
+
+/**
+ * 各平台按优先顺序尝试的 H.264 硬件编码器
+ *
+ * 顺序按「覆盖广度 × 码率控制稳定性」排：macOS 只有 VideoToolbox；
+ * Windows 上 NVENC 比 QSV 稳，AMF 放最后。
+ */
+function hardwareEncoderCandidates(): string[] {
+  if (process.platform === 'darwin') return ['h264_videotoolbox']
+  if (process.platform === 'win32') return ['h264_nvenc', 'h264_qsv', 'h264_amf']
+  return ['h264_nvenc', 'h264_qsv', 'h264_vaapi']
+}
+
+/**
+ * 探测可用的硬件编码器
+ *
+ * 代理片只给预览看，硬件编码能把 CPU 从满核降到个位数、速度还快数倍，
+ * 是这条链路里收益最大的一处。`-encoders` 是编译期特性，进程内探一次就够；
+ * 探测本身失败（超时、进程起不来）一律按软编处理，不让一次探测拖垮转码。
+ */
+function detectHardwareEncoder(ffmpegPath: string): Promise<string | null> {
+  if (hardwareEncoderCache !== undefined) return Promise.resolve(hardwareEncoderCache)
+
+  return new Promise((resolve) => {
+    const settle = (value: string | null): void => {
+      hardwareEncoderCache = value
+      resolve(value)
+    }
+
+    let output = ''
+    let proc: ReturnType<typeof spawn>
+    try {
+      proc = spawn(ffmpegPath, ['-hide_banner', '-encoders'], { windowsHide: true })
+    } catch {
+      settle(null)
+      return
+    }
+
+    // 有些构建把编码器列表写到 stdout，另一些写到 stderr，两边都收
+    const collect = (data: Buffer): void => {
+      output += data.toString()
+    }
+    proc.stdout?.on('data', collect)
+    proc.stderr?.on('data', collect)
+
+    // 探测不能成为新的卡点：二进制损坏时它会直接挂住
+    const timer = setTimeout(() => {
+      try {
+        proc.kill('SIGKILL')
+      } catch {
+        // 已经退出
+      }
+      settle(null)
+    }, 10_000)
+
+    proc.on('error', () => {
+      clearTimeout(timer)
+      settle(null)
+    })
+
+    proc.on('close', () => {
+      clearTimeout(timer)
+      const found = hardwareEncoderCandidates().find((name) => output.includes(name)) ?? null
+      settle(found)
+    })
+  })
+}
+
+/**
  * 用 ffprobe 探测视频信息
  *
  * 使用 ffmpeg -i 输出 JSON 格式的流信息，解析后提取编码、分辨率等。
@@ -335,24 +409,44 @@ export function transcodeToH264(
   }
 
   // 先 probe 获取总时长（用于进度计算）
-  return probeVideo(sourcePath).then((probe) => {
+  return probeVideo(sourcePath).then(async (probe) => {
     const duration = probe.duration || 0
+    // 硬件编码器名字要先探到才能出参数；结果进程内缓存，后续转码不再重复探测
+    const hardware = await detectHardwareEncoder(ffmpegPath)
 
     return new Promise<TranscodeResult>((resolve, reject) => {
       // 临时文件必须以 .mp4 结尾，否则 ffmpeg 无法通过扩展名推断输出格式
       // （"Unable to find a suitable output format for 'xxx.tmp'"）
       const tmpPath = `${cachePath}.tmp.${process.pid}.mp4`
 
+      // 硬件编码器不吃 -crf，只认码率；代理片给 3.5 Mbps 与 crf 23 观感相当，
+      // CPU 占用却只有软编的十分之一左右
+      const videoArgs = hardware
+        ? [
+            '-c:v', hardware,
+            '-b:v', '3500k',
+            '-maxrate', '5000k',
+            '-bufsize', '7000k',
+            // VideoToolbox 在硬件不支持当前参数时允许退回软件路径，
+            // 否则整条命令会直接失败
+            ...(hardware === 'h264_videotoolbox' ? ['-allow_sw', '1'] : []),
+          ]
+        : [
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-crf', '23',
+            // 不限线程时 x264 会按 1.5 倍核数开满，代理片没必要占住整机
+            '-x264-params', 'threads=4:lookahead_threads=1',
+          ]
+
       const args = [
         // 结构化进度：每 0.5 秒把 out_time_us / speed 等写成 key=value 行，
         // 比解析 stderr 的自然语言统计行稳定得多（不受日志语言与列宽影响）
         '-progress', 'pipe:1',
         '-i', sourcePath,
-        // 视频编码：H.264
-        '-c:v', 'libx264',
-        '-preset', 'fast',
-        '-crf', '23',
         '-pix_fmt', 'yuv420p',
+        // 视频编码：H.264（优先硬件，见 videoArgs）
+        ...videoArgs,
         // 音频编码：AAC
         '-c:a', 'aac',
         '-b:a', '128k',
