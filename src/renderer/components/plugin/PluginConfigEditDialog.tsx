@@ -6,6 +6,10 @@
  *  - 用户可修改 {{config.KEY}} 模板变量对应的值
  *  - 保存后会触发后端 MCP 服务重连（若该插件是 MCP 型）
  *
+ * 配置项固定走弹窗：改配置是一件「填完就关」的短期动作，弹窗比抽屉更轻，
+ * 也不会和插件自己的功能面板抢同一块界面。需要常驻查看的功能面板请用
+ * manifest 的 sidebarPanels 声明，那部分从卡片「管理」抽屉或左侧菜单进入。
+ *
  * 数据流：
  *   读取 ← pluginService.getPluginConfig(pluginKey) → IPC(plugin:getConfig)
  *   保存 ← pluginService.savePluginConfig(pluginKey, values) → IPC(plugin:saveConfig)
@@ -143,16 +147,16 @@ export function PluginConfigEditDialog({
       onClick={() => !saving && onClose()}
     >
       <div
-        className="w-[480px] max-w-[calc(100vw-2rem)] max-h-[85vh] flex flex-col rounded-xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900"
+        className="w-[480px] max-w-[calc(100vw-2rem)] max-h-[85vh] flex flex-col rounded-xl border border-border/60 bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 头部 */}
-        <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3.5 dark:border-zinc-800">
+        <div className="flex items-center justify-between border-b border-border/50 px-5 py-3.5">
           <div>
-            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+            <h2 className="text-base font-semibold text-text-primary">
               {pluginName} - {isZh ? '配置' : 'Settings'}
             </h2>
-            <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="mt-0.5 text-xs text-text-muted">
               {isZh
                 ? '修改配置后保存将自动重启插件 MCP 服务'
                 : 'Saving will automatically restart the plugin MCP service'}
@@ -161,7 +165,8 @@ export function PluginConfigEditDialog({
           <button
             onClick={() => !saving && onClose()}
             disabled={saving}
-            className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 disabled:opacity-50 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            aria-label={isZh ? '关闭' : 'Close'}
+            className="rounded-md p-1 text-text-muted hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
           >
             <X size={18} />
           </button>
@@ -171,7 +176,7 @@ export function PluginConfigEditDialog({
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
+              <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
             </div>
           ) : hasFields ? (
             <PluginConfigForm
@@ -182,7 +187,7 @@ export function PluginConfigEditDialog({
               disabled={saving}
             />
           ) : (
-            <div className="py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+            <div className="py-6 text-center text-sm text-text-muted">
               {isZh ? '此插件无需配置项' : 'No configuration required'}
             </div>
           )}
@@ -190,25 +195,25 @@ export function PluginConfigEditDialog({
 
         {/* 错误提示 */}
         {error && (
-          <div className="mx-5 mb-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400">
+          <div className="mx-5 mb-3 rounded-md border border-status-error/30 bg-status-error/10 px-3 py-2 text-xs text-status-error">
             {error}
           </div>
         )}
 
         {/* 成功提示（短暂） */}
         {savedAt && !error && (
-          <div className="mx-5 mb-3 flex items-center gap-1.5 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-xs text-green-600 dark:border-green-800 dark:bg-green-950/40 dark:text-green-400">
+          <div className="mx-5 mb-3 flex items-center gap-1.5 rounded-md border border-status-success/30 bg-status-success/10 px-3 py-2 text-xs text-status-success">
             <CheckCircle2 size={14} />
             {isZh ? '已保存' : 'Saved'}
           </div>
         )}
 
         {/* 底部按钮 */}
-        <div className="flex items-center justify-end gap-2 border-t border-zinc-200 px-5 py-3 dark:border-zinc-800">
+        <div className="flex items-center justify-end gap-2 border-t border-border/40 px-5 py-3">
           <button
             onClick={() => !saving && onClose()}
             disabled={saving}
-            className="rounded-md border border-zinc-300 px-3.5 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            className="rounded-md border border-border/60 px-3.5 py-1.5 text-sm text-text-secondary hover:bg-surface-hover disabled:opacity-50"
           >
             {isZh ? '关闭' : 'Close'}
           </button>
@@ -216,7 +221,7 @@ export function PluginConfigEditDialog({
             <button
               onClick={handleSave}
               disabled={saving || !isDirty}
-              className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500"
+              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               {saving ? (isZh ? '保存中...' : 'Saving...') : isZh ? '保存' : 'Save'}

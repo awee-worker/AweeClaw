@@ -10,12 +10,12 @@
  * 不会把主界面带挂。
  */
 
-import { createElement, useCallback, useEffect, useState } from 'react'
+import { createElement, useCallback, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { useStore } from '@store'
-import { getPanelComponent, getPanelHost } from '@components/explorer/PanelRegistry'
 import { PluginBoundary } from '@renderer/plugins/PluginBoundary'
-import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
+import { usePluginPanelComponent } from '@renderer/plugins/usePluginPanelComponent'
+import { PLUGIN_CLOSE_PANEL_EVENT } from '@renderer/plugins/PluginHostApi'
 import { closePluginDrawer, usePluginDrawerTarget } from '@renderer/plugins/pluginDrawerStore'
 
 /** 从面板 id 取所属插件：插件面板约定以 "<pluginKey>:<name>" 命名 */
@@ -29,44 +29,12 @@ export default function PluginDrawerHost() {
   const language = useStore(s => s.language)
   const isZh = language === 'zh'
 
-  // 注册是同步副作用，但不触发 re-render；用递增版本号驱动加载完成后的重绘
-  const [, setLoadVersion] = useState(0)
-  const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error'>('idle')
-
   const panelId = target?.panelId
 
-  // 组件未注册且属于插件面板时，触发 ui.js 懒加载
-  useEffect(() => {
-    if (!panelId) {
-      setLoadState('idle')
-      return
-    }
-    if (getPanelComponent(panelId)) {
-      setLoadState('idle')
-      return
-    }
-    if (!pluginUiRegistry.isPluginPanel(panelId)) {
-      setLoadState('idle')
-      return
-    }
+  // 组件未注册且属于插件面板时，hook 会触发 ui.js 懒加载并在完成后重绘
+  const { Component: PanelComponent, host: panelHost, loadState } = usePluginPanelComponent(panelId)
 
-    let cancelled = false
-    setLoadState('loading')
-    pluginUiRegistry
-      .ensurePanelLoaded(panelId)
-      .then(() => {
-        if (cancelled) return
-        setLoadState('idle')
-        setLoadVersion(v => v + 1)
-      })
-      .catch(() => {
-        if (!cancelled) setLoadState('error')
-      })
-
-    return () => { cancelled = true }
-  }, [panelId])
-
-  // ESC 关闭：抽屉属于临时浮层，键盘要能退出
+  // 退出通道一：ESC，抽屉属于临时浮层，键盘要能退出
   useEffect(() => {
     if (!panelId) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -76,12 +44,25 @@ export default function PluginDrawerHost() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [panelId])
 
+  // 退出通道二：面板自带的关闭按钮派发 PLUGIN_CLOSE_PANEL_EVENT
+  //
+  // 该事件原本只处理侧栏面板（activeSidePanel），面板改成从左侧菜单以抽屉打开后
+  // activeSidePanel 不再指向它，插件里的关闭按钮会点了没反应，因此这里也要接住。
+  useEffect(() => {
+    if (!panelId) return
+    const onPanelClose = (event: Event) => {
+      const detail = (event as CustomEvent<{ pluginKey?: string }>).detail
+      if (detail?.pluginKey && !panelId.startsWith(detail.pluginKey)) return
+      closePluginDrawer()
+    }
+    window.addEventListener(PLUGIN_CLOSE_PANEL_EVENT, onPanelClose)
+    return () => window.removeEventListener(PLUGIN_CLOSE_PANEL_EVENT, onPanelClose)
+  }, [panelId])
+
   const handleClose = useCallback(() => closePluginDrawer(), [])
 
   if (!target) return null
 
-  const PanelComponent = getPanelComponent(target.panelId)
-  const panelHost = getPanelHost(target.panelId)
   const title = isZh
     ? (target.titleZh || target.title || target.panelId)
     : (target.title || target.titleZh || target.panelId)
@@ -117,7 +98,7 @@ export default function PluginDrawerHost() {
       ...(panelHost ? { host: panelHost } : {}),
       ...(target.payload ? { drawerParams: target.payload } : {}),
     }
-    return createElement(PanelComponent, panelProps as unknown as React.Attributes)
+    return createElement(PanelComponent, panelProps as Record<string, unknown>)
   }
 
   return (
@@ -132,7 +113,10 @@ export default function PluginDrawerHost() {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative h-full w-[420px] max-w-[85vw] bg-surface border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out]"
+        className={`relative h-full bg-surface border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out] ${
+          // 宽档与插件中心「管理」抽屉对齐，多列信息的运维台才有横向空间
+          target.width === 'lg' ? 'w-[920px] max-w-[94vw]' : 'w-[420px] max-w-[85vw]'
+        }`}
       >
         <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50 shrink-0">
           <div className="min-w-0">

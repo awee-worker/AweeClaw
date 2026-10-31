@@ -14,6 +14,8 @@ import type { SidePanel } from '@store/slices'
 import { BRAND } from '@shared/brand'
 import { t, type Language } from '@renderer/i18n'
 import { usePluginExtensions } from '@renderer/plugins/usePluginExtensions'
+import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
+import { openPluginDrawer } from '@renderer/plugins/pluginDrawerStore'
 import AddCustomMenuDialog from '../browser/AddCustomMenuDialog'
 import { useMailUnreadCount } from '@renderer/hooks/useMailUnreadCount'
 import { useTodoHubStore } from '../todo-hub/todoHubStore'
@@ -223,6 +225,21 @@ export default function NavigationRail() {
   const scenarioOwnsNav = (scenario?.ui?.sidebarItems?.length ?? 0) > 0
 
   const handleMenuItemClick = (itemId: string, isActive: boolean) => {
+    // 抽屉式插件面板：导航项只是唤起入口，点击后以浮层打开，不切换侧栏面板，
+    // 主内容区与对话保持原样。面板自身的交互与数据全部由插件实现。
+    const drawerMeta = pluginUiRegistry.getDrawerPanelMeta(itemId)
+    if (drawerMeta) {
+      closeAllFullPages()
+      closeInternalBrowser()
+      openPluginDrawer({
+        panelId: itemId,
+        title: drawerMeta.title,
+        titleZh: drawerMeta.titleZh,
+        width: drawerMeta.width,
+      })
+      return
+    }
+
     // 判定用 activeSidePanel 而非渲染层的 isActive：后者带 !showWelcomePage 等
     // 条件，欢迎页残留时界面显示的其实是面板、isActive 却是 false。
     if (scenarioOwnsNav && activeSidePanel === itemId) {

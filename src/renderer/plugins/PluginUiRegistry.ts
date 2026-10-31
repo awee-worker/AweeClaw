@@ -712,6 +712,37 @@ class PluginUiRegistryImpl {
   }
 
   /**
+   * 取「抽屉式面板」的标题信息
+   *
+   * 声明 openAs: 'drawer' 的面板在左侧菜单占一个导航项，点击时不切侧栏面板，
+   * 而是以抽屉浮层打开。导航项只带 id/icon/label，抽屉标题还需要中英双份，
+   * 因此在这里按 panelId 反查一次声明。
+   *
+   * 面板数量很少，直接遍历 discovered，不做缓存——缓存要在安装/卸载/更新
+   * 三处同步失效，漏一处就会出现「点了新面板没反应」。
+   *
+   * @returns 命中抽屉式面板时返回标题与宽度档位；普通侧栏面板或未找到返回 undefined
+   */
+  getDrawerPanelMeta(
+    panelId: string,
+  ): { title: string; titleZh: string; width: 'md' | 'lg' } | undefined {
+    for (const [, contribution] of this.discovered) {
+      const panels = contribution.contributes.sidebarPanels
+      if (!panels) continue
+      const hit = panels.find((p) => p.id === panelId && p.openAs === 'drawer')
+      if (hit) {
+        return {
+          title: hit.label || hit.labelZh || panelId,
+          titleZh: hit.labelZh || hit.label,
+          // 未声明按窄档：抽屉默认服务的是「唤出即用」的小面板
+          width: hit.drawerWidth === 'lg' ? 'lg' : 'md',
+        }
+      }
+    }
+    return undefined
+  }
+
+  /**
    * 收集所有插件面板中声明为宽模式的 id
    *
    * 场景面板的宽模式由 ShellComposer 从 scenario.ui.sidebarItems 提取，
@@ -726,7 +757,8 @@ class PluginUiRegistryImpl {
       const panels = contribution.contributes.sidebarPanels
       if (!panels) continue
       for (const panel of panels) {
-        if (panel.wideMode === true) ids.push(panel.id)
+        // 抽屉式面板不占布局，声明了 wideMode 也不该接管主内容区
+        if (panel.wideMode === true && panel.openAs !== 'drawer') ids.push(panel.id)
       }
     }
     this.wideModePanelIdsCache = ids

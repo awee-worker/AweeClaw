@@ -2658,7 +2658,11 @@ export interface ElectronAPI {
         component: string
         position?: number
         wideMode?: boolean
-        /** 隐藏导航项：面板仍注册，可经 openPluginDrawer 打开 */
+        /** 打开方式：sidebar（默认）占侧栏+主内容区，drawer 从左侧菜单点击后以浮层打开 */
+        openAs?: 'sidebar' | 'drawer'
+        /** 抽屉宽度：md（默认 420px）/ lg（920px，与管理抽屉同宽） */
+        drawerWidth?: 'md' | 'lg'
+        /** 隐藏导航项：面板仍注册，可经 openPluginDrawer 或插件中心「管理」抽屉打开 */
         hidden?: boolean
       }>
       topActions?: Array<{

@@ -19,6 +19,13 @@ export interface PluginDrawerTarget {
   title?: string
   /** 抽屉标题（中文） */
   titleZh?: string
+  /**
+   * 宽度档位：md（默认 420px）/ lg（920px，与插件中心「管理」抽屉同宽）
+   *
+   * 由 manifest.contributes.sidebarPanels[].drawerWidth 决定，
+   * 二级选项的 action 打开时可以自行指定。
+   */
+  width?: 'md' | 'lg'
   /** 透传给面板组件的附加参数 */
   payload?: Record<string, unknown>
 }

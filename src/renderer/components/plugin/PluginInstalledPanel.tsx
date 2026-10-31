@@ -34,6 +34,7 @@ import {
   TrendingUp,
   ExternalLink,
   Settings,
+  LayoutPanelLeft,
   Download,
   Clock,
   Search,
@@ -62,6 +63,7 @@ import { mcpService } from '@services/toolProtocolAdapter'
 import type { McpServerStatus } from '@shared/protocols/toolProtocolBridge'
 import { type Language } from '@renderer/i18n'
 import { PluginConfigEditDialog } from './PluginConfigEditDialog'
+import { PluginManageDrawer, type PluginManageablePanel } from './PluginManageDrawer'
 import type { PluginConfigField } from './PluginConfigForm'
 
 // ─── 分类图标映射 ──────────────────────────────────────
@@ -120,8 +122,18 @@ export function PluginInstalledPanel() {
   /** 正在升级的插件 pluginKey（用于按钮 loading 态） */
   const [updatingKey, setUpdatingKey] = useState<string | null>(null)
   const [updates, setUpdates] = useState<Record<string, { hasUpdate: boolean; latestVersion?: string }>>({})
-  // 配置编辑对话框
-  const [configTarget, setConfigTarget] = useState<{ pluginKey: string; name: string; fields: PluginConfigField[] } | null>(null)
+  // 配置弹窗：配置项固定走弹窗，填完即关
+  const [configTarget, setConfigTarget] = useState<{
+    pluginKey: string
+    name: string
+    fields: PluginConfigField[]
+  } | null>(null)
+  // 功能面板抽屉：插件声明了 sidebarPanels 时的常驻界面，属于插件的 UI 扩展
+  const [manageTarget, setManageTarget] = useState<{
+    pluginKey: string
+    name: string
+    panels: PluginManageablePanel[]
+  } | null>(null)
   /** 搜索关键字（匹配名称、pluginKey、描述、类型） */
   const [searchQuery, setSearchQuery] = useState('')
   /** 声明为 skill 型、但本地缺少 SKILL.md 的插件：技能正文没随包落地，技能条不会出现它 */
@@ -551,12 +563,47 @@ export function PluginInstalledPanel() {
     })) as PluginConfigField[]
   }
 
-  /** 打开配置编辑对话框 */
+  /** 从 manifest 提取插件声明的功能面板（contributes.sidebarPanels） */
+  function extractPanels(manifest: Record<string, unknown>): PluginManageablePanel[] {
+    const contributes = manifest.contributes as
+      | { sidebarPanels?: Array<Record<string, unknown>> }
+      | undefined
+    const panels = contributes?.sidebarPanels || []
+    return panels
+      .filter((panel) => typeof panel.id === 'string' && panel.id.length > 0)
+      .map((panel) => {
+        const id = panel.id as string
+        const label = (panel.label as string) || id
+        return {
+          id,
+          label,
+          labelZh: (panel.labelZh as string) || label,
+          icon: panel.icon as string | undefined,
+        }
+      })
+  }
+
+  /** 打开配置弹窗（配置项固定走弹窗，不放进抽屉） */
   function handleOpenConfig(plugin: InstalledPlugin) {
     const manifest = plugin.manifest as Record<string, unknown>
-    const fields = extractConfigFields(manifest)
     const name = (manifest.nameZh as string) || (manifest.name as string) || plugin.pluginKey
-    setConfigTarget({ pluginKey: plugin.pluginKey, name, fields })
+    setConfigTarget({
+      pluginKey: plugin.pluginKey,
+      name,
+      fields: extractConfigFields(manifest),
+    })
+  }
+
+  /** 打开功能面板抽屉（插件声明的 sidebarPanels） */
+  function handleOpenManage(plugin: InstalledPlugin) {
+    const manifest = plugin.manifest as Record<string, unknown>
+    const panels = extractPanels(manifest)
+    if (panels.length === 0) return
+    setManageTarget({
+      pluginKey: plugin.pluginKey,
+      name: (manifest.nameZh as string) || (manifest.name as string) || plugin.pluginKey,
+      panels,
+    })
   }
 
   /**
@@ -702,6 +749,7 @@ export function PluginInstalledPanel() {
                   onDisable={() => handleDisable(plugin)}
                   onUninstall={() => handleUninstall(plugin)}
                   onOpenConfig={() => handleOpenConfig(plugin)}
+                  onOpenManage={() => handleOpenManage(plugin)}
                   newTaskVisible={plugin.newTaskVisible}
                   onToggleNewTaskVisible={() => { void handleNewTaskVisibleToggle(plugin) }}
                   skillMissing={skillMissingKeys.has(plugin.pluginKey)}
@@ -715,13 +763,22 @@ export function PluginInstalledPanel() {
         )}
       </div>
 
-      {/* 配置编辑对话框 */}
+      {/* 配置弹窗：配置项的唯一入口 */}
       <PluginConfigEditDialog
         open={configTarget !== null}
         pluginKey={configTarget?.pluginKey || ''}
         pluginName={configTarget?.name || ''}
         fields={configTarget?.fields || []}
         onClose={() => setConfigTarget(null)}
+      />
+
+      {/* 功能面板抽屉：插件声明了面板时的常驻界面 */}
+      <PluginManageDrawer
+        open={manageTarget !== null}
+        pluginKey={manageTarget?.pluginKey || ''}
+        pluginName={manageTarget?.name || ''}
+        panels={manageTarget?.panels || []}
+        onClose={() => setManageTarget(null)}
       />
     </div>
   )
@@ -878,6 +935,7 @@ function PluginCard({
   onDisable,
   onUninstall,
   onOpenConfig,
+  onOpenManage,
   newTaskVisible,
   onToggleNewTaskVisible,
   onUpdate,
@@ -894,7 +952,10 @@ function PluginCard({
   onEnable: () => void
   onDisable: () => void
   onUninstall: () => void
+  /** 打开配置弹窗（仅当声明了 configSchema.fields） */
   onOpenConfig: () => void
+  /** 打开功能面板抽屉（仅当声明了 sidebarPanels） */
+  onOpenManage: () => void
   /** 是否在新建任务界面显示 */
   newTaskVisible: boolean
   /** 切换「在新建任务界面显示」 */
@@ -913,6 +974,7 @@ function PluginCard({
     icon?: string
     homepage?: string
     configSchema?: { fields?: PluginConfigField[] }
+    contributes?: { sidebarPanels?: Array<Record<string, unknown>> }
   }
 
   const displayName =
@@ -929,6 +991,8 @@ function PluginCard({
   const typeLabel = TYPE_LABELS[primaryType]
   const category = manifest.category || 'other'
   const hasConfigFields = !!(manifest.configSchema?.fields && manifest.configSchema.fields.length > 0)
+  /** 是否声明了功能面板：面板在管理抽屉里打开，卡片上也要能进得去 */
+  const hasPanels = !!(manifest.contributes?.sidebarPanels && manifest.contributes.sidebarPanels.length > 0)
 
   /** 解析图标：图片 URL > manifest.icon 命名图标 > 分类图标 > Package 默认 */
   function renderIcon() {
@@ -1103,7 +1167,7 @@ function PluginCard({
               title={language === 'zh' ? `更新到 v${updateInfo.latestVersion}` : `Update to v${updateInfo.latestVersion}`}
             />
           )}
-          {/* 配置按钮：仅当插件声明了 configSchema.fields 时展示 */}
+          {/* 配置：仅当插件声明了 configSchema.fields 时展示，打开弹窗 */}
           {hasConfigFields && (
             <CardActionButton
               icon={<Settings className="w-3 h-3" />}
@@ -1111,6 +1175,17 @@ function PluginCard({
               onClick={onOpenConfig}
               disabled={operating}
               tone="default"
+            />
+          )}
+          {/* 管理：仅当插件声明了功能面板时展示，打开抽屉 */}
+          {hasPanels && (
+            <CardActionButton
+              icon={<LayoutPanelLeft className="w-3 h-3" />}
+              label={language === 'zh' ? '管理' : 'Manage'}
+              onClick={onOpenManage}
+              disabled={operating}
+              tone="default"
+              title={language === 'zh' ? '打开插件提供的功能面板' : 'Open the panels provided by this plugin'}
             />
           )}
           {/* 启用 / 禁用 */}
