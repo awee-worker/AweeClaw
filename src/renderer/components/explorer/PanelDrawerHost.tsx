@@ -95,7 +95,7 @@ export default function PanelDrawerHost() {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`panel-drawer no-drag relative h-full ${isFullWidth ? 'max-w-none' : 'max-w-[94vw]'} bg-background border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out]`}
+        className={`panel-drawer no-drag relative h-full ${isFullWidth ? 'max-w-none' : 'max-w-[94vw]'} bg-popover border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out]`}
         style={{ width: resolvedWidth }}
       >
         <header

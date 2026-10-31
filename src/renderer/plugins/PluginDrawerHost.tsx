@@ -115,7 +115,7 @@ export default function PluginDrawerHost() {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`relative h-full bg-surface border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out] ${
+        className={`relative h-full bg-popover border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out] ${
           // 宽档与插件中心「管理」抽屉对齐，多列信息的运维台才有横向空间
           target.width === 'lg' ? 'w-[920px] max-w-[94vw]' : 'w-[420px] max-w-[85vw]'
         }`}

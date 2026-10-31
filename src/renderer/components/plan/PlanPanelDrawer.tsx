@@ -64,7 +64,7 @@ export const PlanPanelDrawer = memo(function PlanPanelDrawer() {
           animate={{ x: 0 }}
           exit={{ x: '100%' }}
           transition={{ type: 'tween', duration: 0.22, ease: 'easeOut' }}
-          className="fixed inset-y-0 right-0 z-40 flex w-[1000px] max-w-[100vw] flex-col border-l border-border bg-background shadow-2xl"
+          className="fixed inset-y-0 right-0 z-40 flex w-[1000px] max-w-[100vw] flex-col border-l border-border bg-popover shadow-2xl"
         >
           {/* 头部：计划名 + 后台执行提示 + 删除 / 收起 */}
           <div className="flex items-center gap-2 px-3 h-11 border-b border-border shrink-0">

@@ -45,7 +45,7 @@ export default function SceneToolDrawerHost() {
         role="dialog"
         aria-modal="true"
         aria-label={isZh ? '场景工具' : 'Scene tools'}
-        className="relative h-full w-[480px] max-w-[92vw] bg-background border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out]"
+        className="relative h-full w-[480px] max-w-[92vw] bg-popover border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out]"
       >
         <SceneToolsPanel initialToolId={target.toolId} onClose={handleClose} />
       </aside>

@@ -131,7 +131,7 @@ export function PluginManageDrawer({
         role="dialog"
         aria-modal="true"
         aria-label={pluginName}
-        className="relative h-full w-[920px] max-w-[94vw] bg-surface border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out]"
+        className="relative h-full w-[920px] max-w-[94vw] bg-popover border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out]"
       >
         <header className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-border/50 shrink-0">
           <div className="min-w-0">
