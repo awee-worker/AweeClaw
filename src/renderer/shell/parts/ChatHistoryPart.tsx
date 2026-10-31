@@ -21,6 +21,7 @@ import { BRAND } from '@shared/brand'
 import { t, type Language } from '@renderer/i18n'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { useAgentActions, useAllThreads, isThreadExecuting } from '@hooks/useAgent'
+import { closePanelDrawer, getPluginDrawerTarget } from '@renderer/plugins/pluginDrawerStore'
 import { getMessageText, getThreadDisplayTitle } from '@intelligence/providerTypes'
 import type { ChatThread } from '@intelligence/providerTypes'
 import { HintOverlay } from '@components/ui/HintOverlay'
@@ -214,6 +215,9 @@ export function ChatHistoryPart({ expanded }: ChatHistoryPartProps) {
   }
 
   const handleSelectThread = (threadId: string) => {
+    // 面板以抽屉打开时，遮罩会挡住主区域，不关掉抽屉用户就看不到刚切过去的会话
+    if (getPluginDrawerTarget()) closePanelDrawer()
+
     const panel = activeSidePanel
     if (panel && (hideChatPanelIds.has(panel) || wideModePanelIds.has(panel))) {
       // 切会话等于离开那块面板的上下文：收起时一并重置「上次面板」，

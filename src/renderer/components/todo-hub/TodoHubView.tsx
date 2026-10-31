@@ -14,6 +14,7 @@ import {
   CheckCircle2, RotateCcw, ExternalLink, Inbox, CheckCheck, X,
 } from 'lucide-react'
 import { useStore } from '@store'
+import { usePanelDrawer } from '@renderer/plugins/pluginDrawerStore'
 import { useTodoHubStore, type HubTodoItem } from './todoHubStore'
 import { TODO_SOURCE_META, executeHubTodo, openTodoSource } from './todoHubActions'
 
@@ -75,11 +76,24 @@ export function TodoHubView() {
     setDueDate('')
   }
 
-  /** 关闭待办面板，回到会话视图（同时重置顶部开关的恢复目标） */
+  /**
+   * 关闭待办面板，回到会话视图（同时重置顶部开关的恢复目标）
+   *
+   * 抽屉模式下不动布局：关掉抽屉就回到了打开前的位置，所以这里只保留
+   * 整页面板那套收尾逻辑。
+   */
   const handleClose = () => {
     useStore.getState().closeSidePanelForView()
     useStore.getState().setChatVisible(true)
   }
+
+  /**
+   * 是否渲染在抽屉里
+   *
+   * 抽屉外壳自带关闭按钮，面板内再放一个就是两个入口指向同一件事，
+   * 视觉上也拥挤；因此抽屉模式下不再渲染这个按钮。
+   */
+  const inDrawer = usePanelDrawer() !== null
 
   const isOverdue = (i: HubTodoItem) => i.dueDate && i.status !== 'done' && i.dueDate < todayStr()
 
@@ -119,13 +133,15 @@ export function TodoHubView() {
               {zh ? '清除已完成' : 'Clear done'}
             </button>
           )}
-          <button
-            onClick={handleClose}
-            title={zh ? '关闭' : 'Close'}
-            className="p-1.5 -mr-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {!inDrawer && (
+            <button
+              onClick={handleClose}
+              title={zh ? '关闭' : 'Close'}
+              className="p-1.5 -mr-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 

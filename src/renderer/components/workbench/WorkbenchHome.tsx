@@ -60,6 +60,7 @@ import type { SceneModeProfile, TimePeriod } from '@intelligence/capabilities/sc
 import type { SceneMode } from '@protocols/sceneModeProtocol'
 import { SCENE_TOOLS, getToolById } from '@components/scene-tools/registry'
 import { openSceneToolDrawer } from '@components/scene-tools/sceneToolDrawerStore'
+import { openBuiltinPanel } from '@renderer/plugins/pluginDrawerStore'
 
 import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
 import { usePluginWidgetCards } from '@renderer/plugins/usePluginExtensions'
@@ -902,11 +903,11 @@ export default function WorkbenchHome() {
     openSceneToolDrawer(null)
   }, [])
 
-  /* ---------- 待办卡点击：进入待办中心 ---------- */
+  /* ---------- 待办卡点击：以右侧抽屉打开待办中心 ---------- */
   const handleOpenTodoHub = useCallback(() => {
     setShowWelcomePage(false)
-    setActiveSidePanel('todo-hub')
-  }, [setShowWelcomePage, setActiveSidePanel])
+    openBuiltinPanel('todo-hub')
+  }, [setShowWelcomePage])
 
   /* ---------- 工具卡点击：右侧抽屉打开对应工具 ---------- */
   const handleToolClick = useCallback((toolId: string) => {

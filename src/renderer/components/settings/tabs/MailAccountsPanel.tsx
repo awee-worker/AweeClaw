@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { ActionButton, ToggleSwitch } from '@components/ui'
 import { useStore } from '@store'
+import { openBuiltinPanel } from '@renderer/plugins/pluginDrawerStore'
 import { api } from '../../../adapters/electronBridge'
 import type {
   EmailAccountDraft,
@@ -225,12 +226,12 @@ export default function MailAccountsPanel({
     }
   }, [emailConfig.accounts])
 
-  /** 在主窗口内打开邮件中心（宽屏面板），并退出设置页 */
+  /** 在主窗口内以右侧抽屉打开邮件中心，并退出设置页 */
   const openMailCenter = useCallback(() => {
     const store = useStore.getState()
     store.closeAllFullPages()
     store.closeInternalBrowser()
-    store.setActiveSidePanel('mail-center')
+    openBuiltinPanel('mail-center')
   }, [])
 
   const updateDraft = useCallback(

@@ -37,6 +37,7 @@ import { PluginHostBridge } from '@renderer/plugins/PluginHostBridge'
 import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
 import { HostCapabilitiesBridge } from '@renderer/plugins/HostCapabilitiesBridge'
 import PluginDrawerHost from '@renderer/plugins/PluginDrawerHost'
+import PanelDrawerHost from '@components/explorer/PanelDrawerHost'
 import SceneToolDrawerHost from '@components/scene-tools/SceneToolDrawerHost'
 import { openSceneToolDrawer } from '@components/scene-tools/sceneToolDrawerStore'
 import { TodoHubCollector } from '@components/todo-hub/TodoHubCollector'
@@ -617,6 +618,9 @@ function AppContent() {
 
       {/* 插件抽屉：二级选项的 action 拉起插件面板（如模板选择），无触发时不渲染 */}
       <PluginDrawerHost />
+
+      {/* 内置面板抽屉：待办 / 项目 / 知识库 / 邮件中心等以右侧抽屉打开，无触发时不渲染 */}
+      <PanelDrawerHost />
 
       {/* 场景工具抽屉：番茄钟、记账本等内置工具统一以右侧抽屉打开，无触发时不渲染 */}
       <SceneToolDrawerHost />

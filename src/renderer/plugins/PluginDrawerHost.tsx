@@ -29,7 +29,9 @@ export default function PluginDrawerHost() {
   const language = useStore(s => s.language)
   const isZh = language === 'zh'
 
-  const panelId = target?.panelId
+  // 内置面板走 PanelDrawerHost：这里是插件面板专用路径，
+  // 不排除的话内置面板会被当成插件面板再挂一层抽屉，界面上就叠出两个浮层
+  const panelId = target && target.kind !== 'panel' ? target.panelId : undefined
 
   // 组件未注册且属于插件面板时，hook 会触发 ui.js 懒加载并在完成后重绘
   const { Component: PanelComponent, host: panelHost, loadState } = usePluginPanelComponent(panelId)
@@ -61,7 +63,7 @@ export default function PluginDrawerHost() {
 
   const handleClose = useCallback(() => closePluginDrawer(), [])
 
-  if (!target) return null
+  if (!target || target.kind === 'panel') return null
 
   const title = isZh
     ? (target.titleZh || target.title || target.panelId)

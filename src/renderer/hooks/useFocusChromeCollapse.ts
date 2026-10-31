@@ -20,6 +20,7 @@
  */
 import { useLayoutEffect } from 'react'
 import { useStore } from '@store'
+import { usePanelDrawerTarget } from '@renderer/plugins/pluginDrawerStore'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
 
 export function useFocusChromeCollapse(sidebarItems?: SidebarItemDescriptor[]): void {
@@ -45,8 +46,12 @@ export function useFocusChromeCollapse(sidebarItems?: SidebarItemDescriptor[]): 
       : null,
   )
 
+  // AI 浏览器以抽屉打开时，内置浏览器在抽屉里渲染，主区域并没有被它占用，
+  // 不能再按「浏览器专注」收起外壳，否则抽屉旁边会空出一条被收掉的导航栏
+  const browserInsideDrawer = usePanelDrawerTarget()?.panelId === 'ai-browser'
+
   const isBrowserFocus =
-    ((Boolean(internalBrowserUrl) && activeSidePanel !== 'ai-browser') ||
+    ((Boolean(internalBrowserUrl) && activeSidePanel !== 'ai-browser' && !browserInsideDrawer) ||
       activeFileKind === 'preview') &&
     !editorHiddenByPanel
   const isEditorFocus = hasOpenFiles && activeFilePath !== null && !editorHiddenByPanel

@@ -20,6 +20,7 @@ import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
 import { RegionRenderer } from '@renderer/shell/RegionRenderer'
 import type { RegionSlotMap } from '@shared/protocols/scenario-regions'
 import { useFocusChromeCollapse } from '@renderer/hooks/useFocusChromeCollapse'
+import { usePanelDrawerTarget } from '@renderer/plugins/pluginDrawerStore'
 import ChatSection from './ChatSection'
 import { CollapsedChatHint } from './CollapsedChatHint'
 
@@ -108,11 +109,22 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
   })))
 
   /**
+   * AI 浏览器是否正以抽屉打开
+   *
+   * 抽屉里的 AIBrowserView 自带内置浏览器实例。若这里仍按 internalBrowserUrl
+   * 去接管主区域，同一个页面会被挂载两次：抽屉下面多出一个看不见的 webview，
+   * 每开一次就多一份渲染进程与内存开销。
+   */
+  const drawerTarget = usePanelDrawerTarget()
+  const browserInsideDrawer = drawerTarget?.panelId === 'ai-browser'
+
+  /**
    * 是否由内置浏览器接管左侧工作区
    *
    * AI 浏览器面板自行承载内置浏览器（见 AIBrowserView），其余情况由主内容区接管。
    */
-  const showInternalBrowser = Boolean(internalBrowserUrl) && activeSidePanel !== 'ai-browser'
+  const showInternalBrowser =
+    Boolean(internalBrowserUrl) && activeSidePanel !== 'ai-browser' && !browserInsideDrawer
 
   // 宽模式面板（chat-centric 场景，聊天为主区域）
   // 是否隐藏聊天由场景配置统一决定（wideModeHidesChat），不再按 panelId 硬编码特例：
@@ -266,7 +278,10 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
    * 改变，React 只能把编辑器与 ChatPanel 整棵卸载后重建 —— ChatPanel 携带整段消息 DOM、
    * 虚拟列表与滚动状态，重建一次就是打开内置浏览器时那一下卡顿和画面跳动。
    */
-  const showInternalBrowser = Boolean(internalBrowserUrl) && activeSidePanel !== 'ai-browser'
+  // AI 浏览器以抽屉打开时，页面在抽屉里渲染，主区域不能再接一份（见 PrimaryMainContent 同名判断）
+  const drawerTarget = usePanelDrawerTarget()
+  const showInternalBrowser =
+    Boolean(internalBrowserUrl) && activeSidePanel !== 'ai-browser' && drawerTarget?.panelId !== 'ai-browser'
   if (showInternalBrowser) {
     return (
       <>

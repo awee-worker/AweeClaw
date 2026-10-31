@@ -15,10 +15,11 @@ import { BRAND } from '@shared/brand'
 import { t, type Language } from '@renderer/i18n'
 import { usePluginExtensions } from '@renderer/plugins/usePluginExtensions'
 import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
-import { openPluginDrawer } from '@renderer/plugins/pluginDrawerStore'
+import { openPluginDrawer, openBuiltinPanel, isBuiltinDrawerPanel, closePluginDrawer, getPluginDrawerTarget, usePanelDrawerTarget } from '@renderer/plugins/pluginDrawerStore'
 import AddCustomMenuDialog from '../browser/AddCustomMenuDialog'
 import { useMailUnreadCount } from '@renderer/hooks/useMailUnreadCount'
 import { useTodoHubStore } from '../todo-hub/todoHubStore'
+import { NAV_RAIL_WIDTH_EXPANDED, NAV_RAIL_WIDTH_COLLAPSED } from './navRailMetrics'
 import ChatHistoryPart from '@renderer/shell/parts/ChatHistoryPart'
 import RailUserPart from '@renderer/shell/parts/RailUserPart'
 
@@ -55,6 +56,7 @@ const MAIL_CENTER_ITEM_ID = 'mail-center'
  * 收起模式下以角标呈现在图标右上角。
  */
 const TODO_HUB_ITEM_ID = 'todo-hub'
+
 
 
 // 场景工具不再提供左侧导航入口：
@@ -155,6 +157,13 @@ export default function NavigationRail() {
   const mailUnread = useMailUnreadCount()
   /** 未完成待办数量：用于待办入口的「待办（N）」显示与角标 */
   const pendingTodoCount = useTodoHubStore(s => s.items.filter(i => i.status !== 'done').length)
+  /**
+   * 当前抽屉目标
+   *
+   * 内置面板改以抽屉打开后不再写 activeSidePanel，选中态只能从这里取，
+   * 否则点开面板时左侧那一项没有任何高亮反馈。
+   */
+  const drawerTarget = usePanelDrawerTarget()
 
 
 
@@ -237,6 +246,21 @@ export default function NavigationRail() {
         titleZh: drawerMeta.titleZh,
         width: drawerMeta.width,
       })
+      return
+    }
+
+    // 内置面板：同样以抽屉打开，不再接管主内容区。
+    // 再次点击当前已打开的那一项视为收起，与侧栏面板的开合语义保持一致。
+    if (isBuiltinDrawerPanel(itemId)) {
+      const currentTarget = getPluginDrawerTarget()
+      const isOpen = currentTarget?.kind === 'panel' && currentTarget.panelId === itemId
+      closeAllFullPages()
+      closeInternalBrowser()
+      if (isOpen) {
+        closePluginDrawer()
+        return
+      }
+      openBuiltinPanel(itemId)
       return
     }
 
@@ -331,7 +355,7 @@ export default function NavigationRail() {
       <style>{`
         .${p}-nav-rail {
           height: 100%;
-          width: 200px;
+          width: ${NAV_RAIL_WIDTH_EXPANDED}px;
           background: rgb(var(--background-secondary));
           border-right: 1px solid rgba(var(--border), 0.2);
           /* 右侧投影：增强与内容区的层次分离，使用半透明黑避免硬边 */
@@ -349,7 +373,7 @@ export default function NavigationRail() {
           flex-shrink: 0;
         }
         .${p}-nav-rail[data-expanded="false"] {
-          width: 48px;
+          width: ${NAV_RAIL_WIDTH_COLLAPSED}px;
           padding: 20px 4px 8px 4px;
           align-items: center;
         }
@@ -695,7 +719,8 @@ export default function NavigationRail() {
                 ? pendingTodoCount
                 : 0
           const isActive =
-            !showWelcomePage && !showSettingsPage && !showUserProfilePage && activeSidePanel === item.id
+            drawerTarget?.panelId === item.id ||
+            (!showWelcomePage && !showSettingsPage && !showUserProfilePage && activeSidePanel === item.id)
           const onSelect = () => handleMenuItemClick(item.id, isActive)
           return navRailExpanded ? (
             <button

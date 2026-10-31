@@ -19,6 +19,7 @@ import { useStore } from '@store'
 import { logger } from '@toolkit/LogEngine'
 import { api } from '@renderer/adapters/electronBridge'
 import { voiceApi } from '@renderer/services/voiceApi'
+import { openBuiltinPanel } from '@renderer/plugins/pluginDrawerStore'
 import {
   loadLocalEngineConfig,
   resolveVoiceRoute,
@@ -238,7 +239,8 @@ function applyNavigate(target: HostNavigateTarget, query?: string): { success: b
 
   switch (target) {
     case 'plugin-market':
-      state.setActiveSidePanel('plugin-market')
+      // 与左侧菜单一致：以右侧抽屉打开，不占用主内容区
+      openBuiltinPanel('plugin-market')
       if (query) setPluginMarketQuery(query)
       return { success: true }
 

@@ -9,6 +9,7 @@ import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { getThreadDisplayTitle, type TodoItem } from '@intelligence/providerTypes'
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
+import { openBuiltinPanel } from '@renderer/plugins/pluginDrawerStore'
 import { useTodoHubStore, type HubTodoItem, type TodoSourceType } from './todoHubStore'
 import type { TaskItem } from '../explorer/panels/tasks/types'
 
@@ -266,8 +267,9 @@ export async function openTodoSource(item: HubTodoItem): Promise<boolean> {
       return true
     }
     case 'mail': {
-      store.setActiveSidePanel('mail-center')
+      // 面板以抽屉打开：先收起全屏页，再拉起抽屉，主区域的会话保持原样
       store.closeAllFullPages()
+      openBuiltinPanel('mail-center')
       if (typeof window !== 'undefined' && item.sourceMeta) {
         window.dispatchEvent(
           new CustomEvent('aweeclaw:mail-locate', { detail: item.sourceMeta }),
@@ -276,8 +278,8 @@ export async function openTodoSource(item: HubTodoItem): Promise<boolean> {
       return true
     }
     case 'project': {
-      store.setActiveSidePanel('projects')
       store.closeAllFullPages()
+      openBuiltinPanel('projects')
       return true
     }
     default:
