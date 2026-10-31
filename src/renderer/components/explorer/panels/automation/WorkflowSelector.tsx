@@ -257,7 +257,7 @@ export function WorkflowSelector({ value, onChange, isZh }: WorkflowSelectorProp
 
       {/* 展开面板（内联，避免 OverlayDialog overflow 裁剪） */}
       {expanded && !loading && (
-        <div className="mt-1 rounded-lg border border-border/40 bg-background/95 shadow-lg overflow-hidden">
+              <div className="mt-1 rounded-lg border border-border/40 bg-popover shadow-lg overflow-hidden">
           {/* 搜索框 */}
           <div className="p-2 border-b border-border/30">
             <div className="flex items-center gap-2 px-2 py-1.5 bg-surface/40 rounded-md">

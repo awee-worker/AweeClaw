@@ -3864,6 +3864,16 @@ export interface ElectronAPI {
     ) => () => void
   }
 
+  /** 界面壁纸（背景图）：本地图片导入与资源访问 */
+  wallpaper: {
+    /** 选择本地图片并导入到壁纸目录 */
+    pick: () => Promise<WallpaperPickResult>
+    /** 列出已导入的壁纸 */
+    list: () => Promise<WallpaperFileInfo[]>
+    /** 删除已导入的壁纸 */
+    remove: (url: string) => Promise<boolean>
+  }
+
   /** VRM 桌面伴侣（3D 角色悬浮窗） */
   vrmCompanion: {
     /** 显示伴侣窗口 */
@@ -4446,6 +4456,23 @@ export interface VrmCompanionCommand {
   durationMs?: number
   /** look_at 目标 */
   target?: 'cursor' | 'camera' | 'center'
+}
+
+/** 壁纸导入结果 */
+export interface WallpaperPickResult {
+  ok: boolean
+  /** 成功时的壁纸地址（wallpaper-asset://local/<fileName>） */
+  url?: string
+  fileName?: string
+  /** 失败原因：canceled / unsupported-format / too-large / failed */
+  reason?: string
+}
+
+/** 已导入的壁纸文件 */
+export interface WallpaperFileInfo {
+  fileName: string
+  url: string
+  size: number
 }
 
 /** VRM 伴侣窗口的指针位置载荷 */

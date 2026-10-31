@@ -75,6 +75,7 @@ import { createGoApi } from './preload/api/go'
 import { createDeviceLinkApi } from './preload/api/deviceLink'
 import { createExternalAgentApi } from './preload/api/externalAgent'
 import { createVrmCompanionApi } from './preload/api/vrmCompanion'
+import { createWallpaperApi } from './preload/api/wallpaper'
 import { createOverlayApi } from './preload/api/overlay'
 import { createLiveApi } from './preload/api/live'
 import { createVtsApi } from './preload/api/vts'
@@ -138,6 +139,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deviceLink: createDeviceLinkApi(),
     externalAgent: createExternalAgentApi(),
     vrmCompanion: createVrmCompanionApi(),
+    wallpaper: createWallpaperApi(),
     overlay: createOverlayApi(),
     live: createLiveApi(),
     vts: createVtsApi(),

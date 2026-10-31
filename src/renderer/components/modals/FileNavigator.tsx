@@ -457,7 +457,7 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
       <div className="fixed inset-0 bg-background/20 backdrop-blur-sm transition-opacity" />
 
       <div
-        className="relative w-[660px] max-h-[65vh] flex flex-col bg-background/85 backdrop-blur-2xl border border-border/50 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden animate-scale-in origin-top ring-1 ring-text-primary/5"
+            className="relative w-[660px] max-h-[65vh] flex flex-col bg-popover backdrop-blur-2xl border border-border/50 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden animate-scale-in origin-top ring-1 ring-text-primary/5"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 px-5 py-4 border-b border-border/40 shrink-0">

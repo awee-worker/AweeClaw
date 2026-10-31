@@ -61,10 +61,18 @@ function FullPageSlot({ children }: { children: React.ReactNode }) {
   )
 }
 
-/** 编辑器插槽（带 ErrorBoundary + Suspense） */
+/**
+ * 编辑器插槽（带 ErrorBoundary + Suspense）
+ *
+ * 左侧补一条 border-l，与右侧会话区的 border-l 对称。
+ *
+ * 只靠侧栏的投影分隔是不够的：投影是半透明黑的扩散，壁纸开启后面板本身也变透明，
+ * 投影落在壁纸上看不出边界，两侧面板会连成一整块。边框是一条明确的实线，
+ * 与透明度无关，是壁纸模式下唯一稳定可辨的分隔。
+ */
 function EditorSlot() {
   return (
-    <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden min-w-0">
+    <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden min-w-0 border-l border-border/30">
       <ErrorBoundary>
         <Suspense fallback={<EditorSkeleton />}>
           <Editor />

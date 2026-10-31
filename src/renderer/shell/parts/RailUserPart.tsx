@@ -61,6 +61,7 @@ function MenuBadge({ count, title }: { count: number; title?: string }) {
 
 interface UserMenuHandlers {
   onSettingsClick: () => void
+  onAppearanceSettingsClick: () => void
   onExploreClick: () => void
   onScheduleClick: () => void
   onPluginCenterClick: () => void
@@ -205,7 +206,9 @@ function UserMenuDropdown({
     <div
       ref={ref}
       style={menuStyle}
-      className="py-1 rounded-xl bg-surface/95 backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-[9999]"
+      // bg-popover 是固定 96% 的浮层底色，不随壁纸的面板不透明度滑块变化：
+      // 用户菜单压在页面之上，跟着变透明会直接透出后面的内容，文字无法阅读。
+      className="py-1 rounded-xl bg-popover backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-[9999]"
     >
       {isAuthenticated && (
         <button
@@ -234,6 +237,7 @@ function UserMenuDropdown({
         language={language as Language}
         onClose={onClose}
         direction={placement === 'titlebar' ? 'left' : 'right'}
+        onOpenAppearanceSettings={() => { handlers.onAppearanceSettingsClick(); onClose() }}
       />
 
       <div className="h-px bg-border/50 my-1 mx-2" />
@@ -450,6 +454,11 @@ export function RailUserPart({ expanded, placement = 'rail' }: RailUserPartProps
 
   const handlers: UserMenuHandlers = {
     onSettingsClick: () => openExclusive(() => setShowSettingsPage(true)),
+    // 主题二级菜单末尾的「自定义主题」：直接落到外观这一页，省掉一次找 tab 的操作
+    onAppearanceSettingsClick: () => openExclusive(() => {
+      setSettingsIntent({ tab: 'appearance' })
+      setShowSettingsPage(true)
+    }),
     onExploreClick: () => openExclusive(() => setShowScenarioPage(true)),
     onScheduleClick: () => {
       closeAllFullPages()

@@ -105,7 +105,7 @@ export default function ShortcutReference({ onClose }: ShortcutReferenceProps) {
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
       <div
-        className="bg-surface/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-2xl w-[680px] max-h-[80vh] overflow-hidden animate-scale-in"
+            className="bg-popover backdrop-blur-xl border border-border/50 rounded-2xl shadow-2xl w-[680px] max-h-[80vh] overflow-hidden animate-scale-in"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/40">

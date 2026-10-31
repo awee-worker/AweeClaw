@@ -91,7 +91,7 @@ export function SettingsSaveBar({
 }: SettingsSaveBarProps) {
   return (
     <div className="pointer-events-none absolute inset-x-8 bottom-6 z-20 animate-slide-up">
-      <div className="pointer-events-auto relative flex items-center justify-between gap-4 overflow-hidden rounded-2xl border border-border/60 bg-surface/85 px-5 py-3.5 shadow-xl shadow-black/25 backdrop-blur-xl">
+        <div className="pointer-events-auto relative flex items-center justify-between gap-4 overflow-hidden rounded-2xl border border-border/60 bg-popover px-5 py-3.5 shadow-xl shadow-black/25 backdrop-blur-xl">
         {/* 顶部高光描边 */}
         <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
 

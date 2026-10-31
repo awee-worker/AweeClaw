@@ -8,17 +8,17 @@ export default {
     extend: {
       colors: {
         background: {
-          DEFAULT: 'rgb(var(--background) / <alpha-value>)',
-          secondary: 'rgb(var(--background-secondary) / <alpha-value>)',
-          tertiary: 'rgb(var(--background-tertiary) / <alpha-value>)',
-          chat: 'rgb(var(--chat-bg) / <alpha-value>)',
+          DEFAULT: 'rgb(var(--background) / calc(<alpha-value> * var(--panel-alpha, 1)))',
+          secondary: 'rgb(var(--background-secondary) / calc(<alpha-value> * var(--panel-alpha, 1)))',
+          tertiary: 'rgb(var(--background-tertiary) / calc(<alpha-value> * var(--panel-alpha, 1)))',
+          chat: 'rgb(var(--chat-bg) / calc(<alpha-value> * var(--panel-alpha, 1)))',
           editor: 'rgb(var(--editor-bg) / <alpha-value>)',
         },
         surface: {
-          DEFAULT: 'rgb(var(--surface) / <alpha-value>)',
-          hover: 'rgb(var(--surface-hover) / <alpha-value>)',
-          active: 'rgb(var(--surface-active) / <alpha-value>)',
-          muted: 'rgb(var(--surface-muted) / <alpha-value>)',
+          DEFAULT: 'rgb(var(--surface) / calc(<alpha-value> * var(--panel-alpha, 1)))',
+          hover: 'rgb(var(--surface-hover) / calc(<alpha-value> * var(--panel-alpha, 1)))',
+          active: 'rgb(var(--surface-active) / calc(<alpha-value> * var(--panel-alpha, 1)))',
+          muted: 'rgb(var(--surface-muted) / calc(<alpha-value> * var(--panel-alpha, 1)))',
         },
         input: {
           DEFAULT: 'rgb(var(--input-bg) / <alpha-value>)',
@@ -47,6 +47,18 @@ export default {
           warning: 'rgb(var(--status-warning) / <alpha-value>)',
           error: 'rgb(var(--status-error) / <alpha-value>)',
           info: 'rgb(var(--status-info) / <alpha-value>)',
+        },
+        /**
+         * 浮层专用底色：下拉菜单、命令面板、二级菜单等。
+         *
+         * 刻意不乘 --panel-alpha。该变量是给「贴着壁纸的大面积容器」用的，
+         * 壁纸模式下只有 0.15；浮层如果也跟着它走，bg-surface/95 实际只剩
+         * 0.95 × 0.15 ≈ 14% 不透明度，菜单里透出整个页面，字看不清。
+         * 浮层是压在内容之上的独立一层，必须自带实底，这里固定 96%。
+         */
+        popover: {
+          DEFAULT: 'rgb(var(--surface) / 0.96)',
+          hover: 'rgb(var(--surface-hover) / 0.96)',
         },
       },
       fontSize: {

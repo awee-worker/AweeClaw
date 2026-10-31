@@ -60,7 +60,9 @@ export const OverlayDialog: React.FC<ModalProps> = memo(function OverlayDialog({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.2 }}
-        className={`relative w-full ${widthCls} max-h-[90vh] bg-background/95 border border-border/50 rounded-3xl shadow-2xl shadow-black/20 overflow-hidden flex flex-col ${className}`}
+        // 弹窗底座必须自带实底：bg-background/95 会乘 --panel-alpha，
+        // 壁纸模式下只剩十几个百分点，任何没显式覆盖底色的弹窗都会透出下面的页面
+        className={`relative w-full ${widthCls} max-h-[90vh] bg-popover border border-border/50 rounded-3xl shadow-2xl shadow-black/20 overflow-hidden flex flex-col ${className}`}
       >
         {!disableGlassEffect && (
           <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">

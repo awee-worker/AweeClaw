@@ -209,7 +209,7 @@ const ReferencesPanel: React.FC = () => {
               <div key={group.filePath}>
                 <button
                   onClick={() => toggleFile(group.filePath)}
-                  className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-xs text-text-secondary hover:bg-surface-hover transition-colors sticky top-0 bg-background/95 backdrop-blur-sm"
+                  className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-xs text-text-secondary hover:bg-surface-hover transition-colors sticky top-0 bg-popover backdrop-blur-sm"
                   title={group.filePath}
                 >
                   {collapsed ? <ChevronRight className="w-3 h-3 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 flex-shrink-0" />}

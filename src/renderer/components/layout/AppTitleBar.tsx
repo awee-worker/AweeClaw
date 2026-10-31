@@ -153,7 +153,7 @@ function RunningTasksIndicator() {
       {open && (
         <div
           ref={panelRef}
-          className="absolute top-full right-0 mt-2 origin-top-right animate-slide-down bg-surface/80 backdrop-blur-2xl border border-border/50 rounded-2xl shadow-2xl shadow-black/20 overflow-hidden z-50 w-[300px]"
+          className="absolute top-full right-0 mt-2 origin-top-right animate-slide-down bg-popover backdrop-blur-2xl border border-border/50 rounded-2xl shadow-2xl shadow-black/20 overflow-hidden z-50 w-[300px]"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-white/[0.02] shrink-0">
             <span className="text-[12px] font-bold text-text-muted uppercase tracking-wider">

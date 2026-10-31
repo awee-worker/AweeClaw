@@ -53,6 +53,7 @@ import { proactiveActionTrigger } from '../modules/proactive/ProactiveActionTrig
 import { proactivePermission } from '../modules/proactive/ProactivePermission'
 import { initFloatingAvatar, syncWakeWordEnabledToAvatar } from '../modules/floating-avatar'
 import { initVrmCompanion } from '../modules/vrm-companion'
+import { handleWallpaperProtocol, registerWallpaperIpc } from '../modules/wallpaper/WallpaperService'
 import { initOverlayModule } from '../modules/overlay'
 import { initLiveModule } from '../modules/live'
 import { initVtsModule } from '../modules/vts'
@@ -240,6 +241,15 @@ function bootModules(firstWin: BrowserWindow): ModuleManifest[] {
     { id: 'OoEditModule', phase: 'boot', init: initOoEditModule },
     // 邮件收件 IPC（IMAP 账户 / 同步 / 邮件读取）
     { id: 'MailIpc', phase: 'boot', init: registerMailIpc },
+    // 界面壁纸：自定义协议代理本地图片 + 导入/列表/删除 IPC
+    {
+      id: 'WallpaperModule',
+      phase: 'boot',
+      init: () => {
+        handleWallpaperProtocol()
+        registerWallpaperIpc()
+      },
+    },
     // 媒体设备权限（麦克风授权查询 / 请求 / 跳转系统设置）
     // 必须早于任何语音入口可被调用：渲染层点语音按钮时会先问权限
     { id: 'MediaPermissionIpc', phase: 'boot', init: initializeMediaPermissionModule },

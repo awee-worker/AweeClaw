@@ -170,7 +170,7 @@ function TranscriptCardImpl(props: TranscriptCardProps) {
             <ChevronDown size={11} className="text-text-muted" />
           </button>
           {speakerMenuOpen && (
-            <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-md border border-border bg-surface py-1 shadow-glass">
+            <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-md border border-border bg-popover py-1 shadow-glass">
               {speakers.map((spk) => (
                 <button
                   key={spk.id}

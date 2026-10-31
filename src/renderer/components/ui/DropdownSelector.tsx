@@ -70,9 +70,9 @@ export const DropdownSelector = memo(function DropdownSelector({
   useEffect(() => { if (!open) setQuery('') }, [open])
 
   const panel = open && (
-    <div ref={panelRef} style={style} className="p-1.5 bg-background/95 backdrop-blur-2xl border border-border rounded-xl shadow-2xl animate-scale-in max-h-64 overflow-auto custom-scrollbar flex flex-col gap-0.5">
+      <div ref={panelRef} style={style} className="p-1.5 bg-popover backdrop-blur-2xl border border-border rounded-xl shadow-2xl animate-scale-in max-h-64 overflow-auto custom-scrollbar flex flex-col gap-0.5">
       {searchable && (
-        <div className="sticky top-0 z-10 p-1 bg-background/95 backdrop-blur-xl">
+          <div className="sticky top-0 z-10 p-1 bg-popover backdrop-blur-xl">
           <div className="relative flex items-center">
             <Search className="absolute left-2 w-3.5 h-3.5 text-text-muted" />
             <input ref={searchRef} type="text" value={query} onChange={e => setQuery(e.target.value)} className="w-full h-7 pl-7 pr-2 text-xs bg-surface/50 border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/40" placeholder="Search..." onKeyDown={e => { if (e.key === 'Escape') setQuery('') }} />

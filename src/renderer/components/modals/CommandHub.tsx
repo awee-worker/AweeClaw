@@ -424,7 +424,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
       <div className="fixed inset-0 bg-background/20 backdrop-blur-sm transition-opacity" />
 
       <div
-        className="relative w-[680px] max-h-[65vh] flex flex-col bg-background/85 backdrop-blur-2xl border border-border/50 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden animate-scale-in ring-1 ring-text-primary/5 origin-top"
+          className="relative w-[680px] max-h-[65vh] flex flex-col bg-popover backdrop-blur-2xl border border-border/50 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden animate-scale-in ring-1 ring-text-primary/5 origin-top"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 px-5 py-4 border-b border-border/40 shrink-0">
@@ -470,7 +470,8 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
           )}
           {Object.entries(groupedCommands).map(([category, cmds]) => (
             <div key={category} className="mb-1.5">
-              <div className="px-5 py-1 text-[10px] font-black uppercase tracking-[0.15em] text-text-muted/50 sticky top-0 bg-background/95 backdrop-blur-md z-10">
+              {/* 吸顶分类头必须实底，否则滚动时下面的条目会从字缝里透出来 */}
+              <div className="px-5 py-1 text-[10px] font-black uppercase tracking-[0.15em] text-text-muted/50 sticky top-0 bg-popover backdrop-blur-md z-10">
                 {t(CATEGORY_LABEL_KEYS[category] || category, language)}
               </div>
               <div className="space-y-0.5 px-1">

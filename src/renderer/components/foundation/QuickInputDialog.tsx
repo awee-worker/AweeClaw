@@ -117,7 +117,9 @@ export function InputPopup<T extends InputPopupItem>({
     return (
         <div
             ref={containerRef}
-            className="fixed z-50 bg-surface border border-border-subtle rounded-lg shadow-xl overflow-hidden animate-fade-in"
+            // 浮层必须自带实底：bg-surface 会乘 --panel-alpha，壁纸模式下仅 15%，
+            // @ 提及与 / 命令的候选名单会和输入框内容叠在一起
+            className="fixed z-50 bg-popover border border-border-subtle rounded-lg shadow-xl overflow-hidden animate-fade-in"
             style={{
                 left: position.x,
                 bottom: `calc(100vh - ${position.y}px + 8px)`,
@@ -127,7 +129,7 @@ export function InputPopup<T extends InputPopupItem>({
             }}
         >
             {header && (
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle bg-surface-hover text-xs text-text-muted">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle bg-popover-hover text-xs text-text-muted">
                     {header}
                 </div>
             )}
@@ -150,7 +152,7 @@ export function InputPopup<T extends InputPopupItem>({
                 )}
             </div>
 
-            <div className="px-3 py-1.5 border-t border-border-subtle bg-surface-hover text-[11px] text-text-muted flex items-center justify-between">
+            <div className="px-3 py-1.5 border-t border-border-subtle bg-popover-hover text-[11px] text-text-muted flex items-center justify-between">
                 <span>↑↓ {t('navigate', language)}</span>
                 <span>↵ {t('selectItem', language)}</span>
                 <span>Esc {t('closeMenu', language)}</span>

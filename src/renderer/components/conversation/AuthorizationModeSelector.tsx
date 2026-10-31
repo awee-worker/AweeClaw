@@ -135,7 +135,7 @@ export default function AuthorizationModeSelector({
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 w-60 bg-surface border border-border rounded-xl shadow-2xl z-50 py-1 animate-scale-in">
+        <div className="absolute bottom-full left-0 mb-2 w-60 bg-popover border border-border rounded-xl shadow-2xl z-50 py-1 animate-scale-in">
           <div className="px-3 py-1.5 text-[11px] font-semibold text-text-muted uppercase tracking-wider opacity-60">
             {isZh ? '授权方式' : 'Authorization'}
           </div>

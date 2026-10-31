@@ -331,7 +331,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
 
                     {/* File Selector Dropdown */}
                     {showFileSelector && (
-                      <div className="absolute right-0 mt-2 w-72 max-h-64 overflow-y-auto bg-surface/95 backdrop-blur-2xl border border-border-subtle rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 custom-scrollbar">
+                      <div className="absolute right-0 mt-2 w-72 max-h-64 overflow-y-auto bg-popover backdrop-blur-2xl border border-border-subtle rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 custom-scrollbar">
                         <div className="p-2 space-y-1">
                           {openFiles.map((file: { path: string; content: string }) => (
                             <button

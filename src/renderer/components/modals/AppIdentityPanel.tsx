@@ -107,7 +107,7 @@ export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
 
   return (
     <OverlayDialog isOpen={true} onClose={onClose} noPadding size="2xl" showCloseButton={false} className="overflow-hidden bg-transparent shadow-2xl">
-      <div className="relative overflow-hidden bg-surface/80 backdrop-blur-3xl border border-border/50 flex flex-col h-[620px] w-full">
+        <div className="relative overflow-hidden bg-popover backdrop-blur-3xl border border-border/50 flex flex-col h-[620px] w-full">
         <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
           style={{ backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)', backgroundSize: '20px 20px' }}
         />

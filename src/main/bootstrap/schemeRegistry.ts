@@ -25,6 +25,7 @@ import { LOCAL_PREVIEW_SCHEME } from './localPreviewProtocol'
 import { SCENARIO_BUNDLE_SCHEME } from './scenarioBundleProtocol'
 import { PLUGIN_BUNDLE_SCHEME } from './pluginBundleProtocol'
 import { VRM_ASSET_SCHEME_DEF } from '../modules/vrm-companion/VrmCompanionStore'
+import { WALLPAPER_SCHEME_DEF } from '../modules/wallpaper/WallpaperService'
 
 /** registerSchemesAsPrivileged 的单条入参类型 */
 export type PrivilegedScheme = Parameters<typeof protocol.registerSchemesAsPrivileged>[0][number]
@@ -35,6 +36,7 @@ const PRIVILEGED_SCHEMES: PrivilegedScheme[] = [
   SCENARIO_BUNDLE_SCHEME,
   PLUGIN_BUNDLE_SCHEME,
   VRM_ASSET_SCHEME_DEF,
+  WALLPAPER_SCHEME_DEF,
 ]
 
 let registered = false

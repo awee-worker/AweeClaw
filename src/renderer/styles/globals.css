@@ -117,6 +117,110 @@ body {
   cursor: var(--cursor-default);
 }
 
+/* ============================================================
+   界面壁纸层
+
+   壁纸由 wallpaper 配置写入根节点的 CSS 变量驱动，组件层不需要
+   感知壁纸是否存在。层叠顺序：壁纸层(0) → #root 内容(1)。
+   用 body 的伪元素承载，避免为每个渲染入口单独插入 DOM 节点。
+   ============================================================ */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  pointer-events: none;
+}
+
+body::before {
+  /* 向外扩一圈：模糊后边缘会向内收缩，不留扩量会露出底色 */
+  inset: -48px;
+  z-index: 0;
+  background-image: var(--wallpaper-image, none);
+  background-position: center center;
+  background-size: var(--wallpaper-size, cover);
+  background-repeat: var(--wallpaper-repeat, no-repeat);
+  filter: blur(var(--wallpaper-blur, 0px));
+  /* 独立合成层：窗口缩放/滚动时不触发整页重绘 */
+  transform: translateZ(0);
+  will-change: filter;
+}
+
+/* 压暗遮罩：用主题背景色混合，亮色主题压白、暗色主题压黑，保持前景对比度 */
+body::after {
+  inset: 0;
+  z-index: 0;
+  background: rgb(var(--background) / var(--wallpaper-dim, 0));
+}
+
+/* 壁纸启用时，body 自身不再铺底色，否则会盖住壁纸层 */
+html[data-wallpaper='on'] body {
+  background-color: transparent;
+  background-image: none;
+}
+
+/* 应用最外层画布在壁纸启用时透明，让壁纸透出；未启用时保持原背景色 */
+html[data-wallpaper='on'] .app-canvas {
+  background-color: transparent;
+}
+
+/* ------------------------------------------------------------
+   大面积容器的额外透出系数
+
+   --panel-alpha 是控件级的不透明度：按钮、输入框、下拉菜单都在用它，
+   保持较高数值才能压住壁纸上的细碎纹理。但会话区、侧边面板、底栏这类
+   铺满整屏的容器如果也用一个数值，壁纸就被整块面板盖住，等于没有壁纸。
+
+   这里给大面积容器再乘一个系数：壁纸开启时降到 25%，关闭时为 1（不透明）。
+   0.72 × 0.25 = 0.18，壁纸透出约八成。
+   ------------------------------------------------------------ */
+:root {
+  --wallpaper-surface-factor: 1;
+}
+
+html[data-wallpaper='on'] {
+  --wallpaper-surface-factor: 0.25;
+}
+
+/* ------------------------------------------------------------
+   会话区底色
+
+   会话区由外框（chat-surface）+ 内容面板（chat-panel-surface）两层组成。
+   壁纸模式下必须只保留一层：外框用与左侧菜单、侧边栏完全相同的声明，
+   内容面板改为透明，否则两层叠加后不透明度相乘，比左侧菜单明显更实。
+
+   --panel-surface 是把「底色 × 控件透明度 × 大面积系数」合成一处的唯一来源，
+   左侧菜单、侧边栏、底栏、会话区外框都引用它，四处必然同值。
+   ------------------------------------------------------------ */
+:root {
+  --panel-surface: rgb(var(--background-secondary));
+}
+
+html[data-wallpaper='on'] {
+  --panel-surface: rgb(
+    var(--background-secondary) /
+    calc(var(--panel-alpha, 1) * var(--wallpaper-surface-factor))
+  );
+}
+
+/* 会话区外框：壁纸模式下与左侧菜单同一条声明 */
+.chat-surface {
+  background-color: rgb(var(--chat-bg));
+}
+
+html[data-wallpaper='on'] .chat-surface {
+  background-color: var(--panel-surface);
+}
+
+/* 会话内容面板：底色由外框提供，这里不再叠第二层 */
+.chat-panel-surface {
+  background-color: transparent;
+}
+
+/* 抽屉 / 弹窗形态是浮层，必须有实底，否则会透出下方页面内容 */
+.chat-surface-solid {
+  background-color: rgb(var(--chat-bg));
+}
+
 /* Apply Custom Cursors Globally & Intercept Tailwind Utilities */
 a,
 button,
@@ -159,6 +263,9 @@ textarea,
   width: 100vw;
   display: flex;
   flex-direction: column;
+  /* 抬起层级，保证内容始终在壁纸层之上 */
+  position: relative;
+  z-index: 1;
 }
 
 /* --- Premium Scrollbars (MacOS Style) --- */

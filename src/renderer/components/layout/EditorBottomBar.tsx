@@ -37,7 +37,8 @@ export default function EditorBottomBar() {
       <style>{`
         .${BRAND.cssPrefix}-editor-bottom-bar {
           height: 26px;
-          background: rgb(var(--background-secondary));
+          /* 大面积容器统一取 --panel-surface，与侧边栏、左侧菜单、会话区同源 */
+          background: var(--panel-surface);
           display: flex;
           align-items: center;
           justify-content: space-between;

@@ -217,7 +217,7 @@ export default function InlineEdit({
 				top: position.y - 40,
 			}}
 		>
-			<div className={`flex items-center gap-2 bg-background/90 backdrop-blur-md border border-border/60 shadow-xl overflow-hidden py-1.5 px-3 transition-all ${state === 'preview' ? 'rounded-md w-auto' : 'rounded-full w-[400px]'
+      <div className={`flex items-center gap-2 bg-popover backdrop-blur-md border border-border/60 shadow-xl overflow-hidden py-1.5 px-3 transition-all ${state === 'preview' ? 'rounded-md w-auto' : 'rounded-full w-[400px]'
 				}`}>
 				{state === 'idle' && (
 					<>

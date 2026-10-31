@@ -86,9 +86,9 @@ function ConfirmPopup({
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 5 }}
                     transition={{ duration: 0.15, ease: 'easeOut' }}
-                    className="absolute top-full right-0 mt-2 p-3 rounded-xl bg-background/80 backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-50 min-w-[260px]"
+                    className="absolute top-full right-0 mt-2 p-3 rounded-xl bg-popover backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-50 min-w-[260px]"
                 >
-                    <div className="absolute -top-1.5 right-6 w-3 h-3 bg-background/80 backdrop-blur-xl border-t border-l border-border/50 transform rotate-45" />
+                    <div className="absolute -top-1.5 right-6 w-3 h-3 bg-popover backdrop-blur-xl border-t border-l border-border/50 transform rotate-45" />
 
                     <p className="text-xs text-text-secondary mb-3 leading-relaxed relative z-10">
                         {t('ai.thiswillcreateanew', language as Language)}

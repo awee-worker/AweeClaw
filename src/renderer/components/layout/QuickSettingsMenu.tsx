@@ -1,19 +1,20 @@
 /**
  * 快速设置子菜单组件
  *
- * 在用户菜单中提供界面语言和界面主题的快速切换。
+ * 在用户菜单中提供界面语言与界面主题的快速切换。
  * - 界面语言：中文 / English
- * - 界面主题：亮色 / 暗色 / 跟随系统 + 4 种颜色
+ * - 界面主题：亮色 / 暗色 / 跟随系统、4 种配色、内置壁纸，末尾通向完整的外观设置
  *
  * 交互：鼠标 hover 父项时向右展开二级菜单，点击选项立即生效。
  * 实现：父项与二级菜单放在同一个 div 内，统一管理 hover，避免移动断开。
  */
 
 import { useState, useCallback } from 'react'
-import { Globe, Sun, Moon, Monitor, Check, ChevronRight, ChevronLeft } from 'lucide-react'
+import { Globe, Sun, Moon, Monitor, Check, ChevronRight, ChevronLeft, Palette } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { themeManager } from '@/renderer/config/themeDefinition'
+import { BUILTIN_WALLPAPERS, DEFAULT_WALLPAPER_TUNING, getBuiltinWallpaper } from '@/renderer/config/wallpaper'
 import { api } from '@renderer/adapters/electronBridge'
 import { t, type Language } from '@renderer/i18n'
 import type { ThemeMode, ThemeColor } from '@store'
@@ -31,15 +32,44 @@ interface QuickSettingsMenuProps {
   language: Language
   onClose: () => void
   direction?: QuickSettingsDirection
+  /**
+   * 打开「设置 → 外观」。
+   *
+   * 二级菜单只放得下最常用的几项，模糊、遮罩、自定义图片这些还得进设置页调；
+   * 由调用方传入而不是在这里直接改 store，是为了复用宿主那套「先收起侧边栏与
+   * 抽屉再打开全屏页」的逻辑，否则设置页会被侧栏压在下面。
+   */
+  onOpenAppearanceSettings?: () => void
 }
 
-/** 二级菜单容器样式：按方向贴在一级菜单的左/右边缘 */
-function subMenuClass(direction: QuickSettingsDirection): string {
+/**
+ * 二级菜单容器样式：按方向贴在一级菜单的左/右边缘
+ *
+ * 底色用 bg-popover（固定 96%）而不是 bg-surface/95：后者会乘 --panel-alpha，
+ * 壁纸模式下只剩一成多不透明度，菜单直接和后面的页面糊在一起，字都看不清。
+ */
+function subMenuClass(direction: QuickSettingsDirection, width = 'w-44'): string {
   const anchor =
     direction === 'left'
       ? 'right-full mr-1 top-0'
       : 'left-full ml-1 top-0'
-  return `absolute ${anchor} w-44 py-1 rounded-xl bg-surface/95 backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-[10000]`
+  return `absolute ${anchor} ${width} py-1 rounded-xl bg-popover backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-[10000]`
+}
+
+/**
+ * 应用主题模式 + 配色并落盘。
+ *
+ * 主题模式切换和壁纸明暗联动都走这一份：两处各拼一遍，迟早会出现
+ * 「换了壁纸但主题没跟着切」或者反过来的错位状态。
+ */
+function applyThemeSelection(mode: ThemeMode, color: ThemeColor): void {
+  const state = useStore.getState()
+  state.setThemeMode(mode)
+  state.setThemeColor(color)
+  const resolved = themeManager.resolveThemeByModeAndColor(mode, color)
+  state.setTheme(resolved.id)
+  themeManager.setTheme(resolved.id)
+  api.settings.set('themeId', resolved.id)
 }
 
 /** 二级菜单指示箭头：方向与展开方向一致 */
@@ -112,35 +142,68 @@ function LanguageSubMenu({ language, onClose, direction = 'right' }: QuickSettin
   )
 }
 
-/** 界面主题快速切换 */
-function ThemeSubMenu({ language, onClose, direction = 'right' }: QuickSettingsMenuProps) {
+/** 界面主题快速切换：明暗模式、配色、壁纸，以及进入完整设置页的入口 */
+function ThemeSubMenu({
+  language,
+  onClose,
+  direction = 'right',
+  onOpenAppearanceSettings,
+}: QuickSettingsMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
+  // 壁纸经 themeManager 直接写 DOM，不会触发 React 重渲染，选中态因此由本地状态承担
+  const [activeWallpaperId, setActiveWallpaperId] = useState(() => {
+    const active = themeManager.getActiveWallpaper()
+    return active?.kind === 'builtin' ? active.id : ''
+  })
 
-  const { themeMode, themeColor, setThemeMode, setThemeColor } = useStore(useShallow(s => ({
+  const { themeMode, themeColor } = useStore(useShallow(s => ({
     themeMode: s.themeMode,
     themeColor: s.themeColor,
-    setThemeMode: s.setThemeMode,
-    setThemeColor: s.setThemeColor,
   })))
 
-  const applyThemeForModeAndColor = useCallback((mode: ThemeMode, color: ThemeColor) => {
-    const resolvedTheme = themeManager.resolveThemeByModeAndColor(mode, color)
-    useStore.getState().setTheme(resolvedTheme.id)
-    themeManager.setTheme(resolvedTheme.id)
-    api.settings.set('themeId', resolvedTheme.id)
-  }, [])
-
   const handleModeSelect = useCallback((mode: ThemeMode) => {
-    setThemeMode(mode)
-    applyThemeForModeAndColor(mode, themeColor)
+    applyThemeSelection(mode, themeColor)
     onClose()
-  }, [setThemeMode, applyThemeForModeAndColor, themeColor, onClose])
+  }, [themeColor, onClose])
 
   const handleColorSelect = useCallback((color: ThemeColor) => {
-    setThemeColor(color)
-    applyThemeForModeAndColor(themeMode, color)
+    applyThemeSelection(themeMode, color)
     onClose()
-  }, [setThemeColor, applyThemeForModeAndColor, themeMode, onClose])
+  }, [themeMode, onClose])
+
+  /**
+   * 切换壁纸
+   *
+   * 与模式、配色不同，这里不关闭菜单：八套壁纸是并列备选，用户通常要来回比两三次
+   * 才定得下来，每点一次就收掉菜单再重新展开，等于不给预览的机会。
+   */
+  const handleWallpaperSelect = useCallback((id: string) => {
+    const builtin = getBuiltinWallpaper(id)
+    if (!builtin) return
+
+    // 壁纸就是页面底色，正文配色必须与它同明暗：亮色壁纸配暗色主题会浅底浅字
+    if (builtin.themeType !== themeManager.getCurrentTheme().type) {
+      applyThemeSelection(builtin.themeType, themeColor)
+    }
+
+    // 沿用当前调参：换壁纸不该把模糊、遮罩、面板不透明度一并重置回默认值
+    const base = themeManager.getActiveWallpaper() ?? DEFAULT_WALLPAPER_TUNING
+    themeManager.setUserWallpaper({
+      id,
+      kind: 'builtin',
+      blur: base.blur,
+      dim: base.dim,
+      panelAlpha: base.panelAlpha,
+      fit: base.fit,
+    })
+    setActiveWallpaperId(id)
+  }, [themeColor])
+
+  /** 恢复为主题自带壁纸 */
+  const handleFollowTheme = useCallback(() => {
+    themeManager.setUserWallpaper(null)
+    setActiveWallpaperId('')
+  }, [])
 
   const modeOptions: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
     { value: 'light', label: t('layout.lighttheme', language), icon: Sun },
@@ -173,7 +236,7 @@ function ThemeSubMenu({ language, onClose, direction = 'right' }: QuickSettingsM
         <SubMenuArrow direction={direction} />
       </div>
       {isOpen && (
-        <div className={subMenuClass(direction)}>
+        <div className={subMenuClass(direction, 'w-60')}>
           {/* 主题模式 */}
           <div className={GROUP_TITLE_CLASS}>
             {t('layout.thememode', language)}
@@ -222,17 +285,84 @@ function ThemeSubMenu({ language, onClose, direction = 'right' }: QuickSettingsM
               )
             })}
           </div>
+
+          <div className="h-px bg-border/50 my-1 mx-2" />
+
+          {/* 界面壁纸：换配色和换壁纸是同一件事的两面，放在主题里最顺手 */}
+          <div className={GROUP_TITLE_CLASS}>
+            {language === 'zh' ? '界面壁纸' : 'Wallpaper'}
+          </div>
+          <button onClick={handleFollowTheme} className={ITEM_CLASS}>
+            <span className="flex-1 text-left">
+              {language === 'zh' ? '跟随主题' : 'Follow theme'}
+            </span>
+            {!activeWallpaperId && (
+              <Check className="w-3.5 h-3.5 text-accent" strokeWidth={2.5} />
+            )}
+          </button>
+          <div className="grid grid-cols-4 gap-1.5 px-2 py-1">
+            {BUILTIN_WALLPAPERS.map(wp => {
+              const isActive = wp.id === activeWallpaperId
+              return (
+                <button
+                  key={wp.id}
+                  onClick={() => handleWallpaperSelect(wp.id)}
+                  title={language === 'zh' ? wp.nameZh : wp.nameEn}
+                  aria-label={language === 'zh' ? wp.nameZh : wp.nameEn}
+                  className={`relative h-9 overflow-hidden rounded-md border transition-all ${
+                    isActive
+                      ? 'border-accent ring-1 ring-accent/40'
+                      : 'border-border/50 hover:border-accent/40'
+                  }`}
+                  style={{
+                    backgroundColor: wp.previewBg,
+                    backgroundImage: wp.css,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }}
+                >
+                  {isActive && (
+                    <Check
+                      className="absolute right-0.5 top-0.5 w-2.5 h-2.5 text-white drop-shadow"
+                      strokeWidth={3}
+                    />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="h-px bg-border/50 my-1 mx-2" />
+
+          {/* 完整设置的入口：模糊、遮罩、自定义图片这些参数塞不进二级菜单 */}
+          <button onClick={onOpenAppearanceSettings} className={ITEM_CLASS}>
+            <Palette className="w-[14px] h-[14px]" strokeWidth={1.5} />
+            <span className="flex-1 text-left">
+              {language === 'zh' ? '自定义主题' : 'Customize theme'}
+            </span>
+            <ChevronRight className="w-3 h-3 text-text-muted" />
+          </button>
         </div>
       )}
     </div>
   )
 }
 
-export function QuickSettingsMenu({ language, onClose, direction = 'right' }: QuickSettingsMenuProps) {
+export function QuickSettingsMenu({
+  language,
+  onClose,
+  direction = 'right',
+  onOpenAppearanceSettings,
+}: QuickSettingsMenuProps) {
   return (
     <>
       <LanguageSubMenu language={language} onClose={onClose} direction={direction} />
-      <ThemeSubMenu language={language} onClose={onClose} direction={direction} />
+      <ThemeSubMenu
+        language={language}
+        onClose={onClose}
+        direction={direction}
+        onOpenAppearanceSettings={onOpenAppearanceSettings}
+      />
     </>
   )
 }

@@ -190,7 +190,9 @@ export default function PluginOverflowPanel({
         bottom: placement.bottom,
         maxHeight: PANEL_MAX_HEIGHT,
       }}
-      className="fixed z-[70] flex flex-col overflow-hidden rounded-xl border border-border/60 bg-surface shadow-2xl"
+      // bg-popover 固定 96%：bg-surface 会乘 --panel-alpha，壁纸模式下只有 15%，
+      // 面板几乎全透，后面的对话内容直接压上来
+      className="fixed z-[70] flex flex-col overflow-hidden rounded-xl border border-border/60 bg-popover shadow-2xl"
     >
       {/* 搜索区 */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border/50 px-3 py-2">

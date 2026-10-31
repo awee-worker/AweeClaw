@@ -136,7 +136,7 @@ function ToolButton({
         {children}
       </button>
       {hovered && (
-        <span className="pointer-events-none absolute right-0 top-full z-30 mt-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-[11px] text-text-secondary shadow-md">
+          <span className="pointer-events-none absolute right-0 top-full z-30 mt-1.5 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-[11px] text-text-secondary shadow-md">
           {label}
         </span>
       )}
@@ -562,7 +562,7 @@ export default function OnlyOfficeEditView({ session }: OnlyOfficeEditViewProps)
 
         {/* 等待选中提示条：点按钮后先等用户在文档里划选 */}
         {awaitingSelection && (
-          <div className="absolute top-2 left-1/2 z-20 -translate-x-1/2 flex items-center gap-2 rounded-full border border-border bg-surface/95 px-3 py-1.5 shadow-sm">
+          <div className="absolute top-2 left-1/2 z-20 -translate-x-1/2 flex items-center gap-2 rounded-full border border-border bg-popover px-3 py-1.5 shadow-sm">
             <Sparkles className="w-3.5 h-3.5 text-accent animate-pulse" />
             <span className="text-[11px] text-text-secondary">
               请在文档中选中要修改的{selectionHint}，选中后自动打开编辑面板
@@ -587,7 +587,7 @@ export default function OnlyOfficeEditView({ session }: OnlyOfficeEditViewProps)
           />
         )}
         {refreshing && (
-          <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface/95 border border-border shadow-sm pointer-events-none">
+          <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-popover border border-border shadow-sm pointer-events-none">
             <Loader2 className="w-3 h-3 text-accent animate-spin" />
             <span className="text-[11px] text-text-muted">正在同步最新内容…</span>
           </div>

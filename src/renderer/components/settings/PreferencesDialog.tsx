@@ -695,7 +695,7 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
     }
 
     return (
-        <OverlayDialog isOpen={true} onClose={handleClose} title="" size="5xl" noPadding showCloseButton={false} className="overflow-hidden bg-background/80 backdrop-blur-2xl border border-border/50 shadow-2xl shadow-black/20 rounded-3xl">
+        <OverlayDialog isOpen={true} onClose={handleClose} title="" size="5xl" noPadding showCloseButton={false} className="overflow-hidden bg-popover backdrop-blur-2xl border border-border/50 shadow-2xl shadow-black/20 rounded-3xl">
             {dialogContent}
         </OverlayDialog>
     )

@@ -188,7 +188,7 @@ export default function CanvasWorkspace() {
                         {t('canvas.addnode', language as Language)}
                     </button>
                     {showAddMenu && (
-                        <div className="absolute top-full left-0 mt-1 bg-surface/95 backdrop-blur-md border border-border/30 rounded-lg shadow-xl py-1 min-w-[140px] z-50">
+                        <div className="absolute top-full left-0 mt-1 bg-popover backdrop-blur-md border border-border/30 rounded-lg shadow-xl py-1 min-w-[140px] z-50">
                             {(Object.entries(NODE_TYPE_CONFIG) as [CanvasNode['type'], typeof NODE_TYPE_CONFIG.note][]).map(([type, config]) => {
                                 const Icon = config.icon
                                 return (

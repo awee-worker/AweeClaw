@@ -96,7 +96,7 @@ export default function ModeSelector({ className = '', disabled = false }: ModeS
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 w-56 bg-surface border border-border rounded-xl shadow-2xl z-50 py-1 animate-scale-in">
+        <div className="absolute bottom-full left-0 mb-2 w-56 bg-popover border border-border rounded-xl shadow-2xl z-50 py-1 animate-scale-in">
           <div className="px-3 py-1.5 text-[10px] font-medium text-text-muted/70">
             {isZh ? '专家设置' : 'Expert settings'}
           </div>

@@ -75,7 +75,7 @@ export function resolveChatFrame(input: ChatFrameInput): ChatFrame {
     }
     return {
       style,
-      className: 'border-l border-border/30 bg-background-chat shadow-[-8px_0_24px_rgba(0,0,0,0.12)] flex flex-col',
+      className: 'border-l border-border/30 chat-surface-solid shadow-[-8px_0_24px_rgba(0,0,0,0.12)] flex flex-col',
       resizable: false,
       needsBackdrop: visible,
       contentKey: CHAT_CONTENT_KEY,
@@ -98,7 +98,7 @@ export function resolveChatFrame(input: ChatFrameInput): ChatFrame {
     }
     return {
       style,
-      className: 'border border-border/40 rounded-xl bg-background-chat shadow-[0_24px_64px_rgba(0,0,0,0.28)] overflow-hidden flex flex-col',
+      className: 'border border-border/40 rounded-xl chat-surface-solid shadow-[0_24px_64px_rgba(0,0,0,0.28)] overflow-hidden flex flex-col',
       resizable: false,
       needsBackdrop: visible,
       contentKey: CHAT_CONTENT_KEY,
@@ -116,8 +116,8 @@ export function resolveChatFrame(input: ChatFrameInput): ChatFrame {
   return {
     style,
     className: flexible
-      ? 'relative min-w-0 border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 bg-background-chat'
-      : 'relative flex-shrink-0 border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 bg-background-chat',
+      ? 'relative min-w-0 border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 chat-surface'
+      : 'relative flex-shrink-0 border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 chat-surface',
     resizable: visible && !flexible,
     needsBackdrop: false,
     contentKey: CHAT_CONTENT_KEY,

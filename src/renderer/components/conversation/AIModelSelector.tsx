@@ -301,7 +301,7 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
         <div
           ref={dropdownRef}
           style={dropdownStyle}
-          className="flex flex-col bg-surface border border-border min-w-[200px] rounded-xl shadow-2xl z-[9999] animate-scale-in overflow-hidden"
+          className="flex flex-col bg-popover border border-border min-w-[200px] rounded-xl shadow-2xl z-[9999] animate-scale-in overflow-hidden"
         >
           {/* Tab 切换栏 */}
           <div className="flex items-center gap-1 px-2 pt-2 pb-1 border-b border-border/50 shrink-0">
@@ -337,7 +337,7 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
           </div>
 
           {/* 搜索框 */}
-          <div className="p-2 border-b border-border/50 sticky top-0 bg-surface z-10 shrink-0">
+          <div className="p-2 border-b border-border/50 sticky top-0 bg-popover z-10 shrink-0">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
               <input

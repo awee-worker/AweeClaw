@@ -120,7 +120,7 @@ function ThreadListItem({
       {menuOpen && createPortal(
         <div
           ref={menuRef}
-          className="fixed py-1 rounded-lg bg-surface/95 backdrop-blur-xl border border-border/50 shadow-lg shadow-black/15 z-[9999] min-w-[120px]"
+                className="fixed py-1 rounded-lg bg-popover backdrop-blur-xl border border-border/50 shadow-lg shadow-black/15 z-[9999] min-w-[120px]"
           style={{ top: menuPos.top, right: menuPos.right }}
         >
           <button

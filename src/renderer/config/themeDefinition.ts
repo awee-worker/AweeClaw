@@ -14,6 +14,13 @@ import { logger } from '@toolkit/LogEngine'
 import { StorageService } from '@shared/toolkit/StorageService'
 import { BRAND } from '@shared/brand'
 import type { ThemeColor } from '@/renderer/state/slices/themeSlice'
+import {
+  applyWallpaper,
+  DEFAULT_WALLPAPER_TUNING,
+  isValidWallpaperConfig,
+  normalizeWallpaperConfig,
+  type WallpaperConfig,
+} from './wallpaper'
 
 /** 颜色 → ColorTheme.id 映射 */
 export const THEME_COLOR_MAP: Record<ThemeColor, string> = {
@@ -21,14 +28,26 @@ export const THEME_COLOR_MAP: Record<ThemeColor, string> = {
   purple: 'purple',
   red:    'lobster-red',
   green:  'forest-green',
+  cyan:   'aurora',
+  pink:   'sakura',
+  gray:   'graphite',
 }
 
 /** 颜色选项元数据（用于UI展示） */
-export const THEME_COLOR_OPTIONS: { value: ThemeColor; labelZh: string; labelEn: string }[] = [
-  { value: 'blue',   labelZh: '天蓝', labelEn: 'Blue' },
-  { value: 'purple', labelZh: '紫色', labelEn: 'Purple' },
-  { value: 'red',    labelZh: '暖橙', labelEn: 'Red' },
-  { value: 'green',  labelZh: '翠绿', labelEn: 'Green' },
+export const THEME_COLOR_OPTIONS: {
+  value: ThemeColor
+  labelZh: string
+  labelEn: string
+  descZh: string
+  descEn: string
+}[] = [
+  { value: 'blue',   labelZh: '天蓝',     labelEn: 'Blue',     descZh: '清透冷静，适合长时间编码', descEn: 'Crisp and calm for long coding sessions' },
+  { value: 'purple', labelZh: '紫罗兰',   labelEn: 'Violet',   descZh: '沉静内敛，夜间阅读友好',   descEn: 'Deep and quiet, easy on the eyes at night' },
+  { value: 'red',    labelZh: '暖橙',     labelEn: 'Amber',    descZh: '温暖有活力，适合创作场景', descEn: 'Warm and energetic for creative work' },
+  { value: 'green',  labelZh: '翠绿',     labelEn: 'Green',    descZh: '自然柔和，阅读舒适',       descEn: 'Natural and soft for comfortable reading' },
+  { value: 'cyan',   labelZh: '极光青',   labelEn: 'Aurora',   descZh: '冷调极光，配深空壁纸',     descEn: 'Cool aurora tones with a deep-sky wallpaper' },
+  { value: 'pink',   labelZh: '樱花粉',   labelEn: 'Sakura',   descZh: '柔和粉调，配樱雾壁纸',     descEn: 'Soft pink tones with a blossom-haze wallpaper' },
+  { value: 'gray',   labelZh: '石墨灰',   labelEn: 'Graphite', descZh: '中性克制，配网格壁纸',     descEn: 'Neutral and restrained with a grid wallpaper' },
 ]
 
 export interface ThemeColors {
@@ -77,6 +96,8 @@ export interface Theme {
   monacoTheme: string
   /** 关联的颜色主题ID（运行时主题由 ColorTheme + type 派生） */
   colorThemeId?: string
+  /** 主题自带壁纸（用户未自定义背景时生效） */
+  wallpaper?: WallpaperConfig | null
 }
 
 /**
@@ -96,6 +117,11 @@ export interface ColorTheme {
   lightColors: ThemeColors
   /** 暗色配色 */
   darkColors: ThemeColors
+  /**
+   * 主题自带的推荐壁纸（内置壁纸 id），可为空表示纯色主题。
+   * 老的四套配色保持纯色，新增主题才挂壁纸，避免升级后界面突变。
+   */
+  wallpapers?: { light?: string; dark?: string }
 }
 
 // 辅助函数：将 HEX 转换为 RGB 格式 "r g b"
@@ -111,6 +137,7 @@ function hexToRgb(hex: string): string {
  * @param type 亮色/暗色
  */
 function deriveTheme(colorTheme: ColorTheme, type: 'light' | 'dark'): Theme {
+  const wallpaperId = colorTheme.wallpapers?.[type]
   return {
     id: `${colorTheme.id}-${type}`,
     name: `${colorTheme.name} ${type === 'light' ? 'Light' : 'Dark'}`,
@@ -118,6 +145,9 @@ function deriveTheme(colorTheme: ColorTheme, type: 'light' | 'dark'): Theme {
     colors: type === 'light' ? colorTheme.lightColors : colorTheme.darkColors,
     monacoTheme: type === 'light' ? colorTheme.monacoTheme.light : colorTheme.monacoTheme.dark,
     colorThemeId: colorTheme.id,
+    wallpaper: wallpaperId
+      ? normalizeWallpaperConfig({ id: wallpaperId, kind: 'builtin', ...DEFAULT_WALLPAPER_TUNING })
+      : null,
   }
 }
 
@@ -390,7 +420,6 @@ export const builtinColorThemes: ColorTheme[] = [
       textSecondary: '184 212 194',      // #b8d4c2
       textMuted: '138 176 152',          // #8ab098
       textInverted: '10 21 16',          // #0a1510
-
       border: '27 46 36',                // #1b2e24
       borderSubtle: '20 34 26',          // #14221a
       borderActive: '16 185 129',        // #10b981
@@ -400,6 +429,222 @@ export const builtinColorThemes: ColorTheme[] = [
       accentActive: '4 120 87',          // #047857
       accentForeground: '5 18 10',       // #05120a
       accentSubtle: '110 231 183',       // #6ee7b7
+
+      statusSuccess: '52 211 153',       // #34d399
+      statusWarning: '251 191 36',       // #fbbf24
+      statusError: '248 113 113',        // #f87171
+      statusInfo: '96 165 250'           // #60a5fa
+    }
+  },
+
+  // ========== 极光青 (Aurora) ==========
+  // 冷调青蓝，暗色下配「极光」壁纸，亮色下配「晨雾」
+  {
+    id: 'aurora',
+    name: 'Aurora',
+    color: 'cyan',
+    monacoTheme: { light: 'vs', dark: 'vs-dark' },
+    wallpapers: { light: 'dawn-mist', dark: 'aurora' },
+    lightColors: {
+      background: '246 252 254',          // #f6fcfe
+      backgroundSecondary: '236 249 253', // #ecf9fd
+      backgroundTertiary: '224 244 250',  // #e0f4fa
+      chatBg: '243 251 254',              // #f3fbfe
+
+      surface: '255 255 255',             // #ffffff
+      surfaceHover: '237 250 254',        // #edfafe
+      surfaceActive: '224 244 251',       // #e0f4fb
+      surfaceMuted: '209 235 245',        // #d1ebf5
+
+      textPrimary: '8 34 45',             // #08222d
+      textSecondary: '38 72 86',          // #264856
+      textMuted: '86 116 130',            // #567482
+      textInverted: '255 255 255',        // #ffffff
+
+      border: '200 228 238',              // #c8e4ee
+      borderSubtle: '222 241 248',        // #def1f8
+      borderActive: '8 145 178',          // #0891b2
+
+      accent: '8 145 178',                // #0891b2  - 青蓝
+      accentHover: '14 116 144',          // #0e7490
+      accentActive: '21 94 117',          // #155e75
+      accentForeground: '255 255 255',    // #ffffff
+      accentSubtle: '103 232 249',        // #67e8f9
+
+      statusSuccess: '22 163 74',         // #16a34a
+      statusWarning: '217 119 6',         // #d97706
+      statusError: '220 38 38',           // #dc2626
+      statusInfo: '37 99 235'             // #2563eb
+    },
+    darkColors: {
+      background: '6 20 28',             // #06141c
+      backgroundSecondary: '10 30 40',   // #0a1e28
+      backgroundTertiary: '14 40 53',    // #0e2835
+      chatBg: '8 25 34',                 // #081922
+
+      surface: '10 30 40',               // #0a1e28
+      surfaceHover: '18 44 57',          // #122c39
+      surfaceActive: '25 58 73',         // #193a49
+      surfaceMuted: '38 76 92',          // #264c5c
+
+      textPrimary: '226 246 250',        // #e2f6fa
+      textSecondary: '170 210 220',      // #aad2dc
+      textMuted: '120 165 178',          // #78a5b2
+      textInverted: '6 20 28',           // #06141c
+
+      border: '18 44 57',                // #122c39
+      borderSubtle: '14 34 44',          // #0e222c
+      borderActive: '34 211 238',        // #22d3ee
+
+      accent: '34 211 238',              // #22d3ee  - 亮青
+      accentHover: '8 145 178',          // #0891b2
+      accentActive: '14 116 144',        // #0e7490
+      accentForeground: '4 20 26',       // #04141a
+      accentSubtle: '103 232 249',       // #67e8f9
+
+      statusSuccess: '52 211 153',       // #34d399
+      statusWarning: '251 191 36',       // #fbbf24
+      statusError: '248 113 113',        // #f87171
+      statusInfo: '96 165 250'           // #60a5fa
+    }
+  },
+
+  // ========== 樱花粉 (Sakura) ==========
+  // 柔和粉调，亮色配「樱雾」，暗色配「星海」
+  {
+    id: 'sakura',
+    name: 'Sakura',
+    color: 'pink',
+    monacoTheme: { light: 'vs', dark: 'vs-dark' },
+    wallpapers: { light: 'sakura-haze', dark: 'starfield' },
+    lightColors: {
+      background: '254 249 251',          // #fef9fb
+      backgroundSecondary: '253 242 246', // #fdf2f6
+      backgroundTertiary: '251 233 240',  // #fbe9f0
+      chatBg: '254 246 249',              // #fef6f9
+
+      surface: '255 255 255',             // #ffffff
+      surfaceHover: '253 244 248',        // #fdf4f8
+      surfaceActive: '250 235 242',       // #faebf2
+      surfaceMuted: '244 220 232',        // #f4dce8
+
+      textPrimary: '48 18 33',            // #301221
+      textSecondary: '92 48 68',          // #5c3044
+      textMuted: '140 100 118',           // #8c6476
+      textInverted: '255 255 255',        // #ffffff
+
+      border: '240 216 227',              // #f0d8e3
+      borderSubtle: '248 232 238',        // #f8e8ee
+      borderActive: '219 39 119',         // #db2777
+
+      accent: '219 39 119',               // #db2777  - 玫红
+      accentHover: '190 24 93',           // #be185d
+      accentActive: '157 23 77',          // #9d174d
+      accentForeground: '255 255 255',    // #ffffff
+      accentSubtle: '249 168 212',        // #f9a8d4
+
+      statusSuccess: '22 163 74',         // #16a34a
+      statusWarning: '217 119 6',         // #d97706
+      statusError: '220 38 38',           // #dc2626
+      statusInfo: '37 99 235'             // #2563eb
+    },
+    darkColors: {
+      background: '26 16 22',            // #1a1016
+      backgroundSecondary: '36 22 30',   // #24161e
+      backgroundTertiary: '48 30 40',    // #301e28
+      chatBg: '30 18 25',                // #1e1219
+
+      surface: '36 22 30',               // #24161e
+      surfaceHover: '52 33 43',          // #34212b
+      surfaceActive: '66 43 56',         // #422b38
+      surfaceMuted: '84 58 72',          // #543a48
+
+      textPrimary: '250 233 240',        // #fae9f0
+      textSecondary: '219 186 201',      // #dbbac9
+      textMuted: '180 140 158',          // #b48c9e
+      textInverted: '26 16 22',          // #1a1016
+
+      border: '52 33 43',                // #34212b
+      borderSubtle: '40 25 32',          // #281920
+      borderActive: '244 114 182',       // #f472b6
+
+      accent: '244 114 182',             // #f472b6  - 亮樱粉
+      accentHover: '236 72 153',         // #ec4899
+      accentActive: '219 39 119',        // #db2777
+      accentForeground: '40 8 24',       // #280818
+      accentSubtle: '251 207 232',       // #fbcfe8
+
+      statusSuccess: '52 211 153',       // #34d399
+      statusWarning: '251 191 36',       // #fbbf24
+      statusError: '248 113 113',        // #f87171
+      statusInfo: '96 165 250'           // #60a5fa
+    }
+  },
+
+  // ========== 石墨灰 (Graphite) ==========
+  // 中性无彩，亮色配「宣纸」，暗色配「夜幕网格」
+  {
+    id: 'graphite',
+    name: 'Graphite',
+    color: 'gray',
+    monacoTheme: { light: 'vs', dark: 'vs-dark' },
+    wallpapers: { light: 'paper-grain', dark: 'midnight-grid' },
+    lightColors: {
+      background: '247 247 248',          // #f7f7f8
+      backgroundSecondary: '241 241 243', // #f1f1f3
+      backgroundTertiary: '232 232 235',  // #e8e8eb
+      chatBg: '245 245 247',              // #f5f5f7
+
+      surface: '255 255 255',             // #ffffff
+      surfaceHover: '242 242 244',        // #f2f2f4
+      surfaceActive: '232 232 235',       // #e8e8eb
+      surfaceMuted: '219 219 224',        // #dbdbe0
+
+      textPrimary: '24 24 27',            // #18181b
+      textSecondary: '63 63 70',          // #3f3f46
+      textMuted: '113 113 122',           // #71717a
+      textInverted: '255 255 255',        // #ffffff
+
+      border: '212 212 216',              // #d4d4d8
+      borderSubtle: '228 228 231',        // #e4e4e7
+      borderActive: '82 82 91',           // #52525b
+
+      accent: '63 63 70',                 // #3f3f46  - 石墨深灰
+      accentHover: '39 39 42',            // #27272a
+      accentActive: '24 24 27',           // #18181b
+      accentForeground: '250 250 250',    // #fafafa
+      accentSubtle: '161 161 170',        // #a1a1aa
+
+      statusSuccess: '22 163 74',         // #16a34a
+      statusWarning: '217 119 6',         // #d97706
+      statusError: '220 38 38',           // #dc2626
+      statusInfo: '37 99 235'             // #2563eb
+    },
+    darkColors: {
+      background: '14 14 16',            // #0e0e10
+      backgroundSecondary: '22 22 25',   // #161619
+      backgroundTertiary: '30 30 34',    // #1e1e22
+      chatBg: '18 18 21',                // #121215
+
+      surface: '22 22 25',               // #161619
+      surfaceHover: '34 34 38',          // #222226
+      surfaceActive: '45 45 50',         // #2d2d32
+      surfaceMuted: '63 63 69',          // #3f3f45
+
+      textPrimary: '244 244 245',        // #f4f4f5
+      textSecondary: '190 190 196',      // #bebec4
+      textMuted: '148 148 156',          // #94949c
+      textInverted: '14 14 16',          // #0e0e10
+
+      border: '39 39 43',                // #27272b
+      borderSubtle: '28 28 31',          // #1c1c1f
+      borderActive: '113 113 122',       // #71717a
+
+      accent: '161 161 170',             // #a1a1aa  - 中性浅灰
+      accentHover: '212 212 216',        // #d4d4d8
+      accentActive: '228 228 231',       // #e4e4e7
+      accentForeground: '24 24 27',      // #18181b
+      accentSubtle: '113 113 122',       // #71717a
 
       statusSuccess: '52 211 153',       // #34d399
       statusWarning: '251 191 36',       // #fbbf24
@@ -421,6 +666,10 @@ export const builtinThemes: Theme[] = builtinColorThemes.flatMap(ct => [
 // 主题管理器
 const LOCAL_STORAGE_THEME_KEY = BRAND.storageKeys.themeId
 const LOCAL_STORAGE_CUSTOM_THEMES_KEY = `${BRAND.cssPrefix}-custom-themes`
+/** 用户自定义壁纸的本地快照（启动时先行应用，避免壁纸闪一下才出来） */
+const LOCAL_STORAGE_WALLPAPER_KEY = `${BRAND.cssPrefix}-wallpaper`
+/** 用户自定义壁纸在配置文件中的 key */
+const CONFIG_KEY_WALLPAPER = 'wallpaper'
 
 /** 校验自定义主题的 colors 字段是否完整且为字符串 */
 function isValidTheme(t: unknown): t is Theme {
@@ -439,18 +688,25 @@ class ThemeManager {
   private initialized = false
   private mediaQuery: MediaQueryList | null = null
   private mediaQueryHandler: ((e: MediaQueryListEvent) => void) | null = null
-  /** 应用级系统主题监听：与设置面板的监听相互独立，面板关闭不得影响它 */
+  /** 应用级系统主题监听：与设置面板的监听互相独立，面板关闭不得影响它 */
   private appMediaQuery: MediaQueryList | null = null
   private appMediaQueryHandler: ((e: MediaQueryListEvent) => void) | null = null
+  /** 用户自定义壁纸；为 null 时回落到主题自带壁纸 */
+  private userWallpaper: WallpaperConfig | null = null
 
   constructor() {
     // 从 StorageService 快速恢复主题（同步，避免闪烁）
     try {
       const savedThemeId = StorageService.get<string>(LOCAL_STORAGE_THEME_KEY)
       const savedCustomThemes = StorageService.get<Theme[]>(LOCAL_STORAGE_CUSTOM_THEMES_KEY)
+      const savedWallpaper = StorageService.get<WallpaperConfig>(LOCAL_STORAGE_WALLPAPER_KEY)
 
       if (savedCustomThemes && Array.isArray(savedCustomThemes)) {
         this.customThemes = savedCustomThemes.filter(isValidTheme)
+      }
+
+      if (isValidWallpaperConfig(savedWallpaper)) {
+        this.userWallpaper = normalizeWallpaperConfig(savedWallpaper)
       }
 
       if (savedThemeId) {
@@ -469,15 +725,24 @@ class ThemeManager {
   async loadFromConfig() {
     try {
       // 并行读取主题配置
-      const [savedThemeId, savedCustomThemes] = await Promise.all([
+      const [savedThemeId, savedCustomThemes, savedWallpaper] = await Promise.all([
         api.settings.get('themeId'),
         api.settings.get('customThemes'),
+        api.settings.get(CONFIG_KEY_WALLPAPER),
       ])
 
       if (savedCustomThemes && Array.isArray(savedCustomThemes)) {
         const validThemes = savedCustomThemes.filter(isValidTheme)
         this.customThemes = validThemes
         StorageService.set(LOCAL_STORAGE_CUSTOM_THEMES_KEY, validThemes)
+      }
+
+      if (isValidWallpaperConfig(savedWallpaper)) {
+        this.userWallpaper = normalizeWallpaperConfig(savedWallpaper)
+        StorageService.set(LOCAL_STORAGE_WALLPAPER_KEY, this.userWallpaper)
+      } else if (savedWallpaper === null) {
+        // 用户主动清除过壁纸，保持 null
+        this.userWallpaper = null
       }
 
       if (savedThemeId && typeof savedThemeId === 'string') {
@@ -729,7 +994,64 @@ class ThemeManager {
     // 更新 color-scheme
     root.style.colorScheme = theme.type
 
+    // 壁纸：用户自定义优先，否则用主题自带
+    applyWallpaper(this.userWallpaper ?? theme.wallpaper ?? null)
+
     logger.settings.info('[Theme] Applied theme:', theme.name)
+  }
+
+  /** 取当前生效的壁纸配置（用户自定义优先） */
+  getActiveWallpaper(): WallpaperConfig | null {
+    return this.userWallpaper ?? this.currentTheme.wallpaper ?? null
+  }
+
+  /** 取用户自定义壁纸（不含主题自带） */
+  getUserWallpaper(): WallpaperConfig | null {
+    return this.userWallpaper
+  }
+
+  /**
+   * 仅预览壁纸效果，不写任何配置。
+   * 设置面板拖动滑块时高频调用，落盘由调用方节流。
+   */
+  previewWallpaper(config: WallpaperConfig | null): void {
+    applyWallpaper(config ?? this.currentTheme.wallpaper ?? null)
+  }
+
+  /**
+   * 应用其他窗口广播过来的壁纸配置。
+   *
+   * 与 setUserWallpaper 的区别：这里不回写配置文件，否则会触发
+   * settings:set → settings:changed 广播 → 本方法再次执行的循环。
+   */
+  syncWallpaperFromExternal(config: WallpaperConfig | null): void {
+    this.userWallpaper = config ? normalizeWallpaperConfig(config) : null
+    applyWallpaper(this.getActiveWallpaper())
+    try {
+      StorageService.set(LOCAL_STORAGE_WALLPAPER_KEY, this.userWallpaper)
+    } catch (e) {
+      // 忽略本地快照写入失败
+    }
+  }
+
+  /**
+   * 设置用户自定义壁纸；传 null 表示恢复为主题自带壁纸。
+   * 立即应用并持久化，不需要重建主题。
+   */
+  setUserWallpaper(config: WallpaperConfig | null): void {
+    this.userWallpaper = config ? normalizeWallpaperConfig(config) : null
+    applyWallpaper(this.getActiveWallpaper())
+
+    try {
+      StorageService.set(LOCAL_STORAGE_WALLPAPER_KEY, this.userWallpaper)
+    } catch (e) {
+      // 忽略本地快照写入失败
+    }
+    try {
+      api.settings.set(CONFIG_KEY_WALLPAPER, this.userWallpaper)
+    } catch (e) {
+      logger.settings.error('Failed to save wallpaper to config:', e)
+    }
   }
 
   subscribe(callback: (theme: Theme) => void): () => void {

@@ -77,7 +77,7 @@ function ShellMenuComponent({
           <Plus className="w-4 h-4" />
         </ActionButton>
         {open && (
-          <div ref={menuRef} className="absolute top-full left-0 mt-1 w-64 bg-surface border border-border rounded-xl shadow-2xl py-1 flex flex-col max-h-96 overflow-y-auto z-[100] animate-scale-in origin-top-left">
+          <div ref={menuRef} className="absolute top-full left-0 mt-1 w-64 bg-popover border border-border rounded-xl shadow-2xl py-1 flex flex-col max-h-96 overflow-y-auto z-[100] animate-scale-in origin-top-left">
             <div className="px-3 py-2 text-[12px] uppercase tracking-wide text-text-muted">Shell</div>
             {availableShells.map((shell) => (
               <button

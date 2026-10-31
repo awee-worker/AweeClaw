@@ -366,7 +366,7 @@ export default function EditorContextMenu({ x, y, editor, onClose }: EditorConte
     return (
       <div
         ref={menuRef}
-        className="fixed z-[100] no-drag bg-surface border border-border-subtle rounded-lg shadow-xl py-1 min-w-[280px] max-w-[400px] select-none"
+        className="fixed z-[100] no-drag bg-popover border border-border-subtle rounded-lg shadow-xl py-1 min-w-[280px] max-w-[400px] select-none"
         style={{ left: position.x, top: position.y }}
       >
         <div className="px-3 py-2 text-sm font-medium text-text-primary border-b border-border-subtle flex items-center justify-between">
@@ -405,7 +405,7 @@ export default function EditorContextMenu({ x, y, editor, onClose }: EditorConte
   return (
     <div
       ref={menuRef}
-      className="fixed z-[100] no-drag bg-surface border border-border-subtle rounded-lg shadow-xl py-1 min-w-[220px] select-none"
+        className="fixed z-[100] no-drag bg-popover border border-border-subtle rounded-lg shadow-xl py-1 min-w-[220px] select-none"
       style={{ left: position.x, top: position.y }}
     >
       {loading && (

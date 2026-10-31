@@ -86,7 +86,11 @@ export default function Sidebar() {
     if (!body) return null
 
     return (
-        <div className="w-full bg-background border-r border-border/30 shadow-[1px_0_15px_rgba(0,0,0,0.03)] flex flex-col h-full animate-fade-in relative z-10">
+        <div
+          // 大面积容器统一取 --panel-surface，与左侧菜单、底栏、会话区同源
+          style={{ backgroundColor: 'var(--panel-surface)' }}
+          className="w-full border-r border-border/30 shadow-[1px_0_15px_rgba(0,0,0,0.03)] flex flex-col h-full animate-fade-in relative z-10"
+        >
             {body}
         </div>
     )

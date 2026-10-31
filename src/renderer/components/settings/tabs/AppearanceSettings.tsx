@@ -1,14 +1,22 @@
-import { Layout, Check, Sun, Moon, Monitor, Globe, Type, MessageSquare, Code2, Circle } from 'lucide-react'
+import { Layout, Check, Sun, Moon, Monitor, Globe, Type, MessageSquare, Code2, Circle, Image, RotateCcw, Upload, Link2 } from 'lucide-react'
 import { useStore, type ThemeName, type ThemeMode, type ThemeColor } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { themeManager, THEME_COLOR_OPTIONS } from '@/renderer/config/themeDefinition'
+import {
+    BUILTIN_WALLPAPERS,
+    DEFAULT_WALLPAPER_TUNING,
+    getBuiltinWallpaper,
+    resolveWallpaperImage,
+    type WallpaperConfig,
+    type WallpaperFit,
+} from '@/renderer/config/wallpaper'
 import { api } from '../../../adapters/electronBridge'
 import { EditorSettingsProps } from '../preferencesTypes'
 import { LANGUAGES } from '../preferencesTypes'
 import { ToggleSwitch } from '@components/ui'
 import type { AgentConfig } from '@shared/configuration/configTypes'
 
-import { useEffect, useCallback, useMemo } from 'react'
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react'
 import { t, type Language } from '@renderer/i18n'
 import { FloatingAvatarSettings } from './FloatingAvatarSettings'
 
@@ -50,12 +58,61 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
         setSystemPrefersDark: s.setSystemPrefersDark,
     })))
 
+    // ============================================
+    // 壁纸状态
+    // ============================================
+    // userWallpaper：用户自定义背景，null 表示跟随主题自带壁纸
+    const [userWallpaper, setUserWallpaperState] = useState<WallpaperConfig | null>(
+        () => themeManager.getUserWallpaper()
+    )
+    const [activeWallpaper, setActiveWallpaperState] = useState<WallpaperConfig | null>(
+        () => themeManager.getActiveWallpaper()
+    )
+    // 折叠与图片来源面板
+    // 图片来源面板的展开状态
+    const [imageUrlDraft, setImageUrlDraft] = useState('')
+    const [wallpaperError, setWallpaperError] = useState('')
+    // 滑块拖动期间只改 DOM，停止输入后再落盘，避免 IPC 写入风暴
+    const saveWallpaperTimer = useRef<number | null>(null)
+
+    const syncWallpaperState = useCallback(() => {
+        setUserWallpaperState(themeManager.getUserWallpaper())
+        setActiveWallpaperState(themeManager.getActiveWallpaper())
+    }, [])
+
+    /** 落盘：设置用户自定义壁纸，传 null 恢复主题自带 */
+    const commitWallpaper = useCallback((next: WallpaperConfig | null) => {
+        themeManager.setUserWallpaper(next)
+        syncWallpaperState()
+    }, [syncWallpaperState])
+
+    /** 预览：只改变 DOM，不写配置 */
+    const previewWallpaper = useCallback((next: WallpaperConfig | null) => {
+        themeManager.previewWallpaper(next)
+        setUserWallpaperState(next)
+    }, [])
+
+    /** 滑块变更：先预览，停止操作 320ms 后落盘 */
+    const scheduleWallpaperSave = useCallback((next: WallpaperConfig) => {
+        previewWallpaper(next)
+        if (saveWallpaperTimer.current) window.clearTimeout(saveWallpaperTimer.current)
+        saveWallpaperTimer.current = window.setTimeout(() => {
+            commitWallpaper(next)
+        }, 320)
+    }, [previewWallpaper, commitWallpaper])
+
+    useEffect(() => () => {
+        if (saveWallpaperTimer.current) window.clearTimeout(saveWallpaperTimer.current)
+    }, [])
+
     // 根据模式 + 颜色应用主题
     const applyThemeForModeAndColor = useCallback((mode: ThemeMode, color: ThemeColor) => {
         const resolvedTheme = themeManager.resolveThemeByModeAndColor(mode, color)
         setTheme(resolvedTheme.id as ThemeName)
         themeManager.setTheme(resolvedTheme.id)
         api.settings.set('themeId', resolvedTheme.id)
+        // 主题自带的推荐壁纸会跟着换，需要同步面板上的壁纸状态
+        setActiveWallpaperState(themeManager.getActiveWallpaper())
     }, [setTheme])
 
     const handleThemeModeChange = useCallback((mode: ThemeMode) => {
@@ -67,6 +124,68 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
         setThemeColor(color)
         applyThemeForModeAndColor(themeMode, color)
     }, [setThemeColor, applyThemeForModeAndColor, themeMode])
+
+    // ============================================
+    // 壁纸操作
+    // ============================================
+
+    /** 用当前生效壁纸的调参作为基底，避免切换图片时把用户调好的模糊度重置 */
+    const wallpaperTuningBase = useCallback(() => ({
+        blur: activeWallpaper?.blur ?? DEFAULT_WALLPAPER_TUNING.blur,
+        dim: activeWallpaper?.dim ?? DEFAULT_WALLPAPER_TUNING.dim,
+        panelAlpha: activeWallpaper?.panelAlpha ?? DEFAULT_WALLPAPER_TUNING.panelAlpha,
+        fit: activeWallpaper?.fit ?? DEFAULT_WALLPAPER_TUNING.fit,
+    }), [activeWallpaper])
+
+    const handlePickBuiltin = useCallback((id: string) => {
+        setWallpaperError('')
+        // 壁纸就是页面底色，正文配色必须与它同明暗：选了亮色壁纸却停在暗色主题，
+        // 浅底配浅字，正文与按钮几乎不可见。这里直接跟着壁纸切一次明暗，
+        // 用户不必再回上面手动切换。
+        const builtin = getBuiltinWallpaper(id)
+        if (builtin && builtin.themeType !== themeManager.getCurrentTheme().type) {
+            setThemeMode(builtin.themeType)
+            applyThemeForModeAndColor(builtin.themeType, themeColor)
+        }
+        commitWallpaper({ id, kind: 'builtin', ...wallpaperTuningBase() })
+    }, [commitWallpaper, wallpaperTuningBase, applyThemeForModeAndColor, themeColor, setThemeMode])
+
+    const handlePickLocalImage = useCallback(async () => {
+        setWallpaperError('')
+        const result = await api.wallpaper.pick()
+        if (!result.ok) {
+            if (result.reason === 'too-large') {
+                setWallpaperError(language === 'zh' ? '图片超过 30MB，请压缩后再试' : 'Image exceeds 30MB, please compress it first')
+            } else if (result.reason === 'unsupported-format') {
+                setWallpaperError(language === 'zh' ? '仅支持 PNG / JPG / WEBP / BMP' : 'Only PNG / JPG / WEBP / BMP are supported')
+            } else if (result.reason !== 'canceled') {
+                setWallpaperError(language === 'zh' ? '图片导入失败，请重试' : 'Failed to import the image')
+            }
+            return
+        }
+        commitWallpaper({ id: 'custom', kind: 'image', url: result.url, ...wallpaperTuningBase() })
+    }, [language, commitWallpaper, wallpaperTuningBase])
+
+    const handleApplyImageUrl = useCallback(() => {
+        const url = imageUrlDraft.trim()
+        if (!/^https?:\/\//i.test(url)) {
+            setWallpaperError(language === 'zh' ? '请输入以 http(s) 开头的图片地址' : 'Enter an image URL starting with http(s)')
+            return
+        }
+        setWallpaperError('')
+        commitWallpaper({ id: 'custom', kind: 'image', url, ...wallpaperTuningBase() })
+        setImageUrlDraft('')
+    }, [imageUrlDraft, language, commitWallpaper, wallpaperTuningBase])
+
+    const handleResetWallpaper = useCallback(() => {
+        setWallpaperError('')
+        commitWallpaper(null)
+    }, [commitWallpaper])
+
+    const handleWallpaperTuning = useCallback((patch: Partial<WallpaperConfig>) => {
+        if (!activeWallpaper) return
+        scheduleWallpaperSave({ ...activeWallpaper, ...patch })
+    }, [activeWallpaper, scheduleWallpaperSave])
 
     useEffect(() => {
         if (themeMode !== 'system') {
@@ -94,6 +213,15 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
         : themeMode
 
     const labelClass = "text-xs font-semibold text-text-secondary uppercase tracking-wider ml-1 mb-2 block"
+
+    /** 当前生效壁纸的可读名称，用于状态行 */
+    const activeWallpaperName = useMemo(() => {
+        if (!activeWallpaper) return language === 'zh' ? '无背景图' : 'No wallpaper'
+        if (activeWallpaper.kind === 'image') return language === 'zh' ? '自定义图片' : 'Custom image'
+        const builtin = BUILTIN_WALLPAPERS.find(wp => wp.id === activeWallpaper.id)
+        if (!builtin) return activeWallpaper.id
+        return language === 'zh' ? builtin.nameZh : builtin.nameEn
+    }, [activeWallpaper, language])
 
     // ============================================
     // 字体大小档位定义
@@ -281,33 +409,70 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                     )}
                 </div>
 
-                {/* 主题颜色：4种颜色，根据当前生效类型显示对应预览 */}
+                {/* 预设主题：每套配色一张卡，带壁纸的主题直接铺壁纸预览 */}
                 <div>
                     <label className={labelClass}>
                         {t('settings.themecolor', language as Language)}
                     </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                         {THEME_COLOR_OPTIONS.map(colorOpt => {
                             const theme = themeManager.resolveThemeByModeAndColor(effectiveType, colorOpt.value)
                             const isActive = themeColor === colorOpt.value
                             const themeVars = theme.colors
+                            const wallpaperImage = resolveWallpaperImage(theme.wallpaper)
                             return (
                                 <button
                                     key={colorOpt.value}
                                     onClick={() => handleThemeColorChange(colorOpt.value)}
-                                    className={`group relative p-3 rounded-xl border text-left transition-all duration-300 overflow-hidden ${
+                                    className={`group relative rounded-xl border text-left transition-all duration-300 overflow-hidden ${
                                         isActive
-                                            ? 'border-accent bg-accent/5 shadow-lg shadow-accent/5 ring-1 ring-accent/20'
-                                            : 'border-border/50 bg-surface/30 hover:border-accent/30 hover:bg-surface/50'
+                                            ? 'border-accent shadow-lg shadow-accent/10 ring-1 ring-accent/20'
+                                            : 'border-border/50 hover:border-accent/30 hover:bg-surface/40'
                                     }`}
                                 >
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="flex gap-2">
-                                            <div className="w-7 h-7 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.background})` }} title="Background" />
-                                            <div className="w-7 h-7 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.accent})` }} title="Accent" />
+                                    <div
+                                        className="relative h-20 w-full"
+                                        style={{
+                                            backgroundColor: `rgb(${themeVars.background})`,
+                                            backgroundImage: wallpaperImage || undefined,
+                                            backgroundSize: 'cover',
+                                            backgroundPosition: 'center',
+                                        }}
+                                    >
+                                        <div
+                                            className="absolute left-0 top-0 h-full w-9"
+                                            style={{ backgroundColor: `rgb(${themeVars.surface})` }}
+                                        />
+                                        <div
+                                            className="absolute left-12 top-4 h-1.5 w-10 rounded-full"
+                                            style={{ backgroundColor: `rgb(${themeVars.accent})` }}
+                                        />
+                                        <div
+                                            className="absolute left-12 top-8 h-1 w-16 rounded-full"
+                                            style={{ backgroundColor: `rgb(${themeVars.textMuted})`, opacity: 0.55 }}
+                                        />
+                                        <div
+                                            className="absolute left-12 top-11 h-1 w-12 rounded-full"
+                                            style={{ backgroundColor: `rgb(${themeVars.textMuted})`, opacity: 0.35 }}
+                                        />
+                                        {wallpaperImage && (
+                                            <span className="absolute right-2 top-2 flex items-center gap-1 rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                                                <Image className="w-2.5 h-2.5" />
+                                                {language === 'zh' ? '壁纸' : 'Wallpaper'}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-start justify-between gap-2 px-3 py-2.5">
+                                        <div className="min-w-0">
+                                            <span className="block text-xs font-semibold text-text-primary truncate">
+                                                {language === 'zh' ? colorOpt.labelZh : colorOpt.labelEn}
+                                            </span>
+                                            <span className="mt-0.5 block text-[10px] leading-tight text-text-muted">
+                                                {language === 'zh' ? colorOpt.descZh : colorOpt.descEn}
+                                            </span>
                                         </div>
                                         {isActive && (
-                                            <div className="bg-accent rounded-full p-0.5 shadow-lg shadow-accent/20">
+                                            <div className="shrink-0 bg-accent rounded-full p-0.5 shadow-lg shadow-accent/20">
                                                 <Check className="w-3 h-3 text-white" strokeWidth={3} />
                                             </div>
                                         )}
@@ -317,6 +482,197 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                         })}
                     </div>
                 </div>
+            </section>
+
+            {/* 背景壁纸：内置壁纸 / 本地图片 / 图片地址 / 显示参数 */}
+            <section className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                    <div className="p-1.5 rounded-md bg-accent/10">
+                        <Image className="w-4 h-4 text-accent" />
+                    </div>
+                    <h4 className="text-sm font-bold text-text-primary tracking-tight">
+                        {language === 'zh' ? '背景壁纸' : 'Background Wallpaper'}
+                    </h4>
+                </div>
+
+                <p className="text-sm text-text-muted mb-4">
+                    {language === 'zh'
+                        ? '给界面铺一层背景图。内置壁纸与主题配套，也可以换成自己的图片；模糊和遮罩用来保住文字的可读性。'
+                        : 'Put an image behind the interface. Built-in wallpapers ship with themes; you can also use your own. Blur and dim keep text readable.'}
+                </p>
+
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-surface/30 px-4 py-3 mb-4">
+                    <div className="min-w-0">
+                        <div className="truncate text-xs font-semibold text-text-primary">
+                            {activeWallpaperName}
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-text-muted">
+                            {userWallpaper
+                                ? (language === 'zh' ? '自定义背景' : 'Custom background')
+                                : (language === 'zh' ? '跟随主题推荐' : 'Following theme')}
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleResetWallpaper}
+                        disabled={!userWallpaper}
+                        className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                            userWallpaper
+                                ? 'border-border/60 text-text-secondary hover:border-accent/40 hover:text-accent'
+                                : 'cursor-not-allowed border-border/30 text-text-muted/50'
+                        }`}
+                    >
+                        <RotateCcw className="w-3 h-3" />
+                        {language === 'zh' ? '恢复主题默认' : 'Reset to theme'}
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2 mb-4">
+                    {BUILTIN_WALLPAPERS.map(wp => {
+                        const isActive = activeWallpaper?.kind === 'builtin' && activeWallpaper.id === wp.id
+                        return (
+                            <button
+                                key={wp.id}
+                                onClick={() => handlePickBuiltin(wp.id)}
+                                className={`relative overflow-hidden rounded-lg border transition-all ${
+                                    isActive
+                                        ? 'border-accent ring-1 ring-accent/30'
+                                        : 'border-border/50 hover:border-accent/40'
+                                }`}
+                            >
+                                <div
+                                    className="h-12 w-full"
+                                    style={{
+                                        backgroundColor: wp.previewBg,
+                                        backgroundImage: wp.css,
+                                        backgroundSize: 'cover',
+                                        backgroundPosition: 'center',
+                                    }}
+                                />
+                                <span className="block truncate px-1.5 py-1 text-[10px] text-text-secondary">
+                                    {language === 'zh' ? wp.nameZh : wp.nameEn}
+                                </span>
+                                {isActive && (
+                                    <span className="absolute right-1 top-1 rounded-full bg-accent p-0.5">
+                                        <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+                                    </span>
+                                )}
+                            </button>
+                        )
+                    })}
+                </div>
+
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <button
+                        onClick={handlePickLocalImage}
+                        className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-surface/40 px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent/40 hover:text-accent"
+                    >
+                        <Upload className="w-3.5 h-3.5" />
+                        {language === 'zh' ? '上传本地图片' : 'Upload image'}
+                    </button>
+                    <div className="flex min-w-[220px] flex-1 items-center gap-2">
+                        <input
+                            value={imageUrlDraft}
+                            onChange={e => setImageUrlDraft(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') handleApplyImageUrl() }}
+                            placeholder="https://example.com/wallpaper.jpg"
+                            className="min-w-0 flex-1 rounded-lg border border-input-border bg-input px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted/60"
+                        />
+                        <button
+                            onClick={handleApplyImageUrl}
+                            className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-surface/40 px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent/40 hover:text-accent"
+                        >
+                            <Link2 className="w-3.5 h-3.5" />
+                            {language === 'zh' ? '应用' : 'Apply'}
+                        </button>
+                    </div>
+                </div>
+
+                {wallpaperError && (
+                    <p className="mb-3 text-[11px] text-status-error">{wallpaperError}</p>
+                )}
+
+                {activeWallpaper && (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <label className="block">
+                            <div className="mb-1 flex items-center justify-between text-[11px] text-text-secondary">
+                                <span>{language === 'zh' ? '模糊' : 'Blur'}</span>
+                                <span className="tabular-nums text-text-muted">{Math.round(activeWallpaper.blur)}px</span>
+                            </div>
+                            <input
+                                type="range"
+                                min={0}
+                                max={24}
+                                step={1}
+                                value={activeWallpaper.blur}
+                                onChange={e => handleWallpaperTuning({ blur: Number(e.target.value) })}
+                                style={{ accentColor: 'rgb(var(--accent))' }}
+                                className="w-full"
+                            />
+                        </label>
+
+                        <label className="block">
+                            <div className="mb-1 flex items-center justify-between text-[11px] text-text-secondary">
+                                <span>{language === 'zh' ? '遮罩' : 'Dim'}</span>
+                                <span className="tabular-nums text-text-muted">{Math.round(activeWallpaper.dim * 100)}%</span>
+                            </div>
+                            <input
+                                type="range"
+                                min={0}
+                                max={0.8}
+                                step={0.02}
+                                value={activeWallpaper.dim}
+                                onChange={e => handleWallpaperTuning({ dim: Number(e.target.value) })}
+                                style={{ accentColor: 'rgb(var(--accent))' }}
+                                className="w-full"
+                            />
+                        </label>
+
+                        <label className="block">
+                            <div className="mb-1 flex items-center justify-between text-[11px] text-text-secondary">
+                                <span>{language === 'zh' ? '面板不透明度' : 'Panel opacity'}</span>
+                                <span className="tabular-nums text-text-muted">{Math.round(activeWallpaper.panelAlpha * 100)}%</span>
+                            </div>
+                            <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={activeWallpaper.panelAlpha}
+                                onChange={e => handleWallpaperTuning({ panelAlpha: Number(e.target.value) })}
+                                style={{ accentColor: 'rgb(var(--accent))' }}
+                                className="w-full"
+                            />
+                        </label>
+
+                        <div className="sm:col-span-2">
+                            <div className="mb-1.5 text-[11px] text-text-secondary">
+                                {language === 'zh' ? '铺放方式' : 'Fit'}
+                            </div>
+                            <div className="flex gap-2">
+                                {([
+                                    { value: 'cover' as WallpaperFit, zh: '铺满', en: 'Cover' },
+                                    { value: 'contain' as WallpaperFit, zh: '完整显示', en: 'Contain' },
+                                    { value: 'repeat' as WallpaperFit, zh: '平铺', en: 'Repeat' },
+                                ]).map(opt => {
+                                    const isFitActive = activeWallpaper.fit === opt.value
+                                    return (
+                                        <button
+                                            key={opt.value}
+                                            onClick={() => handleWallpaperTuning({ fit: opt.value })}
+                                            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                                isFitActive
+                                                    ? 'border-accent bg-accent/10 text-accent'
+                                                    : 'border-border/60 text-text-secondary hover:border-accent/40'
+                                            }`}
+                                        >
+                                            {language === 'zh' ? opt.zh : opt.en}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </section>
 
             <section className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">

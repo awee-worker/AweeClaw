@@ -981,7 +981,7 @@ const ChatInput = memo(function ChatInput({
                     transition={{ duration: 0.18, ease: 'easeOut' }}
                     className="absolute right-0 bottom-full mb-3 z-30 pointer-events-none"
                   >
-                    <div className="flex flex-col items-end gap-1 px-3 py-2 rounded-xl bg-surface/95 backdrop-blur-xl border border-border/50 shadow-xl max-w-[240px]">
+                    <div className="flex flex-col items-end gap-1 px-3 py-2 rounded-xl bg-popover backdrop-blur-xl border border-border/50 shadow-xl max-w-[240px]">
                       <div className={`text-xs font-medium whitespace-nowrap ${voiceDialogStyle.text}`}>
                         {voiceDialogLabel}
                       </div>
@@ -1137,7 +1137,7 @@ const ChatInput = memo(function ChatInput({
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 8, scale: 0.96 }}
                         transition={{ duration: 0.16, ease: 'easeOut' }}
-                        className="absolute bottom-full right-0 mb-2 z-40 w-[236px] rounded-xl bg-surface/95 backdrop-blur-xl border border-border/50 shadow-2xl p-3 origin-bottom-right"
+                        className="absolute bottom-full right-0 mb-2 z-40 w-[236px] rounded-xl bg-popover backdrop-blur-xl border border-border/50 shadow-2xl p-3 origin-bottom-right"
                       >
                         <div className="text-[13px] font-semibold text-text-primary">
                           {lt('语音对话', 'Voice chat')}

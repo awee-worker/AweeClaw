@@ -332,7 +332,9 @@ function SubSkillSelectMenu({
       role="listbox"
       aria-label={isZh ? '选择选项' : 'Choose an option'}
       style={{ left: placement.left, bottom: placement.bottom, minWidth: placement.minWidth }}
-      className="fixed z-[70] flex flex-col gap-0.5 rounded-xl border border-border/60 bg-surface p-1 shadow-2xl"
+      // bg-popover 固定 96%：这个下拉挂在输入框上方，壁纸模式下若跟着
+      // --panel-alpha 变透明，菜单会和输入框、对话内容叠在一起。
+      className="fixed z-[70] flex flex-col gap-0.5 rounded-xl border border-border/60 bg-popover p-1 shadow-2xl"
     >
       {options.map(option => {
         const label = isZh ? option.label : (option.labelEn || option.label)

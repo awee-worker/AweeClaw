@@ -15,7 +15,9 @@ import { globalDecide as globalConfirm } from '@components/foundation/DecisionOv
 import { useStore } from '@store'
 import type { SecurityPolicyPanel } from '@shared/configuration/configTypes'
 import { initializeAgentStore } from '@intelligence/state/IntelligenceStore'
-import { themeManager } from '../config/themeDefinition'
+import { builtinThemes, themeManager } from '../config/themeDefinition'
+import { isValidWallpaperConfig, normalizeWallpaperConfig } from '../config/wallpaper'
+import type { ThemeColor } from '@store'
 import { keybindingService } from './keybindingAdapter'
 import { registerCoreCommands } from '../config/commandRegistry'
 import { diagnosticStore } from './diagnosticRepository'
@@ -509,10 +511,19 @@ export function registerSettingsSync(): () => void {
         }
         break
       case 'themeColor':
-        if (value === 'blue' || value === 'purple' || value === 'red' || value === 'green') {
+        if (isThemeColor(value)) {
           store.setThemeColor(value)
         }
         break
+      // 壁纸变更：只应用到当前窗口，不再回写配置（回写会触发 settings:changed 广播形成循环）
+      case 'wallpaper': {
+        const next = isValidWallpaperConfig(value) ? normalizeWallpaperConfig(value) : null
+        const current = themeManager.getUserWallpaper()
+        if (JSON.stringify(current) !== JSON.stringify(next)) {
+          themeManager.syncWallpaperFromExternal(next)
+        }
+        break
+      }
       case 'enableFileLogging':
         if (typeof value === 'boolean') {
           store.set('enableFileLogging', value)
@@ -539,8 +550,14 @@ function isAutoApproveSettings(value: unknown): value is Partial<import('@store'
 }
 
 function isThemeName(value: unknown): value is import('@store').ThemeName {
-  const validThemes = ['aweeclaw-light', 'purple-light', 'lobster-red-light', 'forest-green-light', 'aweeclaw-dark', 'purple-dark', 'lobster-red-dark', 'forest-green-dark']
-  return typeof value === 'string' && validThemes.includes(value)
+  if (typeof value !== 'string') return false
+  return builtinThemes.some(theme => theme.id === value) || value.startsWith('custom-')
+}
+
+const THEME_COLORS: ThemeColor[] = ['blue', 'purple', 'red', 'green', 'cyan', 'pink', 'gray']
+
+function isThemeColor(value: unknown): value is ThemeColor {
+  return typeof value === 'string' && (THEME_COLORS as string[]).includes(value)
 }
 
 export function registerAppErrorListener(): () => void {

@@ -315,7 +315,7 @@ export default function EnvironmentSetupDialog({ onComplete }: EnvironmentSetupD
           initial={{ scale: 0.95, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          className="w-full max-w-md mx-4 rounded-2xl bg-surface border border-border shadow-2xl overflow-hidden"
+          className="w-full max-w-md mx-4 rounded-2xl bg-popover border border-border shadow-2xl overflow-hidden"
         >
           {/* 标题区 */}
           <div className="px-6 pt-6 pb-4">

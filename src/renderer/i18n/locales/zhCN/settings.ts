@@ -86,7 +86,7 @@ export const zh = {
   'settings.appearancetheme': '外观主题',
   'settings.thememode': '主题模式',
   'settings.themecolor': '主题颜色',
-  'settings.themecolorHint': '亮色和暗色主题均支持选择4种颜色，切换模式时颜色保持不变',
+  'settings.themecolorHint': '每套配色都同时提供亮色与暗色，切换模式时配色保持不变',
   'settings.systempreferencethemeappliedautomatically': '当前系统偏好：{preference}，已自动应用对应主题',
   'settings.typographylayout': '排版与布局',
   'settings.fontsize': '字体大小',

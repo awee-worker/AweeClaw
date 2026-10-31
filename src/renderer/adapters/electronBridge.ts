@@ -880,6 +880,9 @@ function createGroupedAPI() {
     // VRM 桌面伴侣（preload 已暴露为嵌套对象，直接透传）
     vrmCompanion: raw.vrmCompanion,
 
+    // 界面壁纸（preload 已暴露为嵌套对象，直接透传）
+    wallpaper: raw.wallpaper,
+
     // 主动式助手（preload 已暴露为嵌套对象，直接透传）
     proactive: raw.proactive,
 

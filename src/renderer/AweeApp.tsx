@@ -530,7 +530,7 @@ function AppContent() {
   }), [sidebarHidden, layoutConfig, isWideModePanel, scenarioWelcomeComponent])
 
   return (
-    <div className="h-screen flex bg-background overflow-hidden text-text-primary selection:bg-accent/30 selection:text-white relative">
+    <div className="app-canvas h-screen flex bg-background overflow-hidden text-text-primary selection:bg-accent/30 selection:text-white relative">
 
       {showWorkflow && (
         <div className="fixed inset-0 z-[100] bg-background animate-in fade-in duration-200">

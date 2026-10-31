@@ -332,7 +332,7 @@ export default function CommandPalette({
       <div
         className="
           relative w-[640px] max-h-[60vh] flex flex-col
-          bg-background/80 backdrop-blur-2xl
+          bg-popover backdrop-blur-2xl
           border border-border/50 rounded-2xl shadow-2xl shadow-black/40
           overflow-hidden animate-scale-in ring-1 ring-text-primary/5 origin-top
         "
@@ -371,7 +371,8 @@ export default function CommandPalette({
         >
           {Array.from(groupedCommands.entries()).map(([category, cmds]) => (
             <div key={category} className="mb-2">
-              <div className="px-6 py-1.5 text-[11px] font-bold uppercase tracking-widest text-text-muted/85 sticky top-0 bg-background/95 backdrop-blur-md z-10 mb-1">
+              {/* 吸顶分类头必须是实底，否则滚动时下层的命令行会从字缝里透出来 */}
+              <div className="px-6 py-1.5 text-[11px] font-bold uppercase tracking-widest text-text-muted/85 sticky top-0 bg-popover backdrop-blur-md z-10 mb-1">
                 {category}
               </div>
               <div className="space-y-0.5 px-2">
@@ -406,14 +407,14 @@ export default function CommandPalette({
         </div>
 
         {/* 底部提示 */}
-        <div className="px-6 py-2.5 bg-surface/30 border-t border-border/40 text-[11px] font-medium text-text-muted/90 flex justify-between items-center backdrop-blur-md shrink-0">
+        <div className="px-6 py-2.5 bg-popover-hover border-t border-border/40 text-[11px] font-medium text-text-muted/90 flex justify-between items-center backdrop-blur-md shrink-0">
           <div className="flex gap-4">
             <span className="flex items-center gap-1.5">
               <div className="flex gap-0.5">
-                <kbd className="font-sans bg-surface/80 border border-border/50 px-1 py-0.5 rounded min-w-[16px] text-center shadow-sm">
+                <kbd className="font-sans bg-popover-hover border border-border/50 px-1 py-0.5 rounded min-w-[16px] text-center shadow-sm">
                   ↑
                 </kbd>
-                <kbd className="font-sans bg-surface/80 border border-border/50 px-1 py-0.5 rounded min-w-[16px] text-center shadow-sm">
+                <kbd className="font-sans bg-popover-hover border border-border/50 px-1 py-0.5 rounded min-w-[16px] text-center shadow-sm">
                   ↓
                 </kbd>
               </div>

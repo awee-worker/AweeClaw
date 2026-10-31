@@ -101,7 +101,7 @@ export function LiveDanmuPanel() {
   return (
     <div className="pointer-events-none fixed right-4 bottom-16 z-50 flex flex-col items-end">
       <div
-        className={`pointer-events-auto flex flex-col overflow-hidden rounded-2xl border border-border/50 bg-surface/90 shadow-lg backdrop-blur transition-all duration-200 ${
+        className={`pointer-events-auto flex flex-col overflow-hidden rounded-2xl border border-border/50 bg-popover shadow-lg backdrop-blur transition-all duration-200 ${
           expanded ? 'max-h-80 w-80' : 'h-9 w-9'
         }`}
       >

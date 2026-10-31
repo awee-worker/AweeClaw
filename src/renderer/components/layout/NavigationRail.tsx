@@ -360,7 +360,8 @@ export default function NavigationRail() {
         .${p}-nav-rail {
           height: 100%;
           width: ${NAV_RAIL_WIDTH_EXPANDED}px;
-          background: rgb(var(--background-secondary));
+          /* 大面积容器统一取 --panel-surface，与侧边栏、底栏、会话区同源 */
+          background: var(--panel-surface);
           border-right: 1px solid rgba(var(--border), 0.2);
           /* 右侧投影：增强与内容区的层次分离，使用半透明黑避免硬边 */
           box-shadow: 4px 0 12px -4px rgba(0, 0, 0, 0.08), 1px 0 4px -2px rgba(0, 0, 0, 0.08);

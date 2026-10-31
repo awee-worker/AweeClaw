@@ -145,7 +145,7 @@ export function ContextualItemPicker<T extends PickerOption>({
     return (
         <div
             ref={containerRef}
-            className="fixed z-50 bg-surface/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden animate-fade-in"
+            className="fixed z-50 bg-popover backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden animate-fade-in"
             style={{
                 left: position.x,
                 bottom: `calc(100vh - ${position.y}px + 8px)`,

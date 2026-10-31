@@ -10,8 +10,10 @@ export type ThemeName = string
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
-/** 主题颜色（与模式独立，亮/暗色均支持这4种颜色） */
-export type ThemeColor = 'blue' | 'purple' | 'red' | 'green'
+/** 主题颜色（与模式独立，亮/暗色均支持这些颜色） */
+export type ThemeColor = 'blue' | 'purple' | 'red' | 'green' | 'cyan' | 'pink' | 'gray'
+
+const THEME_COLOR_VALUES: ThemeColor[] = ['blue', 'purple', 'red', 'green', 'cyan', 'pink', 'gray']
 
 export interface ThemeSlice {
     currentTheme: ThemeName;
@@ -47,7 +49,7 @@ function getInitialThemeMode(): ThemeMode {
 
 function getInitialThemeColor(): ThemeColor {
     const saved = StorageService.get<string>(STORAGE_KEY_THEME_COLOR)
-    if (saved === 'blue' || saved === 'purple' || saved === 'red' || saved === 'green') return saved
+    if (saved && (THEME_COLOR_VALUES as string[]).includes(saved)) return saved as ThemeColor
     return 'blue'
 }
 

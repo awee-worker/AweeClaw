@@ -152,7 +152,7 @@ export default function AppMenuBar() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 2, scale: 0.98 }}
                 transition={{ duration: 0.12, ease: 'easeOut' }}
-                className="absolute top-full left-0 mt-1 min-w-[220px] p-1 rounded-lg bg-background/95 backdrop-blur-xl border border-border shadow-2xl shadow-black/40 z-[100]"
+                className="absolute top-full left-0 mt-1 min-w-[220px] p-1 rounded-lg bg-popover backdrop-blur-xl border border-border shadow-2xl shadow-black/40 z-[100]"
               >
                 {menu.entries.map((entry, index) => (
                   <MenuEntryRow key={index} entry={entry} onRun={runEntry} />
@@ -181,7 +181,7 @@ function MenuEntryRow({ entry, onRun }: { entry: AppMenuEntry; onRun: (entry: Ap
           <ChevronRight className="w-3.5 h-3.5 opacity-60" />
         </div>
         <div className="hidden group-hover/sub:block absolute left-full top-0 pl-1 z-[101]">
-          <div className="min-w-[200px] max-h-[340px] overflow-y-auto custom-scrollbar p-1 rounded-lg bg-background/95 backdrop-blur-xl border border-border shadow-2xl shadow-black/40">
+          <div className="min-w-[200px] max-h-[340px] overflow-y-auto custom-scrollbar p-1 rounded-lg bg-popover backdrop-blur-xl border border-border shadow-2xl shadow-black/40">
             {entry.children.map((child, index) => (
               <MenuEntryRow key={index} entry={child} onRun={onRun} />
             ))}

@@ -183,7 +183,7 @@ function MeetingToolbarImpl(props: MeetingToolbarProps) {
         )}
 
         {speakerMenuOpen && (
-          <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-md border border-border bg-surface py-1 shadow-glass">
+          <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-md border border-border bg-popover py-1 shadow-glass">
             {/* 提示文字 */}
             <div className="border-b border-border-subtle px-3 py-1.5 text-xs text-text-muted">
               选择当前发言人（说话前切换）

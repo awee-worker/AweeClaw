@@ -230,7 +230,7 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
         <div
           ref={popupRef}
           style={{ width: POPUP_WIDTH, maxHeight: POPUP_MAX_HEIGHT, overflowY: 'auto' }}
-          className="fixed z-[9999] bg-surface border border-border rounded-xl shadow-2xl py-1 animate-scale-in"
+          className="fixed z-[9999] bg-popover border border-border rounded-xl shadow-2xl py-1 animate-scale-in"
         >
           <div className="px-3 pt-2 pb-2">
             <div className="relative">

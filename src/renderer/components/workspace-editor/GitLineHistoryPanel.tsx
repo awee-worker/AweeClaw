@@ -205,7 +205,7 @@ export function GitLineHistoryPanel({ request, onRestore, onClose }: GitLineHist
   const truncated = previewLines.length > MAX_PREVIEW_LINES
 
   return (
-    <div className="fixed right-6 top-20 z-[90] w-[460px] max-h-[72vh] flex flex-col rounded-xl border border-border-subtle bg-surface shadow-xl no-drag">
+      <div className="fixed right-6 top-20 z-[90] w-[460px] max-h-[72vh] flex flex-col rounded-xl border border-border-subtle bg-popover shadow-xl no-drag">
       {/* Header */}
       <header className="flex items-start justify-between gap-3 px-4 py-3 border-b border-border-subtle">
         <div className="min-w-0">

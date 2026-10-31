@@ -1161,7 +1161,7 @@ export default function ChatPanel() {
 
   return (
     <div
-      className={`absolute inset-0 overflow-hidden bg-background-chat transition-colors ${
+      className={`absolute inset-0 overflow-hidden chat-panel-surface transition-colors ${
         attachmentManager.isDragging ? 'bg-accent/5 ring-2 ring-inset ring-accent' : ''
       }`}
       onDragOver={attachmentManager.handleDragOver}
@@ -1260,7 +1260,7 @@ export default function ChatPanel() {
                             initial={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.15 }}
-                            className="absolute inset-0 z-30 bg-background-chat pointer-events-auto"
+                            className="absolute inset-0 z-30 chat-panel-surface pointer-events-auto"
                           >
                             <ChatMessagesSkeleton />
                           </motion.div>

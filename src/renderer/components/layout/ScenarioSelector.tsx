@@ -87,7 +87,7 @@ export default function ScenarioSelector({ className = '', onOpenMarketplace }: 
             </button>
 
             {isOpen && (
-                <div className="absolute left-0 top-full mt-1.5 w-48 rounded-xl bg-surface border border-border/30 shadow-xl z-50 overflow-hidden">
+                <div className="absolute left-0 top-full mt-1.5 w-48 rounded-xl bg-popover border border-border/30 shadow-xl z-50 overflow-hidden">
                     <div className="max-h-80 overflow-y-auto p-1.5 space-y-0.5">
                         {/* 已安装的场景 */}
                         {scenarios.map((scenario) => {

@@ -159,7 +159,7 @@ export default function AgentSelector({ language, onOpenSettings, onNewAgentCrea
           <div
             ref={popupRef}
             style={{ left: popupPos.left, bottom: popupPos.bottom, width: POPUP_WIDTH }}
-            className="fixed z-[9999] bg-surface border border-border rounded-xl shadow-2xl py-1 animate-scale-in"
+            className="fixed z-[9999] bg-popover border border-border rounded-xl shadow-2xl py-1 animate-scale-in"
           >
             {/* 已创建的智能体列表 */}
             {enabledProfiles.length > 0 ? (

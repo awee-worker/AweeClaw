@@ -86,7 +86,7 @@ export const en = {
   'settings.appearancetheme': 'Appearance Theme',
   'settings.thememode': 'Theme Mode',
   'settings.themecolor': 'Theme Color',
-  'settings.themecolorHint': 'Both light and dark themes support 4 colors; color persists when switching modes',
+  'settings.themecolorHint': 'Every accent includes both light and dark variants; the choice persists across modes',
   'settings.systempreferencethemeappliedautomatically': 'System preference: {preference}, theme applied automatically',
   'settings.typographylayout': 'Typography & Layout',
   'settings.fontsize': 'Font Size',

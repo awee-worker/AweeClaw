@@ -119,7 +119,7 @@ export default function ProjectSelector() {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 4, scale: 0.98 }}
                         transition={{ duration: 0.15, ease: "easeOut" }}
-                        className="absolute top-full left-0 mt-2 w-72 p-1.5 bg-background/80 backdrop-blur-xl border border-border rounded-xl shadow-2xl shadow-black/50 z-50 overflow-hidden"
+                        className="absolute top-full left-0 mt-2 w-72 p-1.5 bg-popover backdrop-blur-xl border border-border rounded-xl shadow-2xl shadow-black/50 z-50 overflow-hidden"
                     >
                         <div className="space-y-0.5">
                             <MenuItem

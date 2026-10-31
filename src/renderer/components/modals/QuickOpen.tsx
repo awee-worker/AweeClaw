@@ -302,7 +302,7 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
       <div
         className="
             relative w-[640px] max-h-[65vh] flex flex-col
-            bg-background/80 backdrop-blur-2xl 
+            bg-popover backdrop-blur-2xl 
             border border-border/50 rounded-2xl shadow-2xl shadow-black/40
             overflow-hidden animate-scale-in origin-top ring-1 ring-text-primary/5
         "
