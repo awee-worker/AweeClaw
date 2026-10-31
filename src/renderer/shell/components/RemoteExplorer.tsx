@@ -136,7 +136,6 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
     try {
       await api.remoteShell.writeText(server, selectedFilePath, selectedFileContent)
       setDirty(false)
-      toast.success(t('shell.remotefilesaved', language as Language))
       await loadEntries(currentPath)
     } catch (saveError) {
       toast.error(t('shell.failedtosaveremotefile', language as Language), saveError instanceof Error ? saveError.message : String(saveError))

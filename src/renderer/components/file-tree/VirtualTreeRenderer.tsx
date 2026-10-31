@@ -1079,8 +1079,9 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     if (!selectedPaths || selectedPaths.length === 0) return
 
     const result = await api.file.importIntoWorkspace(selectedPaths, targetDir)
-    if (result.success) {
-      toast.success(t('file-tree.successfullyimporteditems', language as Language, { count: selectedPaths.length }))
+    const failedCount = result.results?.filter(r => !r.success).length || 0
+    // 全部成功时静默处理，只在出现失败时提示
+    if (result.success && failedCount === 0) {
       if (node.item.isDirectory) {
         expandFolder(targetDir)
       }
@@ -1089,8 +1090,11 @@ export const VirtualFileTree = memo(function VirtualFileTree({
         refreshRoot: targetDir === workspacePath,
       })
     } else {
-      const failedCount = result.results?.filter(r => !r.success).length || selectedPaths.length
-      toast.error(t('file-tree.failedtoimportitems', language as Language, { failedCount }))
+      toast.error(
+        t('file-tree.failedtoimportitems', language as Language, {
+          failedCount: failedCount || selectedPaths.length,
+        }),
+      )
       if (result.results?.some(r => r.success)) {
         onRefresh({
           affectedPaths: [targetDir],

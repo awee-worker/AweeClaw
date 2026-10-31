@@ -499,12 +499,16 @@ export function ExplorerView() {
     if (!selectedPaths || selectedPaths.length === 0) return
 
     const result = await api.file.importIntoWorkspace(selectedPaths, targetDir)
-    if (result.success) {
-      toast.success(t('explorer.successfullyimporteditems', language as Language, { length: selectedPaths.length }))
+    const failedCount = result.results?.filter(r => !r.success).length || 0
+    // 全部成功时静默处理，只在出现失败时提示
+    if (result.success && failedCount === 0) {
       await refreshFiles({ affectedPaths: [targetDir], refreshRoot: targetDir === workspacePath })
     } else {
-      const failedCount = result.results?.filter(r => !r.success).length || selectedPaths.length
-      toast.error(t('explorer.failedtoimportitems', language as Language, { failedCount: failedCount }))
+      toast.error(
+        t('explorer.failedtoimportitems', language as Language, {
+          failedCount: failedCount || selectedPaths.length,
+        }),
+      )
       if (targetDir === workspacePath || result.results?.some(r => r.success)) {
         await refreshFiles({ affectedPaths: [targetDir], refreshRoot: targetDir === workspacePath })
       }

@@ -173,17 +173,11 @@ export function useFileSave() {
     [language],
   )
 
-  /** 批量保存：并行写盘，只提示一次结果 */
+  /** 批量保存：并行写盘，只在失败时提示 */
   const saveFiles = useCallback(
     async (paths: string[]): Promise<string[]> => {
       const failed = await persistFiles(paths)
-      const savedCount = paths.length - failed.length
 
-      if (savedCount > 0) {
-        toast.success(
-          t('app.savedfiles', language as Language, { count: String(savedCount) }),
-        )
-      }
       if (failed.length > 0) {
         toast.error(
           t('app.savefailed', language as Language),

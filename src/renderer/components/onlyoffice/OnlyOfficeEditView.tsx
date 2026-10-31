@@ -308,7 +308,7 @@ export default function OnlyOfficeEditView({ session }: OnlyOfficeEditViewProps)
       if (!res?.ok) throw new Error(res?.error || '保存失败')
       // 写回会触发文件变更事件：短期内屏蔽自动刷新，避免刚保存就被自己重开一遍
       suppressUntilRef.current = Date.now() + SELF_SAVE_SUPPRESS_MS
-      toast.success(`已保存并回写本地：${fileName}`)
+      // 保存成功不弹提示，仅失败时提示
     } catch (err) {
       const message = (err as Error)?.message || '未知错误'
       toast.error(`保存回写失败：${message}`)
