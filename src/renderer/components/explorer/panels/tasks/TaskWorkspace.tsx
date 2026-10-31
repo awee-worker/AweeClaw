@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { useStore } from '@store'
 import { tasksApi, getApiErrorMessage } from '@renderer/adapters/taskProjectApi'
+import { closeOverlaysForChat } from '@renderer/utils/chatOverlays'
 import type { TaskItem, TaskStatus, TaskQuery, UpdateTaskInput, CreateTaskInput } from './types'
 import { TASK_STATUS_CONFIG, KANBAN_COLUMNS } from './taskConstants'
 import { TaskKanbanBoard } from './TaskKanbanBoard'
@@ -52,21 +53,15 @@ export function TaskWorkspace() {
   const [copyingTask, setCopyingTask] = useState<TaskItem | null>(null)
 
   // ─── AI 执行任务 ───────────────────────────────────────
-  // 旧入口（任务面板）：执行后切换到聊天界面（保留原行为）
-  const closeSidePanelForView = useStore(s => s.closeSidePanelForView)
-  const setChatVisible = useStore(s => s.setChatVisible)
-  const closeAllFullPages = useStore(s => s.closeAllFullPages)
-
+  // 执行后切回聊天界面：任务面板以抽屉打开时浮在聊天区之上，不收起就看不到
+  // AI 的执行过程，因此收尾走统一的浮层清理（侧边面板、抽屉、全屏页一并收掉）
   const { run: runTask, runningTaskId, error: runError, clearError: clearRunError } = useTaskExecution({
     onTaskUpdated: useCallback((taskId: string, patch: Partial<TaskItem>) => {
       setTasks(prev => prev.map(t => (t.id === taskId ? { ...t, ...patch } : t)))
     }, []),
     onThreadReady: useCallback(() => {
-      // 保留原行为：切到主聊天界面
-      closeAllFullPages()
-      closeSidePanelForView()
-      setChatVisible(true)
-    }, [closeAllFullPages, closeSidePanelForView, setChatVisible]),
+      closeOverlaysForChat()
+    }, []),
   })
 
   // ─── 数据加载 ───────────────────────────────────────

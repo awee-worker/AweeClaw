@@ -28,6 +28,8 @@ import {
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '@store'
+import { closePanelDrawer } from '@renderer/plugins/pluginDrawerStore'
+import { closeSceneToolDrawer } from '@components/scene-tools/sceneToolDrawerStore'
 import { BRAND } from '@shared/brand'
 import { formatUserDisplayName } from '@shared/toolkit/formatHelper'
 import { t, type Language } from '@renderer/i18n'
@@ -431,13 +433,16 @@ export function RailUserPart({ expanded, placement = 'rail' }: RailUserPartProps
   const hasUpdateAvailable = updateStatus?.status === 'available' || updateStatus?.status === 'downloaded'
 
   /**
-   * 打开一个「独占式」全屏页：收起侧边栏、退出工作流与内置浏览器
+   * 打开一个「独占式」全屏页：收起侧边栏与抽屉、退出工作流与内置浏览器
    *
    * 收起走 closeSidePanelForView：这里是把用户带离当前面板的上下文，
    * 顶部开关再按下应当打开工作空间面板，而不是把刚离开的插件市场顶回来。
+   * 抽屉（待办 / AI 浏览器等）带遮罩浮在最上层，不关掉会把刚打开的全屏页盖住。
    */
   const openExclusive = useCallback((open: () => void) => {
     closeSidePanelForView()
+    closePanelDrawer()
+    closeSceneToolDrawer()
     open()
     setShowWorkflow(false)
     closeInternalBrowser()
@@ -448,6 +453,8 @@ export function RailUserPart({ expanded, placement = 'rail' }: RailUserPartProps
     onExploreClick: () => openExclusive(() => setShowScenarioPage(true)),
     onScheduleClick: () => {
       closeAllFullPages()
+      closePanelDrawer()
+      closeSceneToolDrawer()
       setShowWorkflow(false)
       setActiveSidePanel(activeSidePanel === 'schedule' ? null : 'schedule')
       closeInternalBrowser()

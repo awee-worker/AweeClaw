@@ -15,7 +15,8 @@ import { BRAND } from '@shared/brand'
 import { t, type Language } from '@renderer/i18n'
 import { usePluginExtensions } from '@renderer/plugins/usePluginExtensions'
 import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
-import { openPluginDrawer, openBuiltinPanel, isBuiltinDrawerPanel, closePluginDrawer, getPluginDrawerTarget, usePanelDrawerTarget } from '@renderer/plugins/pluginDrawerStore'
+import { openPluginDrawer, openBuiltinPanel, isBuiltinDrawerPanel, closePluginDrawer, closePanelDrawer, getPluginDrawerTarget, usePanelDrawerTarget } from '@renderer/plugins/pluginDrawerStore'
+import { closeSceneToolDrawer } from '@components/scene-tools/sceneToolDrawerStore'
 import AddCustomMenuDialog from '../browser/AddCustomMenuDialog'
 import { useMailUnreadCount } from '@renderer/hooks/useMailUnreadCount'
 import { useTodoHubStore } from '../todo-hub/todoHubStore'
@@ -327,6 +328,9 @@ export default function NavigationRail() {
       closeSidePanelForView()
     }
     closeAllFullPages()
+    // 抽屉（待办 / AI 浏览器等）带遮罩浮在聊天区之上，不收起就看不到新建的会话
+    closePanelDrawer()
+    closeSceneToolDrawer()
     // 先关闭内部浏览器（其关闭逻辑会回写"打开前"的聊天显隐），再显式显示聊天窗口，避免被回写覆盖
     closeInternalBrowser()
     setChatVisible(true)

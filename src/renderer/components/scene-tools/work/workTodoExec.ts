@@ -8,8 +8,8 @@
  * 只在点击时标记执行中而不收敛，条目就会永远停在「AI 执行中」——用户手动停止
  * 会话、执行报错、达到轮次上限都属于这种情况。
  */
-import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
+import { closeOverlaysForChat } from '@renderer/utils/chatOverlays'
 import { useTodoStore, type WorkTodoItem } from '../stores'
 
 /**
@@ -33,9 +33,8 @@ export function executeWorkTodo(item: WorkTodoItem): void {
     executingThreadId: threadId,
   })
 
-  const store = useStore.getState()
-  store.closeAllFullPages()
-  store.setChatVisible(true)
+  // 待办清单渲染在场景工具抽屉里，抽屉带遮罩盖住聊天区，执行前必须先收起来
+  closeOverlaysForChat()
 
   const prompt = `请帮我执行以下任务，完成后告知结果：\n\n${item.text}${item.dueDate ? `\n（截止日期：${item.dueDate}）` : ''}`
 

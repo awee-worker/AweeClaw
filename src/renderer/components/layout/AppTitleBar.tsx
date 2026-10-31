@@ -18,6 +18,7 @@
 import { Plus, Phone, Bot, RefreshCw, Loader2, CheckCircle2, X } from 'lucide-react'
 import { api } from '../../adapters/electronBridge'
 import { useStore } from '@store'
+import { closeOverlaysForChat } from '@renderer/utils/chatOverlays'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { resolveUserMenuPlacement } from '@shared/protocols/scenario'
 import { useShallow } from 'zustand/react/shallow'
@@ -101,8 +102,6 @@ function UpdateReadyButton({ language }: { language: Language }) {
  */
 function RunningTasksIndicator() {
   const language = useStore((s) => s.language)
-  const closeSidePanelForView = useStore((s) => s.closeSidePanelForView)
-  const setChatVisible = useStore((s) => s.setChatVisible)
   const currentThreadId = useAgentStore((s) => s.currentThreadId)
   const runningIds = useRunningThreadIds()
   const allThreads = useAllThreads()
@@ -124,11 +123,10 @@ function RunningTasksIndicator() {
     ? `${backgroundIds.length} 个任务正在执行`
     : `${backgroundIds.length} task${backgroundIds.length > 1 ? 's' : ''} running`
 
-  /** 从面板进入会话：退出占住主区域的侧边面板，再切到目标会话 */
+  /** 从面板进入会话：先收掉挡在聊天区前的浮层，再切到目标会话 */
   const handleOpenThread = (threadId: string) => {
     setOpen(false)
-    closeSidePanelForView()
-    setChatVisible(true)
+    closeOverlaysForChat()
     void switchThread(threadId)
   }
 
@@ -355,7 +353,9 @@ export default function AppTitleBar() {
                 <HintOverlay content={t('layout.newchat', language as Language)} side="bottom" delay={300}>
                   <button
                     onClick={() => {
-                      // 新对话：若当前已选择工作空间，默认打开工作空间面板
+                      // 新对话要回到聊天区：抽屉 / 侧边面板挡在前面时一并收起
+                      closeOverlaysForChat()
+                      // 若当前已选择工作空间，默认打开工作空间面板
                       if (useStore.getState().workspace?.roots?.length) {
                         useStore.getState().setActiveSidePanel('explorer')
                       }

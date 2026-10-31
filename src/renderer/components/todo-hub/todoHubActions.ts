@@ -10,6 +10,7 @@ import { getThreadDisplayTitle, type TodoItem } from '@intelligence/providerType
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { openBuiltinPanel } from '@renderer/plugins/pluginDrawerStore'
+import { closeOverlaysForChat } from '@renderer/utils/chatOverlays'
 import { useTodoHubStore, type HubTodoItem, type TodoSourceType } from './todoHubStore'
 import type { TaskItem } from '../explorer/panels/tasks/types'
 
@@ -194,12 +195,9 @@ export function resolveThreadTodos(threadId: string, settled: boolean): void {
 /* 执行 / 跳转                                                         */
 /* ------------------------------------------------------------------ */
 
-/** 回到聊天界面（关闭全屏页面与侧边面板，确保聊天区域可见） */
+/** 回到聊天界面（关闭全屏页面、侧边面板与抽屉，确保聊天区域可见） */
 function backToChat(): void {
-  const store = useStore.getState()
-  store.closeAllFullPages()
-  store.closeSidePanelForView()
-  store.setChatVisible(true)
+  closeOverlaysForChat()
 }
 
 /**

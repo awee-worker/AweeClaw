@@ -56,6 +56,7 @@ import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { toast } from '@components/foundation/NotificationProvider'
 import { useAgentActions, useThreadMessenger } from '@hooks/useAgent'
+import { closeOverlaysForChat } from '@renderer/utils/chatOverlays'
 
 /** 内部浏览器（AI 浏览器内嵌展示，浏览网页时不卸载检索结果） */
 const InternalBrowser = lazy(() => import('@components/browser/InternalBrowser'))
@@ -644,9 +645,7 @@ export function AIBrowserView() {
         const threadId = createThread({ activate: true })
         const store = useStore.getState()
         store.closeInternalBrowser()
-        store.closeSidePanelForView()
-        store.closeAllFullPages()
-        store.setChatVisible(true)
+        closeOverlaysForChat()
         await sendToThread(prompt, threadId)
       } catch (e) {
         logger.ui.error('[AIBrowser] Failed to hand off to AI:', e)
