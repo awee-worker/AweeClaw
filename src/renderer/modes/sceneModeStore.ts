@@ -273,6 +273,19 @@ export const useSceneModeStore = create<SceneModeStore>()(
         smartProactiveEnabled: state.smartProactiveEnabled,
         smartProactiveLastTriggeredAt: state.smartProactiveLastTriggeredAt,
       }),
+      /**
+       * activeProfile 不落盘（它是 registry 派生的缓存，落盘会在 registry 升级后过期），
+       * 但恢复时必须按恢复出来的 currentSceneMode 重建：
+       * 初始值固定为 'work'，若只恢复 currentSceneMode 而不重建，
+       * 重启后会长期停在 'work' profile 上，与 currentSceneMode 脱节 ——
+       * 角色匹配按 profile.id 判定场景归属，两者不一致会让用户已选中的专家
+       * 在 sceneMode 校验处被判为「不属于当前场景」而被静默丢弃（自动匹配同样失效）。
+       */
+      merge: (persisted, current) => {
+        const merged = { ...current, ...(persisted as Partial<SceneModeStore>) }
+        merged.activeProfile = sceneModeRegistry.getOrDefault(merged.currentSceneMode)
+        return merged
+      },
     },
   ),
 )

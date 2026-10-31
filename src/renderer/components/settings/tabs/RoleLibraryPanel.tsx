@@ -34,8 +34,10 @@ export function RoleLibraryPanel() {
   const roles = useRoleLibraryStore(s => s.roles)
   const overrides = useRoleLibraryStore(s => s.overrides)
   const autoMatchEnabled = useRoleLibraryStore(s => s.autoMatchEnabled)
+  const aiRoleSelectionEnabled = useRoleLibraryStore(s => s.aiRoleSelectionEnabled)
   const defaultRoleIds = useRoleLibraryStore(s => s.defaultRoleIds)
   const setAutoMatchEnabled = useRoleLibraryStore(s => s.setAutoMatchEnabled)
+  const setAiRoleSelectionEnabled = useRoleLibraryStore(s => s.setAiRoleSelectionEnabled)
   const setRoleEnabled = useRoleLibraryStore(s => s.setRoleEnabled)
   const removeCustomRole = useRoleLibraryStore(s => s.removeCustomRole)
   const setDefaultRole = useRoleLibraryStore(s => s.setDefaultRole)
@@ -113,12 +115,27 @@ export function RoleLibraryPanel() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-xs text-text-muted select-none">
+          <div
+            className="flex items-center gap-2 text-xs text-text-muted select-none"
+            title="按对话内容自动匹配专家方法（规则触发，未命中时用场景默认人设）"
+          >
             <span>自动匹配专家</span>
             <ToggleSwitch
               switchSize="sm"
               checked={autoMatchEnabled}
               onChange={e => setAutoMatchEnabled(e.target.checked)}
+            />
+          </div>
+
+          <div
+            className="flex items-center gap-2 text-xs text-text-muted select-none"
+            title="允许 AI 在任务规划与分派时，自行从专家库挑选合适的角色；关闭后只由规则匹配与默认专家决定"
+          >
+            <span>允许 AI 参与角色选择</span>
+            <ToggleSwitch
+              switchSize="sm"
+              checked={aiRoleSelectionEnabled}
+              onChange={e => setAiRoleSelectionEnabled(e.target.checked)}
             />
           </div>
 

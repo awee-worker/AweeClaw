@@ -1211,14 +1211,19 @@ export async function buildAgentSystemPrompt(
      * 会话级显式专家（角色库）：来自输入区 ExpertSelector 的锁定选择，
      * 走 resolveSceneRole 第一级显式指定，优先级高于自动匹配与场景默认角色
      */
-     explicitRoleId?: string | null
+    explicitRoleId?: string | null
+    /**
+     * 模型兜底选出的角色 id：规则层无候选时由上层调用一次轻量模型得到，
+     * 交给 resolveSceneRole 第三级采纳（reason='semantic'）
+     */
+    aiRoleId?: string | null
     /**
      * 任务计划模式（输入区专家弹窗选择）：为真时注入段落，
      * 要求本轮先用 create_task_plan 拆解任务，再按计划执行
      */
     taskPlanMode?: boolean
   }
-): Promise<{ prompt: string; activeSkills: { name: string; description: string }[]; appliedSkills: { name: string; description: string }[]; matchedRole: { id: string; nameZh: string; icon: string } | null }> {
+): Promise<{ prompt: string; activeSkills: { name: string; description: string }[]; appliedSkills: { name: string; description: string }[]; matchedRole: { id: string; nameZh: string; icon: string; reason: 'explicit' | 'rule' | 'semantic' } | null }> {
   const {
     openFiles = [],
     activeFile,
@@ -1232,6 +1237,7 @@ export async function buildAgentSystemPrompt(
     untrustedContext,
     sceneRolePersonaOverride,
     explicitRoleId,
+    aiRoleId,
     taskPlanMode,
   } = options || {}
 
@@ -1345,6 +1351,7 @@ export async function buildAgentSystemPrompt(
         // 调用方未提供附件扩展名时，从消息文本兜底提取（上传路径内联在消息里）
         attachmentExts: options?.attachmentExts ?? extractFileExtsFromText(userMessage ?? ''),
         explicitRoleId: explicitRoleId ?? undefined,
+        aiRoleId: aiRoleId ?? undefined,
       })
     } catch (err) {
       logger.agent.warn('[PromptBuilder] Scene role match failed:', err)
@@ -1440,9 +1447,20 @@ export async function buildAgentSystemPrompt(
       name: skill.name,
       description: skill.description,
     })),
-    // 命中的场景角色（未命中为 null），供会话层做角色徽章展示
+    // 命中的场景角色（未命中为 null），供会话层做角色徽章展示。
+    // reason 一并带出：界面需要区分「用户指定」与「自动匹配」两种来源。
     matchedRole: roleMatch?.role
-      ? { id: roleMatch.role.id, nameZh: roleMatch.role.nameZh, icon: roleMatch.role.icon }
+      ? {
+          id: roleMatch.role.id,
+          nameZh: roleMatch.role.nameZh,
+          icon: roleMatch.role.icon,
+          reason:
+            roleMatch.reason === 'explicit'
+              ? 'explicit'
+              : roleMatch.reason === 'semantic'
+                ? 'semantic'
+                : 'rule',
+        }
       : null,
   }
 }

@@ -30,7 +30,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['合同', '条款', '法务', '合规', '违约', '诉讼'],
+      keywords: ['合同', '协议', '条款', '法务', '合规', '违约', '诉讼', '仲裁', '法律纠纷', '赔偿'],
       intents: ['reviewing', 'deciding'],
       fileTypes: ['docx', 'pdf'],
     },
@@ -57,7 +57,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['会计', '账务', '成本核算', '财报', '资产负债', '分录'],
+      keywords: ['会计', '账务', '记账', '凭证', '财报', '报表', '资产负债', '分录', '折旧', '摊销', '对账', '结转'],
       intents: ['analyzing', 'summarizing'],
       fileTypes: ['xlsx', 'xls', 'csv'],
     },
@@ -84,7 +84,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['税务', '报税', '纳税', '发票', '税率', '税收优惠'],
+      keywords: ['税务', '报税', '纳税', '发票', '开票', '税率', '税收优惠', '增值税', '所得税', '个税', '进项', '销项', '汇算清缴'],
       intents: ['analyzing', 'deciding'],
       fileTypes: ['xlsx', 'xls'],
     },
@@ -111,7 +111,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['招聘', '绩效', '薪酬', '劳动法', '员工关系', '考勤'],
+      keywords: ['招聘', '绩效', '薪酬', '劳动法', '员工关系', '考勤', '简历', '面试', '入职', '离职', '社保', '公积金'],
       intents: ['drafting', 'planning'],
     },
     outputContract: '输出按「目标 → 方案要点 → 实施步骤 → 风险与合规提示」组织；涉及制度类内容附生效与沟通建议。',
@@ -137,7 +137,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['营销', '推广', '品牌', '投放', '转化率', '市场定位'],
+      keywords: ['营销', '推广', '品牌', '投放', '转化率', '市场定位', '广告', '获客', '竞品', '活动策划', '私域', '增长'],
       intents: ['planning', 'brainstorming'],
     },
     outputContract: '按「目标与人群 → 策略主线 → 渠道与节奏 → 预算分配 → 效果指标」组织，并列出合规注意事项。',
@@ -163,7 +163,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['销售', '报价', '成交', '商机', '客户异议'],
+      keywords: ['销售', '报价', '成交', '商机', '客户异议', '签单', '回款', '跟单', '订单', '折扣', '客户拜访'],
       intents: ['communicating', 'drafting'],
     },
     outputContract: '输出「客户处境 → 应对策略 → 具体话术/材料 → 下一步动作」；报价附条件与有效期。',
@@ -189,7 +189,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['采购', '供应商', '库存', '物流', '交期', '询价'],
+      keywords: ['采购', '供应商', '库存', '物流', '交期', '询价', '仓储', '入库', '出库', '盘点', '比价', '招标', '备货'],
       intents: ['planning', 'analyzing'],
       fileTypes: ['xlsx', 'xls', 'csv'],
     },
@@ -218,7 +218,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['投融资', '估值', '财务模型', '基金', '股权', '尽调'],
+      keywords: ['投融资', '融资', '投资', '估值', '财务模型', '基金', '股权', '尽调', '商业计划书', 'DCF', 'IRR', '回报率', '路演'],
       intents: ['analyzing', 'deciding'],
       fileTypes: ['xlsx', 'xls'],
     },
@@ -245,7 +245,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['临床试验', '药品注册', '适应症', '医药合规', '说明书'],
+      keywords: ['临床试验', '药品注册', '药品', '适应症', '医药合规', '说明书', '器械', 'GCP', 'GMP', '不良反应'],
       intents: ['reviewing', 'researching'],
       fileTypes: ['docx', 'pdf'],
     },
@@ -272,7 +272,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['电网', '配电', '台区', '负荷', '线损', '新能源'],
+      keywords: ['电网', '配电', '台区', '负荷', '线损', '新能源', '变压器', '变电站', '输电', '用电', '停电', '抢修', '电能质量'],
       intents: ['analyzing', 'reviewing'],
       fileTypes: ['xlsx', 'csv'],
     },
@@ -299,7 +299,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['工艺', '产线', '良率', '装配', '精益', '工序'],
+      keywords: ['工艺', '产线', '良率', '装配', '精益', '工序', '产能', '节拍', '模具', 'SOP', '质量管控', '安全生产'],
       intents: ['analyzing', 'planning'],
     },
     outputContract: '输出「现状与问题 → 根因分析 → 改善措施 → 验证与效果指标」；措施排优先级并标注责任环节。',
@@ -325,7 +325,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['施工', '图纸', '造价', '工程量', '结构设计', '验收'],
+      keywords: ['施工', '图纸', '造价', '工程量', '结构设计', '验收', '土建', '监理', '投标', '标书', '结算', '钢筋', '混凝土', '分包'],
       intents: ['analyzing', 'planning'],
       fileTypes: ['dwg', 'pdf', 'xlsx'],
     },
@@ -352,7 +352,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['课程设计', '教案', '培训方案', '教学大纲', '课件'],
+      keywords: ['课程设计', '教案', '培训方案', '培训', '教学大纲', '课件', '讲师', '教材', '内训', '学习路径'],
       intents: ['drafting', 'explaining'],
     },
     outputContract: '输出「培训目标 → 模块与时长 → 教学方法 → 评估方式」；附可直接使用的讲义要点或练习。',
@@ -378,7 +378,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['专利', '商标', '著作权', '知识产权', '侵权'],
+      keywords: ['专利', '商标', '著作权', '知识产权', '侵权', '版权', '软著', '商业秘密', '注册商标', '专利检索'],
       intents: ['researching', 'drafting'],
     },
     outputContract: '输出「权利类型与主体 → 申请/应对路径 → 关键节点与时限 → 风险提示」；申请文件给出结构与撰写要点。',
@@ -404,7 +404,7 @@ export const WORK_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['政策解读', '申报', '补贴', '资质', '备案', '政企'],
+      keywords: ['政策解读', '政策', '申报', '补贴', '资质', '备案', '政企', '专项资金', '审批', '高企', '专精特新'],
       intents: ['drafting', 'researching'],
       fileTypes: ['docx', 'pdf'],
     },
@@ -436,7 +436,7 @@ export const DEV_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['架构', '技术选型', '重构', '分层', '模块化', '性能'],
+      keywords: ['架构', '技术选型', '技术方案', '重构', '分层', '模块化', '微服务', '分布式', '高可用', '系统设计', '扩展性', '性能'],
       intents: ['deciding', 'planning'],
     },
     outputContract: '输出「现状与约束 → 方案对比 → 推荐方案与理由 → 分阶段落地路径」；关键取舍显式写明。',
@@ -462,7 +462,7 @@ export const DEV_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['前端', '组件', '页面', '样式', '交互', '响应式'],
+      keywords: ['前端', '网站', '网页', '页面', '组件', '样式', '交互', '响应式', 'H5', '落地页', '官网', 'UI'],
       intents: ['coding', 'drafting'],
       fileTypes: ['tsx', 'ts', 'vue', 'css'],
     },
@@ -489,7 +489,7 @@ export const DEV_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['后端', '接口', 'API', '数据库', '服务', '并发'],
+      keywords: ['后端', '服务端', '接口', 'API', '数据库', '并发', '缓存', '消息队列', '事务', '鉴权', '登录', '权限'],
       intents: ['coding', 'analyzing'],
       fileTypes: ['ts', 'js', 'java', 'go', 'py', 'sql'],
     },
@@ -516,7 +516,7 @@ export const DEV_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['测试', '用例', '缺陷', '复现', '自动化测试', '回归'],
+      keywords: ['测试', '用例', '缺陷', '复现', '自动化测试', '回归', '单测', '压测', '冒烟', '覆盖率', '集成测试'],
       intents: ['reviewing', 'analyzing'],
     },
     outputContract: '输出「测试范围 → 用例/步骤 → 预期与实际 → 缺陷定级与建议」；缺陷附最小复现路径。',
@@ -542,7 +542,7 @@ export const DEV_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['部署', '发布', 'CI/CD', '容器', '监控', '日志'],
+      keywords: ['部署', '发布', 'CI/CD', '容器', '监控', '日志', 'Docker', 'K8s', 'Kubernetes', '上线', '回滚', '报警'],
       intents: ['planning', 'analyzing'],
     },
     outputContract: '输出「环境与前置 → 变更步骤 → 回滚方案 → 验证与监控」；生产变更单独标注风险。',
@@ -568,7 +568,7 @@ export const DEV_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['SQL', '数据管道', 'ETL', '指标', '数仓', '报表'],
+      keywords: ['SQL', '数据管道', 'ETL', '指标', '数仓', '数据仓库', '报表', '数据清洗', '埋点', '看板', 'BI', '数据建模'],
       intents: ['analyzing', 'extracting'],
       fileTypes: ['sql', 'csv', 'xlsx'],
     },
@@ -599,7 +599,7 @@ export const LIFE_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: ['life-health'],
     toolScopes: ['read'],
     triggers: {
-      keywords: ['喝水', '久坐', '睡眠', '作息', '护眼', '颈椎'],
+      keywords: ['喝水', '久坐', '睡眠', '作息', '护眼', '颈椎', '运动', '健身', '体重', '饮食'],
       intents: ['reminding', 'companioning'],
     },
     priority: 60,
@@ -624,7 +624,7 @@ export const LIFE_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: ['life-shopping'],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['记账', '支出', '收入', '预算', '月结', '开销'],
+      keywords: ['记账', '支出', '收入', '预算', '月结', '开销', '账单', '消费', '花销'],
       intents: ['summarizing', 'planning'],
     },
     priority: 60,
@@ -649,7 +649,7 @@ export const LIFE_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: ['life-travel'],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['出行', '路线', '行程', '旅游', '通勤', '自驾'],
+      keywords: ['出行', '路线', '行程', '旅游', '通勤', '自驾', '机票', '酒店', '攻略', '出差'],
       intents: ['planning'],
     },
     priority: 60,
@@ -674,7 +674,7 @@ export const LIFE_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: ['life-companion'],
     toolScopes: ['read'],
     triggers: {
-      keywords: ['心情不好', '心烦', '压力', '倾诉', '太累', 'emo'],
+      keywords: ['心情不好', '心烦', '压力', '倾诉', '太累', 'emo', '焦虑', '难过', '情绪'],
       intents: ['companioning'],
     },
     priority: 65,
@@ -699,7 +699,7 @@ export const LIFE_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: ['life-recipe', 'life-shopping'],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['菜谱', '做饭', '食材', '做菜', '烧菜'],
+      keywords: ['菜谱', '食谱', '做饭', '做菜', '烧菜', '下厨', '食材', '早餐', '晚餐'],
       intents: ['explaining', 'planning'],
     },
     priority: 58,
@@ -724,7 +724,7 @@ export const LIFE_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: ['life-plan'],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['生日', '纪念日', '聚会', '家长会', '家宴'],
+      keywords: ['生日', '纪念日', '聚会', '家长会', '家宴', '礼物', '亲子'],
       intents: ['reminding', 'planning'],
     },
     priority: 58,
@@ -753,7 +753,7 @@ export const STUDY_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: ['study-explain', 'study-notes'],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['讲解', '通俗', '讲透', '概念', '给我讲明白', '举个例子'],
+      keywords: ['讲解', '通俗', '讲透', '概念', '给我讲明白', '举个例子', '什么意思', '原理'],
       intents: ['explaining'],
     },
     priority: 68,
@@ -778,7 +778,7 @@ export const STUDY_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: ['study-memory'],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['闪卡', '卡片', '背诵', '记忆卡', '自测题'],
+      keywords: ['闪卡', '卡片', '背诵', '记忆卡', '自测题', '背单词', '知识点记忆'],
       intents: ['practicing'],
     },
     outputContract: '每张卡格式：Q: ... / A: ... / 锚点: ...，按难度递进排列。',
@@ -804,7 +804,7 @@ export const STUDY_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: ['study-explain'],
     toolScopes: ['read'],
     triggers: {
-      keywords: ['引导', '追问', '苏格拉底', '启发', '引导思考'],
+      keywords: ['引导', '追问', '苏格拉底', '启发', '引导思考', '别直接给答案'],
       intents: ['explaining'],
       excludeKeywords: ['直接告诉我', '别绕弯子', '直接给答案'],
     },
@@ -830,7 +830,7 @@ export const STUDY_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: ['study-mindmap'],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['知识体系', '脉络', '知识框架', '概念关系', '梳理知识'],
+      keywords: ['知识体系', '脉络', '知识框架', '概念关系', '梳理知识', '思维导图', '知识梳理'],
       intents: ['summarizing', 'explaining'],
     },
     priority: 60,
@@ -855,7 +855,7 @@ export const STUDY_BUILTIN_ROLES: RoleDescriptor[] = [
     skillRefs: ['study-plan'],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['学习计划', '备考计划', '复习计划', '学习进度', '学习安排'],
+      keywords: ['学习计划', '备考计划', '复习计划', '学习进度', '学习安排', '怎么学', '复习节奏'],
       intents: ['planning'],
     },
     priority: 62,

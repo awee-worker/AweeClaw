@@ -12,7 +12,8 @@
  * 这两个「全线程唯一」的判断由 ChatPanel 统一计算后下发。
  */
 import React, { useMemo } from 'react'
-import { Check, FileCode, FilePlus, UserCog, X } from 'lucide-react'
+import { Check, FileCode, FilePlus, X } from 'lucide-react'
+import { getLucideIcon } from '@components/foundation/IconMap'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
@@ -335,6 +336,9 @@ const AssistantMessageBody = React.memo(function AssistantMessageBody({
   const language = useStore(s => s.language)
   const updateMessage = useAgentStore(s => s.updateMessage)
   const messageIsStreaming = !!(message as any).isStreaming
+  // 本轮命中的场景角色：执行中与结束后都展示，让用户随时知道由谁在服务
+  const sceneRole = (message as AssistantMessage).sceneRole
+  const SceneRoleIcon = getLucideIcon(sceneRole?.icon || 'sparkles')
 
   const {
     isStreaming,
@@ -475,17 +479,35 @@ const AssistantMessageBody = React.memo(function AssistantMessageBody({
         )
       })()}
 
-      {/* 场景角色徽章：本轮回复使用了角色库中某个角色的方法 */}
-      {(message as AssistantMessage).sceneRole && !messageIsStreaming && (
+      {/* 场景角色徽章：本轮回复使用了角色库中某个角色的方法。
+          执行过程中同样展示，让用户随时知道由哪个专家在服务。 */}
+      {sceneRole && (
         <div className="flex items-center">
           <span
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-text-muted bg-bg-hover border border-border rounded-full"
+            className={`
+              inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full border
+              ${messageIsStreaming
+                ? 'text-accent/90 bg-accent/5 border-accent/20'
+                : 'text-text-secondary bg-bg-hover border-border'}
+            `}
             title={language === 'zh'
               ? '本条回复应用了该角色的方法（可在设置-角色库中管理）'
               : 'This reply applied the method of this role (manage in Settings - Role Library)'}
           >
-            <UserCog className="w-3 h-3" />
-            {(message as AssistantMessage).sceneRole!.nameZh}
+            <SceneRoleIcon className="w-3 h-3" />
+            <span className="font-medium">{sceneRole.nameZh}</span>
+            {sceneRole.reason && (
+              <span className="text-text-muted/70">
+                {sceneRole.reason === 'explicit'
+                  ? (language === 'zh' ? '你指定' : 'selected')
+                  : sceneRole.reason === 'semantic'
+                    ? (language === 'zh' ? 'AI 选择' : 'AI picked')
+                    : (language === 'zh' ? '自动匹配' : 'auto-matched')}
+              </span>
+            )}
+            {messageIsStreaming && (
+              <span className="w-1 h-1 rounded-full bg-accent animate-pulse" />
+            )}
           </span>
         </div>
       )}

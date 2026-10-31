@@ -113,7 +113,7 @@ export interface MessageActions {
     // 上下文操作
     addSkillsToMessage: (messageId: string, skills: { name: string; description: string }[], targetThreadId?: string) => void
     /** 标记助手消息命中的场景角色（角色徽章展示） */
-    addSceneRoleToMessage: (messageId: string, role: { id: string; nameZh: string; icon: string }, targetThreadId?: string) => void
+    addSceneRoleToMessage: (messageId: string, role: { id: string; nameZh: string; icon: string; reason?: 'explicit' | 'rule' | 'semantic' }, targetThreadId?: string) => void
     addContextItem: (item: ContextItem, targetThreadId?: string) => void
     /**
      * 写入插件侧的操作结果说明（如「当前默认模板：科技深色」）。

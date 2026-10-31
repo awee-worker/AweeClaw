@@ -28,6 +28,7 @@ import {
   type TeamRoleCandidate,
 } from '../capabilities/role/teamRoleResolver'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
+import { useRoleLibraryStore } from '@renderer/modes/roleLibraryStore'
 import { agentHarness } from '../harness'
 import { EventBus } from './EventDispatcher'
 import { scheduleAutoResume, resetAutoResumeCounter } from './autoResume'
@@ -522,13 +523,18 @@ export async function executeMultiAgent(
 
     // 角色库候选：当前场景启用的角色（含用户自建），供规划器优先选用。
     // 无候选时注入的提示词不变，团队行为与改动前一致。
+    // 用户在专家库里关闭「允许 AI 参与角色选择」时，不注入候选、不做角色回填，
+    // 团队位置交回规划器自行命名（与接入角色库之前的行为一致）。
     const sceneMode = useSceneModeStore.getState().currentSceneMode
-    const roleCandidates = getTeamRoleCandidates(sceneMode)
+    const aiRoleSelection = useRoleLibraryStore.getState().aiRoleSelectionEnabled
+    const roleCandidates = aiRoleSelection ? getTeamRoleCandidates(sceneMode) : []
     const roleBriefing = buildTeamRoleBriefing(roleCandidates, suggestedRoles)
     if (roleCandidates.length > 0) {
       logger.agent.info(
         `[MultiAgentExecution] Role library candidates: ${roleCandidates.length} (scene=${sceneMode}, preferred=${suggestedRoles.join(',') || 'none'})`
       )
+    } else if (!aiRoleSelection) {
+      logger.agent.info('[MultiAgentExecution] AI role selection disabled, planning without role library')
     }
 
     const plan = await smartOrchestrator.plan(task, context, callLLM, { roleBriefing })

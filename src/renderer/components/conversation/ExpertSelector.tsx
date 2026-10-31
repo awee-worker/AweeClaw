@@ -11,12 +11,13 @@
  * 快速模式（chat）不进入角色体系（isRoleAgentEnabled 只放行 agent/expert），
  * 该模式下入口整体置灰并改为显示「快速模式」，避免选中态与实际执行不一致。
  */
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Check, GraduationCap, ListChecks, Search, Zap } from 'lucide-react'
+import { ChevronDown, Check, GraduationCap, ListChecks, Search, Zap, AlertTriangle } from 'lucide-react'
 import { useStore, useModeStore } from '@store'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { useRoleLibraryStore } from '@renderer/modes/roleLibraryStore'
+import { sceneModeRegistry } from '@intelligence/capabilities/sceneMode/SceneModeRegistry'
 import { getLucideIcon } from '@components/foundation/IconMap'
 
 const POPUP_WIDTH = 268
@@ -34,6 +35,16 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
   const currentSceneMode = useSceneModeStore(s => s.currentSceneMode)
   const getRolesByScene = useRoleLibraryStore(s => s.getRolesByScene)
   const defaultRoleId = useRoleLibraryStore(s => s.defaultRoleIds[currentSceneMode])
+  /**
+   * 全库角色查询 + 角色列表/覆盖订阅
+   *
+   * 失效判定需要两件事：按 id 查到角色（含不属于当前场景的），以及
+   * 角色被停用/删除后能重新计算。getRolesByScene 只覆盖当前场景，
+   * 拿不到「原属哪个场景」，所以这里额外订阅全库。
+   */
+  const getRole = useRoleLibraryStore(s => s.getRole)
+  const allRoles = useRoleLibraryStore(s => s.roles)
+  const roleOverrides = useRoleLibraryStore(s => s.overrides)
 
   const activeExpertId = useStore(s => s.agentConfig?.activeExpertId ?? null)
   const taskPlanMode = useStore(s => s.agentConfig?.taskPlanMode ?? false)
@@ -56,6 +67,34 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
   const isZh = language === 'zh'
   // 自动模式 = 未锁定具体专家，且未开启任务计划模式
   const autoModeActive = activeExpertId === null && !taskPlanMode
+
+  /**
+   * 锁定专家失效判定
+   *
+   * agentConfig.activeExpertId 是会话级全局配置，切换场景时不会被清空，而
+   * sceneRoles 只含当前场景的角色。于是「切换了场景」「角色被停用」「角色被删」
+   * 三种情况都会落到 activeRole === null，但 activeExpertId 仍留着旧值。
+   *
+   * 这种状态必须显式告知用户，原因有两个：
+   * 1. sceneRoleMatcher 在「有锁定 ID 但角色不可用」时直接返回空结果，
+   *    不降级到规则匹配 —— 本轮实际走场景默认人设，既不是所选专家，
+   *    也不是自动匹配出来的角色；
+   * 2. 旧代码此时按钮显示「自动」（见下方 activeRole ? ... : '自动'），
+   *    与实际执行不符，用户会误以为仍在自动选择。
+   *
+   * 快速模式（chat）整体不进入角色体系，那里是「模式禁用」而不是「角色失效」，
+   * 由 roleDisabledByMode 单独表达，不参与本判定。
+   */
+  const expertInvalid = Boolean(activeExpertId && !activeRole && !roleDisabledByMode)
+  const invalidExpertRole = useMemo(
+    () => (expertInvalid && activeExpertId ? getRole(activeExpertId) : undefined),
+    // allRoles / roleOverrides 只用于在角色被停用或删除后触发重算
+    [expertInvalid, activeExpertId, getRole, allRoles, roleOverrides],
+  )
+  /** 失效角色原先所属场景的中文名（角色已被删除时为空） */
+  const invalidExpertOriginScene = invalidExpertRole
+    ? sceneModeRegistry.getOrDefault(invalidExpertRole.sceneMode)?.displayNameZh
+    : undefined
 
   const visibleRoles = enabledRoles.filter(role => {
     const q = search.trim().toLowerCase()
@@ -142,7 +181,11 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
             ? (isZh
                 ? '快速模式不启用专家角色，切换到思考或专家模式后生效'
                 : 'Experts are inactive in Fast mode. Switch to Think or Expert mode.')
-            : undefined}
+            : expertInvalid
+              ? (isZh
+                  ? `「${invalidExpertRole?.nameZh ?? activeExpertId}」在当前场景不可用${invalidExpertOriginScene ? `（原属「${invalidExpertOriginScene}」场景）` : ''}，本轮按场景默认人设执行，不会再自动匹配其它专家。点击重新选择。`
+                  : `"${invalidExpertRole?.nameZh ?? activeExpertId}" is unavailable in the current scene, so this turn falls back to the default persona instead of auto-matching. Click to choose again.`)
+              : undefined}
           className={`
             flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold
             transition-all duration-200
@@ -150,26 +193,32 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
               ? 'opacity-40 cursor-not-allowed'
               : isOpen
                 ? 'bg-surface-active text-text-primary shadow-[0_0_0_1px_rgba(var(--accent)/0.15)]'
-                : activeRole
-                  ? 'text-accent border border-transparent hover:border-accent/20 hover:bg-accent/5'
-                  : 'text-text-muted hover:text-text-secondary'
+                : expertInvalid
+                  ? 'text-status-warning border border-status-warning/30 hover:bg-status-warning/10'
+                  : activeRole
+                    ? 'text-accent border border-transparent hover:border-accent/20 hover:bg-accent/5'
+                    : 'text-text-muted hover:text-text-secondary'
           }
         `}
         >
           {roleDisabledByMode
             ? <Zap className="w-3 h-3 text-text-muted" />
-            : taskPlanMode
-              ? <ListChecks className="w-3 h-3 text-purple-400" />
-              : <GraduationCap className="w-3 h-3 text-purple-400" />}
+            : expertInvalid
+              ? <AlertTriangle className="w-3 h-3 text-status-warning" />
+              : taskPlanMode
+                ? <ListChecks className="w-3 h-3 text-purple-400" />
+                : <GraduationCap className="w-3 h-3 text-purple-400" />}
           <span className="max-w-[72px] truncate">
             {/* 快速模式下不展示已锁定的专家名：此刻它并未注入提示词，展示会造成误判 */}
             {roleDisabledByMode
               ? (isZh ? '快速模式' : 'Fast mode')
-              : taskPlanMode
-                ? (isZh ? '任务计划' : 'Task plan')
-                : activeRole
-                  ? activeRole.nameZh
-                  : (isZh ? '自动' : 'Auto')}
+              : expertInvalid
+                ? (isZh ? '专家已失效' : 'Unavailable')
+                : taskPlanMode
+                  ? (isZh ? '任务计划' : 'Task plan')
+                  : activeRole
+                    ? activeRole.nameZh
+                    : (isZh ? '自动' : 'Auto')}
           </span>
           {!roleDisabledByMode && (
             <ChevronDown className={`w-2.5 h-2.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -195,6 +244,35 @@ export default function ExpertSelector({ className = '', disabled = false }: Exp
               />
             </div>
           </div>
+
+          {/*
+            失效提示：锁定的专家不在当前场景（切了场景）、已被停用或已被删除。
+            此时 sceneRoleMatcher 不会降级到规则匹配，本轮实际按场景默认人设执行，
+            所以这里必须把「不会自动匹配其它专家」说清楚，避免用户以为还在自动选择。
+          */}
+          {expertInvalid && (
+            <div className="mx-2 mb-1 flex items-start gap-2 rounded-lg border border-status-warning/25 bg-status-warning/8 px-2.5 py-2">
+              <AlertTriangle className="mt-0.5 w-3 h-3 flex-shrink-0 text-status-warning" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[11px] font-medium leading-tight text-status-warning">
+                  {isZh
+                    ? `「${invalidExpertRole?.nameZh ?? activeExpertId}」不可用`
+                    : `"${invalidExpertRole?.nameZh ?? activeExpertId}" is unavailable`}
+                </div>
+                <div className="mt-0.5 text-[10px] leading-snug text-text-muted/80">
+                  {isZh
+                    ? `${invalidExpertOriginScene ? `原属「${invalidExpertOriginScene}」场景 · ` : '角色已删除 · '}本轮按场景默认人设执行，不会自动匹配其它专家`
+                    : 'This turn uses the default persona; other experts are not auto-matched'}
+                </div>
+                <button
+                  onClick={() => handleSelectRole(null)}
+                  className="mt-1 text-[10px] font-medium text-accent hover:underline"
+                >
+                  {isZh ? '改用自动模式' : 'Switch to auto mode'}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="border-t border-border/40 mt-1 py-1">
             <button

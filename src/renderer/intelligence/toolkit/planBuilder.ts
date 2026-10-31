@@ -178,6 +178,31 @@ export function setPlanSessionRoleResolver(resolver: SessionRoleResolver | null)
     sessionRoleResolver = resolver
 }
 
+/**
+ * 「允许 AI 参与角色选择」的解析钩子
+ *
+ * 关闭时，模型在计划里写下的 suggestedRole 不再被采纳，子任务回到「均衡」由执行期
+ * 在当场景专家里自动匹配（或直接用通用模板）。展示钩子同样由执行侧注入，
+ * planBuilder 继续保持无 store 依赖。
+ */
+type AiRoleSelectionResolver = () => boolean
+
+let aiRoleSelectionResolver: AiRoleSelectionResolver | null = null
+
+export function setPlanAiRoleSelectionResolver(resolver: AiRoleSelectionResolver | null): void {
+    aiRoleSelectionResolver = resolver
+}
+
+/** 开关状态：未注册或查询异常时按「开启」处理，行为与接入开关前一致 */
+function isAiRoleSelectionEnabled(): boolean {
+    if (!aiRoleSelectionResolver) return true
+    try {
+        return aiRoleSelectionResolver()
+    } catch {
+        return true
+    }
+}
+
 /** 取会话锁定的专家 id：未锁定或查询异常时返回 null */
 function resolveLockedRoleId(): string | null {
     if (!sessionRoleResolver) return null
@@ -198,6 +223,10 @@ function resolveTaskRoleRef(arg: PlanTaskArg): {
     roleResolution: PlanRoleResolution | null
 } {
     if (arg.suggestedRole) {
+        // AI 未参与角色选择时，不采纳模型指定的角色，交回执行期自动匹配
+        if (!isAiRoleSelectionEnabled()) {
+            return { roleId: DEFAULT_ROLE, roleResolution: null }
+        }
         const resolution = resolvePlanRole(arg.suggestedRole)
         return {
             roleId: resolution?.roleId ?? resolveDefault(arg.suggestedRole, DEFAULT_ROLE),

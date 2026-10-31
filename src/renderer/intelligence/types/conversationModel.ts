@@ -226,8 +226,12 @@ export interface AssistantMessage {
   /**
    * 本轮命中并注入人设的场景角色（角色库）。
    * 仅展示用途（会话内角色徽章），不参与消息语义。
-   */
-  sceneRole?: { id: string; nameZh: string; icon: string }
+   *
+    * reason 区分来源：explicit = 用户在输入区锁定或 @提及；
+    * rule = 自动匹配按关键词/意图/附件类型命中；
+    * semantic = 规则无候选时由模型从当前场景角色中选出。
+    */
+  sceneRole?: { id: string; nameZh: string; icon: string; reason?: 'explicit' | 'rule' | 'semantic' }
   /** 内部标记：文本是否已结束（用于工具调用显示时机） */
   _textFinalized?: boolean
 }

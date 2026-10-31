@@ -51,7 +51,10 @@ import { taskComplexityDetector } from '../capabilities/planning/TaskComplexityD
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { buildResumeNotice } from '../utils/resumeContext'
 import { buildInteractiveSelectionNotice, buildPendingQuestionNotice } from '../utils/pendingQuestionContext'
-import { executeMultiAgent, continueMultiAgent, type RunningTask } from './MultiAgentExecution'
+import { executeMultiAgent, continueMultiAgent, createCallLLM, type RunningTask } from './MultiAgentExecution'
+import { resolveSceneRole, isSkipMatchMessage } from '../capabilities/role/sceneRoleMatcher'
+import { isRoleAgentEnabled } from '../capabilities/role/RoleDescriptor'
+import { useRoleLibraryStore } from '@renderer/modes/roleLibraryStore'
 import { useStore } from '@renderer/state'
 import { terminalManager } from '@services/TerminalAdapter'
 // ⚠️ 注意别名差异：`@services/*` 指向 renderer/adapters，
@@ -62,6 +65,51 @@ import {
 } from '@renderer/services/powerGuard'
 import { enterAgentBusy, exitAgentBusy } from '@renderer/services/renderBudget'
 
+
+/**
+ * 规则层无候选时的模型兜底角色选择（角色匹配第三级）
+ *
+ * 只在「用户表述笼统到没有任何特征词」时触发，例如「帮我做个网站」——
+ * 这类请求最多命中 1 个关键词（0.25 分），永远达不到 0.6 的采纳阈值，
+ * 靠扩充词库无法解决。规则命中的常规路径不会走到这里，因此不为
+ * 常规请求增加延迟。
+ *
+ * 失败、超时、模型编造列表外 id 一律返回 null，退回场景默认人设，
+ * 绝不阻塞主链路。
+ */
+async function resolveRoleByAI(config: LLMConfig, userMessage: string): Promise<string | null> {
+  try {
+    const sceneMode = useSceneModeStore.getState().currentSceneMode
+    const roles = useRoleLibraryStore.getState().getEnabledRoles(sceneMode)
+    if (roles.length === 0) return null
+
+    const roleList = roles.map(r => `- ${r.id}｜${r.nameZh}：${r.description}`).join('\n')
+    const systemPrompt = [
+      '你是角色路由器。根据用户请求，从候选角色中选出最匹配的一个。',
+      '只输出角色 id（形如 dev.frontend），不要输出解释、标点或代码块。',
+      '若没有任何角色明显匹配，只输出 none。',
+    ].join('\n')
+
+    // 输出极短：强制低温度 + 小 maxTokens，避免把一次分类变成一次长生成
+    const callLLM = createCallLLM({ ...config, maxTokens: 32, temperature: 0 }, undefined)
+    const raw = await Promise.race([
+      callLLM(systemPrompt, `候选角色：\n${roleList}\n\n用户请求：${userMessage}`),
+      new Promise<string>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500)),
+    ])
+
+    const picked = (raw.trim().split(/\s+/)[0] ?? '').replace(/[^a-zA-Z0-9._-]/g, '')
+    if (!picked || picked.toLowerCase() === 'none') return null
+    if (!roles.some(r => r.id === picked)) {
+      logger.agent.warn(`[Agent] AI selected an unknown role id: ${picked}`)
+      return null
+    }
+    logger.agent.info(`[Agent] AI selected scene role: ${picked}`)
+    return picked
+  } catch (err) {
+    logger.agent.warn(`[Agent] AI role selection skipped: ${err instanceof Error ? err.message : String(err)}`)
+    return null
+  }
+}
 export class AgentClass {
   /** 运行中的任务（按线程追踪） */
   private runningTasks: Map<string, RunningTask> = new Map()
@@ -104,6 +152,12 @@ export class AgentClass {
        * 优先级高于自动匹配与场景默认角色；不传时走自动匹配路径
        */
       explicitRoleId?: string | null
+      /**
+       * 模型兜底选出的角色 id：规则层无候选时由 send() 调用一次轻量模型得到，
+       * 交给 resolveSceneRole 第三级采纳（reason='semantic'）。
+       * 外部调用方极少需要直接传，用于测试或手动注入。
+       */
+      aiRoleId?: string | null
       /**
        * 任务计划模式：来自输入区专家弹窗的「任务计划模式」选项。
        * 为真时提示词要求先用 create_task_plan 拆解任务，再按计划执行。
@@ -320,6 +374,31 @@ export class AgentClass {
       // 暂存本轮信号：记忆写入等旁路动作拿不到消息数组，只能读这里
       rememberUntrustedSignal(untrustedContext)
 
+      // 规则层无候选时的模型兜底角色选择。
+      // 先同步跑一次规则匹配探路：命中就完全跳过，不为常规请求增加任何延迟。
+      let effectiveAiRoleId: string | null = promptOptions?.aiRoleId ?? null
+      // autoMatchEnabled 为假时 resolveSceneRole 会在第三级之前就返回空，
+      // 此时调用模型必然被丢弃——一并跳过，避免白跑一次请求。
+      // 「允许 AI 参与角色选择」关闭时同样跳过：AI 不参与角色挑选，只保留规则匹配。
+      if (
+        !effectiveAiRoleId &&
+        isRoleAgentEnabled(chatMode) &&
+        !promptOptions?.explicitRoleId &&
+        useRoleLibraryStore.getState().autoMatchEnabled &&
+        useRoleLibraryStore.getState().aiRoleSelectionEnabled
+      ) {
+        const probe = resolveSceneRole({
+          userMessage: userMsgText,
+          sceneMode: useSceneModeStore.getState().currentSceneMode,
+          explicitRoleId: promptOptions?.explicitRoleId ?? undefined,
+        })
+        // role 为空但 candidates 非空 = 多候选分数接近，已交给主 Agent 拆子任务，
+        // 不再用模型裁决；短消息与纯寒暄同样跳过，避免白跑一次模型
+        if (!probe.role && probe.candidates.length === 0 && !isSkipMatchMessage(userMsgText)) {
+          effectiveAiRoleId = await resolveRoleByAI(config, userMsgText)
+        }
+      }
+
       const { prompt: systemPrompt, appliedSkills, matchedRole } = await buildAgentSystemPrompt(chatMode, workspacePath, {
         ...promptOptions,
         mentionedSkills: mentionedSkills.length > 0 ? mentionedSkills : undefined,
@@ -330,6 +409,7 @@ export class AgentClass {
         // 子任务角色人设：planExecutor 通过 subtaskSceneRolePersonaOverride 传入，
         // 旧调用方仍用 sceneRolePersonaOverride 字段名，这里归一到 PromptComposer 的 sceneRolePersonaOverride
         sceneRolePersonaOverride: promptOptions?.subtaskSceneRolePersonaOverride ?? promptOptions?.sceneRolePersonaOverride,
+        aiRoleId: effectiveAiRoleId,
       })
 
       // 场景角色徽章：本轮命中角色时标记到助手消息（仅展示，不影响消息语义）

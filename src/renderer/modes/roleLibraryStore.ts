@@ -7,6 +7,7 @@
  * - defaultRoleIds：各场景锁定的默认角色（5.2 第一级「显式指定」来源之一）
  * - overrides：对内置角色的字段级覆盖（升级新增字段时用户修改不丢失）
  * - autoMatchEnabled：自动匹配总开关，默认 true
+ * - aiRoleSelectionEnabled：允许 AI 参与角色选择，默认 true
  *
  * @see aweeclaw-client/docs/role-library/01-role-library-design.md 4.2 节
  */
@@ -40,6 +41,8 @@ interface RoleLibraryState {
   overrides: Record<string, Partial<RoleDescriptor>>
   /** 自动匹配总开关，默认 true */
   autoMatchEnabled: boolean
+  /** 允许 AI 参与角色选择：规划分派时由模型从角色库挑选角色，默认 true */
+  aiRoleSelectionEnabled: boolean
 }
 
 interface RoleLibraryActions {
@@ -63,6 +66,8 @@ interface RoleLibraryActions {
   setDefaultRole: (sceneMode: SceneMode, roleId: string | null) => void
   /** 设置自动匹配开关 */
   setAutoMatchEnabled: (enabled: boolean) => void
+  /** 设置「允许 AI 参与角色选择」开关 */
+  setAiRoleSelectionEnabled: (enabled: boolean) => void
   /** 校验角色合法性（id 格式 / 技能引用 / 工具范围） */
   validateRole: (role: RoleDescriptor) => RoleValidationIssue[]
 }
@@ -126,6 +131,7 @@ export const useRoleLibraryStore = create<RoleLibraryStore>()(
       defaultRoleIds: { work: null, life: null, study: null, dev: null },
       overrides: {},
       autoMatchEnabled: true,
+      aiRoleSelectionEnabled: true,
 
       getRole: (id) => {
         const { overrides, roles } = get()
@@ -247,6 +253,10 @@ export const useRoleLibraryStore = create<RoleLibraryStore>()(
       setAutoMatchEnabled: (enabled) => {
         set({ autoMatchEnabled: enabled })
       },
+
+      setAiRoleSelectionEnabled: (enabled) => {
+        set({ aiRoleSelectionEnabled: enabled })
+      },
     }),
     {
       name: 'aweeclaw-role-library-store',
@@ -256,6 +266,7 @@ export const useRoleLibraryStore = create<RoleLibraryStore>()(
         defaultRoleIds: state.defaultRoleIds,
         overrides: state.overrides,
         autoMatchEnabled: state.autoMatchEnabled,
+        aiRoleSelectionEnabled: state.aiRoleSelectionEnabled,
       }),
       // 版本 1：内置研发角色由工作场景迁移到代码开发场景（内置角色拆分为四场景）
       version: 1,

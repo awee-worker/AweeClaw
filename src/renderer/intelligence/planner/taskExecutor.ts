@@ -61,7 +61,7 @@ import {
 import { useRoleLibraryStore } from '@renderer/modes/roleLibraryStore'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { buildSceneRolePersonaSection } from '../prompt-engine/PromptComposer'
-import { setPlanRoleResolver, setPlanSessionRoleResolver, type PlanRoleResolution } from '../toolkit/planBuilder'
+import { setPlanRoleResolver, setPlanSessionRoleResolver, setPlanAiRoleSelectionResolver, type PlanRoleResolution } from '../toolkit/planBuilder'
 import type { RoleDescriptor } from '../capabilities/role/RoleDescriptor'
 import { resolveSceneRole } from '../capabilities/role/sceneRoleMatcher'
 import type { TaskExecutionClass } from '../planner/planTypes'
@@ -109,12 +109,20 @@ function ensurePlanRoleResolverRegistered(): void {
     })
 
     // 会话锁定专家：用户在输入区选定后，计划里没写 suggestedRole 的子任务也归该专家，
-    // 否则「选了架构设计专家 → 子任务被分给前端/测试」的角色漂移会一直存在
     setPlanSessionRoleResolver(() => {
         try {
             return useStore.getState().agentConfig?.activeExpertId || null
         } catch {
             return null
+        }
+    })
+
+    // 「允许 AI 参与角色选择」开关：关闭时模型给出的 suggestedRole 不被采纳
+    setPlanAiRoleSelectionResolver(() => {
+        try {
+            return useRoleLibraryStore.getState().aiRoleSelectionEnabled
+        } catch {
+            return true
         }
     })
 }

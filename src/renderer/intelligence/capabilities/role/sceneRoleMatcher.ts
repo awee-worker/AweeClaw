@@ -29,6 +29,14 @@ export interface RoleMatchInput {
   explicitRoleId?: string | null
   /** 附件扩展名（与 attachments 二选一，消息组装侧常只持有扩展名列表） */
   attachmentExts?: string[]
+  /**
+   * 模型兜底选出的角色 id（第三级语义匹配）
+   *
+   * 由上层在规则层无候选时调用一次轻量模型得到，本函数只负责校验与采纳。
+   * 规则层一旦命中优先级更高——规则可解释、零延迟，模型选择只是补足
+   * 「用户表述过于笼统、没有任何特征词」这类规则必然漏掉的场景。
+   */
+  aiRoleId?: string | null
 }
 
 /** 匹配结果 */
@@ -93,6 +101,22 @@ function collectExts(input: RoleMatchInput): string[] {
     }
   }
   return Array.from(new Set(exts))
+}
+
+/**
+ * 校验模型兜底选出的角色是否可用
+ *
+ * 模型输出不可信：可能编出列表外的 id、返回当前场景已停用的角色，
+ * 或干脆返回空。任何一项不满足都视为未选择，退回场景默认人设。
+ */
+function pickAiRole(aiRoleId: string | null | undefined, roles: RoleDescriptor[]): RoleDescriptor | null {
+  if (!aiRoleId) return null
+  const hit = roles.find(r => r.id === aiRoleId && r.enabled)
+  if (!hit) {
+    logger.agent.warn(`[SceneRoleMatcher] AI-selected role ${aiRoleId} is not an enabled role in this scene, ignored`)
+    return null
+  }
+  return hit
 }
 
 /** 规则层单角色得分 */
@@ -193,7 +217,23 @@ export function resolveSceneRole(input: RoleMatchInput): RoleMatchResult {
       .filter(s => !s.excluded && s.score >= ROLE_MATCH_THRESHOLD)
       .sort((a, b) => b.score - a.score)
 
-    if (scored.length === 0) return empty
+    if (scored.length === 0) {
+      // 第三级：规则层完全无候选时，采纳模型兜底选择的结果。
+      // 只有「一个特征词都没有」的笼统请求会走到这里（如「帮我做个网站」只命中
+      // 单个关键词、达不到阈值），规则一旦有候选就以规则为准，不再纠偏。
+      const aiRole = pickAiRole(input.aiRoleId, roles)
+      if (aiRole) {
+        return {
+          role: aiRole,
+          score: ROLE_MATCH_THRESHOLD,
+          // 'semantic' 表示「由模型判断得出」而非关键词命中，界面据此区分来源
+          reason: 'semantic',
+          candidates: [{ roleId: aiRole.id, score: ROLE_MATCH_THRESHOLD }],
+          multiRoleSuggested: false,
+        }
+      }
+      return empty
+    }
 
     const top = scored[0]
     const second = scored[1]
