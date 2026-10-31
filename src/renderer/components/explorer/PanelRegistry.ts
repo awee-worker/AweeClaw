@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react'
+import { createElement, type ComponentType } from 'react'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { scenarioLoader } from '@scenario-system/core'
 import type { PluginHostApi } from '@renderer/plugins/types'
@@ -14,6 +14,15 @@ import { TodoHubView } from '../todo-hub/TodoHubView'
 import { ScenarioWorkspacePanel } from './panels/ScenarioWorkspacePanel'
 
 type PanelComponent = ComponentType<unknown>
+
+/**
+ * 场景工具面板的注册包装
+ *
+ * SceneToolsPanel 带可选 props（抽屉模式下传初始工具与关闭回调），
+ * 与 PanelComponent（ComponentType<unknown>）的签名不兼容，这里包一层无参组件，
+ * 供 panelId='scene-tools' 的宿主位置使用。
+ */
+const SceneToolsStandalonePanel: PanelComponent = () => createElement(SceneToolsPanel)
 
 /**
  * 主应用内置面板组件兜底映射（按 sidebarItems[].component 字符串匹配）
@@ -33,7 +42,7 @@ const BUILTIN_PANEL_COMPONENTS: Record<string, PanelComponent> = {
   PluginMarketView,
   AIBrowserView,
   MailCenterView,
-  SceneToolsPanel,
+  SceneToolsPanel: SceneToolsStandalonePanel,
   TodoHubView,
   ScenarioWorkspacePanel,
 }
@@ -81,7 +90,7 @@ export function subscribePanelRegistry(listener: () => void): () => void {
 }
 
 // 场景内置工具面板：全局注册，任何场景下均可通过 panelId='scene-tools' 激活
-registerPanelComponent('scene-tools', SceneToolsPanel)
+registerPanelComponent('scene-tools', SceneToolsStandalonePanel)
 
 // 场景工作区：区域树里 { type: 'panel', id: 'scenario-workspace' } 即可摆放，
 // 按 activeSidePanel 渲染当前场景面板，因此一棵静态树也能承载多面板切换

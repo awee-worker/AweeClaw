@@ -37,6 +37,8 @@ import { PluginHostBridge } from '@renderer/plugins/PluginHostBridge'
 import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
 import { HostCapabilitiesBridge } from '@renderer/plugins/HostCapabilitiesBridge'
 import PluginDrawerHost from '@renderer/plugins/PluginDrawerHost'
+import SceneToolDrawerHost from '@components/scene-tools/SceneToolDrawerHost'
+import { openSceneToolDrawer } from '@components/scene-tools/sceneToolDrawerStore'
 import { TodoHubCollector } from '@components/todo-hub/TodoHubCollector'
 import { initRenderBudget, subscribeRenderBudget } from './services/renderBudget'
 import { RegionRenderer } from './shell/RegionRenderer'
@@ -140,7 +142,7 @@ function AppContent() {
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage,
     showSessionHistoryPage, showPluginCenterPage, showScenarioPage, showContactsPage,
     activeScenarioId, scenarioConfigVersion, language,
-    isAuthenticated, setShowWelcomePage, setChatVisible, setActiveSidePanel,
+    isAuthenticated, setShowWelcomePage, setChatVisible,
   } = useStore(useShallow((state) => ({
     workspace: state.workspace,
     activeSidePanel: state.activeSidePanel,
@@ -161,7 +163,6 @@ function AppContent() {
     isAuthenticated: state.isAuthenticated,
     setShowWelcomePage: state.setShowWelcomePage,
     setChatVisible: state.setChatVisible,
-    setActiveSidePanel: state.setActiveSidePanel,
   })))
 
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
@@ -208,17 +209,15 @@ function AppContent() {
     window.__AWEECLAW_STORE__ = { getState: () => useStore.getState() }
   }, [])
 
-  // 监听 AI Agent 调用的场景工具面板自动打开事件
+  // 监听 AI Agent 调用的场景工具打开事件：统一以右侧抽屉呈现
   useEffect(() => {
     const handler = (e: Event) => {
-      const toolId = (e as CustomEvent).detail as string
-      if (toolId) {
-        setActiveSidePanel('scene-tools')
-      }
+      const toolId = (e as CustomEvent).detail as string | undefined
+      openSceneToolDrawer(toolId || null)
     }
     window.addEventListener('aweeclaw:scene-panel-open', handler)
     return () => window.removeEventListener('aweeclaw:scene-panel-open', handler)
-  }, [setActiveSidePanel])
+  }, [])
 
   // 监听场景请求显隐 AI 助手面板
   //
@@ -618,6 +617,9 @@ function AppContent() {
 
       {/* 插件抽屉：二级选项的 action 拉起插件面板（如模板选择），无触发时不渲染 */}
       <PluginDrawerHost />
+
+      {/* 场景工具抽屉：番茄钟、记账本等内置工具统一以右侧抽屉打开，无触发时不渲染 */}
+      <SceneToolDrawerHost />
 
       {/* 待办中心采集器：把会话 / 挂载任务中未完成的事项自动汇入待办清单，无 UI */}
       <TodoHubCollector />

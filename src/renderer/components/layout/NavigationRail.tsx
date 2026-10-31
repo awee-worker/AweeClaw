@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { MessageSquarePlus, Plus, Blocks, Trash2 } from 'lucide-react'
+import { MessageSquarePlus, Plus, Trash2 } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -55,19 +55,9 @@ const MAIL_CENTER_ITEM_ID = 'mail-center'
 const TODO_HUB_ITEM_ID = 'todo-hub'
 
 
-// 场景工具入口是否在导航栏显示。
-// 面板本身始终注册在 PanelRegistry 中（可被 AI 工具调用激活），
-// 这里只控制导航项：通用助手场景不展示该入口。
-const SHOW_SCENE_TOOLS_ENTRY = true
-
-/**
- * 不展示「场景工具」导航项的场景
- *
- * 场景工具面板本身是通用工具台，对已经声明了完整 sidebarItems 的垂直场景来说
- * 只是噪声：这些场景的导航应当完全由自己的面板组成。
- */
-const SCENE_TOOLS_HIDDEN_SCENARIOS = ['general-assistant', 'miniprogram-studio']
-
+// 场景工具不再提供左侧导航入口：
+// 番茄钟、记账本等内置工具统一由仪表盘卡片以右侧抽屉的形式打开
+// （见 components/scene-tools/SceneToolDrawerHost）。
 
 function NavPill({ active }: { active: boolean }) {
   return (
@@ -204,11 +194,7 @@ export default function NavigationRail() {
     setActiveSidePanel(null)
   }, [pluginSidebarItems, activeSidePanel, setActiveSidePanel])
 
-  // 场景工具入口按场景显隐：由场景声明（ui.chrome.hideSceneTools）或内置黑名单决定
   const scenarioChrome = scenario?.ui?.chrome
-  const showSceneToolsEntry = SHOW_SCENE_TOOLS_ENTRY
-    && !SCENE_TOOLS_HIDDEN_SCENARIOS.includes(activeScenarioId)
-    && scenarioChrome?.hideSceneTools !== true
 
   // 新建任务入口：场景自带完整导航时可由场景关掉，避免与场景自身的创建流程重复
   const showNewTaskEntry = scenarioChrome?.hideNewTask !== true
@@ -313,14 +299,6 @@ export default function NavigationRail() {
   // 当前会话的选中态统一由历史会话列表体现（见 ChatHistoryPart）。
   // 若绑定 activeSidePanel === 'explorer'，会导致仅打开工作空间面板时误高亮。
   const newTaskActive = false
-
-
-  const handleSceneToolsClick = useCallback(() => {
-    closeAllFullPages()
-    setShowWorkflow(false)
-    setActiveSidePanel(activeSidePanel === 'scene-tools' ? null : 'scene-tools')
-    closeInternalBrowser()
-  }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow, closeInternalBrowser])
 
 
   /*
@@ -747,43 +725,6 @@ export default function NavigationRail() {
           )
         })}
       </div>
-
-      {/* 场景工具入口：随场景模式提供内置工具面板（通用助手场景不展示） */}
-      {showSceneToolsEntry && (() => {
-        const isSceneToolsActive = !showWelcomePage && activeSidePanel === 'scene-tools'
-        const sceneToolsLabel = t('layout.scenetools', language as Language)
-        return navRailExpanded ? (
-          <button
-            onClick={handleSceneToolsClick}
-            className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
-            data-active={isSceneToolsActive}
-            style={{ marginTop: 4 }}
-          >
-            <Blocks
-              className={`w-[18px] h-[18px] transition-all duration-200 flex-shrink-0 ${isSceneToolsActive ? 'scale-105' : 'opacity-60'}`}
-              strokeWidth={isSceneToolsActive ? 2 : 1.5}
-            />
-            <span className={`${p}-nav-rail-label ${isSceneToolsActive ? 'text-accent' : ''}`}>
-              {sceneToolsLabel}
-            </span>
-          </button>
-        ) : (
-          <HintOverlay content={sceneToolsLabel} side="right" delay={400}>
-            <button
-              onClick={handleSceneToolsClick}
-              className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
-              data-active={isSceneToolsActive}
-              style={{ marginTop: 4 }}
-            >
-              <NavPill active={isSceneToolsActive} />
-              <Blocks
-                className={`w-[18px] h-[18px] transition-all duration-200 ${isSceneToolsActive ? 'scale-105' : 'opacity-60'}`}
-                strokeWidth={isSceneToolsActive ? 2 : 1.5}
-              />
-            </button>
-          </HintOverlay>
-        )
-      })()}
 
       {/* 自定义菜单：用户通过「自定义菜单」入口添加的网页菜单（内部浏览器打开） */}
       {customMenus.length > 0 && (

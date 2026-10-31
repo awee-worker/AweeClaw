@@ -68,13 +68,25 @@ export interface ChromeSnapshot {
 /** 底部 Dock 面板 Tab 类型 */
 export type DockTab = 'problems' | 'output' | 'debug' | 'terminal' | 'references'
 
-/** 各场景模式工作台默认卡片集合（macOS 桌面小组件式） */
-export const WORKBENCH_DEFAULT_WIDGETS: Record<SceneMode, string[]> = {
-  work: ['new-chat', 'work-weekly', 'work-pomodoro', 'recent-workspaces'],
-  life: ['new-chat', 'life-ledger', 'life-water', 'life-mood', 'recent-workspaces'],
-  study: ['new-chat', 'study-flashcards', 'study-planner', 'study-pomodoro', 'recent-workspaces'],
-  dev: ['new-chat', 'open-folder', 'recent-workspaces'],
-}
+/**
+ * 工作台统一作用域。
+ *
+ * 卡片、布局与背景不再随场景模式切换：切换场景时工作台保持同一套卡片，
+ * 用户在任一场景添加的工具在其余场景同样可用，避免「卡片在场景 A 加上、
+ * 切到场景 B 就找不到」的割裂感。
+ */
+export const WORKBENCH_SCOPE = 'shared'
+
+export type WorkbenchScope = typeof WORKBENCH_SCOPE
+
+/** 工作台默认卡片集合（macOS 桌面小组件式，跨场景通用） */
+export const WORKBENCH_DEFAULT_WIDGETS: string[] = [
+  'new-chat',
+  'open-scene-tools',
+  'work-pomodoro',
+  'life-ledger',
+  'recent-workspaces',
+]
 
 /**
  * 已下线的历史工作台卡片 id。
@@ -84,25 +96,72 @@ export const WORKBENCH_DEFAULT_WIDGETS: Record<SceneMode, string[]> = {
  */
 const RETIRED_WORKBENCH_WIDGET_IDS = ['work-todo']
 
+/** 历史版本按场景分别保存工作台配置，迁移时按此顺序读取 */
+const LEGACY_WORKBENCH_SCOPES: SceneMode[] = ['work', 'life', 'study', 'dev']
+
+function cleanWidgetIds(ids: string[]): string[] {
+  return ids.filter((id) => !RETIRED_WORKBENCH_WIDGET_IDS.includes(id))
+}
+
 /**
- * 恢复某模式的卡片集合：优先采用已保存配置并剔除已下线卡片；
- * 剔除后为空（或本就没有保存）时回落到该模式的默认集合。
+ * 恢复工作台卡片集合。
+ *
+ * 优先读取统一的共享配置；老版本按场景保存的数据把各场景卡片合并去重后沿用，
+ * 保证升级后用户已添加的卡片不会凭空消失。
  */
-function resolveWorkbenchWidgets(saved: string[] | undefined, defaults: string[]): string[] {
-  if (!saved?.length) return [...defaults]
-  const cleaned = saved.filter((id) => !RETIRED_WORKBENCH_WIDGET_IDS.includes(id))
-  return cleaned.length > 0 ? cleaned : [...defaults]
+function resolveWorkbenchWidgets(saved?: Record<string, string[]>): string[] {
+  const shared = cleanWidgetIds(saved?.[WORKBENCH_SCOPE] ?? [])
+  if (shared.length > 0) return shared
+
+  const merged: string[] = []
+  for (const scope of LEGACY_WORKBENCH_SCOPES) {
+    for (const id of cleanWidgetIds(saved?.[scope] ?? [])) {
+      if (!merged.includes(id)) merged.push(id)
+    }
+  }
+  return merged.length > 0 ? merged : [...WORKBENCH_DEFAULT_WIDGETS]
+}
+
+/** 恢复卡片摆放位置：共享配置优先，其次取第一份非空的旧场景配置 */
+function resolveWorkbenchPositions(
+  saved?: Record<string, Record<string, WorkbenchCardPos>>
+): Record<string, WorkbenchCardPos> {
+  const shared = saved?.[WORKBENCH_SCOPE]
+  if (shared && Object.keys(shared).length > 0) return shared
+  for (const scope of LEGACY_WORKBENCH_SCOPES) {
+    const legacy = saved?.[scope]
+    if (legacy && Object.keys(legacy).length > 0) return legacy
+  }
+  return {}
+}
+
+/** 恢复工作台背景：共享配置优先，其次取第一份非空的旧场景配置 */
+function resolveWorkbenchBackground(
+  saved?: Record<string, WorkbenchBackground | null>
+): WorkbenchBackground | null {
+  const shared = saved?.[WORKBENCH_SCOPE]
+  if (shared) return shared
+  for (const scope of LEGACY_WORKBENCH_SCOPES) {
+    const legacy = saved?.[scope]
+    if (legacy) return legacy
+  }
+  return null
 }
 
 /* ===================== 工作台配置持久化 ===================== */
 
 const WORKBENCH_STORAGE_KEY = `${BRAND.cssPrefix}-workbench`
 
-/** 持久化结构：三个工作台自定义状态字段的整体快照 */
+/**
+ * 持久化结构：三个工作台自定义状态字段的整体快照。
+ *
+ * 键为工作台作用域：新版本只有 shared，老版本则是各场景模式键，
+ * 因此这里用宽松的字符串索引，读盘时统一由 resolveWorkbench* 归一化。
+ */
 interface PersistedWorkbench {
-  widgets?: Record<SceneMode, string[]>
-  positions?: Record<SceneMode, Record<string, WorkbenchCardPos>>
-  backgrounds?: Record<SceneMode, WorkbenchBackground | null>
+  widgets?: Record<string, string[]>
+  positions?: Record<string, Record<string, WorkbenchCardPos>>
+  backgrounds?: Record<string, WorkbenchBackground | null>
 }
 
 /**
@@ -128,9 +187,9 @@ function loadPersistedWorkbench(): PersistedWorkbench {
  * 2. 异步写入 electron-store（兜底，防止 localStorage 丢失）
  */
 function persistWorkbench(state: {
-  widgets: Record<SceneMode, string[]>
-  positions: Record<SceneMode, Record<string, WorkbenchCardPos>>
-  backgrounds: Record<SceneMode, WorkbenchBackground | null>
+  widgets: Record<string, string[]>
+  positions: Record<string, Record<string, WorkbenchCardPos>>
+  backgrounds: Record<string, WorkbenchBackground | null>
 }): void {
   const payload = JSON.stringify(state)
   try {
@@ -151,9 +210,9 @@ function persistWorkbench(state: {
 
 /** 从 state 快照提取三个工作台字段并持久化 */
 function persistWorkbenchFrom(state: {
-  workbenchWidgets: Record<SceneMode, string[]>
-  workbenchPositions: Record<SceneMode, Record<string, WorkbenchCardPos>>
-  workbenchBackgrounds: Record<SceneMode, WorkbenchBackground | null>
+  workbenchWidgets: Record<string, string[]>
+  workbenchPositions: Record<string, Record<string, WorkbenchCardPos>>
+  workbenchBackgrounds: Record<string, WorkbenchBackground | null>
 }): void {
   persistWorkbench({
     widgets: state.workbenchWidgets,
@@ -339,26 +398,26 @@ export interface LayoutSlice {
   setUnattendedScenario: (id: string | null) => void
 
   /* ===== 工作台自定义 ===== */
-  /** 每个场景模式的工作台卡片集合（用户可自定义：添加/移除/排序） */
-  workbenchWidgets: Record<SceneMode, string[]>
-  /** 切换某模式下某卡片的可见性 */
-  setWorkbenchWidget: (mode: SceneMode, widgetId: string, visible: boolean) => void
-  /** 调整某模式下卡片顺序（上移/下移） */
-  moveWorkbenchWidget: (mode: SceneMode, widgetId: string, direction: 'up' | 'down') => void
-  /** 重置某模式为默认卡片配置 */
-  resetWorkbenchWidgets: (mode: SceneMode) => void
+  /** 工作台卡片集合（跨场景共享，用户可自定义：添加/移除/排序） */
+  workbenchWidgets: Record<WorkbenchScope, string[]>
+  /** 切换卡片的可见性 */
+  setWorkbenchWidget: (widgetId: string, visible: boolean) => void
+  /** 调整卡片顺序（上移/下移） */
+  moveWorkbenchWidget: (widgetId: string, direction: 'up' | 'down') => void
+  /** 重置为默认卡片配置 */
+  resetWorkbenchWidgets: () => void
 
   /* ===== 工作台自由摆放与背景 ===== */
-  /** 每个场景模式的工作台卡片自由摆放位置 */
-  workbenchPositions: Record<SceneMode, Record<string, WorkbenchCardPos>>
+  /** 工作台卡片自由摆放位置（跨场景共享） */
+  workbenchPositions: Record<WorkbenchScope, Record<string, WorkbenchCardPos>>
   /** 设置单张卡片位置 */
-  setWorkbenchPosition: (mode: SceneMode, widgetId: string, pos: WorkbenchCardPos) => void
+  setWorkbenchPosition: (widgetId: string, pos: WorkbenchCardPos) => void
   /** 批量设置卡片位置（拖拽碰撞解析用，一次渲染） */
-  setWorkbenchPositions: (mode: SceneMode, positions: Record<string, WorkbenchCardPos>) => void
-  /** 每个场景模式的工作台背景配置 */
-  workbenchBackgrounds: Record<SceneMode, WorkbenchBackground | null>
+  setWorkbenchPositions: (positions: Record<string, WorkbenchCardPos>) => void
+  /** 工作台背景配置（跨场景共享） */
+  workbenchBackgrounds: Record<WorkbenchScope, WorkbenchBackground | null>
   /** 设置工作台背景（null 表示移除背景） */
-  setWorkbenchBackground: (mode: SceneMode, background: WorkbenchBackground | null) => void
+  setWorkbenchBackground: (background: WorkbenchBackground | null) => void
 
   /* ===== 面板可见性操作 ===== */
   setActiveSidePanel: (panel: SidePanel) => void
@@ -514,22 +573,13 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
 
   /* ----- 工作台自定义初始状态（优先恢复上次保存的配置） ----- */
   workbenchWidgets: {
-    work: resolveWorkbenchWidgets(persistedWorkbench.widgets?.work, WORKBENCH_DEFAULT_WIDGETS.work),
-    life: resolveWorkbenchWidgets(persistedWorkbench.widgets?.life, WORKBENCH_DEFAULT_WIDGETS.life),
-    study: resolveWorkbenchWidgets(persistedWorkbench.widgets?.study, WORKBENCH_DEFAULT_WIDGETS.study),
-    dev: resolveWorkbenchWidgets(persistedWorkbench.widgets?.dev, WORKBENCH_DEFAULT_WIDGETS.dev),
+    shared: resolveWorkbenchWidgets(persistedWorkbench.widgets),
   },
   workbenchPositions: {
-    work: persistedWorkbench.positions?.work ?? {},
-    life: persistedWorkbench.positions?.life ?? {},
-    study: persistedWorkbench.positions?.study ?? {},
-    dev: persistedWorkbench.positions?.dev ?? {},
+    shared: resolveWorkbenchPositions(persistedWorkbench.positions),
   },
   workbenchBackgrounds: {
-    work: persistedWorkbench.backgrounds?.work ?? null,
-    life: persistedWorkbench.backgrounds?.life ?? null,
-    study: persistedWorkbench.backgrounds?.study ?? null,
-    dev: persistedWorkbench.backgrounds?.dev ?? null,
+    shared: resolveWorkbenchBackground(persistedWorkbench.backgrounds),
   },
   /* ----- 场景管理页面标签页初始状态 ----- */
   scenarioPageTab: 'installed',
@@ -652,21 +702,21 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   setShowEnvironmentSetup: (show) => set({ showEnvironmentSetup: show }),
 
   /* ----- 工作台自定义操作 ----- */
-  setWorkbenchWidget: (mode, widgetId, visible) =>
+  setWorkbenchWidget: (widgetId, visible) =>
     set((state) => {
-      const list = state.workbenchWidgets[mode] ?? []
+      const list = state.workbenchWidgets[WORKBENCH_SCOPE] ?? []
       const nextWidgets = {
         ...state.workbenchWidgets,
-        [mode]: visible ? [...list, widgetId] : list.filter((w) => w !== widgetId),
+        [WORKBENCH_SCOPE]: visible ? [...list, widgetId] : list.filter((w) => w !== widgetId),
       }
       // 移除卡片时同步清理其自由摆放位置
       let nextPositions = state.workbenchPositions
       if (!visible) {
-        const positions = state.workbenchPositions[mode]
+        const positions = state.workbenchPositions[WORKBENCH_SCOPE]
         if (positions && positions[widgetId]) {
           const next = { ...positions }
           delete next[widgetId]
-          nextPositions = { ...state.workbenchPositions, [mode]: next }
+          nextPositions = { ...state.workbenchPositions, [WORKBENCH_SCOPE]: next }
         }
       }
       // 自动保存：新增 / 移除卡片
@@ -680,22 +730,22 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
         ...(nextPositions !== state.workbenchPositions ? { workbenchPositions: nextPositions } : {}),
       }
     }),
-  moveWorkbenchWidget: (mode, widgetId, direction) =>
+  moveWorkbenchWidget: (widgetId, direction) =>
     set((state) => {
-      const list = [...(state.workbenchWidgets[mode] ?? [])]
+      const list = [...(state.workbenchWidgets[WORKBENCH_SCOPE] ?? [])]
       const idx = list.indexOf(widgetId)
       if (idx === -1) return state
       const target = direction === 'up' ? idx - 1 : idx + 1
       if (target < 0 || target >= list.length) return state
       const [item] = list.splice(idx, 1)
       list.splice(target, 0, item)
-      return { workbenchWidgets: { ...state.workbenchWidgets, [mode]: list } }
+      return { workbenchWidgets: { ...state.workbenchWidgets, [WORKBENCH_SCOPE]: list } }
     }),
-  setWorkbenchPosition: (mode, widgetId, pos) =>
+  setWorkbenchPosition: (widgetId, pos) =>
     set((state) => {
       const next = {
         ...state.workbenchPositions,
-        [mode]: { ...(state.workbenchPositions[mode] ?? {}), [widgetId]: pos },
+        [WORKBENCH_SCOPE]: { ...(state.workbenchPositions[WORKBENCH_SCOPE] ?? {}), [widgetId]: pos },
       }
       // 自动保存：单张卡片位置
       persistWorkbenchFrom({
@@ -705,9 +755,9 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
       })
       return { workbenchPositions: next }
     }),
-  setWorkbenchPositions: (mode, positions) =>
+  setWorkbenchPositions: (positions) =>
     set((state) => {
-      const next = { ...state.workbenchPositions, [mode]: positions }
+      const next = { ...state.workbenchPositions, [WORKBENCH_SCOPE]: positions }
       // 自动保存：拖拽结束后的整体排布（位置 / 大小）
       persistWorkbenchFrom({
         workbenchWidgets: state.workbenchWidgets,
@@ -716,9 +766,9 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
       })
       return { workbenchPositions: next }
     }),
-  setWorkbenchBackground: (mode, background) =>
+  setWorkbenchBackground: (background) =>
     set((state) => {
-      const next = { ...state.workbenchBackgrounds, [mode]: background }
+      const next = { ...state.workbenchBackgrounds, [WORKBENCH_SCOPE]: background }
       // 自动保存：背景设置 / 移除
       persistWorkbenchFrom({
         workbenchWidgets: state.workbenchWidgets,
@@ -727,14 +777,14 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
       })
       return { workbenchBackgrounds: next }
     }),
-  resetWorkbenchWidgets: (mode) =>
+  resetWorkbenchWidgets: () =>
     set((state) => {
       const nextWidgets = {
         ...state.workbenchWidgets,
-        [mode]: [...WORKBENCH_DEFAULT_WIDGETS[mode]],
+        [WORKBENCH_SCOPE]: [...WORKBENCH_DEFAULT_WIDGETS],
       }
       // 恢复默认布局同时清空自定义位置，回落到默认流式排布
-      const nextPositions = { ...state.workbenchPositions, [mode]: {} }
+      const nextPositions = { ...state.workbenchPositions, [WORKBENCH_SCOPE]: {} }
       // 自动保存：恢复默认布局
       persistWorkbenchFrom({
         workbenchWidgets: nextWidgets,

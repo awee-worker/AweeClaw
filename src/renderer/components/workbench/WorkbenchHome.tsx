@@ -44,7 +44,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react'
-import type { WorkbenchBackground, WorkbenchCardPos } from '@/renderer/state/slices/layoutSlice'
+import { WORKBENCH_SCOPE, type WorkbenchBackground, type WorkbenchCardPos } from '@/renderer/state/slices/layoutSlice'
 import { api } from '@renderer/adapters/electronBridge'
 import { workspaceManager, WorkspaceOpenError } from '@services/WorkspaceAdapter'
 import { useStore } from '@store'
@@ -58,7 +58,8 @@ import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
 import { sceneModeRegistry } from '@intelligence/capabilities/sceneMode/SceneModeRegistry'
 import type { SceneModeProfile, TimePeriod } from '@intelligence/capabilities/sceneMode/SceneModeDescriptor'
 import type { SceneMode } from '@protocols/sceneModeProtocol'
-import { getToolsByMode, getToolById } from '@components/scene-tools/registry'
+import { SCENE_TOOLS, getToolById } from '@components/scene-tools/registry'
+import { openSceneToolDrawer } from '@components/scene-tools/sceneToolDrawerStore'
 
 import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
 import { usePluginWidgetCards } from '@renderer/plugins/usePluginExtensions'
@@ -130,6 +131,20 @@ const CARD_GAP = 16
 const WALL_PAD = 24
 /** 宫格默认列数（桌面端），窄窗口按容器宽度自动收缩 */
 const GRID_COLS = 4
+
+/**
+ * 按容器实际宽度计算能容纳的列数。
+ *
+ * 网格用 `repeat(auto-fill, CARD_W)` 排布，可用宽度必须扣除左右留白，
+ * 直接用整宽会把列数算多，卡片被推到不存在的列上（CSS Grid 会补出隐式列），
+ * 表现为右侧溢出、与其他卡片错位。
+ */
+function measureMaxCol(el: HTMLElement | null): number {
+  if (!el) return GRID_COLS
+  const usable = el.clientWidth - WALL_PAD * 2
+  if (usable <= 0) return GRID_COLS
+  return Math.max(1, Math.floor((usable + CARD_GAP) / (CARD_W + CARD_GAP)))
+}
 
 /** 卡片尺寸选项（卡片右上角菜单） */
 const CARD_SIZE_OPTIONS = [
@@ -719,7 +734,6 @@ export default function WorkbenchHome() {
   const setChatVisible = useStore((s) => s.setChatVisible)
   const setShowWelcomePage = useStore((s) => s.setShowWelcomePage)
   const setActiveSidePanel = useStore((s) => s.setActiveSidePanel)
-  const setPendingSceneToolId = useStore((s) => s.setPendingSceneToolId)
   const { createThread } = useAgentActions()
 
   const { currentSceneMode } = useSceneModeStore()
@@ -767,35 +781,47 @@ export default function WorkbenchHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /* ---------- 宫格位置：为缺失位置/旧版坐标的卡片补默认流式排布 ---------- */
+  /* ---------- 宫格位置：补齐新卡片位置，并保证任何情况下卡片互不重叠 ---------- */
   useEffect(() => {
-    const ids = workbenchWidgets[currentSceneMode] ?? []
-    const existing = workbenchPositions[currentSceneMode] ?? {}
-    let changed = false
-    const next = { ...existing }
-    ids.forEach((id, i) => {
-      const cur = next[id]
-      if (!cur || typeof cur.col !== 'number' || typeof cur.row !== 'number') {
-        changed = true
-        next[id] = {
-          col: (i % GRID_COLS) + 1,
-          row: Math.floor(i / GRID_COLS) + 1,
-          colSpan: 1,
-          rowSpan: 1,
-        }
-      } else if (!cur.colSpan || !cur.rowSpan) {
-        changed = true
-        next[id] = { ...cur, colSpan: 1, rowSpan: 1 }
-      }
+    const ids = workbenchWidgets[WORKBENCH_SCOPE] ?? []
+    const existing = workbenchPositions[WORKBENCH_SCOPE] ?? {}
+    // 容器尺寸要等一帧才能量到，列数按实际宽度算，避免窄窗口下卡片越界重叠
+    const frame = requestAnimationFrame(() => {
+      const next = normalizeGridPositions(existing, ids, measureMaxCol(gridRef.current))
+      const hasMissing = ids.some((id) => !existing[id])
+      const hasStale = Object.keys(existing).some((id) => !ids.includes(id))
+      if (!hasMissing && !hasStale && isSamePositions(existing, next)) return
+      posMapRef.current = next
+      setWorkbenchPositions(next)
     })
-    if (changed) setWorkbenchPositions(currentSceneMode, next)
+    return () => cancelAnimationFrame(frame)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workbenchWidgets, currentSceneMode])
+  }, [workbenchWidgets])
+
+  /* ---------- 窗口/面板宽度变化：列数减少时重新归一化，避免卡片越界或互压 ---------- */
+  useEffect(() => {
+    const el = gridRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    let lastCols = measureMaxCol(el)
+    const observer = new ResizeObserver(() => {
+      const cols = measureMaxCol(el)
+      if (cols === lastCols) return
+      lastCols = cols
+      const ids = useStore.getState().workbenchWidgets[WORKBENCH_SCOPE] ?? []
+      const existing = useStore.getState().workbenchPositions[WORKBENCH_SCOPE] ?? {}
+      const next = normalizeGridPositions(existing, ids, cols)
+      if (isSamePositions(existing, next)) return
+      posMapRef.current = next
+      setWorkbenchPositions(next)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [setWorkbenchPositions])
 
   /* 同步最新位置到 ref（拖拽回调避免闭包过期） */
   useEffect(() => {
-    posMapRef.current = { ...(workbenchPositions[currentSceneMode] ?? {}) }
-  }, [workbenchPositions, currentSceneMode])
+    posMapRef.current = { ...(workbenchPositions[WORKBENCH_SCOPE] ?? {}) }
+  }, [workbenchPositions])
 
   const loadRecentWorkspaces = async () => {
     try {
@@ -871,10 +897,10 @@ export default function WorkbenchHome() {
     setShowWelcomePage(false)
   }, [setShowWelcomePage])
 
+  /** 场景工具入口：以右侧抽屉展示工具宫格，不再占用左侧面板 */
   const handleOpenSceneTools = useCallback(() => {
-    setShowWelcomePage(false)
-    setActiveSidePanel('scene-tools')
-  }, [setShowWelcomePage, setActiveSidePanel])
+    openSceneToolDrawer(null)
+  }, [])
 
   /* ---------- 待办卡点击：进入待办中心 ---------- */
   const handleOpenTodoHub = useCallback(() => {
@@ -882,15 +908,10 @@ export default function WorkbenchHome() {
     setActiveSidePanel('todo-hub')
   }, [setShowWelcomePage, setActiveSidePanel])
 
-  /* ---------- 工具卡点击 ---------- */
-  const handleToolClick = useCallback(
-    (toolId: string) => {
-      setShowWelcomePage(false)
-      setActiveSidePanel('scene-tools')
-      setPendingSceneToolId(toolId)
-    },
-    [setShowWelcomePage, setActiveSidePanel, setPendingSceneToolId]
-  )
+  /* ---------- 工具卡点击：右侧抽屉打开对应工具 ---------- */
+  const handleToolClick = useCallback((toolId: string) => {
+    openSceneToolDrawer(toolId)
+  }, [])
 
   /* ---------- 卡片拖拽（宫格换位 + 碰撞自动避让） ---------- */
   const handleDragStart = useCallback((e: ReactPointerEvent, cardId: string) => {
@@ -899,7 +920,7 @@ export default function WorkbenchHome() {
     if (!gridEl) return
     const rect = gridEl.getBoundingClientRect()
     const scrollEl = scrollRef.current
-    const maxCol = Math.max(1, Math.floor((rect.width + CARD_GAP) / (CARD_W + CARD_GAP)))
+    const maxCol = measureMaxCol(gridEl)
     // 被拖动卡片当前的位置/尺寸，以及鼠标相对卡片左上角的抓取偏移
     const pos = posMapRef.current[cardId]
     const cardEl = gridEl.querySelector(`[data-card-id="${cardId}"]`) as HTMLElement | null
@@ -937,8 +958,9 @@ export default function WorkbenchHome() {
     const ghostH = d.rowSpan * CARD_H + (d.rowSpan - 1) * CARD_GAP
     setDragGhost({ x: e.clientX - d.grabDX, y: e.clientY - d.grabDY, w: ghostW, h: ghostH })
     // 计算目标宫格并高亮（拖动期间不重排其他卡片）
-    const x = e.clientX - d.rect.left + d.scrollLeft
-    const y = e.clientY - d.rect.top + d.scrollTop
+    // 网格容器带 WALL_PAD 内边距，换算列/行时必须先扣掉，否则会整体偏一格
+    const x = e.clientX - d.rect.left + d.scrollLeft - WALL_PAD
+    const y = e.clientY - d.rect.top + d.scrollTop - WALL_PAD
     const col = Math.min(d.maxCol, Math.max(1, Math.floor(x / (CARD_W + CARD_GAP)) + 1))
     const row = Math.max(1, Math.floor(y / (CARD_H + CARD_GAP)) + 1)
     d.targetCol = col
@@ -956,17 +978,17 @@ export default function WorkbenchHome() {
       // 松手时一次性计算最终排布：被拖动卡片插入目标宫格，其余卡片保持相对顺序紧凑排布
       const resolved = packGridPositions(posMapRef.current, d.id, d.targetCol, d.targetRow, d.maxCol)
       suppressClickRef.current = true
-      setWorkbenchPositions(currentSceneMode, resolved)
+      setWorkbenchPositions(resolved)
       posMapRef.current = resolved
     }
-  }, [currentSceneMode, setWorkbenchPositions])
+  }, [setWorkbenchPositions])
 
   /* ---------- 移除卡片 ---------- */
   const handleRemoveCard = useCallback(
     (cardId: string) => {
-      setWorkbenchWidget(currentSceneMode, cardId, false)
+      setWorkbenchWidget(cardId, false)
     },
-    [currentSceneMode, setWorkbenchWidget]
+    [setWorkbenchWidget]
   )
 
   /* ---------- 调整卡片尺寸（支持跨格） ---------- */
@@ -975,15 +997,13 @@ export default function WorkbenchHome() {
       const base = { ...posMapRef.current }
       const cur = base[cardId] ?? { col: 1, row: 1, colSpan: 1, rowSpan: 1 }
       const gridEl = gridRef.current
-      const maxCol = gridEl
-        ? Math.max(1, Math.floor((gridEl.getBoundingClientRect().width + CARD_GAP) / (CARD_W + CARD_GAP)))
-        : GRID_COLS
+      const maxCol = measureMaxCol(gridEl)
       base[cardId] = { ...cur, colSpan: Math.min(colSpan, maxCol), rowSpan: Math.max(1, rowSpan) }
       const resolved = packGridPositions(base, cardId, cur.col, cur.row, maxCol)
       posMapRef.current = resolved
-      setWorkbenchPositions(currentSceneMode, resolved)
+      setWorkbenchPositions(resolved)
     },
-    [currentSceneMode, setWorkbenchPositions]
+    [setWorkbenchPositions]
   )
 
   /* ---------- 背景图片上传 ---------- */
@@ -1003,14 +1023,14 @@ export default function WorkbenchHome() {
       }
       const base64 = await api.file.readBinary(filePath)
       if (!base64) return
-      setWorkbenchBackground(currentSceneMode, { type: 'image', value: `data:${mime};base64,${base64}` })
+      setWorkbenchBackground({ type: 'image', value: `data:${mime};base64,${base64}` })
       setCustomizeOpen(false)
       toast.success(isZh ? '背景图片已设置' : 'Background image set')
     } catch (err) {
       logger.ui.error('[WorkbenchHome] Failed to load background image:', err)
       toast.error(isZh ? '背景图片加载失败' : 'Failed to load background image')
     }
-  }, [isZh, currentSceneMode, setWorkbenchBackground])
+  }, [isZh, setWorkbenchBackground])
 
   /* ---------- 「新建任务」卡片描述：随场景模式动态轮换（与新建任务页欢迎语同源） ---------- */
   const lastCardGreetingRef = useRef<string>('')
@@ -1021,24 +1041,24 @@ export default function WorkbenchHome() {
     return picked ?? (isZh ? '与 AI 助手开始一项新任务' : 'Start a new task with AI')
   }, [currentSceneMode, isZh])
 
-  /* ---------- 卡片解析 ---------- */
+  /* ---------- 卡片解析（跨场景共享同一套卡片） ---------- */
   const cards = useMemo(() => {
-    const ids = workbenchWidgets[currentSceneMode] ?? []
+    const ids = workbenchWidgets[WORKBENCH_SCOPE] ?? []
     return ids
-      .map((id) => resolveCardMeta(id, currentSceneMode))
+      .map((id) => resolveCardMeta(id))
       .filter((c): c is CardMeta => c !== null)
       .map((c) => (c.id === 'new-chat' ? { ...c, descZh: newTaskDesc, descEn: newTaskDesc } : c))
-  }, [workbenchWidgets, currentSceneMode, newTaskDesc])
+  }, [workbenchWidgets, newTaskDesc])
 
   /* 背景样式 */
-  const background: WorkbenchBackground | null = workbenchBackgrounds[currentSceneMode] ?? null
+  const background: WorkbenchBackground | null = workbenchBackgrounds[WORKBENCH_SCOPE] ?? null
   const bgStyle: CSSProperties | undefined = background
     ? background.type === 'image'
       ? { backgroundImage: `url("${background.value}")`, backgroundSize: 'cover', backgroundPosition: 'center' }
       : { background: background.value }
     : undefined
   /* 卡片宫格位置 */
-  const posMap = workbenchPositions[currentSceneMode] ?? {}
+  const posMap = workbenchPositions[WORKBENCH_SCOPE] ?? {}
 
   const now = new Date()
   const greeting = getGreeting(now.getHours(), currentSceneMode, isZh)
@@ -1095,7 +1115,7 @@ export default function WorkbenchHome() {
                       <span className="text-xs font-semibold text-text-secondary">{isZh ? '背景' : 'Background'}</span>
                       {background && (
                         <button
-                          onClick={() => setWorkbenchBackground(currentSceneMode, null)}
+                          onClick={() => setWorkbenchBackground(null)}
                           className="flex items-center gap-1 text-[11px] text-text-muted hover:text-red-400 transition-colors"
                         >
                           <Eraser className="w-3 h-3" />
@@ -1109,7 +1129,7 @@ export default function WorkbenchHome() {
                         return (
                           <button
                             key={preset}
-                            onClick={() => setWorkbenchBackground(currentSceneMode, { type: 'color', value: preset })}
+                            onClick={() => setWorkbenchBackground({ type: 'color', value: preset })}
                             className={`h-9 rounded-xl border transition-all ${active ? 'ring-2 ring-accent border-transparent' : 'border-border/30 hover:border-border/60'}`}
                             style={{ background: preset }}
                             title={preset}
@@ -1125,7 +1145,7 @@ export default function WorkbenchHome() {
                           type="color"
                           className="sr-only"
                           value={background?.type === 'color' && !BACKGROUND_PRESETS.includes(background.value) ? background.value : '#3B82F6'}
-                          onChange={(e) => setWorkbenchBackground(currentSceneMode, { type: 'color', value: e.target.value })}
+                          onChange={(e) => setWorkbenchBackground({ type: 'color', value: e.target.value })}
                         />
                       </label>
                       <button
@@ -1147,7 +1167,7 @@ export default function WorkbenchHome() {
                   <div>
                     <span className="block text-xs font-semibold text-text-secondary mb-2">{isZh ? '布局' : 'Layout'}</span>
                     <button
-                      onClick={() => resetWorkbenchWidgets(currentSceneMode)}
+                      onClick={() => resetWorkbenchWidgets()}
                       className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-text-secondary hover:text-text-primary border border-border/30 bg-surface/40 hover:bg-surface-hover transition-colors"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
@@ -1244,10 +1264,9 @@ export default function WorkbenchHome() {
       {/* ===== 添加卡片弹层（macOS 小组件库） ===== */}
       {libraryOpen && (
         <CardLibrary
-          mode={currentSceneMode}
           isZh={isZh}
           addedIds={cards.map((c) => c.id)}
-          onAdd={(id) => setWorkbenchWidget(currentSceneMode, id, true)}
+          onAdd={(id) => setWorkbenchWidget(id, true)}
           onClose={() => setLibraryOpen(false)}
         />
       )}
@@ -1284,16 +1303,17 @@ interface CardMeta {
   /** 场景卡片元数据（kind==='scenario' 时有效） */
   scenarioMeta?: { scenarioId: string; contribution: ScenarioWidgetCardContribution }
 }
-function resolveCardMeta(id: string, mode: SceneMode): CardMeta | null {
+function resolveCardMeta(id: string): CardMeta | null {
   const action = ACTION_CARDS.find((a) => a.id === id)
   if (action) {
     return { ...action, kind: 'action' }
   }
   // 插件卡片：id 格式为 "<pluginKey>:<cardName>"
+  // 工作台卡片跨场景共享，不再按场景模式过滤插件的 modes 约束
   const pluginMatch = /^([^:]+):(.+)$/.exec(id)
   if (pluginMatch) {
     const [_, pluginKey] = pluginMatch
-    const cards = pluginUiRegistry.getWidgetCards(pluginKey, mode)
+    const cards = pluginUiRegistry.getWidgetCards(pluginKey)
     if (cards.length > 0) {
       const wc = cards[0]
       const idx = TOOL_COLORS.length > 0 ? Math.abs(hashCode(id)) % TOOL_COLORS.length : 0
@@ -1384,6 +1404,98 @@ function getImageMime(filePath: string): string | null {
 }
 
 /* ===================== 宫格布局工具 ===================== */
+
+/** 比较两份摆放表是否完全一致（用于避免无意义的写盘与重复渲染） */
+function isSamePositions(
+  a: Record<string, WorkbenchCardPos>,
+  b: Record<string, WorkbenchCardPos>
+): boolean {
+  const ka = Object.keys(a)
+  if (ka.length !== Object.keys(b).length) return false
+  return ka.every((k) => {
+    const pa = a[k]
+    const pb = b[k]
+    return (
+      !!pb &&
+      pa.col === pb.col &&
+      pa.row === pb.row &&
+      pa.colSpan === pb.colSpan &&
+      pa.rowSpan === pb.rowSpan
+    )
+  })
+}
+
+/**
+ * 归一化宫格摆放：保证任意两张卡片互不重叠，且不超出实际列数。
+ *
+ * 规则：
+ * - `order` 是卡片在界面上的先后顺序，靠前的优先落位，已有位置尽量原样保留；
+ * - 越界（列数变窄或尺寸放大）的卡片向内收拢；
+ * - 位置被占用的卡片从原位置起向右、向下顺延到最近空位；
+ * - 没有位置记录的卡片（新添加的卡片）从左上角开始找第一个装得下的空位，
+ *   因此「添加卡片」永远不会压到已有卡片上。
+ */
+function normalizeGridPositions(
+  positions: Record<string, WorkbenchCardPos>,
+  order: string[],
+  maxCol: number
+): Record<string, WorkbenchCardPos> {
+  const cols = Math.max(1, maxCol)
+  const occupied = new Set<string>()
+  const placed: Record<string, WorkbenchCardPos> = {}
+
+  const clash = (col: number, row: number, colSpan: number, rowSpan: number) => {
+    for (let r = row; r < row + rowSpan; r++) {
+      for (let c = col; c < col + colSpan; c++) {
+        if (occupied.has(`${c},${r}`)) return true
+      }
+    }
+    return false
+  }
+  const occupy = (col: number, row: number, colSpan: number, rowSpan: number) => {
+    for (let r = row; r < row + rowSpan; r++) {
+      for (let c = col; c < col + colSpan; c++) occupied.add(`${c},${r}`)
+    }
+  }
+  /** 从 (startCol, startRow) 起按 row-major 找到第一个能容纳该尺寸的空位 */
+  const findSlot = (colSpan: number, rowSpan: number, startCol = 1, startRow = 1) => {
+    const lastRow = startRow + 2000
+    for (let row = startRow; row <= lastRow; row++) {
+      const from = row === startRow ? Math.max(1, startCol) : 1
+      for (let col = from; col + colSpan - 1 <= cols; col++) {
+        if (!clash(col, row, colSpan, rowSpan)) return { col, row }
+      }
+    }
+    return { col: 1, row: startRow }
+  }
+
+  for (const id of order) {
+    const p = positions[id]
+    const colSpan = Math.min(Math.max(1, p?.colSpan ?? 1), cols)
+    const rowSpan = Math.max(1, p?.rowSpan ?? 1)
+
+    if (p && typeof p.col === 'number' && typeof p.row === 'number') {
+      const col = Math.min(Math.max(1, p.col), cols - colSpan + 1)
+      const row = Math.max(1, p.row)
+      if (!clash(col, row, colSpan, rowSpan)) {
+        placed[id] = { col, row, colSpan, rowSpan }
+        occupy(col, row, colSpan, rowSpan)
+        continue
+      }
+      // 原位被占用：从原位向右/向下顺延，避免卡片整体跳回最前面
+      const slot = findSlot(colSpan, rowSpan, col, row)
+      placed[id] = { ...slot, colSpan, rowSpan }
+      occupy(slot.col, slot.row, colSpan, rowSpan)
+      continue
+    }
+
+    // 新卡片：填进第一个空位，绝不覆盖已有卡片
+    const slot = findSlot(colSpan, rowSpan)
+    placed[id] = { ...slot, colSpan, rowSpan }
+    occupy(slot.col, slot.row, colSpan, rowSpan)
+  }
+  return placed
+}
 
 /**
  * 宫格重排：将 movedId 插入 (targetCol, targetRow) 目标宫格。
@@ -1498,6 +1610,13 @@ function WorkbenchCard({
   const isRecent = card.id === 'recent-workspaces'
   const isAction = card.kind === 'action'
   const isTodo = card.id === 'todo'
+  /**
+   * 可点击卡片：
+   * - 操作卡（新建任务 / 场景市场 / 场景工具…）打开对应页面或抽屉；
+   * - 工具卡（番茄钟 / 记账本…）统一以右侧抽屉打开对应工具；
+   * - 「最近工作」卡内部是可点的列表项，整卡不再绑点击。
+   */
+  const isClickable = card.kind === 'tool' || (isAction && !isRecent)
   const sizeKey = `${pos.colSpan}x${pos.rowSpan}`
 
   return (
@@ -1505,7 +1624,7 @@ function WorkbenchCard({
       data-card-id={card.id}
       className={`
         relative flex flex-col rounded-2xl border bg-surface/40 p-4 transition-all duration-200 min-h-0 overflow-hidden group
-        ${isAction ? 'cursor-pointer hover:bg-surface-hover hover:border-border/60' : 'hover:bg-surface-hover hover:border-border/60'}
+        ${isClickable ? 'cursor-pointer hover:bg-surface-hover hover:border-border/60' : 'hover:bg-surface-hover hover:border-border/60'}
         ${dragging ? 'border-accent/60 shadow-xl scale-[1.03] z-20' : 'border-border/30 z-10'}
       `}
       style={{
@@ -1529,7 +1648,7 @@ function WorkbenchCard({
           : {}),
       }}
       onPointerMove={onDragMove}
-      onClick={isAction ? onOpen : undefined}
+      onClick={isClickable ? onOpen : undefined}
     >
       {/* 头部：图标 + 标题 */}
       <div className="flex items-center gap-2.5 w-full pr-16">
@@ -1719,24 +1838,22 @@ function useScenarioWidgetCards() {
 }
 
 function CardLibrary({
-  mode,
   isZh,
   addedIds,
   onAdd,
   onClose,
 }: {
-  mode: SceneMode
   isZh: boolean
   addedIds: string[]
   onAdd: (id: string) => void
   onClose: () => void
 }) {
-  // 添加卡片时展示全部场景模式的工具，便于跨模式取用
+  // 工作台卡片跨场景共享：工具按来源场景分组展示，任意分组下的卡片都可添加
   const toolGroups = (Object.keys(MODE_META) as SceneMode[])
     // 待办清单已迁移为「通用 · 待办」卡片，工具分组不再重复提供
-    .map((m) => ({ mode: m, meta: MODE_META[m], tools: getToolsByMode(m).filter((t) => t.id !== 'work-todo') }))
+    .map((m) => ({ mode: m, meta: MODE_META[m], tools: SCENE_TOOLS.filter((t) => t.mode === m && t.id !== 'work-todo') }))
     .filter((g) => g.tools.length > 0)
-  const pluginCards = usePluginWidgetCards(mode)
+  const pluginCards = usePluginWidgetCards()
   const scenarioCards = useScenarioWidgetCards()
 
   const renderItem = (item: { id: string; icon: LucideIcon; titleZh: string; titleEn: string; color: string }) => {
@@ -1785,8 +1902,8 @@ function CardLibrary({
             <h4 className="text-sm font-semibold text-text-primary">{isZh ? '添加卡片' : 'Add Cards'}</h4>
             <p className="text-[11px] text-text-muted mt-0.5">
               {isZh
-                ? '选择卡片添加到工作台，工具覆盖工作 / 生活 / 学习三种模式'
-                : 'Pick cards to add — tools from work / life / study modes'}
+                ? '添加后在所有场景通用，工具来自工作 / 生活 / 学习'
+                : 'Cards are shared across all scenes — tools from work / life / study'}
             </p>
           </div>
           <button
