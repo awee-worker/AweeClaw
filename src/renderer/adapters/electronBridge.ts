@@ -455,6 +455,11 @@ function createGroupedAPI() {
       close: () => raw.close(),
       toggleDevTools: () => raw.toggleDevTools(),
       getId: () => raw.getWindowId(),
+      // 新建窗口；传 roots 时新窗口直接以该目录作为工作空间打开，
+      // newTask=true 时新窗口打开后直接进入新建任务，
+      // pickWorkspace=true 时新窗口先显示工作空间选择界面
+      new: (roots?: string[], options?: { newTask?: boolean; pickWorkspace?: boolean }) =>
+        raw.newWindow(roots, options),
       // 当前窗口是否为应用级服务宿主窗口（首个窗口）
       isPrimary: () => raw.isPrimaryWindow(),
       // 宿主窗口关闭后标记移交给本窗口的通知

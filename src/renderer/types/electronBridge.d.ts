@@ -1672,6 +1672,13 @@ export interface ElectronAPI {
   /** 场景切换后同步可见的顶级菜单：null 恢复全部，[] 全部收起 */
   setScenarioMenus: (ids: string[] | null) => void
   getWindowId: () => Promise<number>
+  /**
+   * 新建窗口；传 roots 时新窗口直接以该目录作为工作空间打开，返回新窗口 ID
+   *
+   * options.newTask=true 时新窗口打开后直接进入新建任务
+   * options.pickWorkspace=true 时新窗口先显示工作空间选择界面
+   */
+  newWindow: (roots?: string[], options?: { newTask?: boolean; pickWorkspace?: boolean }) => Promise<number>
   /** 当前窗口是否为应用级服务宿主窗口（首个窗口），用于避免多窗口重复启动单例后台任务 */
   isPrimaryWindow: () => Promise<boolean>
   /** 宿主窗口关闭后，标记移交给本窗口时的通知，返回取消监听函数 */

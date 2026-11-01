@@ -69,6 +69,7 @@ startupMetrics.mark('app-module-loaded')
 
 const WorkflowWorkbench = lazy(() => import('@components/workflow/Workbench/WorkflowWorkbench'))
 const WelcomePage = lazy(() => import('@components/welcome/WelcomePage'))
+const WorkspacePickScreen = lazy(() => import('@components/welcome/WorkspacePickScreen'))
 const PreferencesDialog = lazy(() => import('@components/settings/PreferencesDialog'))
 const UserProfilePage = lazy(() => import('@components/user/UserProfilePage'))
 const BillingCenterPage = lazy(() => import('@components/user/BillingCenterPage'))
@@ -92,32 +93,65 @@ setExternalScenarioLoadFunctions(
  * 但 registry 不是响应式的，React 收不到通知 —— 结果就是「场景已装好、菜单没出现」，
  * 用户必须手动切一次场景才能刷出来。加载结束后主动递增配置版本号，强制重算布局。
  */
-loadExternalScenarios()
-  .then((loaded) => {
-    if (loaded > 0) {
-      useStore.getState().incrementScenarioConfigVersion()
-    }
-  })
-  .catch(() => {
-    /* 单个场景加载失败已在 loader 内部记录，不阻断首屏 */
-  })
+function loadScenariosAndIcons(): void {
+  loadExternalScenarios()
+    .then((loaded) => {
+      if (loaded > 0) {
+        useStore.getState().incrementScenarioConfigVersion()
+      }
+    })
+    .catch(() => {
+      /* 单个场景加载失败已在 loader 内部记录，不阻断首屏 */
+    })
+
+  /**
+   * 已安装场景图标补齐
+   *
+   * 已安装场景要显示它在场景应用市场里的图标，早前安装的场景本地只有场景包自带的
+   * icon。这里在首屏之后补一次，补到图标才触发重渲染，避免顶部场景切换器一直
+   * 停在旧图标上。离线或未登录时静默跳过。
+   */
+  syncInstalledScenarioIcons()
+    .then((applied) => {
+      if (applied > 0) {
+        useStore.getState().incrementScenarioConfigVersion()
+      }
+    })
+    .catch(() => {
+      /* 补图失败不影响启动 */
+    })
+}
 
 /**
- * 已安装场景图标补齐
+ * 选工作空间窗口推迟加载外部场景
  *
- * 已安装场景要显示它在场景应用市场里的图标，早前安装的场景本地只有场景包自带的
- * icon。这里在首屏之后补一次，补到图标才触发重渲染，避免顶部场景切换器一直
- * 停在旧图标上。离线或未登录时静默跳过。
+ * 这类窗口的首屏只有「先定目录」的选择界面，不读场景配置；而外部场景要逐个
+ * fetch bundle 再动态 import，放在首屏只会和选择界面抢主线程与网络。推迟到空闲时
+ * 再加载，用户若很快选定目录，加载函数自身有幂等保护，不会重复执行。
  */
-syncInstalledScenarioIcons()
-  .then((applied) => {
-    if (applied > 0) {
-      useStore.getState().incrementScenarioConfigVersion()
+if (new URLSearchParams(window.location.search).get('pickws') === '1') {
+  // 一旦离开「先定目录」阶段（选定了目录，或点了先逛逛工作台），立即补加载；
+  // 空闲兜底保证用户一直停在选择界面时场景同样会准备好。
+  let scenariosLoadStarted = false
+  const startScenarioLoad = () => {
+    if (scenariosLoadStarted) return
+    scenariosLoadStarted = true
+    unsubscribe()
+    loadScenariosAndIcons()
+  }
+  const unsubscribe = useStore.subscribe((state) => {
+    if (state.workspace?.roots?.length || state.showWelcomePage) {
+      startScenarioLoad()
     }
   })
-  .catch(() => {
-    /* 补图失败不影响启动 */
-  })
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(startScenarioLoad, { timeout: 3000 })
+  } else {
+    setTimeout(startScenarioLoad, 1200)
+  }
+} else {
+  loadScenariosAndIcons()
+}
 
 function ToastInitializer() {
   const toastContext = useToast()
@@ -142,6 +176,7 @@ function AppContent() {
     showWorkflow, setShowWorkflow,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage,
     showSessionHistoryPage, showPluginCenterPage, showScenarioPage, showContactsPage,
+    workspacePickPending,
     activeScenarioId, scenarioConfigVersion, language,
     isAuthenticated, setShowWelcomePage, setChatVisible,
   } = useStore(useShallow((state) => ({
@@ -158,6 +193,7 @@ function AppContent() {
     showPluginCenterPage: state.showPluginCenterPage,
     showScenarioPage: state.showScenarioPage,
     showContactsPage: state.showContactsPage,
+    workspacePickPending: state.workspacePickPending,
     activeScenarioId: state.activeScenarioId,
     scenarioConfigVersion: state.scenarioConfigVersion,
     language: state.language,
@@ -280,7 +316,15 @@ function AppContent() {
    * 此时必须放行到主界面，否则看起来「点击没有反应」——因为界面又被无工作空间兜底逻辑
    * 拉回欢迎页。有工作空间时欢迎页由 MainContentArea 在主布局内渲染，不走这里。
    */
-  const showStandaloneWelcomePage = !hasWorkspace && showWelcomePage
+  const showStandaloneWelcomePage = !hasWorkspace && showWelcomePage && !workspacePickPending
+
+  /**
+   * 新窗口的工作空间选择界面：只在「还没选工作空间」且本次启动要求先选时独占界面。
+   *
+   * 优先级高于欢迎页 —— 它代表用户「先定目录再进来」的明确意图。
+   * 选定工作空间后 hasWorkspace 变真，界面由状态驱动自动退场，无需手动关闭。
+   */
+  const showWorkspacePickScreen = !hasWorkspace && workspacePickPending
 
   const isShellStudioActive = activeSidePanel === 'shell'
 
@@ -543,7 +587,14 @@ function AppContent() {
       )}
 
       <div className="relative z-10 flex h-full w-full">
-        {showStandaloneWelcomePage ? (
+        {showWorkspacePickScreen ? (
+          // 新窗口选工作空间：选完自动退场，不提供手动关闭
+          <div className="flex-1 overflow-hidden">
+            <Suspense fallback={<FullScreenLoading />}>
+              <WorkspacePickScreen />
+            </Suspense>
+          </div>
+        ) : showStandaloneWelcomePage ? (
           // 无工作空间入口页：独立全屏渲染，点击任一卡片即可退出到主界面
           <div className="flex-1 overflow-hidden">
             <Suspense fallback={<FullScreenLoading />}>

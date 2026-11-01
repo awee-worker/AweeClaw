@@ -30,6 +30,11 @@ export function createAppLifecycleApi() {
     close: send('window:close'),
     toggleDevTools: send('window:toggleDevTools'),
     getWindowId: invoke<number>('window:getId'),
+    // 新建窗口；传 roots 时新窗口直接以该目录作为工作空间打开，
+    // newTask=true 时新窗口打开后直接进入新建任务，
+    // pickWorkspace=true 时新窗口先显示工作空间选择界面
+    newWindow: (roots?: string[], options?: { newTask?: boolean; pickWorkspace?: boolean }) =>
+      invoke<number>('window:new')(roots, options),
     // 当前窗口是否为应用级服务宿主窗口（首个窗口）
     isPrimaryWindow: invoke<boolean>('window:isPrimary'),
     // 宿主窗口关闭后，主进程把标记移交给本窗口时通知，用于补启动应用级后台任务

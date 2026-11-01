@@ -81,6 +81,7 @@ export type MenuKey =
   | 'clearChatHistory'
   | 'clearCheckpoints'
   // 窗口菜单
+  | 'newWindow'
   | 'minimize'
   | 'zoom'
   | 'bringAllToFront'
@@ -97,7 +98,7 @@ const zh: Record<MenuKey, string> = {
   edit: '编辑',
   view: '视图',
   scenario: '场景',
-  ai: '会话',
+  ai: '任务',
   window: '窗口',
   help: '帮助',
 
@@ -153,13 +154,14 @@ const zh: Record<MenuKey, string> = {
   catHealth: '健康',
   catOther: '其他',
 
-  newChat: '新对话...',
+  newChat: '新任务...',
   explainCurrentFile: '解释当前文件',
   refactorFile: '重构当前文件',
   fixBugs: '修复 Bug',
-  clearChatHistory: '清除对话历史',
+  clearChatHistory: '清除历史任务',
   clearCheckpoints: '清除所有检查点',
 
+  newWindow: '新建窗口',
   minimize: '最小化',
   zoom: '缩放',
   bringAllToFront: '全部置于顶层',
@@ -177,7 +179,7 @@ const en: Record<MenuKey, string> = {
   edit: 'Edit',
   view: 'View',
   scenario: 'Scenario',
-  ai: 'Conversation',
+  ai: 'Tasks',
   window: 'Window',
   help: 'Help',
 
@@ -233,13 +235,14 @@ const en: Record<MenuKey, string> = {
   catHealth: 'Health',
   catOther: 'Other',
 
-  newChat: 'New Chat...',
+  newChat: 'New Task...',
   explainCurrentFile: 'Explain Current File',
   refactorFile: 'Refactor File',
   fixBugs: 'Fix Bugs',
-  clearChatHistory: 'Clear Chat History',
+  clearChatHistory: 'Clear Task History',
   clearCheckpoints: 'Clear All Checkpoints',
 
+  newWindow: 'New Window',
   minimize: 'Minimize',
   zoom: 'Zoom',
   bringAllToFront: 'Bring All to Front',

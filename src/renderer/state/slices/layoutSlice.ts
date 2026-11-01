@@ -357,6 +357,13 @@ export interface LayoutSlice {
   showPluginCenterPage: boolean
   showScenarioPage: boolean
   showContactsPage: boolean
+  /**
+   * 启动闸门：本次启动要不要先选工作空间
+   *
+   * 由「新建窗口」创建的空窗口置位，选定工作空间后由界面自身清除。
+   * 不并入全屏页面集合：它与那些页面不同，不与其它页面互斥，而是压在它们之上。
+   */
+  workspacePickPending: boolean
   /** 环境检测弹窗是否显示 */
   showEnvironmentSetup: boolean
   /** 设置环境检测弹窗显隐 */
@@ -468,6 +475,8 @@ export interface LayoutSlice {
   setShowPluginCenterPage: (show: boolean) => void
   setShowScenarioPage: (show: boolean) => void
   setShowContactsPage: (show: boolean) => void
+  /** 设置/清除启动时的选工作空间闸门 */
+  setWorkspacePickPending: (pending: boolean) => void
   /** 关闭所有全屏页面，返回聊天界面 */
   closeAllFullPages: () => void
 
@@ -564,6 +573,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   activeDockTab: LAYOUT_DEFAULTS.activeDockTab,
   planPanelPlanId: LAYOUT_DEFAULTS.planPanelPlanId,
   ...buildInitialFullscreenPages(),
+  workspacePickPending: false,
 
   /* ----- 语音对话模式初始状态 ----- */
   voiceConversationActive: false,
@@ -704,6 +714,8 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   setShowPluginCenterPage: (show) => set(buildFullscreenToggle('showPluginCenterPage', show)),
       setShowScenarioPage: (show) => set(buildFullscreenToggle('showScenarioPage', show)),
       setShowContactsPage: (show) => set(buildFullscreenToggle('showContactsPage', show)),
+  // 闸门不参与全屏页面互斥：关闭全屏页不应把用户重新拉回选择界面
+  setWorkspacePickPending: (pending) => set({ workspacePickPending: pending }),
   closeAllFullPages: () => set(buildFullscreenReset()),
 
   /* ----- 语音对话模式操作 ----- */

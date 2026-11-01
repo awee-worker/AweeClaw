@@ -5,7 +5,7 @@
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, FolderPlus, FolderOpen, History, Folder, PanelLeft } from 'lucide-react'
+import { ChevronDown, FolderPlus, FolderOpen, History, Folder, PanelLeft, AppWindow } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@store'
 import { workspaceManager, WorkspaceOpenError } from '@services/WorkspaceAdapter'
@@ -166,6 +166,15 @@ export default function ProjectSelector() {
                                     store.setSettingsIntent({ tab: 'security', anchor: 'allowedExternalDirectories' })
                                     store.setShowSettingsPage(true)
                                 }}
+                            />
+                            <MenuItem
+                                icon={AppWindow}
+                                label={t('workspace.newWindow', language)}
+                                description={t('workspace.newWindowDesc', language)}
+                                onClick={() => handleAction(async () => {
+                                    // 新窗口先选工作空间：不继承当前目录，避免误在别人的项目里动手
+                                    await api.window.new(undefined, { pickWorkspace: true })
+                                })}
                             />
                         </div>
 

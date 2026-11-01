@@ -151,6 +151,41 @@ export function setWindowWorkspace(id: number, roots: string[]): void {
   windowWorkspaces.set(id, roots)
 }
 
+/**
+ * 待新窗口领取的工作空间会话
+ *
+ * `window:new` 允许带着目标目录创建窗口，但窗口尚未加载页面时无法通过 IPC 收参数。
+ * 因此由主进程在创建时把会话登记在这里，该窗口首次 `workspace:restore` 时一次性取走。
+ * 键是窗口 ID，与 windowWorkspaces 同一口径。
+ */
+export interface PendingWindowWorkspace {
+  configPath: string | null
+  roots: string[]
+  workspaceId?: string
+}
+
+const pendingWindowWorkspaces = new Map<number, PendingWindowWorkspace>()
+
+/** 登记新窗口预置的工作空间会话 */
+export function setPendingWindowWorkspace(windowId: number, session: PendingWindowWorkspace): void {
+  pendingWindowWorkspaces.set(windowId, session)
+}
+
+/**
+ * 取出并清除新窗口预置的工作空间会话（一次性消费）
+ *
+ * 必须消费即删：同一个窗口再次 restore（例如用户手动切换工作空间后重载）
+ * 应当回到「读全局会话」的正规路径，而不是重复拿到创建时的目标目录。
+ */
+export function takePendingWindowWorkspace(windowId: number): PendingWindowWorkspace | null {
+  const session = pendingWindowWorkspaces.get(windowId)
+  if (!session) {
+    return null
+  }
+  pendingWindowWorkspaces.delete(windowId)
+  return session
+}
+
 /** 获取窗口关联的工作空间 */
 export function getWindowWorkspace(id: number): string[] | null {
   return windowWorkspaces.get(id) || null
@@ -300,8 +335,17 @@ function getIconPath(): string {
  *
  * @param isEmpty 是否为空窗口（欢迎页）：影响初始尺寸
  * @param deferLoad 是否推迟加载页面内容（用于模块初始化前先创建窗口）
+ * @param restoreWorkspace 空窗口也要恢复工作空间（带目标目录的任务窗口用）
+ * @param newTask 空窗口打开后直接进入新建任务
+ * @param pickWorkspace 空窗口打开后先让用户选择工作空间
  */
-export function createWindow(isEmpty = false, deferLoad = false): BrowserWindow {
+export function createWindow(
+  isEmpty = false,
+  deferLoad = false,
+  restoreWorkspace = false,
+  newTask = false,
+  pickWorkspace = false,
+): BrowserWindow {
   const primaryDisplay = screen.getPrimaryDisplay()
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
 
@@ -362,7 +406,7 @@ export function createWindow(isEmpty = false, deferLoad = false): BrowserWindow 
   })
 
   if (!deferLoad) {
-    loadWindowContent(win, isEmpty)
+    loadWindowContent(win, isEmpty, restoreWorkspace, newTask, pickWorkspace)
   }
 
   return win
@@ -724,9 +768,31 @@ function registerWebviewGuard(win: BrowserWindow): void {
 // 内容加载
 // ==========================================
 
-/** 加载窗口页面内容：生产 loadFile / 开发 loadURL / 无 dev server 时回退到构建产物 */
-export function loadWindowContent(win: BrowserWindow, isEmpty: boolean): void {
-  const query = isEmpty ? { empty: '1' } : undefined
+/**
+ * 加载窗口页面内容：生产 loadFile / 开发 loadURL / 无 dev server 时回退到构建产物
+ *
+ * @param isEmpty 空窗口（不恢复上次会话，直接进欢迎页）
+ * @param restoreWorkspace 空窗口也要恢复工作空间
+ *   带目标目录创建的任务窗口用：它仍然是空窗口（独立会话、欢迎页起步），
+ *   但必须把自己恢复成预置的目录，否则工具调用会报「没有打开工作空间」。
+ * @param newTask 空窗口打开后直接进入新建任务
+ * @param pickWorkspace 空窗口打开后先让用户选择工作空间
+ */
+export function loadWindowContent(
+  win: BrowserWindow,
+  isEmpty: boolean,
+  restoreWorkspace = false,
+  newTask = false,
+  pickWorkspace = false,
+): void {
+  const query = isEmpty
+    ? {
+        empty: '1',
+        ...(restoreWorkspace ? { restore: '1' } : {}),
+        ...(newTask ? { newtask: '1' } : {}),
+        ...(pickWorkspace ? { pickws: '1' } : {}),
+      }
+    : undefined
   const rendererPath = path.join(__dirname, '../renderer/index.html')
 
   if (app.isPackaged) {
@@ -735,7 +801,10 @@ export function loadWindowContent(win: BrowserWindow, isEmpty: boolean): void {
   }
 
   if (process.env.VITE_DEV_SERVER_URL) {
-    const devUrl = `${process.env.VITE_DEV_SERVER_URL}${isEmpty ? '?empty=1' : ''}`
+    const search = isEmpty
+      ? `?empty=1${restoreWorkspace ? '&restore=1' : ''}${newTask ? '&newtask=1' : ''}${pickWorkspace ? '&pickws=1' : ''}`
+      : ''
+    const devUrl = `${process.env.VITE_DEV_SERVER_URL}${search}`
     win.loadURL(devUrl)
     return
   }

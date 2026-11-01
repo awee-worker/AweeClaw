@@ -9,6 +9,11 @@
 
 import { ipcMain, BrowserWindow, app, nativeTheme } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
+import {
+  buildNewWindowWorkspaceSession,
+  commitNewWindowWorkspace,
+} from '../../guard/workspaceGuard'
+import { findWindowByWorkspace } from '../../bootstrap/windowManager'
 
 /** 自绘菜单可执行的原生角色 */
 export type MenuRole =
@@ -23,7 +28,13 @@ const ZOOM_STEP = 0.5
 let basicHandlersRegistered = false
 
 export function registerWindowHandlers(
-  createWindow: (isEmpty?: boolean) => BrowserWindow,
+  createWindow: (
+    isEmpty?: boolean,
+    deferLoad?: boolean,
+    restoreWorkspace?: boolean,
+    newTask?: boolean,
+    pickWorkspace?: boolean,
+  ) => BrowserWindow,
   isPrimaryWindow?: (windowId: number) => boolean,
 ) {
   // 基础窗口控制（只注册一次）
@@ -137,8 +148,78 @@ export function registerWindowHandlers(
   try {
     ipcMain.removeHandler('window:new')
   } catch (e) { logger.system.debug('Failed to remove window:new handler:', e) }
-  ipcMain.handle('window:new', () => {
-    createWindow(true)
+  /**
+   * 新建窗口
+   *
+   * 可选携带目标工作空间根目录：带上时新窗口以该目录作为工作空间打开，
+   * 用于「新建任务时把执行目录放在另一个项目」的场景。
+   * 不传则维持原行为（空窗口，工作空间由用户自行选择）。
+   *
+   * @param roots 目标工作空间根目录；留空表示不指定
+   * @param options.newTask 窗口打开后直接进入新建任务，
+   *   此时工作空间沿用当前最近使用的那一份
+   * @param options.pickWorkspace 窗口打开后先让用户选择工作空间
+   *   （含最近工作空间列表），选定后才进入主界面
+   * @returns 新窗口 ID
+   */
+  ipcMain.handle('window:new', async (_event, roots?: unknown, options?: unknown) => {
+    const targetRoots = Array.isArray(roots)
+      ? roots.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      : []
+    const opts = options as { newTask?: unknown; pickWorkspace?: unknown } | undefined
+    const newTask = Boolean(opts?.newTask)
+    // 让用户选工作空间的窗口不继承上一窗口的工作空间：它必须从无工作空间起步，
+    // 否则会直接跳过选择界面进入主界面。
+    const pickWorkspace = Boolean(opts?.pickWorkspace)
+
+    // 与「打开文件夹」保持同一策略：目录已在其他窗口打开时聚焦该窗口，
+    // 不再开第二份。同一目录开两个窗口会让索引、文件监听、存储初始化互相踩踏。
+    if (targetRoots.length > 0) {
+      const existing = findWindowByWorkspace(targetRoots)
+      if (existing && !existing.isDestroyed()) {
+        if (existing.isMinimized()) {
+          existing.restore()
+        }
+        existing.focus()
+        logger.system.info('[Window] 目标目录已在其他窗口打开，聚焦该窗口', {
+          roots: targetRoots,
+          windowId: existing.id,
+        })
+        return existing.id
+      }
+    }
+
+    // 会话必须先于窗口创建算好：标记文件写入是异步 IO，
+    // 放在建窗之后会让渲染进程抢在登记之前发出 workspace:restore。
+    const session = targetRoots.length > 0
+      ? await buildNewWindowWorkspaceSession(targetRoots).catch((err) => {
+          // 预置失败不阻断开窗：新窗口会退回「未打开工作空间」，用户仍可手动选择
+          logger.system.warn('[Window] 新窗口工作空间预计算失败', {
+            roots: targetRoots,
+            error: String(err),
+          })
+          return null
+        })
+      : null
+
+    // 带目录时要求新窗口恢复工作空间：空窗口默认跳过恢复，
+    // 不显式要求的话预置的目录永远不会被消费，新窗口仍是无工作空间状态。
+    // 新建任务窗口同样要恢复工作空间（沿用最近使用的那一份），否则工具调用会报「没有打开工作空间」
+    // 选择工作空间的窗口不恢复：保持无工作空间，选择界面才能作为入口显示
+    const win = createWindow(
+      true,
+      false,
+      session !== null || (newTask && !pickWorkspace),
+      newTask && !pickWorkspace,
+      pickWorkspace,
+    )
+
+    // 同步登记，保证新窗口的首次 restore 一定能读到本窗口的目标目录
+    if (session) {
+      commitNewWindowWorkspace(win, session)
+    }
+
+    return win.id
   })
 
   // 当前窗口是否应用级服务宿主窗口（首个窗口）

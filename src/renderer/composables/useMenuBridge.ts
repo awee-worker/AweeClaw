@@ -31,6 +31,7 @@ type MenuCommandId =
   // 文件菜单
   | 'open-folder'
   | 'add-folder'
+  | 'window.new'
   | 'save-workspace'
   | 'save-file'
   | 'refresh-files'

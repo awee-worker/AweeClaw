@@ -64,6 +64,11 @@ export function buildFileMenu(ctx: FileMenuContext): MenuItemConstructorOptions 
       label: t(lang, 'saveWorkspaceAs'),
       click: createCommandSender(getWin, 'save-workspace'),
     },
+    {
+      label: t(lang, 'newWindow'),
+      accelerator: 'CmdOrCtrl+N',
+      click: createCommandSender(getWin, 'window.new'),
+    },
     { type: 'separator' },
     {
       label: t(lang, 'saveFile'),

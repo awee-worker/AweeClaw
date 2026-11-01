@@ -168,7 +168,7 @@ export class MenuBuilder {
 
     // macOS: 窗口菜单
     if (isMac && this.isVisible('window')) {
-      menus.push(buildWindowMenu({ lang: this.currentLang }))
+      menus.push(buildWindowMenu(commonCtx))
     }
 
     // Windows/Linux: 文件菜单末尾添加设置和退出

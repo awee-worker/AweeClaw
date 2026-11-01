@@ -103,6 +103,19 @@ export function dispatchMenuCommand(
       case 'settings':
         ctx.setShowSettingsPage(true)
         break
+      case 'window.new':
+        // 新建窗口先让用户选工作空间：新窗口不继承本窗口的目录，
+        // 登录态仍由新窗口自己恢复
+        api.window.new(undefined, { pickWorkspace: true }).catch((err) => {
+          logger.system.error('[MenuBridge] Open new window failed', err)
+        })
+        break
+      case 'window.new-task':
+        // 保留旧语义：新窗口直接进入新建任务，工作空间沿用当前窗口的
+        api.window.new(undefined, { newTask: true }).catch((err) => {
+          logger.system.error('[MenuBridge] Open new task window failed', err)
+        })
+        break
       case 'workspace.openRecent': {
         const path = (payload as { path?: string })?.path
         if (path) {

@@ -125,8 +125,12 @@ import {
 export interface IPCContext {
   // 获取窗口，如果没有指定窗口 ID，则返回最后一个活跃窗口
   getMainWindow: (windowId?: number) => BrowserWindow | null
-  // isEmpty: 是否是空窗口，用于创建新窗口
-  createWindow: (isEmpty?: boolean) => BrowserWindow
+  // isEmpty: 是否是空窗口；restoreWorkspace: 空窗口是否也要恢复工作空间
+  createWindow: (
+    isEmpty?: boolean,
+    deferLoad?: boolean,
+    restoreWorkspace?: boolean,
+  ) => BrowserWindow
   /** 根据 key 路由到正确的 store */
   resolveStore: (key: string) => Store
   credentialsStore: Store
@@ -137,6 +141,15 @@ export interface IPCContext {
   findWindowByWorkspace?: (roots: string[]) => BrowserWindow | null
   setWindowWorkspace?: (windowId: number, roots: string[]) => void
   getWindowWorkspace?: (windowId: number) => string[] | null
+  /** 登记新窗口预置的工作空间会话（window:new 带目录创建时使用） */
+  setPendingWindowWorkspace?: (
+    windowId: number,
+    session: { configPath: string | null; roots: string[]; workspaceId?: string },
+  ) => void
+  /** 取出并清除新窗口预置的工作空间会话（一次性消费） */
+  takePendingWindowWorkspace?: (windowId: number) =>
+    | { configPath: string | null; roots: string[]; workspaceId?: string }
+    | null
   // 是否应用级服务宿主窗口（首个窗口），供渲染进程去重单例后台任务
   isPrimaryWindow?: (windowId: number) => boolean
 }
@@ -192,6 +205,8 @@ export function registerAllHandlers(context: IPCContext) {
   }, {
     findWindowByWorkspace: context.findWindowByWorkspace,
     setWindowWorkspace: context.setWindowWorkspace,
+    setPendingWindowWorkspace: context.setPendingWindowWorkspace,
+    takePendingWindowWorkspace: context.takePendingWindowWorkspace,
   }))
 
   // 设置（传入 resolveStore 和各 store 引用）

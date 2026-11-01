@@ -30,6 +30,8 @@ import {
   findWindowByWorkspace,
   setWindowWorkspace,
   getWindowWorkspace,
+  setPendingWindowWorkspace,
+  takePendingWindowWorkspace,
   isPrimaryWindow,
 } from './windowManager'
 import { setIpcModuleForWindow } from './windowManager'
@@ -172,6 +174,8 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
     findWindowByWorkspace,
     setWindowWorkspace,
     getWindowWorkspace,
+    setPendingWindowWorkspace,
+    takePendingWindowWorkspace,
     isPrimaryWindow,
   })
 

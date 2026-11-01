@@ -186,6 +186,8 @@ export interface AuthSlice {
   fetchQuota: () => Promise<void>
   fetchCloudModels: () => Promise<CloudProviderModel[]>
   restoreSession: () => Promise<void>
+  /** 仅从本地持久化恢复登录态，不重复启动应用级后台任务（多窗口场景用） */
+  restoreAuthFromStorage: () => Promise<void>
   selectCloudModel: () => Promise<void>
 }
 
@@ -594,6 +596,52 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     knowledgeSyncService.startAutoSync();
     knowledgeSyncService.syncToServer().catch(() => {});
     knowledgeGraphSyncService.startAutoSync();
+  },
+
+  /**
+   * 仅从本地持久化恢复登录态
+   *
+   * 多窗口场景用：凭据存在 localStorage，各窗口同源共享。非宿主窗口把它们装回
+   * backendApi 并标记已登录，界面登录态就与主窗口一致；知识同步、渠道连接、
+   * 记忆调度这些单例任务仍只由宿主窗口启动，不在新窗口重复跑一遍。
+   */
+  restoreAuthFromStorage: async () => {
+    const persisted = loadPersistedAuth();
+    if (!persisted?.accessToken) return;
+
+    // 与 restoreSession 一致：配置文件里的服务器地址优先，避免沿用旧的持久化地址
+    let effectiveServerUrl = persisted.serverUrl || '';
+    try {
+      const { api } = await import('../../adapters/electronBridge');
+      const config = await api.settings.getAppConfig();
+      if (config?.serverUrl) effectiveServerUrl = config.serverUrl;
+    } catch { /* 配置文件不存在或读取失败，沿用持久化地址 */ }
+
+    if (!effectiveServerUrl) return;
+
+    setServerUrl(effectiveServerUrl);
+    setTokens({ accessToken: persisted.accessToken, refreshToken: persisted.refreshToken });
+    // 先按已登录渲染：profile 请求失败（网络抖动等）不应该让新窗口退回未登录
+    set({ serverUrl: effectiveServerUrl, cloudMode: persisted.cloudMode, isAuthenticated: true });
+
+    // 用户信息在后台补齐，不阻塞新窗口启动；凭据失效时 backendApi 会清空 token，
+    // 这里据此把登录态退回未登录，避免带着死 token 继续发请求
+    backendApi
+      .get<CloudUser>('/api/v1/user/profile')
+      .then((profile) => set({ cloudUser: profile }))
+      .catch((e) => {
+        if (!getTokens()) {
+          logger.system.warn('[Auth] restoreAuthFromStorage: token cleared, session expired');
+          set({ isAuthenticated: false });
+          return;
+        }
+        logger.system.warn('[Auth] restoreAuthFromStorage: fetch profile failed:', e);
+      });
+
+    // 云端模式下补齐云端字段，否则新窗口的请求仍带着持久化配置里的旧 token
+    if (persisted.cloudMode === 'cloud') {
+      get().selectCloudModel().catch(() => {});
+    }
   },
   }
 }

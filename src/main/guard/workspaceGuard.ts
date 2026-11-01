@@ -32,6 +32,10 @@ import { securityManager } from './securityPolicyEngine'
 export interface WindowManagerContext {
   findWindowByWorkspace?: (roots: string[]) => BrowserWindow | null
   setWindowWorkspace?: (windowId: number, roots: string[]) => void
+  /** 登记新窗口预置的工作空间会话（window:new 带目录创建时使用） */
+  setPendingWindowWorkspace?: (windowId: number, session: StoredWorkspaceSession) => void
+  /** 取出并清除新窗口预置的工作空间会话（一次性消费） */
+  takePendingWindowWorkspace?: (windowId: number) => StoredWorkspaceSession | null
 }
 
 /** 存储的工作空间会话 */
@@ -341,6 +345,58 @@ function redirectToExistingWindow(
 }
 
 /* ------------------------------------------------------------------ */
+/* 新窗口工作空间预置                                                   */
+/* ------------------------------------------------------------------ */
+
+type WindowWorkspaceSessionBuilder = (roots: string[]) => Promise<StoredWorkspaceSession | null>
+type WindowWorkspaceCommitter = (window: BrowserWindow, session: StoredWorkspaceSession) => void
+
+/**
+ * 新窗口工作空间的「计算」与「登记」两步
+ *
+ * 由 registerWorkspaceHandlers 在注册时注入（此处持有 store 与窗口上下文），
+ * `window:new` 带目录创建窗口时使用。用模块级槽而不是跨层 import，
+ * 让 bridge/window 能调用本模块而不引入反向依赖。
+ *
+ * 拆成两步是因为存在时序要求：会话准备要写工作空间标记文件（磁盘 IO），
+ * 若在窗口创建之后才 await，渲染进程可能已经发出 workspace:restore，
+ * 而预置值尚未登记，新窗口就会恢复成上一个工作空间。
+ * 因此调用方必须先 build（异步、建窗前）再 commit（同步、建窗后立即）。
+ */
+let windowWorkspaceSessionBuilder: WindowWorkspaceSessionBuilder | null = null
+let windowWorkspaceCommitter: WindowWorkspaceCommitter | null = null
+
+/**
+ * 预先计算新窗口的工作空间会话
+ *
+ * 未注册时返回 null：说明当前进程未开启工作空间能力，
+ * 新窗口沿用原有逻辑读全局会话即可，不应因此阻断开窗。
+ */
+export async function buildNewWindowWorkspaceSession(
+  roots: string[],
+): Promise<StoredWorkspaceSession | null> {
+  if (!windowWorkspaceSessionBuilder) {
+    logger.system.warn('[workspaceGuard] 新窗口工作空间构建器未注册，忽略预置目录', { roots })
+    return null
+  }
+  return windowWorkspaceSessionBuilder(roots)
+}
+
+/** 登记已计算好的会话；同步执行，必须在窗口创建后立即调用 */
+export function commitNewWindowWorkspace(
+  window: BrowserWindow,
+  session: StoredWorkspaceSession,
+): void {
+  if (!windowWorkspaceCommitter) {
+    logger.system.warn('[workspaceGuard] 新窗口工作空间登记器未注册，忽略预置目录', {
+      windowId: window.id,
+    })
+    return
+  }
+  windowWorkspaceCommitter(window, session)
+}
+
+/* ------------------------------------------------------------------ */
 /* 工作空间文件解析                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -413,6 +469,36 @@ export function registerWorkspaceHandlers(
   _getWorkspaceSessionFn: (event?: Electron.IpcMainInvokeEvent) => { roots: string[] } | null,
   windowManager?: WindowManagerContext,
 ): void {
+  /* -------- 新窗口工作空间预置 -------- */
+
+  // window:new 带目录创建窗口时，由这里完成标记文件、窗口归属与最近列表的登记。
+  // 会话写入 pending 队列而非全局键：带目录开的新窗口可能不止一个，
+  // 全局键只能记住最后一个，会让先创建的窗口恢复成别人的目录。
+  windowWorkspaceSessionBuilder = async (roots: string[]) => {
+    const normalized = roots.map((item) => normalizeWorkspacePath(item)).filter(Boolean)
+    if (normalized.length === 0) return null
+
+    // 标记文件写入是这条链路上唯一的磁盘 IO，必须发生在建窗之前
+    const workspaceId = await ensureWorkspaceMarker(normalized[0])
+
+    return {
+      configPath: null,
+      roots: normalized,
+      workspaceId: workspaceId || undefined,
+    }
+  }
+
+  windowWorkspaceCommitter = (window, session) => {
+    windowManager?.setWindowWorkspace?.(window.id, session.roots)
+    windowManager?.setPendingWindowWorkspace?.(window.id, session)
+    session.roots.forEach((root) => addRecentWorkspace(store, root))
+
+    logger.system.info('[workspaceGuard] 新窗口工作空间已预置', {
+      windowId: window.id,
+      roots: session.roots,
+    })
+  }
+
   /* -------- 打开工作空间（文件夹 / 工作空间文件） -------- */
 
   /**
@@ -553,13 +639,20 @@ export function registerWorkspaceHandlers(
   /* -------- 恢复工作空间 -------- */
 
   ipcMain.handle('workspace:restore', async (event) => {
-    const session = store.get('lastWorkspaceSession') as StoredWorkspaceSession | null
+    // 带目录创建的新窗口，会话已预置在本窗口名下：必须优先消费它。
+    // 若仍读全局键，新窗口会恢复成「最后打开的那个工作空间」，
+    // 表现为「新建任务指定了 B，窗口打开的却是 A」。
+    const pending = windowManager?.takePendingWindowWorkspace?.(event.sender.id) ?? null
+    const session = pending ?? (store.get('lastWorkspaceSession') as StoredWorkspaceSession | null)
 
     if (session) {
       const restorable = await isWorkspaceSessionRestorable(session)
       if (!restorable) {
-        store.delete('lastWorkspaceSession')
-        store.delete('lastWorkspacePath')
+        // 预置会话失效只影响本窗口，不能删全局键：其他窗口可能正基于它工作
+        if (!pending) {
+          store.delete('lastWorkspaceSession')
+          store.delete('lastWorkspacePath')
+        }
         securityManager.setWorkspacePath(null)
 
         const result: WorkspaceRestoreResult = {

@@ -14,7 +14,7 @@ import { startupMetrics } from '@shared/toolkit/bootMetrics'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { useStore } from '@store'
 import type { SecurityPolicyPanel } from '@shared/configuration/configTypes'
-import { initializeAgentStore } from '@intelligence/state/IntelligenceStore'
+import { initializeAgentStore, useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { builtinThemes, themeManager } from '../config/themeDefinition'
 import { isValidWallpaperConfig, normalizeWallpaperConfig } from '../config/wallpaper'
 import type { ThemeColor } from '@store'
@@ -201,7 +201,18 @@ async function loadUserSettings(_isEmptyWindow: boolean): Promise<string | null>
   return savedTheme as string | null
 }
 
-async function restoreWorkspace(onWorkspaceReady?: () => void): Promise<boolean> {
+/**
+ * 恢复工作空间
+ *
+ * @param onWorkspaceReady 工作空间就绪回调（用于移除加载动画）
+ * @param options.skipSessionRestore 只恢复工作空间，不恢复历史会话与编辑状态
+ *   带目标目录的任务窗口用：它需要的是一份独立的空白任务空间，
+ *   而不是把主窗口的上次会话与打开文件一并搬过来。
+ */
+async function restoreWorkspace(
+  onWorkspaceReady?: () => void,
+  options: { skipSessionRestore?: boolean } = {},
+): Promise<boolean> {
   startupMetrics.start('restore-workspace')
 
   const workspaceConfig = await api.workspace.restore()
@@ -231,21 +242,23 @@ async function restoreWorkspace(onWorkspaceReady?: () => void): Promise<boolean>
   // 后续的 restoreWorkspaceAgentStore 等耗时操作在后台继续，不阻塞 UI 显示
   onWorkspaceReady?.()
 
-  // 关键路径：恢复会话数据（用户进入应用时必须看到历史会话）
-  await runWithAgentStorageWritesSuspended(async () => {
-    await restoreWorkspaceAgentStore()
-  })
+  if (!options.skipSessionRestore) {
+    // 关键路径：恢复会话数据（用户进入应用时必须看到历史会话）
+    await runWithAgentStorageWritesSuspended(async () => {
+      await restoreWorkspaceAgentStore()
+    })
 
-  // 非关键路径：延迟恢复工作空间状态（打开的文件、布局等）
-  schedulePostPaintTask(async () => {
-    try {
-      await runWithAgentStorageWritesSuspended(async () => {
-        await restoreWorkspaceState()
-      })
-    } catch (e) {
-      logger.system.warn('[Init] Deferred workspace state restore failed:', e)
-    }
-  }, 0)
+    // 非关键路径：延迟恢复工作空间状态（打开的文件、布局等）
+    schedulePostPaintTask(async () => {
+      try {
+        await runWithAgentStorageWritesSuspended(async () => {
+          await restoreWorkspaceState()
+        })
+      } catch (e) {
+        logger.system.warn('[Init] Deferred workspace state restore failed:', e)
+      }
+    }, 0)
+  }
 
   // Harness 初始化也可以延迟
   if (shellState.primaryRoot) {
@@ -341,36 +354,56 @@ export async function initializeApp(
     }
 
     updateStatus(isZh() ? '正在初始化...' : 'Initializing...')
+    // 宿主判定只是一次 IPC，与核心模块初始化互不依赖：同时发出，少一次串行等待。
+    // 新窗口打开时这段串行耗时直接体现在启动页停留时长上。
+    const isPrimaryPromise = api.window.isPrimary().catch(() => true)
     await initCoreModules()
 
     updateStatus(isZh() ? '加载配置...' : 'Loading settings...')
     const params = new URLSearchParams(window.location.search)
     const isEmptyWindow = params.get('empty') === '1'
+    // 带目标目录创建的任务窗口：仍是空窗口（欢迎页起步、独立会话），
+    // 但需要把自己恢复成主进程预置的目录，否则工具调用会报「没有打开工作空间」
+    const restoreWorkspaceForEmptyWindow = params.get('restore') === '1'
+    // 菜单「新建窗口」创建的任务窗口：恢复工作空间后直接进入新建任务
+    const isNewTaskWindow = params.get('newtask') === '1'
+    // 菜单「新建窗口」创建的选工作空间窗口：不恢复工作空间，先由选择界面接管
+    const isWorkspacePickWindow = params.get('pickws') === '1'
     // 应用级单例任务（云会话恢复 / 渠道连接 / 记忆调度）只在宿主窗口启动；
     // 查询失败时按宿主窗口处理，宁可多跑一次也不要让后台服务缺失
-    const isPrimaryWindow = await api.window.isPrimary().catch(() => true)
+    const isPrimaryWindow = await isPrimaryPromise
     // 宿主窗口关闭后由主进程移交标记，接管窗口据此补启动应用级任务
     api.window.onPrimaryChanged(() => startAppScopedBackgroundTasks())
-    const savedTheme = await loadUserSettings(isEmptyWindow)
+
+    // 非宿主窗口继承主窗口的登录态：凭据在同源 localStorage 里，本地恢复一次即可。
+    // 必须在 onInitialized 之前完成，否则界面会先按未登录渲染出欢迎页。
+    // 它与用户设置加载互不依赖，并发执行以省掉一次串行等待。
+    const authRestorePromise = isPrimaryWindow
+      ? Promise.resolve()
+      : useStore.getState().restoreAuthFromStorage().catch((e) => {
+          logger.system.warn('[Init] Auth restore for secondary window failed:', e)
+        })
+
+    // themeMode / themeColor 存在 electron-store 里（文件存储比 localStorage 更可靠），
+    // 与用户设置加载同样互不依赖，一并并发
+    const [savedTheme, [persistedMode, persistedColor]] = await Promise.all([
+      loadUserSettings(isEmptyWindow),
+      Promise.all([
+        api.settings.get('themeMode').catch(() => undefined),
+        api.settings.get('themeColor').catch(() => undefined),
+      ]),
+    ])
+    await authRestorePromise
 
     if (savedTheme && isThemeName(savedTheme)) {
       useStore.getState().setTheme(savedTheme)
     }
 
-    // 从 electron-store 恢复 themeMode 和 themeColor（文件存储比 localStorage 更可靠）
-    try {
-      const [persistedMode, persistedColor] = await Promise.all([
-        api.settings.get('themeMode'),
-        api.settings.get('themeColor'),
-      ])
-      if (persistedMode === 'light' || persistedMode === 'dark' || persistedMode === 'system') {
-        useStore.getState().setThemeMode(persistedMode)
-      }
-      if (persistedColor === 'blue' || persistedColor === 'purple' || persistedColor === 'red' || persistedColor === 'green') {
-        useStore.getState().setThemeColor(persistedColor)
-      }
-    } catch (e) {
-      logger.system.warn('[Init] Failed to restore themeMode/themeColor from electron-store:', e)
+    if (persistedMode === 'light' || persistedMode === 'dark' || persistedMode === 'system') {
+      useStore.getState().setThemeMode(persistedMode)
+    }
+    if (persistedColor === 'blue' || persistedColor === 'purple' || persistedColor === 'red' || persistedColor === 'green') {
+      useStore.getState().setThemeColor(persistedColor)
     }
 
     const { themeMode, themeColor } = useStore.getState()
@@ -389,17 +422,35 @@ export async function initializeApp(
       }
     })
 
-    const { onboardingCompleted, hasExistingConfig } = useStore.getState()
-
-    if (!isEmptyWindow) {
-      updateStatus(isZh() ? '恢复工作空间...' : 'Restoring workspace...')
-      await restoreWorkspace(onWorkspaceReady)
+    // 选工作空间窗口的入口只有「先定目录」的选择界面：它不读场景配置、不碰会话数据，
+    // 也不依赖 Agent 引擎。语言与主题就绪后就把界面交出去并移除加载动画，
+    // 引擎初始化与后台任务继续在后台完成 —— 否则用户要对着启动页等到全部初始化结束。
+    if (isWorkspacePickWindow && !useStore.getState().workspace?.roots?.length) {
+      useStore.getState().setWorkspacePickPending(true)
+      onWorkspaceReady?.()
+      startupMetrics.mark('workspace-pick-shown')
     }
 
-    // 没有工作空间时把欢迎页显式激活为入口页：空窗口（新建窗口 / ?empty=1）不做工作空间恢复，
-    // 首次启动未选择目录也走这里。欢迎页上的「打开文件夹 / 最近工作 / 新建任务」承担起始导航。
+    const { onboardingCompleted, hasExistingConfig } = useStore.getState()
+
+    if (!isEmptyWindow || restoreWorkspaceForEmptyWindow) {
+      updateStatus(isZh() ? '恢复工作空间...' : 'Restoring workspace...')
+      await restoreWorkspace(onWorkspaceReady, {
+        skipSessionRestore: isEmptyWindow && restoreWorkspaceForEmptyWindow,
+      })
+    }
+
+    // 没有工作空间时把欢迎页显式激活为入口页：普通空窗口（?empty=1 且无 restore）
+    // 不做工作空间恢复，首次启动未选择目录也走这里。
+    // 欢迎页上的「打开文件夹 / 最近工作 / 新建任务」承担起始导航。
     if (!useStore.getState().workspace?.roots?.length) {
-      useStore.getState().setShowWelcomePage(true)
+      if (isWorkspacePickWindow) {
+        // 选工作空间窗口由专用界面接管入口：欢迎页是「工作台首页」，
+        // 里面还有任务、场景等与本次「先选目录」诉求无关的内容，不在这里出现。
+        useStore.getState().setWorkspacePickPending(true)
+      } else {
+        useStore.getState().setShowWelcomePage(true)
+      }
     }
 
     // 初始化 AgentRuntime（解耦循环依赖）
@@ -409,6 +460,21 @@ export async function initializeApp(
       logger.system.info('[Init] AgentRuntime initialized')
     } catch (e) {
       logger.system.warn('[Init] AgentRuntime initialization failed:', e)
+    }
+
+    // 新建任务窗口：工作空间恢复完成后直接落到新建任务页（空会话 + 聊天区），
+    // 与顶部「新任务」入口是同一套状态。没有工作空间时留在欢迎页，
+    // 由「新建任务 / 打开文件夹」卡片承担起始导航。
+    if (isNewTaskWindow && useStore.getState().workspace?.roots?.length) {
+      const store = useStore.getState()
+      store.setShowWelcomePage(false)
+      store.setChatVisible(true)
+      store.setActiveSidePanel('explorer')
+      try {
+        useAgentStore.getState().createThread()
+      } catch (e) {
+        logger.system.warn('[Init] Create task thread in new window failed:', e)
+      }
     }
 
     scheduleBackgroundInit(isPrimaryWindow)

@@ -98,6 +98,7 @@ function buildFileMenu(tr: Tr, recentWorkspaces: RecentWorkspaceEntry[]): AppMen
     { kind: 'command', label: tr('menu.openFolder'), accelerator: 'Ctrl+O', commandId: 'open-folder' },
     { kind: 'command', label: tr('menu.addFolderToWorkspace'), accelerator: 'Ctrl+Shift+O', commandId: 'add-folder' },
     { kind: 'command', label: tr('menu.saveWorkspaceAs'), commandId: 'save-workspace' },
+    { kind: 'command', label: tr('menu.newWindow'), accelerator: 'Ctrl+N', commandId: 'window.new' },
     { kind: 'separator' },
     { kind: 'command', label: tr('menu.saveFile'), accelerator: 'Ctrl+S', commandId: 'save-file' },
     { kind: 'command', label: tr('menu.refreshFiles'), accelerator: 'Ctrl+R', commandId: 'refresh-files' },
@@ -157,6 +158,8 @@ function buildAiMenu(tr: Tr): AppMenuEntry[] {
 
 function buildWindowMenu(tr: Tr): AppMenuEntry[] {
   return [
+    { kind: 'command', label: tr('menu.newWindow'), accelerator: 'Ctrl+N', commandId: 'window.new' },
+    { kind: 'separator' },
     { kind: 'role', label: tr('menu.minimize'), role: 'minimize' },
     { kind: 'role', label: tr('menu.maximize'), role: 'maximize' },
     { kind: 'separator' },
