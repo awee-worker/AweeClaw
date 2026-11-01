@@ -1268,7 +1268,9 @@ export async function buildAgentSystemPrompt(
   if (userMessage) {
     try {
       const matchedTemplate = await proceduralSkillLearner.matchTemplate(userMessage)
-      if (matchedTemplate) {
+      // 已可执行的模板会以宏工具形式下发，不再注入文字建议：
+      // 同时给「建议照着做」和「直接调用工具」两条路，模型容易反复权衡甚至跳过两者
+      if (matchedTemplate && !proceduralSkillLearner.canInvoke(matchedTemplate)) {
         proceduralSuggestion = proceduralSkillLearner.buildSuggestionPrompt(matchedTemplate)
       }
     } catch (err) {

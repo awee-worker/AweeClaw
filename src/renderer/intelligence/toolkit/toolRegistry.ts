@@ -44,6 +44,8 @@ let globalExecutors: Record<string, ToolExecutor> = {}
 
 class ToolRegistry {
   private tools = new Map<string, RegisteredTool>()
+  /** 绕过静态白名单、直接下发给模型的动态工具（见 registerScenarioTool） */
+  private modelExposedTools = new Set<string>()
   private initialized = false
 
   /**
@@ -94,7 +96,12 @@ class ToolRegistry {
     logger.agent.info(`[ToolRegistry] Registered ${this.tools.size} tools`)
   }
 
-  registerScenarioTool(name: string, definition: ToolDefinition, executor: ToolExecutor, options?: { override?: boolean }): boolean {
+  registerScenarioTool(
+    name: string,
+    definition: ToolDefinition,
+    executor: ToolExecutor,
+    options?: { override?: boolean; exposeToModel?: boolean },
+  ): boolean {
     if (this.tools.has(name) && !options?.override) return false
 
     const schema = z.object({}).passthrough()
@@ -117,6 +124,15 @@ class ToolRegistry {
     // 让引擎层（toolOrchestrator / AgentSubLoop）的 getToolApprovalType 能识别场景工具
     registerScenarioToolApprovalType(name, approvalType)
 
+    // 动态注册的工具名不在 getAllowedTools 的静态白名单里，默认不会下发给模型。
+    // 场景工具靠 scenarioTools / toolPacks 显式声明进入白名单，因此不受影响；
+    // 运行时才出现的工具（如程序性流程宏工具）无处声明，需显式开启放行。
+    if (options?.exposeToModel) {
+      this.modelExposedTools.add(name)
+    } else {
+      this.modelExposedTools.delete(name)
+    }
+
     logger.agent.info(`[ToolRegistry] Registered scenario tool: ${name} (approvalType=${approvalType})`)
     return true
   }
@@ -127,7 +143,17 @@ class ToolRegistry {
       // 同步从全局场景工具审批类型映射表中移除
       unregisterScenarioToolApprovalType(name)
     }
+    this.modelExposedTools.delete(name)
     return deleted
+  }
+
+  /**
+   * 该工具是否绕过静态白名单直接下发给模型
+   *
+   * 只对注册时显式声明 exposeToModel 的工具为真，其余保持既有过滤行为。
+   */
+  isModelExposed(name: string): boolean {
+    return this.modelExposedTools.has(name)
   }
 
   isInitialized(): boolean {

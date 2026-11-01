@@ -43,6 +43,8 @@ export interface EgressRecord {
   carriesUserContent: boolean
   /** 内容摘要（脱敏，仅类型与体量，不存原文） */
   payloadOutline?: { tokens?: number; kinds: string[] }
+  /** 执行阶段（plan/act/summarize/verify）：模型分级下沉后用于溯源是哪一阶段换了模型 */
+  phase?: string
 }
 
 /** 记录入参 */
@@ -52,6 +54,8 @@ export interface EgressInput {
   carriesUserContent?: boolean
   payloadOutline?: { tokens?: number; kinds: string[] }
   timestamp?: number
+  /** 执行阶段，缺省表示未按阶段解析 */
+  phase?: string
 }
 
 /** 默认保留的记录条数 */
@@ -96,6 +100,7 @@ export class EgressAuditLog {
       target: input.target,
       carriesUserContent: input.carriesUserContent ?? false,
       payloadOutline: input.payloadOutline,
+      phase: input.phase,
     }
 
     this.records.push(record)
@@ -245,7 +250,7 @@ export function resolveLocalFirstDecision(input: {
  */
 export function recordRoutingDecision(
   decision: LocalFirstDecision,
-  input: { provider: string; model?: string; tokens?: number },
+  input: { provider: string; model?: string; tokens?: number; phase?: string },
   log: EgressAuditLog = egressAudit,
 ): EgressRecord | null {
   if (decision.chosen === 'denied') return null
@@ -258,5 +263,6 @@ export function recordRoutingDecision(
       tokens: input.tokens,
       kinds: [decision.chosen === 'local' ? 'local_inference' : 'cloud_inference'],
     },
+    phase: input.phase,
   })
 }

@@ -40,6 +40,8 @@ import type { LintCheckFile, ChatMessage, AssistantMessage, InteractiveContent, 
 import type { LLMMessage } from '@intelligence/providerTypes'
 import type { WorkMode } from '@/renderer/modes/workModeTypes'
 import type { LLMConfig, LLMCallResult, ExecutionContext, LoopCheckResult } from '@intelligence/providerTypes'
+import type { ExecutionPhase, ModelResolver } from '../runtime/modelRouter'
+import type { ComplexityScore } from '../capabilities/planning/TaskComplexityDetector'
 import type { AssistantPart } from '../types/conversationModel'
 import { pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { checkAndHandleCompression as runCompressionCheck } from './contextOptimizer'
@@ -525,7 +527,15 @@ export async function executeAgentCycle(
   llmMessages: LLMMessage[],
   context: ExecutionContext,
   assistantId: string,
-  budgetController?: TokenBudgetController
+  budgetController?: TokenBudgetController,
+  /**
+   * 模型分级下沉的入口
+   *
+   * 不传时全程使用 config，行为与改造前逐字节一致。
+   * 传入后按阶段解析，并在本次循环内缓存：同一阶段只解析一次，
+   * 避免循环中途反复换模型把 prompt cache 打掉。
+   */
+  routing?: { resolver?: ModelResolver; complexity?: ComplexityScore }
 ): Promise<void> {
   const store = useAgentStore.getState()
   const mainStore = useStore.getState()
@@ -545,6 +555,27 @@ export async function executeAgentCycle(
   const autoHandoff = mainStore.agentConfig.autoHandoff ?? agentConfig.autoHandoff
   const contextLimit = config.contextLimit || 128_000
   const requestId = context.requestId || crypto.randomUUID()
+
+  // 阶段 → 已解析配置。同一阶段在一次循环内只解析一次：
+  // 反复切换会让 prompt cache 失效，成本反而高于保留主模型。
+  const phaseConfigCache = new Map<ExecutionPhase, LLMConfig>()
+  const resolvePhaseConfig = (phase: ExecutionPhase): LLMConfig => {
+    if (!routing?.resolver) return config
+    const cached = phaseConfigCache.get(phase)
+    if (cached) return cached
+    try {
+      const resolved = routing.resolver(phase, { complexity: routing.complexity?.total ?? 0 })
+      phaseConfigCache.set(phase, resolved)
+      if (resolved.model !== config.model) {
+        logger.agent.info(`[Loop] Phase "${phase}" uses ${resolved.provider}/${resolved.model}`)
+      }
+      return resolved
+    } catch (err) {
+      logger.agent.warn('[Loop] Model resolution failed, using main model:', err)
+      phaseConfigCache.set(phase, config)
+      return config
+    }
+  }
 
   threadStore.setExecutionMeta({
     requestId,
@@ -767,8 +798,9 @@ export async function executeAgentCycle(
 
     threadStore.setStreamState({ waitPhase: 'waiting_model', iterationIndex: iteration })
 
+    // 每轮都是「执行」阶段：解析结果首轮确定后复用，循环内不再变动
     const result = await invokeModelCallWithRetry(
-      config,
+      resolvePhaseConfig('act'),
       llmMessages,
       assistantId,
       threadStore,
@@ -1670,12 +1702,18 @@ export async function runLoopAdapter(params: {
   context: ExecutionContext
   assistantId: string
   budgetController?: TokenBudgetController
+  resolver?: ModelResolver
+  complexity?: ComplexityScore
 }): Promise<void> {
   return executeAgentCycle(
     params.config,
     params.llmMessages,
     params.context,
     params.assistantId,
-    params.budgetController
+    params.budgetController,
+    // 未传 resolver 时 routing 为空对象，executeAgentCycle 内部退化为全程用 config
+    params.resolver || params.complexity
+      ? { resolver: params.resolver, complexity: params.complexity }
+      : undefined
   )
 }

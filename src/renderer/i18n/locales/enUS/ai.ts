@@ -948,4 +948,11 @@ export const en = {
   'proactive.card.source.system': 'System',
   'proactive.card.source.time': 'Schedule',
   'proactive.card.source.fusion': 'Fusion',
+  // ===== Proactive Assistant - critical undo bar (P2 change 3) =====
+  'proactive.undo.ariaLabel': 'Urgent action confirmation',
+  'proactive.undo.badge': 'Pending',
+  'proactive.undo.countdown': 'Runs automatically in {seconds}s',
+  'proactive.undo.executed': 'Already executed — undo did not apply',
+  'proactive.undo.confirm': 'Run now',
+  'proactive.undo.cancel': 'Undo',
 }

@@ -8,7 +8,8 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { skillService, type SkillItem, type SkillTriggerType, type SkillSource } from '@intelligence/runtime/skillRepository'
-import { proceduralSkillLearner } from '@intelligence/runtime/proceduralSkillLearner'
+import { proceduralSkillLearner, type ProceduralTemplate } from '@intelligence/runtime/proceduralSkillLearner'
+import { syncProcedureTools } from '@intelligence/toolkit/procedureTool'
 import { buildSkillDrafts, type SkillDraft } from '@intelligence/runtime/skillDraftProposer'
 import { logger } from '@shared/toolkit/LogEngine'
 import { api } from '../../../adapters/electronBridge'
@@ -310,6 +311,44 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
         }
     }, [zh])
 
+    // ─── 已固化流程（宏工具）───
+    // 状态标识直接由 canInvoke 判定，与注册层用的是同一套阈值，UI 不会和实际能力脱节。
+    const [templates, setTemplates] = useState<ProceduralTemplate[]>([])
+    const [templatesLoading, setTemplatesLoading] = useState(false)
+
+    const loadTemplates = useCallback(async () => {
+        setTemplatesLoading(true)
+        try {
+            setTemplates(await proceduralSkillLearner.getTemplates())
+        } catch (e) {
+            logger.agent.warn('[SkillRegistryPanel] Failed to load procedure templates:', e)
+        } finally {
+            setTemplatesLoading(false)
+        }
+    }, [])
+
+    useEffect(() => {
+        void loadTemplates()
+    }, [loadTemplates])
+
+    // 上下线后必须同步注册表：否则 UI 显示已停用，工具却仍在可调用列表里
+    const handleToggleTemplate = async (template: ProceduralTemplate) => {
+        const next = !template.enabled
+        const ok = await proceduralSkillLearner.setTemplateEnabled(template.id, next)
+        if (!ok) {
+            showInstalledMessage('error', zh ? '模板不存在' : 'Template not found')
+            return
+        }
+        await syncProcedureTools()
+        await loadTemplates()
+        showInstalledMessage(
+            'success',
+            next
+                ? (zh ? '已恢复该流程，重新参与匹配' : 'Workflow re-enabled')
+                : (zh ? '已下线该流程，不再作为工具调用' : 'Workflow disabled')
+        )
+    }
+
     // 导出走浏览器下载：草稿生成时已对绝对路径脱敏，不会带出本机目录结构
     const handleExportDraft = useCallback((draft: SkillDraft) => {
         const blob = new Blob([draft.body], { type: 'text/markdown;charset=utf-8' })
@@ -433,6 +472,106 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                     )}
                 </div>
             </section>
+
+            {/* 已固化流程：达标即可被模型直接调用，未达标仅作为提示注入 */}
+            <section className="rounded-2xl border border-border/50 bg-surface/20 backdrop-blur-xl shadow-sm">
+                <div className="flex items-center justify-between p-5 pb-3">
+                    <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 bg-cyan-500/10 rounded-md text-cyan-400">
+                            <RotateCcw className="w-4 h-4" />
+                        </div>
+                        <div>
+                            <h5 className="text-sm font-semibold text-text-primary">
+                                {zh ? '已固化流程' : 'Learned workflows'}
+                            </h5>
+                            <p className="text-[11px] text-text-muted mt-0.5">
+                                {zh
+                                    ? '达标流程会被注册成工具，命中同类任务时直接回放；停用后仅保留文字建议'
+                                    : 'Qualified workflows are registered as tools and replayed directly; disabled ones stay as text suggestions'}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => void loadTemplates()}
+                        disabled={templatesLoading}
+                        className="p-1.5 text-text-muted hover:text-accent transition-colors rounded-md hover:bg-accent/10 disabled:opacity-50"
+                        title={t('app.refresh', language as Language)}
+                    >
+                        <RefreshCw className={`w-3.5 h-3.5 ${templatesLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                </div>
+                <div className="px-5 pb-4 space-y-2">
+                    {templates.length === 0 ? (
+                        <p className="text-[11px] text-text-muted">
+                            {zh
+                                ? '暂无固化流程：同一类任务成功执行两次以上才会形成模板。'
+                                : 'No learned workflow yet — a workflow must succeed at least twice.'}
+                        </p>
+                    ) : (
+                        templates.map((template) => {
+                            const invocable = proceduralSkillLearner.canInvoke(template)
+                            const dynamicCount = new Set(
+                                template.toolSequence.flatMap(step =>
+                                    Object.values(step.params)
+                                        .filter(slot => slot.type === 'dynamic' && slot.placeholder)
+                                        .map(slot => slot.placeholder as string)
+                                )
+                            ).size
+                            return (
+                                <div
+                                    key={template.id}
+                                    className="flex items-start gap-3 rounded-lg border border-border/40 bg-background/40 p-3"
+                                >
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-medium text-text-primary break-all">
+                                                {template.exampleIntents[0] || template.intentSignature}
+                                            </span>
+                                            <span
+                                                className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] ${invocable
+                                                    ? 'bg-green-500/15 text-green-400'
+                                                    : 'bg-amber-500/15 text-amber-400'
+                                                }`}
+                                            >
+                                                {invocable
+                                                    ? (zh ? '已可执行' : 'Executable')
+                                                    : (zh ? '仅建议' : 'Suggestion only')}
+                                            </span>
+                                            {!template.enabled && (
+                                                <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] bg-surface-hover text-text-muted">
+                                                    {zh ? '已下线' : 'Disabled'}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="text-[11px] text-text-muted mt-1">
+                                            {zh
+                                                ? `${template.toolSequence.length} 步 · 成功 ${template.successCount} 次 · 连续 ${template.consecutiveSuccess} 次 · 成功率 ${Math.round(template.successRate * 100)}%`
+                                                : `${template.toolSequence.length} steps · ${template.successCount} successes · streak ${template.consecutiveSuccess} · ${Math.round(template.successRate * 100)}%`}
+                                        </div>
+                                        <div className="text-[11px] text-text-muted/80 mt-0.5">
+                                            {zh
+                                                ? `动态参数 ${dynamicCount} 个 · ${template.taskType}`
+                                                : `${dynamicCount} dynamic params · ${template.taskType}`}
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => void handleToggleTemplate(template)}
+                                        className={`flex-shrink-0 flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors ${template.enabled
+                                            ? 'text-text-muted hover:text-red-400 hover:bg-red-500/10'
+                                            : 'text-accent bg-accent/15 hover:bg-accent/25'
+                                        }`}
+                                    >
+                                        {template.enabled
+                                            ? (zh ? '下线' : 'Disable')
+                                            : (zh ? '恢复' : 'Enable')}
+                                    </button>
+                                </div>
+                            )
+                        })
+                    )}
+                </div>
+            </section>
+
             {/* 已安装技能 */}
             <section className="rounded-2xl border border-border/50 bg-surface/20 backdrop-blur-xl shadow-sm relative overflow-hidden group">
                 <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>

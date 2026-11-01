@@ -948,4 +948,11 @@ export const zh = {
   'proactive.card.source.system': '系统场景',
   'proactive.card.source.time': '定时场景',
   'proactive.card.source.fusion': '融合场景',
+  // ===== 主动式助手 - critical 撤销确认条（P2 改造三）=====
+  'proactive.undo.ariaLabel': '紧急动作确认',
+  'proactive.undo.badge': '即将执行',
+  'proactive.undo.countdown': '{seconds} 秒后自动执行',
+  'proactive.undo.executed': '已执行，撤销未生效',
+  'proactive.undo.confirm': '立即执行',
+  'proactive.undo.cancel': '撤销',
 }

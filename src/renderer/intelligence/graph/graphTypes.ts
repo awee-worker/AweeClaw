@@ -101,6 +101,13 @@ export interface GraphNode extends PlanTask {
   }
   /** llm 节点专用：LLM 调用 prompt（缺省时回退到 description） */
   llmPrompt?: string
+  /**
+   * 节点级模型层级（缺省沿用计划/会话配置）
+   *
+   * 分级只发生在节点边界：一个节点内不换模型，避免节点内部状态与模型能力错配。
+   * 仅在节点未显式指定 provider/model 时生效，显式指定优先。
+   */
+  modelTier?: 'lightweight' | 'standard' | 'complex'
 }
 
 /**

@@ -27,6 +27,7 @@ import { BRAND } from '@shared/brand'
 import { gitService } from '@services/gitAdapter'
 import { ExecutionScheduler } from './TaskScheduler'
 import { getLLMConfigForTask } from '../runtime/modelConfigService'
+import { modelRouter } from '../runtime/modelRouter'
 import type { LLMConfig } from '@shared/protocols/modelGateway'
 import { toolManager } from '../toolkit/providers'
 import {
@@ -1444,7 +1445,19 @@ function buildGraphExecutionContext(
                     error: `No LLM config for ${node.provider}/${node.model}`,
                 }
             }
-            const config = resolved.config
+            // 节点级层级只补「未显式指定模型」的情况：显式指定代表规划期已做过取舍，
+            // 不该被路由层再改一次，否则用户看到的配置与实际调用对不上。
+            let config = resolved.config
+            if (node.modelTier && !node.model) {
+                const tierDecision = modelRouter.resolveByTier(config, node.modelTier, `node:${node.id}`)
+                config = tierDecision.config
+                if (tierDecision.swapped) {
+                    logger.agent.info(
+                        `[executeTask] Node ${node.id} tier=${node.modelTier}: ` +
+                        `${tierDecision.originalModel} → ${tierDecision.routedModel}`
+                    )
+                }
+            }
             const response = await api.llm.generateObject({
                 config,
                 schema: {

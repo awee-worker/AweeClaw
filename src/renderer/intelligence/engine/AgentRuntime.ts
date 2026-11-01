@@ -11,6 +11,8 @@ import type { MessageContent } from '@intelligence/providerTypes'
 import type { WorkMode } from '@renderer/modes/workModeTypes'
 import type { TokenBudgetController } from '../capabilities/budget/TokenQuotaManager'
 import type { ExecutionContext } from './intelligenceTypes'
+import type { ModelResolver } from '../runtime/modelRouter'
+import type { ComplexityScore } from '../capabilities/planning/TaskComplexityDetector'
 import { logger } from '@toolkit/LogEngine'
 
 // ===== 类型定义 =====
@@ -21,6 +23,13 @@ export interface LoopExecutionParams {
   context: ExecutionContext
   assistantId: string
   budgetController?: TokenBudgetController
+  /**
+   * 按执行阶段解析模型的解析器。
+   * 缺省时全程使用 config，行为与改造前一致。
+   */
+  resolver?: ModelResolver
+  /** 任务复杂度评分，供 resolver 判定是否允许降级 */
+  complexity?: ComplexityScore
 }
 
 export type RunLoopFn = (params: LoopExecutionParams) => Promise<void>

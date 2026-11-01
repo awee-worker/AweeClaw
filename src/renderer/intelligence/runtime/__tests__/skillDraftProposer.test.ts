@@ -26,6 +26,7 @@ function template(overrides: Partial<Template> = {}): Template {
     successCount: 5,
     failureCount: 1,
     successRate: 5 / 6,
+    consecutiveSuccess: 3,
     lastUsedAt: 0,
     createdAt: 0,
     updatedAt: 0,

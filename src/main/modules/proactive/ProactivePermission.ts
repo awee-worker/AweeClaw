@@ -30,10 +30,13 @@ import {
   type ProactiveProposal,
   type ProactiveSeverity,
   type ProactiveSource,
+  type ProposalFeedback,
   DEFAULT_PERMISSION_CONFIG,
+  SEVERITY_WEIGHT,
   isSeverityAllowed,
   isInQuietHours,
 } from './ProactiveInterface'
+import { proactiveStore, type TrustLevel, type TrustState } from './ProactiveStore'
 
 // ============================================================
 // 类型定义
@@ -49,9 +52,19 @@ export interface PermissionCheckResult {
    * 降级后的 severity（allowed=true 时填）
    * - quietHours 时段下 medium/high/critical 降级为 info
    * - critical 不在白名单时降级为 high
+   * - 冷启动期与信任等级不足时降级到对应上限
    * 未降级时等于 proposal.severity
    */
   effectiveSeverity?: ProactiveSeverity
+  /** 是否由信任阶梯（含冷启动保护）降级而来 */
+  degradedByTrust?: boolean
+  /**
+   * 是否需要在执行前再确认一次
+   *
+   * 仅 critical 且命中白名单时为 true：白名单是静态的，上下文是动态的，
+   * 同一条命令上次对，这次环境变了就可能出错。
+   */
+  requiresConfirmation?: boolean
 }
 
 /** 频率限制滑动窗口（1 小时） */
@@ -66,6 +79,25 @@ interface FrequencyWindow {
 
 /** 频率限制窗口大小（1 小时） */
 const FREQUENCY_WINDOW_MS = 60 * 60 * 1000
+
+/**
+ * 冷启动保护期：前 N 次提案一律只提示
+ *
+ * 一次误执行造成的信任损失，远大于二十次漏报。
+ */
+const COLD_START_PROPOSALS = 20
+
+/** 连续采纳达到此值可升级到 chat（允许主动对话） */
+const ACCEPT_STREAK_FOR_CHAT = 5
+
+/** 连续采纳达到此值且无拒绝记录，可进入 critical 白名单候选 */
+const ACCEPT_STREAK_FOR_WHITELIST = 10
+
+/** 累计拒绝达到此倍数即回退一级（每 2 次拒绝回退一次） */
+const REJECT_ROLLBACK_EVERY = 2
+
+/** 信任等级的升级顺序 */
+const TRUST_LADDER: TrustLevel[] = ['observe', 'suggest', 'chat', 'whitelist']
 
 /** ProactiveSource 到 categories 字段的映射（'fusion' 视为全局，总是允许） */
 const SOURCE_CATEGORIES: Record<ProactiveSource, keyof ProactivePermissionConfig['categories'] | null> = {
@@ -200,9 +232,11 @@ export class ProactivePermission {
    * 2. level=off → disabled
    * 3. severity 超出 level → level_blocked
    * 4. categories[source]=false → category_disabled
-   * 5. quietHours 时段且 severity>info → 降级为 info（allowed=true, effectiveSeverity=info）
-   * 6. maxDisturbPerHour 超限且 severity>info → frequency_exceeded
-   * 7. critical 且 payload 不在白名单 → 降级为 high（allowed=true, effectiveSeverity=high）
+   * 5. 冷启动期或信任等级不足 → 降级到信任上限（allowed=true, degradedByTrust=true）
+   * 6. quietHours 时段且 severity>info → 降级为 info（allowed=true, effectiveSeverity=info）
+   * 7. maxDisturbPerHour 超限且 severity>info → frequency_exceeded
+   * 8. critical 且 payload 不在白名单 → 降级为 high；
+   *    命中白名单 → allowed=true 并置 requiresConfirmation（派发层插入撤销窗口）
    *
    * @param proposal 待校验的提案
    * @returns 校验结果
@@ -224,7 +258,23 @@ export class ProactivePermission {
       return { allowed: false, reason: 'category_disabled' }
     }
 
-    // 4. 勿扰时段（仅 info 放行，其他降级为 info）
+    // 4. 冷启动保护与信任阶梯
+    // 用户配置了 level=act 也只代表「允许」，不代表系统已被允许走到那一步：
+    // 新装环境或采纳记录不足时，主动行为一律收敛到提示级。
+    const trust = this.getTrustSnapshot()
+    const severityCap = this.resolveSeverityCap(trust)
+    if (SEVERITY_WEIGHT[proposal.severity] > SEVERITY_WEIGHT[severityCap]) {
+      if (!isSeverityAllowed(severityCap, this.config.level as ProactiveLevel)) {
+        return { allowed: false, reason: 'level_blocked' }
+      }
+      logger.proactive?.info(
+        `[ProactivePermission] 信任降级: ${proposal.severity} → ${severityCap} ` +
+        `(level=${trust.level}, proposals=${trust.proposalCount})`,
+      )
+      return { allowed: true, effectiveSeverity: severityCap, degradedByTrust: true }
+    }
+
+    // 5. 勿扰时段（仅 info 放行，其他降级为 info）
     if (isInQuietHours(new Date(), this.config.quietHours) && proposal.severity !== 'info') {
       logger.proactive?.info(
         `[ProactivePermission] 勿扰时段降级: ${proposal.severity} → info (proposal=${proposal.id})`,
@@ -232,7 +282,7 @@ export class ProactivePermission {
       return { allowed: true, effectiveSeverity: 'info' }
     }
 
-    // 5. 频率限制（仅对非 info 提案计数）
+    // 6. 频率限制（仅对非 info 提案计数）
     if (proposal.severity !== 'info') {
       this.cleanupFrequencyWindow()
       if (this.frequencyWindow.timestamps.length >= this.config.maxDisturbPerHour) {
@@ -240,7 +290,7 @@ export class ProactivePermission {
       }
     }
 
-    // 6. critical 白名单校验
+    // 7. critical 白名单校验
     if (proposal.severity === 'critical') {
       if (!this.config.criticalWhitelist.includes(proposal.action.payload)) {
         logger.proactive?.info(
@@ -252,6 +302,10 @@ export class ProactivePermission {
         }
         return { allowed: true, effectiveSeverity: 'high' }
       }
+
+      // 命中白名单不等于可以直接执行：静态白名单挡不住上下文漂移，
+      // 交由派发层插入一次可撤销的确认窗口。
+      return { allowed: true, effectiveSeverity: 'critical', requiresConfirmation: true }
     }
 
     return { allowed: true, effectiveSeverity: proposal.severity }
@@ -266,6 +320,125 @@ export class ProactivePermission {
     if (severity === 'info') return // info 不计入频率
     this.cleanupFrequencyWindow()
     this.frequencyWindow.timestamps.push(Date.now())
+
+    // 冷启动保护按「真实派发过的提案」计数：只有走到用户面前的那次才算数，
+    // 被拦截或降级为 info 的提案不消耗信任额度。
+    const trust = this.getTrustSnapshot()
+    trust.proposalCount += 1
+    trust.updatedAt = Date.now()
+    this.persistTrust(trust)
+  }
+
+  // ============================================================
+  // 信任阶梯
+  // ============================================================
+
+  /** 读取当前信任状态（读失败按默认最低信任处理） */
+  getTrustSnapshot(): TrustState {
+    try {
+      return proactiveStore.getTrustState('global')
+    } catch (err) {
+      logger.proactive?.warn(
+        `[ProactivePermission] 读取信任状态失败，按最低信任处理: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return {
+        scope: 'global',
+        level: 'observe',
+        acceptedStreak: 0,
+        rejectedCount: 0,
+        proposalCount: 0,
+        updatedAt: 0,
+      }
+    }
+  }
+
+  /**
+   * 记录一次用户反馈，按采纳数据逐级放权或回退
+   *
+   * 不按时间放权：装得多的一周过百次，装得少的一个月也过不了阈值，
+   * 只有真实采纳行为才说明系统值得被信任。
+   */
+  recordFeedback(feedback: ProposalFeedback): TrustState {
+    const trust = this.getTrustSnapshot()
+
+    if (feedback === 'accepted') {
+      trust.acceptedStreak += 1
+      if (
+        trust.acceptedStreak >= ACCEPT_STREAK_FOR_WHITELIST &&
+        trust.rejectedCount === 0
+      ) {
+        trust.level = 'whitelist'
+      } else if (trust.acceptedStreak >= ACCEPT_STREAK_FOR_CHAT) {
+        trust.level = trust.level === 'whitelist' ? 'whitelist' : 'chat'
+      } else if (trust.level === 'observe') {
+        trust.level = 'suggest'
+      }
+    } else if (feedback === 'rejected' || feedback === 'ignored') {
+      // ignored（被直接关掉）与 rejected 同罪：用户没有采纳，也没有留下可学习的信息
+      trust.acceptedStreak = 0
+      trust.rejectedCount += 1
+      if (trust.rejectedCount % REJECT_ROLLBACK_EVERY === 0) {
+        trust.level = this.rollbackLevel(trust.level)
+      }
+    }
+    // later 表示「稍后再说」，既不算采纳也不算拒绝，不改变信任状态
+
+    trust.updatedAt = Date.now()
+    this.persistTrust(trust)
+    return trust
+  }
+
+  /**
+   * 主动回退一级信任
+   *
+   * 供每日校准使用：即时回退已由 recordFeedback 覆盖，这里兜的是
+   * 「长期采纳率明显偏低但拒绝次数没到阈值」的情况 —— 用户不点拒绝、
+   * 只是每次都忽略，同样说明这套提示对他没有价值。
+   */
+  downgradeTrust(reason: string): TrustState {
+    const trust = this.getTrustSnapshot()
+    const next = this.rollbackLevel(trust.level)
+    if (next === trust.level) return trust
+
+    trust.level = next
+    trust.acceptedStreak = 0
+    trust.updatedAt = Date.now()
+    this.persistTrust(trust)
+    logger.proactive?.info(
+      `[ProactivePermission] 信任等级回退: ${next}（原因: ${reason}）`,
+    )
+    return trust
+  }
+
+  /** 当前信任等级允许的 severity 上限 */
+  private resolveSeverityCap(trust: TrustState): ProactiveSeverity {
+    if (trust.proposalCount < COLD_START_PROPOSALS) return 'medium'
+    switch (trust.level) {
+      case 'whitelist':
+        return 'critical'
+      case 'chat':
+        return 'high'
+      default:
+        return 'medium'
+    }
+  }
+
+  /** 回退一级信任（已在下限则保持） */
+  private rollbackLevel(level: TrustLevel): TrustLevel {
+    const index = TRUST_LADDER.indexOf(level)
+    if (index <= 0) return TRUST_LADDER[0]
+    return TRUST_LADDER[index - 1]
+  }
+
+  /** 持久化信任状态（失败仅记日志，不阻断校验流程） */
+  private persistTrust(trust: TrustState): void {
+    try {
+      proactiveStore.saveTrustState(trust)
+    } catch (err) {
+      logger.proactive?.warn(
+        `[ProactivePermission] 持久化信任状态失败: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
   }
 
   /**

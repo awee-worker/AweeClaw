@@ -45,7 +45,9 @@ export class BuiltinToolProvider implements ToolProvider {
     const allowedTools = getToolsForContext(this.context)
     return toolRegistry
       .getAll()
-      .filter(tool => allowedTools.includes(tool.name))
+      // 白名单之外的例外：注册时显式声明 exposeToModel 的运行时工具
+      // （程序性流程宏工具）。它们由执行经验动态产生，无法写进静态白名单。
+      .filter(tool => allowedTools.includes(tool.name) || toolRegistry.isModelExposed(tool.name))
       .map(tool => tool.definition)
   }
 

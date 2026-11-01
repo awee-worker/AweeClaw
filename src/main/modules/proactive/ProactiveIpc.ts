@@ -22,6 +22,8 @@ import { ipcMain } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import { proactiveStore } from './ProactiveStore'
 import { proactiveDecisionEngine } from './ProactiveDecisionEngine'
+import { proactivePermission } from './ProactivePermission'
+import { proactiveActionTrigger } from './ProactiveActionTrigger'
 import type {
   ProactiveSource,
   ProactiveSeverity,
@@ -104,10 +106,14 @@ export function registerProactiveIpc(): void {
           actualAction: actualAction ?? null,
           timestamp: Date.now(),
         })
+        // 信任阶梯按真实采纳行为放权/回退，必须在反馈落库后立即更新，
+        // 不能等每日校准 —— 用户刚拒绝过的系统，下一次提案就不该再主动执行。
+        const trust = proactivePermission.recordFeedback(feedback)
         logger.proactive?.info(
-          `[IPC] 反馈已记录: proposal=${proposalId} feedback=${feedback}`,
+          `[IPC] 反馈已记录: proposal=${proposalId} feedback=${feedback} ` +
+          `trust=${trust.level}(streak=${trust.acceptedStreak}, rejected=${trust.rejectedCount})`,
         )
-        return { success: true }
+        return { success: true, data: trust }
       } catch (e) {
         logger.proactive?.error('[IPC] recordFeedback 失败:', e)
         return errorResponse(e)
@@ -392,6 +398,60 @@ export function registerProactiveIpc(): void {
         return { success: true }
       } catch (e) {
         logger.proactive?.error('[IPC] setSceneRules 失败:', e)
+        return errorResponse(e)
+      }
+    },
+  )
+
+  // ============================================================
+  // 11. 信任阶梯状态（设置面板展示「正在学习中」）
+  // ============================================================
+
+  ipcMain.handle(`${IPC_PREFIX}getTrustState`, async () => {
+    try {
+      const trust = proactivePermission.getTrustSnapshot()
+      return {
+        success: true,
+        data: {
+          ...trust,
+          // 冷启动期对用户是可见的：不让用户以为主动能力坏了
+          coldStart: trust.proposalCount < 20,
+        },
+      }
+    } catch (e) {
+      logger.proactive?.error('[IPC] getTrustState 失败:', e)
+      return errorResponse(e)
+    }
+  })
+
+  // ============================================================
+  // 12. critical 撤销窗口：确认 / 取消
+  // ============================================================
+
+  ipcMain.handle(`${IPC_PREFIX}confirmCritical`, async (_, proposalId: string) => {
+    if (!proposalId || typeof proposalId !== 'string') {
+      return { success: false, error: 'proposalId 不能为空' }
+    }
+    try {
+      const hit = proactiveActionTrigger.confirmCritical(proposalId)
+      return { success: true, data: { applied: hit } }
+    } catch (e) {
+      logger.proactive?.error('[IPC] confirmCritical 失败:', e)
+      return errorResponse(e)
+    }
+  })
+
+  ipcMain.handle(
+    `${IPC_PREFIX}cancelCritical`,
+    async (_, proposalId: string, reason?: string) => {
+      if (!proposalId || typeof proposalId !== 'string') {
+        return { success: false, error: 'proposalId 不能为空' }
+      }
+      try {
+        const hit = proactiveActionTrigger.cancelCritical(proposalId, reason)
+        return { success: true, data: { applied: hit } }
+      } catch (e) {
+        logger.proactive?.error('[IPC] cancelCritical 失败:', e)
         return errorResponse(e)
       }
     },

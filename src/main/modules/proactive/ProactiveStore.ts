@@ -129,6 +129,40 @@ export interface AuditLogEntry {
   createdAt: number
 }
 
+/**
+ * 信任等级
+ *
+ * 与 ProactiveLevel 的语义对齐，但含义是「系统被允许走到哪一步」而非用户配置：
+ * - observe / suggest：只能提示，不能主动对话或执行
+ * - chat：允许发起主动对话
+ * - whitelist：允许进入 critical 白名单候选（仍需一次确认）
+ */
+export type TrustLevel = 'observe' | 'suggest' | 'chat' | 'whitelist'
+
+/** 信任状态（全局作用域一行） */
+export interface TrustState {
+  /** 作用域，当前固定 'global'，预留给按提案类别分账 */
+  scope: string
+  level: TrustLevel
+  /** 连续采纳次数，遇拒绝清零 */
+  acceptedStreak: number
+  /** 累计拒绝次数 */
+  rejectedCount: number
+  /** 累计提案次数，用于冷启动保护 */
+  proposalCount: number
+  updatedAt: number
+}
+
+/** 信任状态默认值：新装环境从最低信任起步 */
+export const DEFAULT_TRUST_STATE: TrustState = Object.freeze({
+  scope: 'global',
+  level: 'observe',
+  acceptedStreak: 0,
+  rejectedCount: 0,
+  proposalCount: 0,
+  updatedAt: 0,
+})
+
 // ============================================================
 // ProactiveStore 单例
 // ============================================================
@@ -246,6 +280,16 @@ export class ProactiveStore {
         created_at      INTEGER NOT NULL
       );
 
+      -- 信任阶梯：按作用域记录采纳画像，决定提案能升到哪一级
+      CREATE TABLE IF NOT EXISTS proactive_trust (
+        scope           TEXT PRIMARY KEY,
+        level           TEXT NOT NULL DEFAULT 'observe',
+        accepted_streak INTEGER NOT NULL DEFAULT 0,
+        rejected_count  INTEGER NOT NULL DEFAULT 0,
+        proposal_count  INTEGER NOT NULL DEFAULT 0,
+        updated_at      INTEGER NOT NULL
+      );
+
       -- 索引：状态 + 时间（历史查询主索引）
       CREATE INDEX IF NOT EXISTS idx_proposals_status_created ON proactive_proposals(status, created_at DESC);
       -- 索引：来源 + 时间（按场景统计）
@@ -255,6 +299,85 @@ export class ProactiveStore {
       -- 索引：审计关联（查询某提案的完整审计链路）
       CREATE INDEX IF NOT EXISTS idx_audit_proposal_created ON proactive_audit_log(proposal_id, created_at DESC);
     `)
+  }
+
+  // ============================================================
+  // 信任阶梯读写
+  // ============================================================
+
+  /**
+   * 读取信任状态
+   *
+   * 无记录时返回默认值（最低信任），不写库 —— 读操作不该产生副作用，
+   * 冷启动的 proposalCount 从第一次真实派发开始累计。
+   */
+  getTrustState(scope = 'global'): TrustState {
+    if (!this.ensureReady()) return { ...DEFAULT_TRUST_STATE, scope }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stmt = (this.db as any).prepare(
+        `SELECT scope, level, accepted_streak, rejected_count, proposal_count, updated_at
+         FROM proactive_trust WHERE scope = ?`
+      )
+      const row = stmt.get(scope) as
+        | {
+            scope: string
+            level: string
+            accepted_streak: number
+            rejected_count: number
+            proposal_count: number
+            updated_at: number
+          }
+        | undefined
+
+      if (!row) return { ...DEFAULT_TRUST_STATE, scope }
+
+      return {
+        scope: row.scope,
+        level: row.level as TrustLevel,
+        acceptedStreak: row.accepted_streak,
+        rejectedCount: row.rejected_count,
+        proposalCount: row.proposal_count,
+        updatedAt: row.updated_at,
+      }
+    } catch (err) {
+      logger.proactive?.warn(
+        `[ProactiveStore] 读取信任状态失败: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return { ...DEFAULT_TRUST_STATE, scope }
+    }
+  }
+
+  /** 写入信任状态（整行覆盖，调用方负责算出新值） */
+  saveTrustState(state: TrustState): void {
+    if (!this.ensureReady()) return
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stmt = (this.db as any).prepare(`
+        INSERT INTO proactive_trust (scope, level, accepted_streak, rejected_count, proposal_count, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(scope) DO UPDATE SET
+          level = excluded.level,
+          accepted_streak = excluded.accepted_streak,
+          rejected_count = excluded.rejected_count,
+          proposal_count = excluded.proposal_count,
+          updated_at = excluded.updated_at
+      `)
+      stmt.run(
+        state.scope,
+        state.level,
+        state.acceptedStreak,
+        state.rejectedCount,
+        state.proposalCount,
+        state.updatedAt || Date.now(),
+      )
+    } catch (err) {
+      logger.proactive?.warn(
+        `[ProactiveStore] 写入信任状态失败: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
   }
 
   // ============================================================

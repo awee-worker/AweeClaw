@@ -31,7 +31,8 @@ import {
 } from '../state/intelligenceStorage'
 import { fileCacheService } from '../runtime/fileCacheManager'
 import { proceduralSkillLearner } from '../runtime/proceduralSkillLearner'
-import { modelRouter } from '../runtime/modelRouter'
+import { syncProcedureTools } from '../toolkit/procedureTool'
+import { modelRouter, type ModelResolver } from '../runtime/modelRouter'
 import { approvalService } from './toolOrchestrator'
 import { EventBus } from './EventDispatcher'
 import { agentHarness } from '../harness'
@@ -570,23 +571,52 @@ export class AgentClass {
         agentHarness.createThreadScope(threadId)
       }
 
+      // 模型分级下沉到循环内：入口仍按复杂度选一次（effectiveConfig），
+      // 循环里再按阶段取值 —— 执行阶段保持主模型，规划入口与总结允许降级。
+      // 解析结果由 runLoop 内部按阶段缓存，不会在一轮内反复切换。
+      const modelResolver: ModelResolver = (phase) => {
+        const decision = modelRouter.resolveForPhase(config, phase, complexityResult)
+        if (decision.swapped) {
+          logger.agent.info(
+            `[Agent] Phase "${phase}" routed: ${decision.originalModel} → ${decision.routedModel}`
+          )
+        }
+        return decision.config
+      }
+
       await agentRuntime.get().runLoop({
         config: effectiveConfig,
         llmMessages: preparation.messages,
         context: executionContext,
         assistantId,
         budgetController: preparation.budgetController,
+        resolver: modelResolver,
+        complexity: complexityResult,
       })
 
       // 程序性技能学习：任务完成后记录工具调用序列（不阻塞主流程）
+      //
+      // 成功与否必须按主循环的真实终态判定，不能写死。
+      // 早前这里固定传 success: true，导致 pendingIntents 只收成功样本：
+      // 模板的 successRate 恒为 1.0，SOLIDIFY_MIN_SUCCESS_RATE 这道门槛从未生效，
+      // 任何被执行两次的任务（哪怕一直失败）都会被固化。
       const threadForLearning = useAgentStore.getState().threads[threadId]
-      if (threadForLearning && !abortController.signal.aborted) {
+      const finalLoopState = threadForLearning?.executionMeta?.loopState
+      // aborted 是用户主动中断，不代表流程本身对错，不计入统计；
+      // completed / waiting_for_user 视为成功（后者工具序列已有效执行，只是任务待续）；
+      // failed 记为失败。
+      const learningAborted = abortController.signal.aborted || finalLoopState === 'aborted'
+      if (threadForLearning && !learningAborted) {
         void proceduralSkillLearner.recordTaskCompletion({
           userMessage,
           threadMessages: threadForLearning.messages,
           assistantId,
-          success: true,
-        }).catch(err => logger.agent.warn('[Agent] Procedural skill record failed:', err))
+          success: finalLoopState !== 'failed',
+        })
+          // 统计写入后再同步宏工具注册表：刚达标（连续成功 ≥ 3）的流程立即变成
+          // 可调用工具；因失败把连续成功清零的，同步时自动下线
+          .then(() => syncProcedureTools())
+          .catch(err => logger.agent.warn('[Agent] Procedural skill record failed:', err))
       }
 
       return { threadId, assistantId, requestId }

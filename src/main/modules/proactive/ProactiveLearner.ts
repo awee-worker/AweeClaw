@@ -97,6 +97,12 @@ export interface LearnerCalibrationSnapshot {
     }
     /** 因低采纳被关闭的分类（预留，当前实现未启用） */
     categoriesDisabled?: string[]
+    /** 信任等级回退记录（长期低采纳时才会出现） */
+    trustLevel?: {
+      from: string
+      to: string
+      reason: string
+    }
   }
   /** 是否跳过校准（样本不足等原因） */
   skipped: boolean
@@ -284,7 +290,25 @@ export class ProactiveLearner {
         )
       }
 
-      // 5. 持久化快照
+      // 5. 信任等级纠偏
+      //    升级由用户的即时采纳（recordFeedback）驱动，这里只处理长期低采纳的回退：
+      //    连续多天没人采纳，说明这套提案对用户没有价值，不该继续维持高信任。
+      let trustAdjustment: LearnerCalibrationSnapshot['adjustments']['trustLevel']
+      if (stats.adoptionRate < LOW_ADOPTION_RATE) {
+        const before = proactivePermission.getTrustSnapshot()
+        const after = proactivePermission.downgradeTrust(
+          `近 7 天采纳率 ${(stats.adoptionRate * 100).toFixed(1)}% 低于 ${LOW_ADOPTION_RATE * 100}%`,
+        )
+        if (after.level !== before.level) {
+          trustAdjustment = {
+            from: before.level,
+            to: after.level,
+            reason: `采纳率 ${(stats.adoptionRate * 100).toFixed(1)}% 低于阈值`,
+          }
+        }
+      }
+
+      // 6. 持久化快照
       const snapshot: LearnerCalibrationSnapshot = {
         calibratedAt: now,
         windowStart,
@@ -296,6 +320,7 @@ export class ProactiveLearner {
             to: newMax,
             reason,
           },
+          trustLevel: trustAdjustment,
         },
         skipped: false,
       }

@@ -5709,4 +5709,14 @@ export async function initializeTools(): Promise<void> {
     // 每次都调用 registerAll 以更新 globalExecutors（支持热重载）
     // registerAll 内部会更新 globalExecutors 引用
     toolRegistry.registerAll(toolExecutors)
+
+    // 启动时把已固化且满足可执行条件的流程注册成宏工具。
+    // 用动态导入断开 toolExecutors → procedureTool → providers 的潜在模块环，
+    // 且失败不影响内置工具注册（宏工具属于增强能力，不是必需依赖）。
+    try {
+        const { syncProcedureTools } = await import('./procedureTool')
+        await syncProcedureTools()
+    } catch (err) {
+        logger.agent.warn('[Tools] Procedure tool sync skipped:', err)
+    }
 }

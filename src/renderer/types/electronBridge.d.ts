@@ -3163,6 +3163,42 @@ export interface ElectronAPI {
     ) => () => void
 
     /**
+     * 订阅 critical 级撤销窗口开启通知
+     * 主进程通过 'proactive:critical-pending' 频道推送，渲染层展示带倒计时的确认条
+     * @returns 取消订阅函数
+     */
+    onCriticalPending: (
+      callback: (payload: {
+        proposalId: string
+        action: {
+          type: 'notify' | 'suggest' | 'chat' | 'execute'
+          payload: string
+        }
+        source: 'coding' | 'iot' | 'system' | 'time' | 'fusion'
+        title: string
+        reason: string
+        windowMs: number
+      }) => void,
+    ) => () => void
+
+    /**
+     * 撤销窗口内点击「立即执行」
+     * applied=false 表示窗口已过期或已被处理
+     */
+    confirmCritical: (
+      proposalId: string,
+    ) => Promise<{ success: boolean; data?: { applied: boolean }; error?: string }>
+
+    /**
+     * 撤销窗口内点击「撤销」
+     * applied=false 表示窗口已过期（动作已执行），无法撤销
+     */
+    cancelCritical: (
+      proposalId: string,
+      reason?: string,
+    ) => Promise<{ success: boolean; data?: { applied: boolean }; error?: string }>
+
+    /**
      * 设置场景模式主动行为规则（D-步骤4）
      *
      * 场景模式切换时由渲染进程调用，将新模式的 proactiveRules 同步到决策引擎。

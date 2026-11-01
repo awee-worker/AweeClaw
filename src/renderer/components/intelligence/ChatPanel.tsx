@@ -80,6 +80,7 @@ import { settleMountedTaskResume } from '@intelligence/runtime/mountedTaskServic
 import { playPendingReviewSound } from '@renderer/utils/sound'
 import { toast } from '@components/foundation/NotificationProvider'
 import { ProactiveSuggestionsContainer } from './proactive/ProactiveSuggestionsContainer'
+import { ProactiveCriticalUndoBar } from './proactive/ProactiveCriticalUndoBar'
 import { useProactiveInvoker } from './proactive/useProactiveInvoker'
 import { useAutomationCronExecutor } from './proactive/useAutomationCronExecutor'
 
@@ -1275,6 +1276,12 @@ export default function ChatPanel() {
                         onJump={handleJumpToMessage}
                         language={language}
                       />
+                    )}
+
+                    {/* critical 撤销确认条（带倒计时，P2 改造三）
+                        放在建议卡片之上：即将执行的动作优先级最高 */}
+                    {!isSwitchingThread && !isHydratingActiveThread && (
+                      <ProactiveCriticalUndoBar language={language as Language} />
                     )}
 
                     {/* 主动建议卡片（medium 级，s10-06）*/}

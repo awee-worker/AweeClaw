@@ -39,6 +39,29 @@ import {
 /** 路由层级 */
 export type ModelTier = 'lightweight' | 'standard' | 'complex'
 
+/**
+ * 执行阶段
+ *
+ * 分层发生在任务边界而不是 token 边界：同一轮工具调用循环内换模型会破坏
+ * prompt cache，不同模型的工具调用格式也有细微差异，中途切换可能导致解析失败。
+ * 因此这里只描述「在哪类阶段可以换模型」，不描述「第几轮换」。
+ */
+export type ExecutionPhase = 'plan' | 'act' | 'summarize' | 'verify'
+
+/** 阶段解析上下文 */
+export interface PhaseResolutionContext {
+  /** 复杂度总分，取 TaskComplexityDetector 的 total */
+  complexity: number
+}
+
+/**
+ * 模型解析器
+ *
+ * runLoop 接收解析器而非静态 config，内部按阶段取值并缓存，
+ * 保证同一阶段在一次循环内只解析一次。
+ */
+export type ModelResolver = (phase: ExecutionPhase, ctx: PhaseResolutionContext) => LLMConfig
+
 /** 路由决策结果 */
 export interface RoutingDecision {
   /** 最终使用的配置（可能与入参 config 不同） */
@@ -120,8 +143,6 @@ class ModelRouter {
     complexity: ComplexityScore,
     userMessage: string,
   ): RoutingDecision {
-    const originalModel = originalConfig.model
-
     // 未启用：直接返回标准层级
     if (!this.config.enabled) {
       return {
@@ -144,24 +165,113 @@ class ModelRouter {
       }
     }
 
-    // 简单层级：当前模型本身已是轻量模型，无需替换
+    return this.applyLightweight(
+      originalConfig,
+      `complexity=${complexity.total} → lightweight`,
+      `complexity=${complexity.total}, msg="${this.truncate(userMessage, 30)}"`,
+    )
+  }
+
+  /**
+   * 按执行阶段解析模型（图节点、子 Agent、宏工具内部阶段共用）
+   *
+   * 只有「规划入口」与「总结」两个阶段接受降级：
+   * - act：工具调用格式与上下文窗口已被主模型适配，中途换模型会打掉 cache 且易解析失败
+   * - verify：结论判断需要与主模型一致的推理能力，降级会放大误判
+   * 复杂任务一律不降级 —— 省下的 token 抵不过一次判错的代价。
+   */
+  resolveForPhase(
+    originalConfig: LLMConfig,
+    phase: ExecutionPhase,
+    complexity: ComplexityScore,
+  ): RoutingDecision {
+    if (!this.config.enabled) {
+      return {
+        config: originalConfig,
+        tier: 'standard',
+        swapped: false,
+        reason: `phase=${phase}, model routing disabled`,
+      }
+    }
+
+    const tier = this.resolveTier(complexity)
+    if (tier === 'complex') {
+      return {
+        config: originalConfig,
+        tier,
+        swapped: false,
+        reason: `phase=${phase}, complexity=${complexity.total} → complex, keep main model`,
+      }
+    }
+
+    if (phase === 'summarize') {
+      return this.applyLightweight(
+        originalConfig,
+        `phase=summarize → lightweight`,
+        `phase=summarize, complexity=${complexity.total}`,
+      )
+    }
+
+    return {
+      config: originalConfig,
+      tier,
+      swapped: false,
+      reason: `phase=${phase}, model kept stable within the loop`,
+    }
+  }
+
+  /**
+   * 按层级解析模型（图节点 modelTier 用）
+   *
+   * 与 resolveForPhase 的区别：层级由调用方直接指定，不再从复杂度推断。
+   */
+  resolveByTier(originalConfig: LLMConfig, tier: ModelTier, label = 'tier'): RoutingDecision {
+    if (!this.config.enabled) {
+      return {
+        config: originalConfig,
+        tier: 'standard',
+        swapped: false,
+        reason: `${label}=${tier}, model routing disabled`,
+      }
+    }
+
+    if (tier !== 'lightweight') {
+      return {
+        config: originalConfig,
+        tier,
+        swapped: false,
+        reason: `${label}=${tier}, keep main model`,
+      }
+    }
+
+    return this.applyLightweight(originalConfig, `${label}=lightweight`, label)
+  }
+
+  /**
+   * 尝试把主模型替换为同提供商的轻量模型
+   *
+   * 三层兜底：已是轻量模型、提供商无候选、候选为空，都原样返回。
+   * 不跨提供商 —— 复用同一 apiKey/baseUrl，避免凭据管理与数据出境问题。
+   */
+  private applyLightweight(originalConfig: LLMConfig, reason: string, logContext: string): RoutingDecision {
+    const originalModel = originalConfig.model
+
     if (this.isLightweightModel(originalModel)) {
       return {
         config: originalConfig,
         tier: 'lightweight',
         swapped: false,
-        reason: `complexity=${complexity.total} → lightweight, main model already lightweight`,
+        reason: `${reason}, main model already lightweight`,
       }
     }
 
-    // 在同提供商下查找轻量模型
     const lightweightModel = this.findLightweightModel(originalConfig.provider, originalModel)
     if (!lightweightModel) {
       return {
         config: originalConfig,
         tier: 'lightweight',
         swapped: false,
-        reason: `complexity=${complexity.total} → lightweight, no lightweight model for provider "${originalConfig.provider}"`,
+        reason: `${reason}, no lightweight model for provider "${originalConfig.provider}"`,
       }
     }
 
@@ -172,8 +282,7 @@ class ModelRouter {
     }
 
     logger.agent.info(
-      `[ModelRouter] lightweight routing: ${originalModel} → ${lightweightModel} ` +
-      `(complexity=${complexity.total}, msg="${this.truncate(userMessage, 30)}")`
+      `[ModelRouter] lightweight routing: ${originalModel} → ${lightweightModel} (${logContext})`
     )
 
     return {
@@ -182,7 +291,7 @@ class ModelRouter {
       swapped: true,
       originalModel,
       routedModel: lightweightModel,
-      reason: `complexity=${complexity.total} → lightweight, swapped to ${lightweightModel}`,
+      reason: `${reason}, swapped to ${lightweightModel}`,
     }
   }
 
@@ -300,6 +409,8 @@ export function recordRoutingEgress(
     policy?: PrivacyPolicy
     /** 本地模型是否可用，缺省按提供商判定 */
     localModelAvailable?: boolean
+    /** 执行阶段，写入审计记录用于溯源 */
+    phase?: string
   } = {},
   log: EgressAuditLog = egressAudit,
 ): LocalFirstDecision {
@@ -325,6 +436,7 @@ export function recordRoutingEgress(
       provider: decision.config.provider,
       model: decision.config.model,
       tokens: input.tokens,
+      phase: input.phase,
     },
     log,
   )

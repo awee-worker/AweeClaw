@@ -43,6 +43,22 @@ export interface ExecuteActionPayload {
   reason: string
 }
 
+/**
+ * 'proactive:critical-pending' 频道载荷（critical 级撤销窗口已开启）
+ *
+ * 主进程先推这一条、再等窗口到期才真正执行，渲染层据此把倒计时条显示出来。
+ * windowMs 由主进程下发，避免两侧各写一份时长常量后对不上。
+ */
+export interface CriticalPendingPayload {
+  proposalId: string
+  action: ProactiveAction
+  source: ProactiveSource
+  title: string
+  reason: string
+  /** 撤销窗口时长（ms） */
+  windowMs: number
+}
+
 /** 主动提案来源场景 */
 export type ProactiveSource = 'coding' | 'iot' | 'system' | 'time' | 'fusion'
 
@@ -234,6 +250,28 @@ export interface ProactiveApi {
   onExecuteAction: (callback: (payload: ExecuteActionPayload) => void) => () => void
 
   /**
+   * 订阅 critical 级撤销窗口开启通知
+   * 主进程通过 'proactive:critical-pending' 频道推送，渲染层展示带倒计时的确认条
+   * @returns 取消订阅函数
+   */
+  onCriticalPending: (callback: (payload: CriticalPendingPayload) => void) => () => void
+
+  /**
+   * 在撤销窗口内点击「立即执行」
+   * @returns applied=false 表示窗口已过期或已被处理，该次确认未生效
+   */
+  confirmCritical: (proposalId: string) => Promise<IpcResponse<{ applied: boolean }>>
+
+  /**
+   * 在撤销窗口内点击「撤销」
+   * @returns applied=false 表示窗口已过期（动作已执行），无法撤销
+   */
+  cancelCritical: (
+    proposalId: string,
+    reason?: string,
+  ) => Promise<IpcResponse<{ applied: boolean }>>
+
+  /**
    * 设置场景模式主动行为规则（D-步骤4）
    *
    * 场景模式切换时由渲染进程调用，将新模式的 proactiveRules 同步到决策引擎。
@@ -323,6 +361,26 @@ export function createProactiveApi(): ProactiveApi {
         ipcRenderer.removeListener('proactive:execute-action', handler)
       }
     },
+
+    onCriticalPending: (callback) => {
+      const handler = (
+        _event: IpcRendererEvent,
+        payload: CriticalPendingPayload,
+      ): void => {
+        callback(payload)
+      }
+      ipcRenderer.on('proactive:critical-pending', handler)
+      return () => {
+        ipcRenderer.removeListener('proactive:critical-pending', handler)
+      }
+    },
+
+    // ===== 撤销窗口内的两个出口 =====
+    confirmCritical: (proposalId) =>
+      ipcRenderer.invoke('proactive:confirmCritical', proposalId),
+
+    cancelCritical: (proposalId, reason) =>
+      ipcRenderer.invoke('proactive:cancelCritical', proposalId, reason),
 
     // ===== 场景模式规则同步（D-步骤4）=====
     setSceneRules: (rules) =>

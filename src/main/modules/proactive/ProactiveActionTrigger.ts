@@ -45,8 +45,12 @@ export interface PermissionChecker {
   (proposal: ProactiveProposal): {
     allowed: boolean
     reason?: 'quiet_hours' | 'category_disabled' | 'level_blocked' | 'frequency_exceeded' | 'disabled' | 'critical_not_whitelisted'
-    /** 降级后的 severity（quiet_hours/critical_not_whitelisted 时可能填） */
+    /** 降级后的 severity（quiet_hours/critical_not_whitelisted/信任不足时可能填） */
     effectiveSeverity?: ProactiveSeverity
+    /** 是否由信任阶梯降级而来 */
+    degradedByTrust?: boolean
+    /** 是否需要在执行前插入可撤销的确认窗口（critical 命中白名单时置 true） */
+    requiresConfirmation?: boolean
   }
 }
 
@@ -79,6 +83,10 @@ export interface DispatchResult {
 const CHANNEL_PROPOSAL = 'proactive:proposal'        // medium → SuggestionCard
 const CHANNEL_INVOKE_AGENT = 'proactive:invoke-agent' // high → Agent.send
 const CHANNEL_EXECUTE_ACTION = 'proactive:execute-action' // critical → 执行预授权动作
+const CHANNEL_CRITICAL_PENDING = 'proactive:critical-pending' // critical 撤销窗口已开启
+
+/** critical 撤销窗口默认时长（10 秒） */
+const DEFAULT_CRITICAL_CONFIRM_WINDOW_MS = 10_000
 
 /** 通知点击后聚焦窗口的延迟（ms） */
 const NOTIFICATION_FOCUS_DELAY_MS = 100
@@ -114,6 +122,12 @@ export class ProactiveActionTrigger {
 
   /** 派发成功回调（s10-05 注入；用于频率限制记录） */
   private dispatchCallback: DispatchCallback | null = null
+
+  /** critical 撤销窗口时长（0 表示关闭窗口，命中白名单即执行） */
+  private criticalConfirmWindowMs = DEFAULT_CRITICAL_CONFIRM_WINDOW_MS
+
+  /** 处于撤销窗口内、尚未执行的 critical 提案 */
+  private pendingCritical = new Map<string, { timer: NodeJS.Timeout; proposal: ProactiveProposal }>()
 
   /** proposal 事件回调引用（用于精确解绑） */
   private proposalHandler: ((proposal: ProactiveProposal) => void) | null = null
@@ -232,9 +246,11 @@ export class ProactiveActionTrigger {
     }
 
     // 2. 权限校验
+    let checkResult: ReturnType<PermissionChecker> | null = null
     if (this.permissionChecker) {
       try {
         const result = this.permissionChecker(proposal)
+        checkResult = result
         if (!result.allowed) {
           proactiveStore.insertAuditLog(proposal.id, 'blocked', {
             reason: result.reason ?? 'unknown',
@@ -264,8 +280,19 @@ export class ProactiveActionTrigger {
     })
 
     // 4. 按 severity 路由
+    //
+    // 路由用的是权限层降级后的 severity：冷启动保护、信任阶梯、勿扰时段、白名单缺失
+    // 都靠这个字段生效，直接用 proposal.severity 会让所有降级形同虚设。
+    const effectiveSeverity = checkResult?.effectiveSeverity ?? proposal.severity
+    const routedProposal: ProactiveProposal =
+      effectiveSeverity === proposal.severity ? proposal : { ...proposal, severity: effectiveSeverity }
+
     try {
-      const result = await this.routeBySeverity(proposal)
+      const result = await this.routeBySeverity(routedProposal, checkResult?.requiresConfirmation === true)
+      if (result.success && effectiveSeverity !== proposal.severity) {
+        // 降级是「没走到用户期望的那一步」，必须让调用方知道
+        result.degraded = true
+      }
 
       // 派发成功后通知权限模块（用于频率限制计数）
       if (result.success && this.dispatchCallback) {
@@ -298,7 +325,10 @@ export class ProactiveActionTrigger {
   /**
    * 按 severity 路由到对应通道
    */
-  private async routeBySeverity(proposal: ProactiveProposal): Promise<DispatchResult> {
+  private async routeBySeverity(
+    proposal: ProactiveProposal,
+    requiresConfirmation = false,
+  ): Promise<DispatchResult> {
     switch (proposal.severity) {
       case 'info':
         return this.handleInfo(proposal)
@@ -309,7 +339,7 @@ export class ProactiveActionTrigger {
       case 'high':
         return this.handleHigh(proposal)
       case 'critical':
-        return this.handleCritical(proposal)
+        return this.handleCritical(proposal, requiresConfirmation)
       default:
         // 理论上不会走到，但兜底
         return this.handleInfo(proposal)
@@ -470,7 +500,96 @@ export class ProactiveActionTrigger {
    *      此处仅负责派发执行请求；如果 s10-05 注入的权限校验器已拦截，
    *      不会走到这里。
    */
-  private async handleCritical(proposal: ProactiveProposal): Promise<DispatchResult> {
+  private async handleCritical(
+    proposal: ProactiveProposal,
+    requiresConfirmation = false,
+  ): Promise<DispatchResult> {
+    // 命中白名单也要留出撤销窗口：白名单是静态的，上下文是动态的
+    if (requiresConfirmation && this.criticalConfirmWindowMs > 0) {
+      return this.scheduleCriticalWithUndo(proposal)
+    }
+    return this.executeCritical(proposal)
+  }
+
+  /**
+   * 开启撤销窗口：先告知再执行，窗口内可取消
+   *
+   * 定时器注册后立即返回，派发链路不会被这段等待挂住。
+   */
+  private scheduleCriticalWithUndo(proposal: ProactiveProposal): DispatchResult {
+    const windowMs = this.criticalConfirmWindowMs
+
+    const delivered = this.broadcastToRenderer(CHANNEL_CRITICAL_PENDING, {
+      proposalId: proposal.id,
+      action: proposal.action,
+      source: proposal.source,
+      title: proposal.title,
+      reason: proposal.reason,
+      windowMs,
+    })
+
+    if (!delivered) {
+      logger.proactive?.warn('[ProactiveActionTrigger] 无可用窗口，critical 降级为 high')
+      void this.handleHigh(proposal)
+      return { success: false, effectiveSeverity: 'high', error: 'no_window', degraded: true }
+    }
+
+    const timer = setTimeout(() => {
+      this.pendingCritical.delete(proposal.id)
+      void this.executeCritical(proposal)
+    }, windowMs)
+    // 不要让待执行的确认拖住进程退出
+    timer.unref?.()
+    this.pendingCritical.set(proposal.id, { timer, proposal })
+
+    proactiveStore.insertAuditLog(proposal.id, 'dispatched', {
+      channel: 'critical_pending',
+      severity: 'critical',
+      windowMs,
+    })
+    logger.proactive?.info(
+      `[ProactiveActionTrigger] critical 进入 ${windowMs}ms 撤销窗口: ${proposal.title}`,
+    )
+
+    return { success: true, effectiveSeverity: 'critical', degraded: false }
+  }
+
+  /**
+   * 用户在撤销窗口内确认（立即执行）
+   * @returns 是否命中一个待执行的确认
+   */
+  confirmCritical(proposalId: string): boolean {
+    const pending = this.pendingCritical.get(proposalId)
+    if (!pending) return false
+    clearTimeout(pending.timer)
+    this.pendingCritical.delete(proposalId)
+    proactiveStore.insertAuditLog(proposalId, 'dispatched', { channel: 'critical_confirmed' })
+    void this.executeCritical(pending.proposal)
+    return true
+  }
+
+  /**
+   * 用户在撤销窗口内取消
+   *
+   * 只负责终止执行并记状态；信任回退由渲染层上报 feedback（rejected）触发，
+   * 避免此处再依赖权限模块造成双向耦合。
+   */
+  cancelCritical(proposalId: string, reason?: string): boolean {
+    const pending = this.pendingCritical.get(proposalId)
+    if (!pending) return false
+    clearTimeout(pending.timer)
+    this.pendingCritical.delete(proposalId)
+    proactiveStore.updateProposalStatus(proposalId, 'rejected')
+    proactiveStore.insertAuditLog(proposalId, 'feedback', {
+      source: 'undo_window',
+      reason: reason ?? 'user_cancelled',
+    })
+    logger.proactive?.info(`[ProactiveActionTrigger] critical 已被用户在撤销窗口内取消: ${proposalId}`)
+    return true
+  }
+
+  /** 真正下发执行请求 */
+  private async executeCritical(proposal: ProactiveProposal): Promise<DispatchResult> {
     logger.proactive?.info(`[ProactiveActionTrigger] critical 主动执行: ${proposal.title}`)
 
     const delivered = this.broadcastToRenderer(CHANNEL_EXECUTE_ACTION, {
@@ -541,11 +660,26 @@ export class ProactiveActionTrigger {
     }
   }
 
-  /** 销毁触发器（停止监听 + 清理权限校验器 + 派发回调） */
+  /**
+   * 配置 critical 撤销窗口时长
+   * @param windowMs 0 表示关闭窗口（命中白名单直接执行，回到改造前行为）
+   */
+  setCriticalConfirmWindow(windowMs: number): void {
+    this.criticalConfirmWindowMs = Math.max(0, windowMs)
+    logger.proactive?.info(
+      `[ProactiveActionTrigger] critical 撤销窗口: ${this.criticalConfirmWindowMs}ms`,
+    )
+  }
+
+  /** 销毁触发器（停止监听 + 清理权限校验器 + 派发回调 + 未决确认） */
   dispose(): void {
     this.stop()
     this.permissionChecker = null
     this.dispatchCallback = null
+    for (const pending of this.pendingCritical.values()) {
+      clearTimeout(pending.timer)
+    }
+    this.pendingCritical.clear()
   }
 }
 
