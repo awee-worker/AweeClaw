@@ -11,14 +11,18 @@
  */
 
 import { createElement, useCallback, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { ArrowLeft, X } from 'lucide-react'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { resolveNavRailWidth, resolveTrafficLightsClearance } from '@components/layout/navRailMetrics'
 import { PluginBoundary } from '@renderer/plugins/PluginBoundary'
 import { usePluginPanelComponent } from '@renderer/plugins/usePluginPanelComponent'
 import { PLUGIN_CLOSE_PANEL_EVENT } from '@renderer/plugins/PluginHostApi'
-import { closePluginDrawer, usePluginDrawerTarget } from '@renderer/plugins/pluginDrawerStore'
+import {
+  closePluginDrawer,
+  resolvePanelDrawerWidth,
+  usePluginDrawerTarget,
+} from '@renderer/plugins/pluginDrawerStore'
 
 const isMac =
   typeof navigator !== 'undefined' &&
@@ -34,24 +38,14 @@ function pluginKeyOf(panelId: string): string {
 }
 
 /**
- * 抽屉宽度档位 → Tailwind 宽度类
+ * 固定档位的最大宽度上限
  *
- * full 按视口减去导航栏宽度计算：插件工作台（站点托管这类三栏界面）需要
- * 比 920px 宽得多，但铺满整屏会把左侧菜单一起盖掉，用户想切别的面板还得
- * 先关抽屉。档位与 pluginDrawerStore 的 resolvePanelDrawerWidth 语义一致。
- *
- * 两个 full 档必须写成完整字面量：Tailwind 扫源码提取类名，模板拼接出来的
- * `w-[calc(100vw-\${rail}px)]` 不会生成任何样式，抽屉会退回内容宽度。
+ * full 由 resolvePanelDrawerWidth 按视口算，再套上限反而会裁出一条缝，
+ * 因此不设约束；其余档位按内容密度分两档收口，窄档留出更多背景。
  */
-function drawerWidthClass(width: unknown, navRailExpanded: boolean): string {
-  if (width === 'full') {
-    // 展开态导航栏 200px，收起态 48px，与 NavigationRail 保持一致
-    return navRailExpanded ? 'w-[calc(100vw-200px)]' : 'w-[calc(100vw-48px)]'
-  }
-  if (width === 'xl') return 'w-[1180px] max-w-[94vw]'
-  // 宽档与插件中心「管理」抽屉对齐，多列信息的运维台才有横向空间
-  if (width === 'lg') return 'w-[920px] max-w-[94vw]'
-  return 'w-[420px] max-w-[85vw]'
+function maxWidthOf(width: unknown, isFullWidth: boolean): string | undefined {
+  if (isFullWidth) return undefined
+  return width === 'lg' || width === 'xl' ? '94vw' : '85vw'
 }
 
 export default function PluginDrawerHost() {
@@ -113,6 +107,13 @@ export default function PluginDrawerHost() {
     ? (target.titleZh || target.title || target.panelId)
     : (target.title || target.titleZh || target.panelId)
 
+  // 宽度与内置面板抽屉走同一套换算：full = 视口减去左侧菜单，菜单开合时跟着让位。
+  // 不再用固定的 Tailwind 宽度类，是因为「导航栏不渲染」时菜单占位是 0，
+  // 写死的 calc(100vw-48px) 会凭空少一块，和标题栏的红绿灯留白对不上。
+  const resolvedWidth = resolvePanelDrawerWidth(target.width, navRailWidth)
+  const isFullWidth = resolvedWidth.startsWith('calc(')
+  const maxWidth = maxWidthOf(target.width, isFullWidth)
+
   const renderBody = () => {
     if (loadState === 'loading') {
       return (
@@ -159,16 +160,26 @@ export default function PluginDrawerHost() {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`relative h-full bg-popover border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out] ${drawerWidthClass(
-          target.width,
-          navRailExpanded,
-        )}`}
+        className="relative h-full bg-popover border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out]"
+        style={{ width: resolvedWidth, maxWidth }}
       >
         <header
-          className="flex items-center justify-between gap-2 pr-4 py-3 border-b border-border/50 shrink-0"
+          className="flex items-center gap-2 pr-4 py-3 border-b border-border/50 shrink-0"
           style={{ paddingLeft: headerInset }}
         >
-          <div className="min-w-0">
+          {/* 返回与右上角关闭是同一个动作：抽屉是浮层，关掉就回到打开前的位置。
+              左侧再放一个是为了顺着「从左边退出去」的阅读习惯，鼠标不用跨到对角。
+              内边距已按红绿灯宽度补足，菜单收起时按钮不会被系统三个圆点压住。 */}
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label={isZh ? '返回' : 'Back'}
+            title={isZh ? '返回' : 'Back'}
+            className="shrink-0 -ml-1 p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-text-primary truncate">{title}</p>
             <p className="text-[11px] text-text-muted truncate">{pluginKeyOf(target.panelId)}</p>
           </div>
@@ -176,7 +187,8 @@ export default function PluginDrawerHost() {
             type="button"
             onClick={handleClose}
             aria-label={isZh ? '关闭' : 'Close'}
-            className="shrink-0 p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+            title={isZh ? '关闭' : 'Close'}
+            className="shrink-0 p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             <X className="w-4 h-4" />
           </button>

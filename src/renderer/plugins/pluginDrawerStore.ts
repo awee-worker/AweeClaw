@@ -118,12 +118,13 @@ export function closePluginDrawer(): void {
  * 菜单、工作台卡片、设置页都会打开这些面板，宽度只应有一处定义，
  * 否则同一个面板从不同入口打开会一宽一窄。
  *
- * 待办中心是单列表型工作台，固定 640px 就够；项目、自动化、知识库、邮件中心、
- * AI 浏览器、插件与技能市场都是多栏协作界面，列越多人越挤，统一取 full —
+ * 这些面板都是列表 + 详情型的协作界面，列越多人越挤，统一取 full —
  * 铺满左侧菜单以外的宽度，导航栏展开 / 收起时跟着让位，窗口变大也不会留空边。
+ * 待办中心单列表也能铺满：条目含来源、优先级、截止日期与操作按钮，
+ * 窄档下容易被挤成两三行，全屏反而更好扫读。
  */
 export const PANEL_DRAWER_WIDTHS: Record<string, PanelDrawerWidth> = {
-  'todo-hub': 640,
+  'todo-hub': 'full',
   projects: 'full',
   automation: 'full',
   knowledge: 'full',

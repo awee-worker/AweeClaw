@@ -54,6 +54,7 @@ describe('resolvePanelDrawerWidth', () => {
 
 describe('内置面板宽度声明', () => {
   const fullWidthPanels = [
+    'todo-hub',
     'projects',
     'automation',
     'knowledge',
@@ -66,8 +67,8 @@ describe('内置面板宽度声明', () => {
     expect(PANEL_DRAWER_WIDTHS[panelId]).toBe('full')
   })
 
-  it('待办中心仍是固定宽度', () => {
-    expect(PANEL_DRAWER_WIDTHS['todo-hub']).toBe(640)
+  it('没有内置面板停留在固定宽度档', () => {
+    Object.values(PANEL_DRAWER_WIDTHS).forEach(width => expect(width).toBe('full'))
   })
 
   it('宽度表同时充当抽屉面板登记表', () => {

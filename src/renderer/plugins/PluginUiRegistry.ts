@@ -32,18 +32,6 @@ import { contributionToSidebarItem } from './types'
 /** primaryView 归一化后注册到 PanelRegistry 的面板 id 后缀 */
 const PRIMARY_PANEL_SUFFIX = ':__primary__'
 
-/**
- * 抽屉宽度档位归一化
- *
- * manifest 里的 drawerWidth 可能来自旧版本声明或被手工改成未知值，
- * 直接透传给抽屉会让 resolvePanelDrawerWidth 退化成 420px 窄档，
- * 表现为「面板莫名其妙变窄」。这里只放行已知档位，其余按窄档处理。
- */
-function normalizeDrawerWidth(width?: string): PanelDrawerWidth {
-  if (width === 'lg' || width === 'xl' || width === 'full') return width
-  return 'md'
-}
-
 /** 单个插件的 UI 贡献记录（来自主进程 IPC） */
 interface PluginUiContribution {
   pluginKey: string
@@ -734,6 +722,11 @@ class PluginUiRegistryImpl {
    * 面板数量很少，直接遍历 discovered，不做缓存——缓存要在安装/卸载/更新
    * 三处同步失效，漏一处就会出现「点了新面板没反应」。
    *
+   * 宽度固定取 full，不看 manifest 的 drawerWidth：占左侧菜单导航项的面板
+   * 本身就是一块完整工作台（站点托管、云服务器这类多栏运维台），窄档下会被
+   * 挤成两三行。drawerWidth 的语义留给了「二级选项临时唤起的抽屉」那条路径
+   * （subSkillActions 的 openPluginDrawer），那里才需要 420px 的唤出即用尺寸。
+   *
    * @returns 命中抽屉式面板时返回标题与宽度档位；普通侧栏面板或未找到返回 undefined
    */
   getDrawerPanelMeta(
@@ -747,8 +740,7 @@ class PluginUiRegistryImpl {
         return {
           title: hit.label || hit.labelZh || panelId,
           titleZh: hit.labelZh || hit.label,
-          // 未声明按窄档：抽屉默认服务的是「唤出即用」的小面板
-          width: normalizeDrawerWidth(hit.drawerWidth),
+          width: 'full',
         }
       }
     }

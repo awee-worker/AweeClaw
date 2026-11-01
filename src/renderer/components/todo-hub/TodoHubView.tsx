@@ -145,8 +145,11 @@ export function TodoHubView() {
         </div>
       </div>
 
-      {/* 新增 */}
-      <div className="shrink-0 px-5 py-3 border-b border-border/20 space-y-2">
+      {/* 新增 / 筛选
+          抽屉已铺满剩余宽度，这里把内容收在阅读宽度内居中：条目仍是单列，
+          拉满整屏会让标题与日期隔得太远，扫读时需要来回摆头。 */}
+      <div className="shrink-0 border-b border-border/20">
+        <div className="w-full max-w-4xl mx-auto px-5 py-3 space-y-2">
         <div className="flex gap-2">
           <input
             value={title}
@@ -201,10 +204,12 @@ export function TodoHubView() {
             />
           </div>
         </div>
+        </div>
       </div>
 
-      {/* 列表 */}
-      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-5 pb-4 space-y-1.5">
+      {/* 列表：滚动容器占满高度，内容按同一档阅读宽度居中，与上方新增区左右对齐 */}
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar">
+        <div className="w-full max-w-4xl mx-auto px-5 pb-4 space-y-1.5">
         {filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-text-muted/70 gap-2">
             <Inbox className="w-8 h-8 opacity-40" />
@@ -332,6 +337,7 @@ export function TodoHubView() {
             </div>
           )
         })}
+        </div>
       </div>
     </div>
   )
