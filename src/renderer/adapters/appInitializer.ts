@@ -524,6 +524,10 @@ export function registerSettingsSync(): () => void {
         }
         break
       }
+      // 自定义壁纸主题列表变更：数据已落盘，这里只同步内存，不回写配置
+      case 'customWallpaperThemes':
+        themeManager.syncCustomWallpaperThemesFromExternal(value)
+        break
       case 'enableFileLogging':
         if (typeof value === 'boolean') {
           store.set('enableFileLogging', value)

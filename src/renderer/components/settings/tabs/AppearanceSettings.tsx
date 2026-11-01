@@ -1,4 +1,4 @@
-import { Layout, Check, Sun, Moon, Monitor, Globe, Type, MessageSquare, Code2, Circle, Image, RotateCcw, Upload, Link2 } from 'lucide-react'
+import { Layout, Check, Sun, Moon, Monitor, Globe, Type, MessageSquare, Code2, Circle, Image, RotateCcw, Upload, Link2, Plus, Pencil, Trash2, X } from 'lucide-react'
 import { useStore, type ThemeName, type ThemeMode, type ThemeColor } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { themeManager, THEME_COLOR_OPTIONS } from '@/renderer/config/themeDefinition'
@@ -6,7 +6,9 @@ import {
     BUILTIN_WALLPAPERS,
     DEFAULT_WALLPAPER_TUNING,
     getBuiltinWallpaper,
+    isSameWallpaperConfig,
     resolveWallpaperImage,
+    type CustomWallpaperTheme,
     type WallpaperConfig,
     type WallpaperFit,
 } from '@/renderer/config/wallpaper'
@@ -186,6 +188,105 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
         if (!activeWallpaper) return
         scheduleWallpaperSave({ ...activeWallpaper, ...patch })
     }, [activeWallpaper, scheduleWallpaperSave])
+
+    // ============================================
+    // 自定义壁纸主题（壁纸 + 滑块参数 + 明暗配色）
+    // ============================================
+
+    const [customWallpaperThemes, setCustomWallpaperThemesState] = useState<CustomWallpaperTheme[]>(
+        () => themeManager.getCustomWallpaperThemes()
+    )
+    /** 新建主题的名称草稿；null 表示输入框未展开 */
+    const [newThemeName, setNewThemeName] = useState<string | null>(null)
+    /** 正在重命名的主题 id 与草稿名 */
+    const [editingTheme, setEditingTheme] = useState<{ id: string; name: string } | null>(null)
+    /** 等待二次确认删除的主题 id */
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+
+    const syncCustomWallpaperThemes = useCallback(() => {
+        setCustomWallpaperThemesState(themeManager.getCustomWallpaperThemes())
+    }, [])
+
+    /** 当前配色对应的 ColorTheme id，用于随壁纸一起存档 */
+    const currentColorThemeId = useMemo(
+        () => themeManager.getColorThemeByColor(themeColor)?.id ?? 'aweeclaw',
+        [themeColor]
+    )
+
+    /** 新建时给一个可读的默认名，避免用户必须先想名字 */
+    const defaultThemeName = useMemo(
+        () => language === 'zh'
+            ? `壁纸主题 ${customWallpaperThemes.length + 1}`
+            : `Wallpaper theme ${customWallpaperThemes.length + 1}`,
+        [language, customWallpaperThemes.length]
+    )
+
+    const handleStartSaveTheme = useCallback(() => {
+        if (!activeWallpaper) return
+        setEditingTheme(null)
+        setPendingDeleteId(null)
+        setNewThemeName(defaultThemeName)
+    }, [activeWallpaper, defaultThemeName])
+
+    const handleConfirmSaveTheme = useCallback(() => {
+        if (!activeWallpaper || newThemeName === null) return
+        const saved = themeManager.saveCustomWallpaperTheme({
+            name: newThemeName.trim() || defaultThemeName,
+            wallpaper: activeWallpaper,
+            themeMode,
+            colorThemeId: currentColorThemeId,
+        })
+        if (!saved) return
+        setNewThemeName(null)
+        syncCustomWallpaperThemes()
+    }, [activeWallpaper, newThemeName, defaultThemeName, themeMode, currentColorThemeId, syncCustomWallpaperThemes])
+
+    /** 应用一套自定义壁纸主题：壁纸、滑块参数、明暗模式与配色一起恢复 */
+    const handleApplyCustomTheme = useCallback((preset: CustomWallpaperTheme) => {
+        setWallpaperError('')
+        const color = themeManager.getColorThemeById(preset.colorThemeId)?.color
+            ?? themeManager.resolveColorFromThemeId(preset.colorThemeId)
+        setThemeColor(color)
+        setThemeMode(preset.themeMode)
+        applyThemeForModeAndColor(preset.themeMode, color)
+        commitWallpaper(preset.wallpaper)
+    }, [applyThemeForModeAndColor, setThemeColor, setThemeMode, commitWallpaper])
+
+    const handleRenameTheme = useCallback(() => {
+        if (!editingTheme) return
+        const preset = themeManager.getCustomWallpaperTheme(editingTheme.id)
+        if (!preset) return
+        themeManager.saveCustomWallpaperTheme({
+            id: preset.id,
+            name: editingTheme.name.trim() || preset.name,
+            wallpaper: preset.wallpaper,
+            themeMode: preset.themeMode,
+            colorThemeId: preset.colorThemeId,
+        })
+        setEditingTheme(null)
+        syncCustomWallpaperThemes()
+    }, [editingTheme, syncCustomWallpaperThemes])
+
+    /** 用当前壁纸与主题设置覆盖已有主题 */
+    const handleOverwriteTheme = useCallback((preset: CustomWallpaperTheme) => {
+        if (!activeWallpaper) return
+        themeManager.saveCustomWallpaperTheme({
+            id: preset.id,
+            name: editingTheme?.id === preset.id ? (editingTheme.name.trim() || preset.name) : preset.name,
+            wallpaper: activeWallpaper,
+            themeMode,
+            colorThemeId: currentColorThemeId,
+        })
+        setEditingTheme(null)
+        syncCustomWallpaperThemes()
+    }, [activeWallpaper, editingTheme, themeMode, currentColorThemeId, syncCustomWallpaperThemes])
+
+    const handleDeleteTheme = useCallback((themeId: string) => {
+        themeManager.removeCustomWallpaperTheme(themeId)
+        if (editingTheme?.id === themeId) setEditingTheme(null)
+        setPendingDeleteId(null)
+        syncCustomWallpaperThemes()
+    }, [editingTheme, syncCustomWallpaperThemes])
 
     useEffect(() => {
         if (themeMode !== 'system') {
@@ -673,6 +774,236 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                         </div>
                     </div>
                 )}
+
+                {/* 我的壁纸主题：把当前壁纸 + 滑块参数 + 明暗配色一起存下来，随时切回 */}
+                <div className="mt-6 border-t border-border/60 pt-5">
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                            <h5 className="text-xs font-semibold text-text-primary">
+                                {language === 'zh' ? '我的壁纸主题' : 'My wallpaper themes'}
+                            </h5>
+                            <p className="mt-0.5 text-[11px] text-text-muted">
+                                {language === 'zh'
+                                    ? '保存当前壁纸与模糊、遮罩、面板不透明度，连同亮暗模式与配色。切换回来后一键还原。'
+                                    : 'Save the current wallpaper with its blur, dim and opacity, plus the light/dark mode and color. Restore it in one click.'}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleStartSaveTheme}
+                            disabled={!activeWallpaper}
+                            className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                activeWallpaper
+                                    ? 'border-border/60 text-text-secondary hover:border-accent/40 hover:text-accent'
+                                    : 'cursor-not-allowed border-border/30 text-text-muted/50'
+                            }`}
+                        >
+                            <Plus className="w-3.5 h-3.5" />
+                            {language === 'zh' ? '保存为自定义主题' : 'Save as theme'}
+                        </button>
+                    </div>
+
+                    {/* 新建主题：名称输入行 */}
+                    {newThemeName !== null && (
+                        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2">
+                            <input
+                                autoFocus
+                                value={newThemeName}
+                                maxLength={40}
+                                onChange={e => setNewThemeName(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter') handleConfirmSaveTheme()
+                                    if (e.key === 'Escape') setNewThemeName(null)
+                                }}
+                                placeholder={language === 'zh' ? '主题名称' : 'Theme name'}
+                                className="min-w-[160px] flex-1 rounded-lg border border-input-border bg-input px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-muted/60"
+                            />
+                            <button
+                                type="button"
+                                onClick={handleConfirmSaveTheme}
+                                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+                            >
+                                {language === 'zh' ? '保存' : 'Save'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setNewThemeName(null)}
+                                className="rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent/40 hover:text-accent"
+                            >
+                                {language === 'zh' ? '取消' : 'Cancel'}
+                            </button>
+                        </div>
+                    )}
+
+                    {customWallpaperThemes.length === 0 ? (
+                        <p className="rounded-xl border border-dashed border-border/60 px-4 py-4 text-center text-[11px] text-text-muted">
+                            {language === 'zh'
+                                ? '还没有保存的主题。上传壁纸并调好参数后，点右上角「保存为自定义主题」。'
+                                : 'No saved themes yet. Upload a wallpaper, tune the sliders, then click “Save as theme”.'}
+                        </p>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+                            {customWallpaperThemes.map(preset => {
+                                const isActive = isSameWallpaperConfig(activeWallpaper, preset.wallpaper)
+                                const thumb = resolveWallpaperImage(preset.wallpaper)
+                                const builtin = preset.wallpaper.kind === 'builtin'
+                                    ? getBuiltinWallpaper(preset.wallpaper.id)
+                                    : undefined
+                                const isEditing = editingTheme?.id === preset.id
+                                const isDeleting = pendingDeleteId === preset.id
+
+                                if (isDeleting) {
+                                    return (
+                                        <div
+                                            key={preset.id}
+                                            className="flex flex-col justify-center gap-2 rounded-lg border border-status-error/40 bg-status-error/5 px-3 py-3"
+                                        >
+                                            <p className="text-[11px] text-text-secondary">
+                                                {language === 'zh' ? `删除「${preset.name}」？` : `Delete “${preset.name}”?`}
+                                            </p>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteTheme(preset.id)}
+                                                    className="flex-1 rounded-md bg-status-error px-2 py-1 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+                                                >
+                                                    {language === 'zh' ? '删除' : 'Delete'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPendingDeleteId(null)}
+                                                    className="flex-1 rounded-md border border-border/60 px-2 py-1 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/40"
+                                                >
+                                                    {language === 'zh' ? '取消' : 'Cancel'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )
+                                }
+
+                                return (
+                                    <div
+                                        key={preset.id}
+                                        className={`group relative overflow-hidden rounded-lg border transition-all ${
+                                            isActive
+                                                ? 'border-accent ring-1 ring-accent/30'
+                                                : 'border-border/50 hover:border-accent/40'
+                                        }`}
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => handleApplyCustomTheme(preset)}
+                                            className="block w-full text-left"
+                                        >
+                                            <div
+                                                className="h-12 w-full"
+                                                style={{
+                                                    backgroundColor: builtin?.previewBg ?? '#0b1220',
+                                                    backgroundImage: thumb || undefined,
+                                                    backgroundSize: 'cover',
+                                                    backgroundPosition: 'center',
+                                                }}
+                                            />
+                                            <div className="flex items-center gap-1 px-2 py-1.5">
+                                                <span className="min-w-0 flex-1 truncate text-[11px] text-text-secondary">
+                                                    {preset.name}
+                                                </span>
+                                                <span className="shrink-0 rounded bg-surface/70 px-1 text-[10px] text-text-muted">
+                                                    {preset.themeMode === 'system'
+                                                        ? (language === 'zh' ? '跟随' : 'Auto')
+                                                        : preset.themeMode === 'dark'
+                                                            ? (language === 'zh' ? '暗色' : 'Dark')
+                                                            : (language === 'zh' ? '亮色' : 'Light')}
+                                                </span>
+                                            </div>
+                                        </button>
+
+                                        {isActive && !isEditing && (
+                                            <span className="absolute right-1 top-1 rounded-full bg-accent p-0.5">
+                                                <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+                                            </span>
+                                        )}
+
+                                        {/* 编辑 / 删除：默认隐藏，悬停或键盘聚焦时出现 */}
+                                        {!isEditing && (
+                                            <div className="absolute left-1 top-1 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                                                <button
+                                                    type="button"
+                                                    title={language === 'zh' ? '编辑' : 'Edit'}
+                                                    onClick={() => {
+                                                        setPendingDeleteId(null)
+                                                        setNewThemeName(null)
+                                                        setEditingTheme({ id: preset.id, name: preset.name })
+                                                    }}
+                                                    className="rounded-md bg-black/45 p-1 text-white transition-colors hover:bg-black/65"
+                                                >
+                                                    <Pencil className="w-3 h-3" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    title={language === 'zh' ? '删除' : 'Delete'}
+                                                    onClick={() => {
+                                                        setEditingTheme(null)
+                                                        setPendingDeleteId(preset.id)
+                                                    }}
+                                                    className="rounded-md bg-black/45 p-1 text-white transition-colors hover:bg-status-error"
+                                                >
+                                                    <Trash2 className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* 编辑态：改名 + 用当前设置覆盖 */}
+                                        {isEditing && (
+                                            <div className="space-y-2 border-t border-border/60 bg-surface/60 p-2">
+                                                <input
+                                                    autoFocus
+                                                    value={editingTheme.name}
+                                                    maxLength={40}
+                                                    onChange={e => setEditingTheme({ id: preset.id, name: e.target.value })}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter') handleRenameTheme()
+                                                        if (e.key === 'Escape') setEditingTheme(null)
+                                                    }}
+                                                    className="w-full rounded-md border border-input-border bg-input px-2 py-1 text-[11px] text-text-primary"
+                                                />
+                                                <div className="flex flex-wrap gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleRenameTheme}
+                                                        className="flex-1 rounded-md bg-accent px-2 py-1 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+                                                    >
+                                                        {language === 'zh' ? '保存名称' : 'Rename'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={!activeWallpaper}
+                                                        onClick={() => handleOverwriteTheme(preset)}
+                                                        className={`flex-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${
+                                                            activeWallpaper
+                                                                ? 'border-border/60 text-text-secondary hover:border-accent/40 hover:text-accent'
+                                                                : 'cursor-not-allowed border-border/30 text-text-muted/50'
+                                                        }`}
+                                                    >
+                                                        {language === 'zh' ? '用当前设置覆盖' : 'Overwrite'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEditingTheme(null)}
+                                                        className="rounded-md border border-border/60 p-1 text-text-secondary transition-colors hover:border-accent/40"
+                                                        title={language === 'zh' ? '关闭' : 'Close'}
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
             </section>
 
             <section className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">

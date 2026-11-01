@@ -18,7 +18,9 @@ import {
   applyWallpaper,
   DEFAULT_WALLPAPER_TUNING,
   isValidWallpaperConfig,
+  normalizeCustomWallpaperTheme,
   normalizeWallpaperConfig,
+  type CustomWallpaperTheme,
   type WallpaperConfig,
 } from './wallpaper'
 
@@ -670,6 +672,10 @@ const LOCAL_STORAGE_CUSTOM_THEMES_KEY = `${BRAND.cssPrefix}-custom-themes`
 const LOCAL_STORAGE_WALLPAPER_KEY = `${BRAND.cssPrefix}-wallpaper`
 /** 用户自定义壁纸在配置文件中的 key */
 const CONFIG_KEY_WALLPAPER = 'wallpaper'
+/** 自定义壁纸主题列表的本地快照 */
+const LOCAL_STORAGE_CUSTOM_WALLPAPER_THEMES_KEY = `${BRAND.cssPrefix}-custom-wallpaper-themes`
+/** 自定义壁纸主题列表在配置文件中的 key */
+const CONFIG_KEY_CUSTOM_WALLPAPER_THEMES = 'customWallpaperThemes'
 
 /** 校验自定义主题的 colors 字段是否完整且为字符串 */
 function isValidTheme(t: unknown): t is Theme {
@@ -693,6 +699,8 @@ class ThemeManager {
   private appMediaQueryHandler: ((e: MediaQueryListEvent) => void) | null = null
   /** 用户自定义壁纸；为 null 时回落到主题自带壁纸 */
   private userWallpaper: WallpaperConfig | null = null
+  /** 用户保存的自定义壁纸主题（含壁纸参数与配色设置） */
+  private customWallpaperThemes: CustomWallpaperTheme[] = []
 
   constructor() {
     // 从 StorageService 快速恢复主题（同步，避免闪烁）
@@ -700,9 +708,18 @@ class ThemeManager {
       const savedThemeId = StorageService.get<string>(LOCAL_STORAGE_THEME_KEY)
       const savedCustomThemes = StorageService.get<Theme[]>(LOCAL_STORAGE_CUSTOM_THEMES_KEY)
       const savedWallpaper = StorageService.get<WallpaperConfig>(LOCAL_STORAGE_WALLPAPER_KEY)
+      const savedWallpaperThemes = StorageService.get<CustomWallpaperTheme[]>(
+        LOCAL_STORAGE_CUSTOM_WALLPAPER_THEMES_KEY
+      )
 
       if (savedCustomThemes && Array.isArray(savedCustomThemes)) {
         this.customThemes = savedCustomThemes.filter(isValidTheme)
+      }
+
+      if (savedWallpaperThemes && Array.isArray(savedWallpaperThemes)) {
+        this.customWallpaperThemes = savedWallpaperThemes
+          .map(normalizeCustomWallpaperTheme)
+          .filter((t): t is CustomWallpaperTheme => t !== null)
       }
 
       if (isValidWallpaperConfig(savedWallpaper)) {
@@ -725,16 +742,25 @@ class ThemeManager {
   async loadFromConfig() {
     try {
       // 并行读取主题配置
-      const [savedThemeId, savedCustomThemes, savedWallpaper] = await Promise.all([
+      const [savedThemeId, savedCustomThemes, savedWallpaper, savedWallpaperThemes] = await Promise.all([
         api.settings.get('themeId'),
         api.settings.get('customThemes'),
         api.settings.get(CONFIG_KEY_WALLPAPER),
+        api.settings.get(CONFIG_KEY_CUSTOM_WALLPAPER_THEMES),
       ])
 
       if (savedCustomThemes && Array.isArray(savedCustomThemes)) {
         const validThemes = savedCustomThemes.filter(isValidTheme)
         this.customThemes = validThemes
         StorageService.set(LOCAL_STORAGE_CUSTOM_THEMES_KEY, validThemes)
+      }
+
+      if (Array.isArray(savedWallpaperThemes)) {
+        const validWallpaperThemes = savedWallpaperThemes
+          .map(normalizeCustomWallpaperTheme)
+          .filter((t): t is CustomWallpaperTheme => t !== null)
+        this.customWallpaperThemes = validWallpaperThemes
+        StorageService.set(LOCAL_STORAGE_CUSTOM_WALLPAPER_THEMES_KEY, validWallpaperThemes)
       }
 
       if (isValidWallpaperConfig(savedWallpaper)) {
@@ -1051,6 +1077,96 @@ class ThemeManager {
       api.settings.set(CONFIG_KEY_WALLPAPER, this.userWallpaper)
     } catch (e) {
       logger.settings.error('Failed to save wallpaper to config:', e)
+    }
+  }
+
+  // ============================================
+  // 自定义壁纸主题
+  // ============================================
+
+  /** 取全部自定义壁纸主题（按保存时间新→旧） */
+  getCustomWallpaperThemes(): CustomWallpaperTheme[] {
+    return [...this.customWallpaperThemes]
+  }
+
+  /** 按 id 取自定义壁纸主题 */
+  getCustomWallpaperTheme(themeId: string): CustomWallpaperTheme | undefined {
+    return this.customWallpaperThemes.find(t => t.id === themeId)
+  }
+
+  /**
+   * 保存自定义壁纸主题：传 id 视为更新，不传视为新增。
+   * 返回落盘后的主题对象；名称为空时拒绝保存并返回 null。
+   */
+  saveCustomWallpaperTheme(input: {
+    id?: string
+    name: string
+    wallpaper: WallpaperConfig
+    themeMode: CustomWallpaperTheme['themeMode']
+    colorThemeId: string
+  }): CustomWallpaperTheme | null {
+    const name = input.name.trim()
+    if (!name) return null
+
+    const now = Date.now()
+    const existing = input.id ? this.customWallpaperThemes.find(t => t.id === input.id) : undefined
+
+    const saved: CustomWallpaperTheme = {
+      id: existing ? existing.id : `wp-${now}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      wallpaper: normalizeWallpaperConfig(input.wallpaper),
+      themeMode: input.themeMode,
+      colorThemeId: input.colorThemeId,
+      createdAt: existing ? existing.createdAt : now,
+      updatedAt: now,
+    }
+
+    if (existing) {
+      this.customWallpaperThemes = this.customWallpaperThemes.map(t =>
+        t.id === saved.id ? saved : t
+      )
+    } else {
+      this.customWallpaperThemes = [saved, ...this.customWallpaperThemes]
+    }
+
+    this.persistCustomWallpaperThemes()
+    return saved
+  }
+
+  /** 删除自定义壁纸主题；正在使用的壁纸本身保持不变 */
+  removeCustomWallpaperTheme(themeId: string): void {
+    const next = this.customWallpaperThemes.filter(t => t.id !== themeId)
+    if (next.length === this.customWallpaperThemes.length) return
+    this.customWallpaperThemes = next
+    this.persistCustomWallpaperThemes()
+  }
+
+  /**
+   * 应用其他窗口广播过来的自定义壁纸主题列表。
+   * 与 saveCustomWallpaperTheme 的区别同 syncWallpaperFromExternal：不回写配置，避免广播循环。
+   */
+  syncCustomWallpaperThemesFromExternal(themes: unknown): void {
+    if (!Array.isArray(themes)) return
+    this.customWallpaperThemes = themes
+      .map(normalizeCustomWallpaperTheme)
+      .filter((t): t is CustomWallpaperTheme => t !== null)
+    try {
+      StorageService.set(LOCAL_STORAGE_CUSTOM_WALLPAPER_THEMES_KEY, this.customWallpaperThemes)
+    } catch (e) {
+      // 忽略本地快照写入失败
+    }
+  }
+
+  private persistCustomWallpaperThemes() {
+    try {
+      StorageService.set(LOCAL_STORAGE_CUSTOM_WALLPAPER_THEMES_KEY, this.customWallpaperThemes)
+    } catch (e) {
+      // 忽略存储错误
+    }
+    try {
+      api.settings.set(CONFIG_KEY_CUSTOM_WALLPAPER_THEMES, this.customWallpaperThemes)
+    } catch (e) {
+      logger.settings.error('Failed to save custom wallpaper themes:', e)
     }
   }
 

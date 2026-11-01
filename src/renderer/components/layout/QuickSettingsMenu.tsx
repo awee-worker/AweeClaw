@@ -3,18 +3,26 @@
  *
  * 在用户菜单中提供界面语言与界面主题的快速切换。
  * - 界面语言：中文 / English
- * - 界面主题：亮色 / 暗色 / 跟随系统、4 种配色、内置壁纸，末尾通向完整的外观设置
+ * - 界面主题：亮色 / 暗色 / 跟随系统、4 种配色、内置壁纸与用户保存的自定义壁纸主题，
+ *   末尾通向完整的外观设置
  *
  * 交互：鼠标 hover 父项时向右展开二级菜单，点击选项立即生效。
  * 实现：父项与二级菜单放在同一个 div 内，统一管理 hover，避免移动断开。
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Globe, Sun, Moon, Monitor, Check, ChevronRight, ChevronLeft, Palette } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { themeManager } from '@/renderer/config/themeDefinition'
-import { BUILTIN_WALLPAPERS, DEFAULT_WALLPAPER_TUNING, getBuiltinWallpaper } from '@/renderer/config/wallpaper'
+import {
+  BUILTIN_WALLPAPERS,
+  DEFAULT_WALLPAPER_TUNING,
+  getBuiltinWallpaper,
+  isSameWallpaperConfig,
+  resolveWallpaperImage,
+  type CustomWallpaperTheme,
+} from '@/renderer/config/wallpaper'
 import { api } from '@renderer/adapters/electronBridge'
 import { t, type Language } from '@renderer/i18n'
 import type { ThemeMode, ThemeColor } from '@store'
@@ -70,6 +78,18 @@ function applyThemeSelection(mode: ThemeMode, color: ThemeColor): void {
   state.setTheme(resolved.id)
   themeManager.setTheme(resolved.id)
   api.settings.set('themeId', resolved.id)
+}
+
+/**
+ * 当前生效壁纸命中的自定义主题 id。
+ *
+ * 壁纸由 themeManager 直接写 DOM，不经过 React 状态，菜单拿不到变更通知，
+ * 只能拿生效壁纸与存档逐条比对；用户事后又拖过滑块就比对不上，视为未选中。
+ */
+function findMatchingThemeId(themes: CustomWallpaperTheme[]): string {
+  const current = themeManager.getUserWallpaper()
+  if (!current) return ''
+  return themes.find(item => isSameWallpaperConfig(item.wallpaper, current))?.id ?? ''
 }
 
 /** 二级菜单指示箭头：方向与展开方向一致 */
@@ -155,6 +175,28 @@ function ThemeSubMenu({
     const active = themeManager.getActiveWallpaper()
     return active?.kind === 'builtin' ? active.id : ''
   })
+  // 自定义壁纸主题：列表与当前命中的主题 id 同样不走 React 通知，展开时重新同步
+  const [customThemes, setCustomThemes] = useState<CustomWallpaperTheme[]>(
+    () => themeManager.getCustomWallpaperThemes()
+  )
+  const [activeCustomThemeId, setActiveCustomThemeId] = useState<string>(() =>
+    findMatchingThemeId(themeManager.getCustomWallpaperThemes())
+  )
+
+  /**
+   * 每次展开都重新读一遍。
+   *
+   * 自定义主题可能刚在设置页被保存或删除，壁纸也可能在那里换过，
+   * 只在挂载时算一次会留下一排过期的高亮。
+   */
+  useEffect(() => {
+    if (!isOpen) return
+    const themes = themeManager.getCustomWallpaperThemes()
+    setCustomThemes(themes)
+    setActiveCustomThemeId(findMatchingThemeId(themes))
+    const active = themeManager.getActiveWallpaper()
+    setActiveWallpaperId(active?.kind === 'builtin' ? active.id : '')
+  }, [isOpen])
 
   const { themeMode, themeColor } = useStore(useShallow(s => ({
     themeMode: s.themeMode,
@@ -197,12 +239,30 @@ function ThemeSubMenu({
       fit: base.fit,
     })
     setActiveWallpaperId(id)
+    setActiveCustomThemeId('')
   }, [themeColor])
 
   /** 恢复为主题自带壁纸 */
   const handleFollowTheme = useCallback(() => {
     themeManager.setUserWallpaper(null)
     setActiveWallpaperId('')
+    setActiveCustomThemeId('')
+  }, [])
+
+  /**
+   * 应用一套自定义壁纸主题
+   *
+   * 与设置页的「一键还原」保持同一套动作：明暗模式、配色、壁纸与四个滑块参数
+   * 一起恢复。只换图不换配色会出现浅底浅字，所以配色必须跟着回来。
+   * 同样不关闭菜单 —— 存下来的几套主题常要来回比。
+   */
+  const handleCustomThemeSelect = useCallback((preset: CustomWallpaperTheme) => {
+    const color = themeManager.getColorThemeById(preset.colorThemeId)?.color
+      ?? themeManager.resolveColorFromThemeId(preset.colorThemeId)
+    applyThemeSelection(preset.themeMode, color)
+    themeManager.setUserWallpaper(preset.wallpaper)
+    setActiveWallpaperId(preset.wallpaper.kind === 'builtin' ? preset.wallpaper.id : '')
+    setActiveCustomThemeId(preset.id)
   }, [])
 
   const modeOptions: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
@@ -296,13 +356,15 @@ function ThemeSubMenu({
             <span className="flex-1 text-left">
               {language === 'zh' ? '跟随主题' : 'Follow theme'}
             </span>
-            {!activeWallpaperId && (
+            {!activeWallpaperId && !activeCustomThemeId && (
               <Check className="w-3.5 h-3.5 text-accent" strokeWidth={2.5} />
             )}
           </button>
           <div className="grid grid-cols-4 gap-1.5 px-2 py-1">
             {BUILTIN_WALLPAPERS.map(wp => {
-              const isActive = wp.id === activeWallpaperId
+              // 自定义主题自带壁纸，选中它时这张图不再单独算「当前壁纸」，
+              // 否则同一张图会在两处同时打勾，看不出到底选了哪一项
+              const isActive = wp.id === activeWallpaperId && !activeCustomThemeId
               return (
                 <button
                   key={wp.id}
@@ -331,6 +393,48 @@ function ThemeSubMenu({
               )
             })}
           </div>
+
+          {/* 我的壁纸主题：内置壁纸之下直接列出来，省得为了切一套存好的
+              主题再进一次设置页。列表过长时自己滚动，不把菜单撑出屏幕 */}
+          {customThemes.length > 0 && (
+            <>
+              <div className="h-px bg-border/50 my-1 mx-2" />
+              <div className={GROUP_TITLE_CLASS}>
+                {language === 'zh' ? '我的壁纸主题' : 'My wallpaper themes'}
+              </div>
+              <div className="max-h-44 overflow-y-auto">
+                {customThemes.map(preset => {
+                  const isActive = preset.id === activeCustomThemeId
+                  const builtin =
+                    preset.wallpaper.kind === 'builtin'
+                      ? getBuiltinWallpaper(preset.wallpaper.id)
+                      : undefined
+                  return (
+                    <button
+                      key={preset.id}
+                      onClick={() => handleCustomThemeSelect(preset)}
+                      title={preset.name}
+                      className={ITEM_CLASS}
+                    >
+                      <span
+                        className="w-7 h-4 flex-shrink-0 rounded border border-border/50 overflow-hidden"
+                        style={{
+                          backgroundColor: builtin?.previewBg,
+                          backgroundImage: resolveWallpaperImage(preset.wallpaper) ?? undefined,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                        }}
+                      />
+                      <span className="flex-1 min-w-0 text-left truncate">{preset.name}</span>
+                      {isActive && (
+                        <Check className="w-3.5 h-3.5 text-accent" strokeWidth={2.5} />
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
 
           <div className="h-px bg-border/50 my-1 mx-2" />
 

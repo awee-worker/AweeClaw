@@ -268,3 +268,66 @@ export function normalizeWallpaperConfig(value: Partial<WallpaperConfig>): Wallp
     fit: value.fit === 'contain' || value.fit === 'repeat' ? value.fit : 'cover',
   }
 }
+
+/**
+ * 用户保存的自定义壁纸主题
+ *
+ * 一套自定义壁纸主题 = 壁纸本身（含模糊/遮罩/面板不透明度/铺放四个滑块参数）
+ * + 保存时的界面明暗与配色。切换回头时三部分一起恢复，避免只换图不换配色
+ * 导致浅底浅字。
+ */
+export interface CustomWallpaperTheme {
+  id: string
+  /** 用户起的名称，重名允许（用 id 区分） */
+  name: string
+  /** 壁纸与滑块参数 */
+  wallpaper: WallpaperConfig
+  /** 保存时的界面明暗设置，'system' 表示跟随系统 */
+  themeMode: 'light' | 'dark' | 'system'
+  /** 保存时的配色主题 id（对应 builtinColorThemes 的 id） */
+  colorThemeId: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** 两份壁纸配置是否完全一致（用于判断某套自定义主题当前是否处于选中态） */
+export function isSameWallpaperConfig(
+  a: WallpaperConfig | null | undefined,
+  b: WallpaperConfig | null | undefined
+): boolean {
+  if (!a || !b) return a === b
+  return (
+    a.id === b.id &&
+    a.kind === b.kind &&
+    (a.url ?? '') === (b.url ?? '') &&
+    a.blur === b.blur &&
+    a.dim === b.dim &&
+    a.panelAlpha === b.panelAlpha &&
+    a.fit === b.fit
+  )
+}
+
+/** 校验来自存储的自定义壁纸主题，剔除脏数据后返回规范化结果 */
+export function normalizeCustomWallpaperTheme(
+  value: unknown
+): CustomWallpaperTheme | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, unknown>
+  if (typeof raw.id !== 'string' || !raw.id) return null
+  if (typeof raw.name !== 'string' || !raw.name.trim()) return null
+  if (!isValidWallpaperConfig(raw.wallpaper)) return null
+
+  const mode = raw.themeMode
+  const themeMode: CustomWallpaperTheme['themeMode'] =
+    mode === 'light' || mode === 'dark' || mode === 'system' ? mode : 'light'
+
+  return {
+    id: raw.id,
+    name: raw.name.trim(),
+    wallpaper: normalizeWallpaperConfig(raw.wallpaper),
+    themeMode,
+    colorThemeId: typeof raw.colorThemeId === 'string' && raw.colorThemeId ? raw.colorThemeId : 'aweeclaw',
+    createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
+    updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
+  }
+}
