@@ -565,6 +565,13 @@ export class AgentClass {
         planTaskId: executionOptions?.planTaskId,
         checkpointId,
         isChannel: executionOptions?.isChannel,
+        // 执行期专家切换：入场命中的角色作为起点，用户显式锁定的专家不允许被切换
+        activeRoleId: matchedRole?.id ?? promptOptions?.explicitRoleId ?? null,
+        executionRoleSwitchAllowed:
+          !promptOptions?.explicitRoleId &&
+          !promptOptions?.subtaskSceneRolePersonaOverride &&
+          !promptOptions?.sceneRolePersonaOverride &&
+          isRoleAgentEnabled(chatMode),
       }
 
       if (agentHarness.isInitialized && threadId) {

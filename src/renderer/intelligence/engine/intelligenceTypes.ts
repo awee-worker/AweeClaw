@@ -35,6 +35,15 @@ export interface ExecutionContext {
   checkpointId?: string
   /** 是否来自外部渠道消息（飞书/微信/WhatsApp等），渠道消息不应暴露客户端内部状态 */
   isChannel?: boolean
+  /**
+   * 本轮入场时命中的专家角色 id（用户指定或规则匹配）
+   *
+   * 执行期切换专家时需要知道「当前是谁在干」，避免切到同一个角色，
+   * 也用于把切换结果记进日志。
+   */
+  activeRoleId?: string | null
+  /** 本轮是否允许执行期切换专家（用户显式锁定时为 false） */
+  executionRoleSwitchAllowed?: boolean
 }
 
 // ===== 工具执行上下文（重新导出 shared 定义） =====

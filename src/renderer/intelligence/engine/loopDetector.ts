@@ -20,6 +20,14 @@ import {
 } from './autoResume'
 import { estimateMessagesTokens } from '../capabilities/context/ContextCompressor'
 import { lintService } from '../runtime/codeAnalysisService'
+import {
+  collectExecutionSignals,
+  resolveExecutionRole,
+  buildExecutionRoleSwitchMessage,
+} from '../capabilities/role/executionRoleSwitch'
+import { isRoleAgentEnabled } from '../capabilities/role/RoleDescriptor'
+import { useRoleLibraryStore } from '@renderer/modes/roleLibraryStore'
+import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
 import { resolveSceneToolsIntentFromMessages, resolveGitToolsIntentFromMessages } from '../decision/intentResolvers'
@@ -633,6 +641,16 @@ export async function executeAgentCycle(
    * 模型反复不服从时把循环拖成死转。
    */
   let planStageNudged = false
+  /**
+   * 执行期专家切换记录
+   *
+   * 一轮任务可能经过多个工种，但切换必须收敛：
+   * 已切过的角色不再参与判定（避免 A→B→A 来回跳），总量也有上限，
+   * 超过后模型已带着完整上下文，继续换人设只会打散注意力。
+   */
+  const switchedRoleIds: string[] = context.activeRoleId ? [context.activeRoleId] : []
+  const MAX_EXECUTION_ROLE_SWITCHES = 4
+  let roleSwitchRounds = 0
   threadStore.setStreamState({ waitPhase: 'waiting_model' })
 
   const concludeWithThresholdIntervention = async (
@@ -1627,6 +1645,45 @@ export async function executeAgentCycle(
       }
     }
 
+
+    // ===== 执行期专家切换 =====
+    // 入场匹配只看用户消息，而一轮任务常跨工种：先写页面、再写接口、最后跑部署。
+    // 这里按本轮工具的目标文件与命令补一次判定，命中与当前专家不同的角色时
+    // 追加一条阶段专家指令。只追加不替换，场景边界与会话级人设始终有效。
+    if (
+      context.executionRoleSwitchAllowed &&
+      isRoleAgentEnabled(context.chatMode) &&
+      useRoleLibraryStore.getState().executionRoleSwitchEnabled &&
+      roleSwitchRounds < MAX_EXECUTION_ROLE_SWITCHES
+    ) {
+      const signals = collectExecutionSignals(
+        result.toolCalls.map(tc => ({ name: tc.name, arguments: tc.arguments as Record<string, unknown> | undefined })),
+      )
+      if (signals.paths.length > 0 || signals.commands.length > 0) {
+        const stageMatch = resolveExecutionRole(
+          useSceneModeStore.getState().currentSceneMode,
+          signals,
+          switchedRoleIds,
+        )
+        if (stageMatch.role) {
+          roleSwitchRounds += 1
+          switchedRoleIds.push(stageMatch.role.id)
+          const { language } = useStore.getState()
+          logger.agent.info(
+            `[Loop] Stage expert switched to ${stageMatch.role.id} ` +
+            `(score=${stageMatch.score.toFixed(2)}, hits=${stageMatch.hits.join(',')})`,
+          )
+          llmMessages.push({
+            role: 'user',
+            content: buildExecutionRoleSwitchMessage(stageMatch.role, language === 'zh' ? 'zh' : 'en'),
+          })
+          shouldContinue = true
+          threadStore.setStreamPhase('streaming')
+          threadStore.setStreamState({ streamDetail: undefined })
+          continue
+        }
+      }
+    }
 
     if (userRejected) {
       const { language } = useStore.getState()

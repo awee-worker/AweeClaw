@@ -35,9 +35,11 @@ export function RoleLibraryPanel() {
   const overrides = useRoleLibraryStore(s => s.overrides)
   const autoMatchEnabled = useRoleLibraryStore(s => s.autoMatchEnabled)
   const aiRoleSelectionEnabled = useRoleLibraryStore(s => s.aiRoleSelectionEnabled)
+  const executionRoleSwitchEnabled = useRoleLibraryStore(s => s.executionRoleSwitchEnabled)
   const defaultRoleIds = useRoleLibraryStore(s => s.defaultRoleIds)
   const setAutoMatchEnabled = useRoleLibraryStore(s => s.setAutoMatchEnabled)
   const setAiRoleSelectionEnabled = useRoleLibraryStore(s => s.setAiRoleSelectionEnabled)
+  const setExecutionRoleSwitchEnabled = useRoleLibraryStore(s => s.setExecutionRoleSwitchEnabled)
   const setRoleEnabled = useRoleLibraryStore(s => s.setRoleEnabled)
   const removeCustomRole = useRoleLibraryStore(s => s.removeCustomRole)
   const setDefaultRole = useRoleLibraryStore(s => s.setDefaultRole)
@@ -138,6 +140,19 @@ export function RoleLibraryPanel() {
               onChange={e => setAiRoleSelectionEnabled(e.target.checked)}
             />
           </div>
+
+          <div
+            className="flex items-center gap-2 text-xs text-text-muted select-none"
+            title="AI 执行任务时，按正在改动的文件与命令切换阶段专家（如写前端用前端专家、写接口用后端专家）；在输入区手动选定专家时不生效"
+          >
+            <span>执行中切换专家</span>
+            <ToggleSwitch
+              switchSize="sm"
+              checked={executionRoleSwitchEnabled}
+              onChange={e => setExecutionRoleSwitchEnabled(e.target.checked)}
+            />
+          </div>
+
 
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />

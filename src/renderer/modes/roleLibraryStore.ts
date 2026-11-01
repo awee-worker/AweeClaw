@@ -43,6 +43,13 @@ interface RoleLibraryState {
   autoMatchEnabled: boolean
   /** 允许 AI 参与角色选择：规划分派时由模型从角色库挑选角色，默认 true */
   aiRoleSelectionEnabled: boolean
+  /**
+   * 执行期专家切换，默认 true
+   *
+   * 用户消息只匹配一次专家，但一轮任务常跨工种。开启后 AI 执行过程中会按
+   * 正在改动的文件与命令切换阶段专家；用户显式锁定专家时该能力始终不生效。
+   */
+  executionRoleSwitchEnabled: boolean
 }
 
 interface RoleLibraryActions {
@@ -68,6 +75,8 @@ interface RoleLibraryActions {
   setAutoMatchEnabled: (enabled: boolean) => void
   /** 设置「允许 AI 参与角色选择」开关 */
   setAiRoleSelectionEnabled: (enabled: boolean) => void
+  /** 设置执行期专家切换开关 */
+  setExecutionRoleSwitchEnabled: (enabled: boolean) => void
   /** 校验角色合法性（id 格式 / 技能引用 / 工具范围） */
   validateRole: (role: RoleDescriptor) => RoleValidationIssue[]
 }
@@ -103,9 +112,30 @@ const electronStoreStorage = {
   },
 }
 
+/**
+ * 合并角色基线与覆盖
+ *
+ * triggers 逐字段合并而非整体替换：内置角色在版本升级时会补充新的触发项
+ * （例如执行期判定使用的 pathHints / commandHints），用户早前编辑时保存的
+ * 旧 triggers 若整体覆盖，会把这些新增项抹掉——角色看起来没坏，
+ * 但执行期再也匹配不到它。其余字段仍按整值覆盖，保持既有语义。
+ */
+function mergeRole(base: RoleDescriptor, ...patches: Array<Partial<RoleDescriptor> | undefined>): ResolvedRole {
+  let merged: ResolvedRole = base
+  for (const patch of patches) {
+    if (!patch) continue
+    merged = {
+      ...merged,
+      ...patch,
+      triggers: patch.triggers ? { ...merged.triggers, ...patch.triggers } : merged.triggers,
+    }
+  }
+  return merged
+}
+
 /** 应用覆盖到内置角色基线 */
 function applyOverride(base: RoleDescriptor, override?: Partial<RoleDescriptor>): ResolvedRole {
-  return override ? { ...base, ...override } : base
+  return override ? mergeRole(base, override) : base
 }
 
 /** 全部场景模式（与 sceneModeProtocol 的 SceneMode 保持一致） */
@@ -132,7 +162,7 @@ export const useRoleLibraryStore = create<RoleLibraryStore>()(
       overrides: {},
       autoMatchEnabled: true,
       aiRoleSelectionEnabled: true,
-
+      executionRoleSwitchEnabled: true,
       getRole: (id) => {
         const { overrides, roles } = get()
         // 自定义角色优先（内置角色不可删除，自定义 id 不会与内置冲突，但防御性处理）
@@ -201,7 +231,7 @@ export const useRoleLibraryStore = create<RoleLibraryStore>()(
         const { overrides, roles } = get()
         const base = roleRegistry.getBuiltin(id)
         if (base) {
-          const merged = { ...base, ...overrides[id], ...patch }
+          const merged = mergeRole(base, overrides[id], patch)
           // 覆盖校验：只校验引用类字段
           const issues = get().validateRole(merged).filter(i => i.field === 'skillRefs')
           if (issues.length > 0) return issues
@@ -257,6 +287,10 @@ export const useRoleLibraryStore = create<RoleLibraryStore>()(
       setAiRoleSelectionEnabled: (enabled) => {
         set({ aiRoleSelectionEnabled: enabled })
       },
+
+      setExecutionRoleSwitchEnabled: (enabled) => {
+        set({ executionRoleSwitchEnabled: enabled })
+      },
     }),
     {
       name: 'aweeclaw-role-library-store',
@@ -267,6 +301,7 @@ export const useRoleLibraryStore = create<RoleLibraryStore>()(
         overrides: state.overrides,
         autoMatchEnabled: state.autoMatchEnabled,
         aiRoleSelectionEnabled: state.aiRoleSelectionEnabled,
+        executionRoleSwitchEnabled: state.executionRoleSwitchEnabled,
       }),
       // 版本 1：内置研发角色由工作场景迁移到代码开发场景（内置角色拆分为四场景）
       version: 1,

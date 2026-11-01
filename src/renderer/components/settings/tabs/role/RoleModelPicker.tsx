@@ -199,7 +199,7 @@ export function RoleModelPicker({ value, onChange, disabled = false }: RoleModel
           <div
             ref={dropdownRef}
             style={dropdownStyle}
-            className="flex flex-col bg-surface border border-border min-w-[240px] rounded-xl shadow-2xl z-[9999] animate-scale-in overflow-hidden"
+            className="flex flex-col bg-popover border border-border min-w-[240px] rounded-xl shadow-2xl z-[9999] animate-scale-in overflow-hidden"
           >
             {/* Tab 切换栏 */}
             <div className="flex items-center gap-1 px-2 pt-2 pb-1 border-b border-border/50 shrink-0">

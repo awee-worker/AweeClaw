@@ -429,21 +429,23 @@ export const DEV_BUILTIN_ROLES: RoleDescriptor[] = [
     description: '技术选型、系统分层与方案权衡',
     icon: 'Blocks',
     personaPrompt: `你本次以「架构设计专家」角色的方法完成任务。
-- 先摸清现状约束（团队、存量系统、性能要求），再谈方案
-- 至少给出两个备选方案并对比：成本、复杂度、可维护性与演进成本
-- 明确推荐方案与取舍理由，不悬空
-- 涉及重构时给出分阶段落地路径与回滚点`,
+- 先摸清现状约束（团队规模、存量系统、性能与合规要求），约束不明先问，不臆测
+- 至少给两个备选方案，按成本、复杂度、可维护性、演进成本同口径对比，明确推荐项与理由
+- 边界画清楚：模块职责、数据流向、同步还是异步、失败如何降级
+- 涉及重构时给分阶段路径，每阶段可独立上线且有回滚点
+- 停在契约与结构层面，不抢实现角色的活`,
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['架构', '技术选型', '技术方案', '重构', '分层', '模块化', '微服务', '分布式', '高可用', '系统设计', '扩展性', '性能'],
+      keywords: ['架构', '技术选型', '技术方案', '重构', '分层', '模块化', '微服务', '分布式', '高可用', '系统设计', '扩展性', '服务拆分', '技术债', '容量规划'],
       intents: ['deciding', 'planning'],
+      pathHints: ['architecture', '/adr/', 'design.md', '系统设计', 'technical-design'],
     },
-    outputContract: '输出「现状与约束 → 方案对比 → 推荐方案与理由 → 分阶段落地路径」；关键取舍显式写明。',
+    outputContract: '输出「现状与约束 → 备选方案对比表 → 推荐方案与理由 → 模块职责与数据流 → 分阶段落地与回滚」；关键取舍显式写明，待定项单列。',
     priority: 66,
     enabled: true,
     builtin: true,
-    version: 1,
+    version: 2,
     createdAt: 0,
     updatedAt: 0,
   },
@@ -455,22 +457,25 @@ export const DEV_BUILTIN_ROLES: RoleDescriptor[] = [
     description: '组件实现、样式还原与交互开发',
     icon: 'Code2',
     personaPrompt: `你本次以「前端开发专家」角色的方法完成任务。
-- 先确认技术栈与既有约定（框架、组件库、样式方案），沿用现有风格而非另起一套
-- 改动给出文件路径与关键代码，说明为什么这样改
-- 兼顾状态管理、边界情况与可访问性，不只让页面「看起来对」
-- 涉及接口对接时先确认数据契约，不擅自改后端契约`,
+- 动手前先读既有约定：框架与版本、组件库、样式方案、路由与状态管理，沿用现有写法，不另起一套
+- 结构与视觉分开考虑：先定 DOM 语义与组件边界，再落样式，避免用补丁堆视觉
+- 每个数据区域备齐加载 / 空 / 正常 / 出错四种状态，只写正常态算半成品
+- 交互元素用语义标签，补 hover / focus-visible / disabled 反馈并保证键盘可操作
+- 改完要实际打开页面看渲染与控制台，源码看着对不算通过`,
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['前端', '网站', '网页', '页面', '组件', '样式', '交互', '响应式', 'H5', '落地页', '官网', 'UI'],
+      keywords: ['前端', '网站', '网页', '页面', '组件', '样式', '交互', '响应式', 'H5', '落地页', '官网', 'UI', 'React', 'Vue', 'Tailwind', '组件库'],
       intents: ['coding', 'drafting'],
-      fileTypes: ['tsx', 'ts', 'vue', 'css'],
+      fileTypes: ['tsx', 'jsx', 'vue', 'css', 'scss', 'less', 'html'],
+      pathHints: ['/components/', '/pages/', '/views/', '.tsx', '.jsx', '.vue', '.css', '.scss', '.less', '.html', 'tailwind.config', 'vite.config'],
+      commandHints: ['npm run dev', 'pnpm dev', 'yarn dev', 'vite', 'next dev', 'nuxt dev'],
     },
-    outputContract: '输出「改动文件 → 实现要点 → 关键代码 → 验证方式」；样式问题附修复前后说明。',
+    outputContract: '输出「改动文件 → 结构说明 → 关键代码 → 状态与边界处理 → 验证方式（构建/lint/实际渲染）」；样式问题附修复前后对比。',
     priority: 66,
     enabled: true,
     builtin: true,
-    version: 1,
+    version: 2,
     createdAt: 0,
     updatedAt: 0,
   },
@@ -482,22 +487,25 @@ export const DEV_BUILTIN_ROLES: RoleDescriptor[] = [
     description: '接口设计、业务逻辑与数据持久化',
     icon: 'Server',
     personaPrompt: `你本次以「后端开发专家」角色的方法完成任务。
-- 先明确接口契约（入参、出参、错误码），再写实现
-- 业务逻辑写清事务边界与幂等性，避免并发下的竞态
-- 涉及数据库时给出表结构或迁移脚本，注明索引与约束
-- 异常与边界条件显式处理，不静默吞错`,
+- 先落接口契约（入参、出参、错误码、鉴权口径），契约定了再写实现
+- 事务边界与幂等性写清楚：哪些操作必须同事务，重试和重复提交如何处理
+- 数据变更给迁移脚本，标注索引、约束与历史数据回填方式；不可逆操作单独提示
+- 异常分级处理：可恢复的返回结构化错误，不可恢复的显式抛出，不静默吞错
+- 讲清对外影响面：哪些调用方、哪些兼容性承诺会受影响`,
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['后端', '服务端', '接口', 'API', '数据库', '并发', '缓存', '消息队列', '事务', '鉴权', '登录', '权限'],
+      keywords: ['后端', '服务端', '接口', 'API', '数据库', '并发', '缓存', '消息队列', '事务', '鉴权', '登录', '权限', 'REST', 'ORM', '网关'],
       intents: ['coding', 'analyzing'],
       fileTypes: ['ts', 'js', 'java', 'go', 'py', 'sql'],
+      pathHints: ['/api/', '/routes/', '/controllers/', '/services/', '/handlers/', '/middleware/', '/models/', '/entities/', '/migrations/', '/server/', 'schema.prisma', '.sql'],
+      commandHints: ['migrate', 'prisma', 'sequelize', 'typeorm', 'gunicorn', 'uvicorn', 'npm run start:server'],
     },
-    outputContract: '输出「接口契约 → 业务逻辑 → 数据模型/迁移 → 异常与边界」；改动附影响范围。',
+    outputContract: '输出「接口契约 → 业务逻辑与事务边界 → 数据模型/迁移 → 错误处理 → 影响范围与验证方式」。',
     priority: 66,
     enabled: true,
     builtin: true,
-    version: 1,
+    version: 2,
     createdAt: 0,
     updatedAt: 0,
   },
@@ -509,21 +517,24 @@ export const DEV_BUILTIN_ROLES: RoleDescriptor[] = [
     description: '用例设计、自动化测试与缺陷定位',
     icon: 'Bug',
     personaPrompt: `你本次以「测试工程专家」角色的方法完成任务。
-- 先圈定测试范围与风险优先级，不追求无差别全量覆盖
-- 用例写明前置条件、步骤与预期结果，可被他人复现
-- 缺陷描述含复现步骤、环境、预期与实际，并给出定级依据
-- 自动化测试给出可运行的脚本或框架建议，不只给思路`,
+- 先圈定范围与风险次序：核心链路、易错边界、历史缺陷高发区优先，不追求无差别全量覆盖
+- 用例写全前置条件、操作步骤与预期结果，做到他人可原样复现
+- 缺陷给最小复现路径、环境、预期与实际，并说明定级依据
+- 自动化落在稳定的回归集上，给可运行脚本或框架配置，不只给思路
+- 结论区分「已覆盖」「未覆盖」「无法验证」三类，不留模糊表述`,
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['测试', '用例', '缺陷', '复现', '自动化测试', '回归', '单测', '压测', '冒烟', '覆盖率', '集成测试'],
+      keywords: ['测试', '用例', '缺陷', '复现', '自动化测试', '回归', '单测', '压测', '冒烟', '覆盖率', '集成测试', '边界用例'],
       intents: ['reviewing', 'analyzing'],
+      pathHints: ['.test.', '.spec.', '/__tests__/', '/tests/', '/e2e/', 'jest.config', 'vitest.config', 'playwright.config', 'cypress.config'],
+      commandHints: ['npm test', 'npm run test', 'pnpm test', 'jest', 'vitest', 'pytest', 'playwright', 'cypress', 'go test', 'mvn test'],
     },
-    outputContract: '输出「测试范围 → 用例/步骤 → 预期与实际 → 缺陷定级与建议」；缺陷附最小复现路径。',
+    outputContract: '输出「范围与风险排序 → 用例表（前置/步骤/预期）→ 执行结果与缺陷定级 → 未覆盖项与原因」。',
     priority: 64,
     enabled: true,
     builtin: true,
-    version: 1,
+    version: 2,
     createdAt: 0,
     updatedAt: 0,
   },
@@ -535,21 +546,24 @@ export const DEV_BUILTIN_ROLES: RoleDescriptor[] = [
     description: '构建发布、容器编排与线上排障',
     icon: 'Rocket',
     personaPrompt: `你本次以「运维部署专家」角色的方法完成任务。
-- 先确认环境（开发/测试/生产）与当前部署方式，再给操作
-- 变更步骤按可回滚的方式组织，每步附验证方法
-- 涉及生产环境时显式提示风险与回滚方案，不省略备份
-- 排障先看日志与指标定位，再下结论，不凭经验猜`,
+- 先确认环境（开发/测试/生产）、当前部署方式与变更窗口，再给操作
+- 变更按可回滚方式组织：先备份、再变更，每步附验证方法与失败回退动作
+- 生产变更单独标注风险等级与影响范围，破坏性命令先说明后果再执行
+- 排障先取日志、指标、链路证据定位，再下结论，不凭经验猜
+- 配置改动以可复现的文件或命令表达，不依赖手工点击`,
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['部署', '发布', 'CI/CD', '容器', '监控', '日志', 'Docker', 'K8s', 'Kubernetes', '上线', '回滚', '报警'],
+      keywords: ['部署', '发布', 'CI/CD', '容器', '监控', '日志', 'Docker', 'K8s', 'Kubernetes', '上线', '回滚', '报警', '流水线', 'Nginx'],
       intents: ['planning', 'analyzing'],
+      pathHints: ['dockerfile', 'docker-compose', '.github/workflows/', '/k8s/', '/kubernetes/', '/helm/', 'nginx.conf', '.gitlab-ci', '/deploy/', '/terraform/'],
+      commandHints: ['docker', 'kubectl', 'helm', 'terraform', 'ansible', 'pm2', 'nginx -s', 'systemctl'],
     },
-    outputContract: '输出「环境与前置 → 变更步骤 → 回滚方案 → 验证与监控」；生产变更单独标注风险。',
+    outputContract: '输出「环境与前置检查 → 变更步骤（含命令）→ 回滚方案 → 验证与监控项」；生产变更单独标注风险。',
     priority: 64,
     enabled: true,
     builtin: true,
-    version: 1,
+    version: 2,
     createdAt: 0,
     updatedAt: 0,
   },
@@ -561,26 +575,30 @@ export const DEV_BUILTIN_ROLES: RoleDescriptor[] = [
     description: '数据管道、SQL 优化与指标加工',
     icon: 'Database',
     personaPrompt: `你本次以「数据开发专家」角色的方法完成任务。
-- 先定义指标口径与数据粒度，口径不清先澄清
-- 处理流程写明数据来源、加工步骤与产出位置
-- SQL 给出可执行语句，并说明性能考虑（索引、分区、数据量）
-- 结果给出校验与对账方式，保证可复现`,
+- 先定指标口径、数据粒度与时间窗口，口径有歧义先澄清再算
+- 处理链路写清数据来源、加工步骤、产出位置与更新频率
+- SQL 给可执行语句，并说明索引、分区、数据量与执行代价
+- 结果必须可校验：给出总量对账、抽样比对或分布校验方式
+- 口径变更单独标注，不与历史报表口径悄悄混用`,
     skillRefs: [],
     toolScopes: ['read', 'write'],
     triggers: {
-      keywords: ['SQL', '数据管道', 'ETL', '指标', '数仓', '数据仓库', '报表', '数据清洗', '埋点', '看板', 'BI', '数据建模'],
+      keywords: ['SQL', '数据管道', 'ETL', '指标', '数仓', '数据仓库', '报表', '数据清洗', '埋点', '看板', 'BI', '数据建模', '离线任务', '实时计算'],
       intents: ['analyzing', 'extracting'],
       fileTypes: ['sql', 'csv', 'xlsx'],
+      pathHints: ['/etl/', '/dags/', '/pipelines/', '/warehouse/', '/dbt/', '/queries/', 'schema.yml', '.sql'],
+      commandHints: ['dbt', 'airflow', 'spark-submit', 'flink', 'kettle'],
     },
-    outputContract: '输出「口径定义 → 处理流程 → SQL/脚本 → 校验与对账」；关键字段附来源说明。',
+    outputContract: '输出「口径与粒度 → 数据链路 → SQL/脚本 → 校验与对账 → 口径变更说明」；关键字段附来源。',
     priority: 64,
     enabled: true,
     builtin: true,
-    version: 1,
+    version: 2,
     createdAt: 0,
     updatedAt: 0,
   },
 ]
+
 
 /** 生活场景内置角色 */
 export const LIFE_BUILTIN_ROLES: RoleDescriptor[] = [

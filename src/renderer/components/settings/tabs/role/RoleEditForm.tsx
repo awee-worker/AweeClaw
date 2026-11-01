@@ -9,6 +9,7 @@
  */
 
 import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { SceneMode } from '@protocols/sceneModeProtocol'
 import type {
   RoleDescriptor,
@@ -140,6 +141,10 @@ export function RoleEditForm({ sceneMode, existing, onClose }: RoleEditFormProps
   const [keywords, setKeywords] = useState<string[]>(existing?.triggers.keywords ?? [])
   const [excludeKeywords, setExcludeKeywords] = useState<string[]>(existing?.triggers.excludeKeywords ?? [])
   const [intents, setIntents] = useState<RoleIntent[]>(existing?.triggers.intents ?? [])
+  const [pathHints, setPathHints] = useState<string[]>(existing?.triggers.pathHints ?? [])
+  const [commandHints, setCommandHints] = useState<string[]>(existing?.triggers.commandHints ?? [])
+  const [pathHintInput, setPathHintInput] = useState('')
+  const [commandHintInput, setCommandHintInput] = useState('')
   const [outputContract, setOutputContract] = useState(existing?.outputContract ?? '')
   const [priority, setPriority] = useState(existing?.priority ?? 60)
   const [keywordInput, setKeywordInput] = useState('')
@@ -174,6 +179,11 @@ export function RoleEditForm({ sceneMode, existing, onClose }: RoleEditFormProps
         keywords,
         excludeKeywords,
         intents,
+        // 附件类型不在表单里编辑，沿用原值，避免编辑一次就把既有触发配置冲掉
+        fileTypes: existing?.triggers.fileTypes,
+        // 以下两项只在「执行中切换专家」时使用，留空即不参与执行期判定
+        pathHints: pathHints.length > 0 ? pathHints : undefined,
+        commandHints: commandHints.length > 0 ? commandHints : undefined,
       },
       outputContract: outputContract.trim() || undefined,
       priority,
@@ -277,10 +287,13 @@ export function RoleEditForm({ sceneMode, existing, onClose }: RoleEditFormProps
   const inputBase =
     'w-full px-2.5 py-1.5 text-xs bg-input border border-input-border rounded-lg outline-none transition-colors focus:border-accent focus:ring-1 focus:ring-accent/20 disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted/50'
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+  // 挂到 body：设置弹窗带 backdrop-blur，会让祖先形成包含块，
+  // 这里的 fixed 会被改判成相对祖先定位并被 overflow-hidden 裁掉，
+  // 顶部（含右上角关闭按钮）落在可视区外，点了没反应。
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-surface border border-border rounded-2xl shadow-2xl w-[600px] max-h-[88vh] overflow-hidden flex flex-col"
+        className="bg-dialog border border-border rounded-2xl shadow-2xl w-[600px] max-h-[88vh] overflow-hidden flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* 头部 */}
@@ -490,6 +503,42 @@ export function RoleEditForm({ sceneMode, existing, onClose }: RoleEditFormProps
                 </div>
               </div>
 
+              <div>
+                <label className="block text-[11px] font-medium text-text-secondary mb-1">
+                  路径特征
+                </label>
+                <div className="bg-input border border-input-border rounded-lg px-2 py-1.5 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/20 transition-colors">
+                  <TagInput
+                    list={pathHints}
+                    input={pathHintInput}
+                    setInput={setPathHintInput}
+                    onAdd={() => addTag(pathHints, pathHintInput, setPathHints, setPathHintInput)}
+                    onRemove={tag => setPathHints(pathHints.filter(k => k !== tag))}
+                  />
+                </div>
+                <div className="text-[10px] text-text-muted/60 mt-0.5">
+                  执行中按文件路径判定分工，如 /api/、.tsx、dockerfile；留空则不参与
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-text-secondary mb-1">
+                  命令特征
+                </label>
+                <div className="bg-input border border-input-border rounded-lg px-2 py-1.5 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/20 transition-colors">
+                  <TagInput
+                    list={commandHints}
+                    input={commandHintInput}
+                    setInput={setCommandHintInput}
+                    onAdd={() => addTag(commandHints, commandHintInput, setCommandHints, setCommandHintInput)}
+                    onRemove={tag => setCommandHints(commandHints.filter(k => k !== tag))}
+                  />
+                </div>
+                <div className="text-[10px] text-text-muted/60 mt-0.5">
+                  执行中按命令判定分工，如 npm test、docker、kubectl
+                </div>
+              </div>
+
               <div className="space-y-3">
                 <div>
                   <label className="block text-[11px] font-medium text-text-secondary mb-1">
@@ -579,7 +628,7 @@ export function RoleEditForm({ sceneMode, existing, onClose }: RoleEditFormProps
         </div>
 
         {/* 底部按钮 */}
-        <div className="px-5 py-3 border-t border-border flex justify-end gap-2 shrink-0 bg-surface/80 backdrop-blur-sm">
+        <div className="px-5 py-3 border-t border-border flex justify-end gap-2 shrink-0 bg-dialog">
           <button
             type="button"
             onClick={onClose}
@@ -596,6 +645,7 @@ export function RoleEditForm({ sceneMode, existing, onClose }: RoleEditFormProps
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -60,6 +60,15 @@ export default {
           DEFAULT: 'rgb(var(--surface) / 0.96)',
           hover: 'rgb(var(--surface-hover) / 0.96)',
         },
+        /**
+         * 二级编辑弹窗底色（如专家编辑、专家创建）。
+         *
+         * 与 popover 同理不乘 --panel-alpha，但刻意比浮层再透一点（90%），
+         * 让底下已打开的设置页保持微弱可见，能看出层级关系。
+         */
+        dialog: {
+          DEFAULT: 'rgb(var(--surface) / 0.90)',
+        },
       },
       fontSize: {
         'xs': ['0.8125rem', { lineHeight: '1.25rem' }],
