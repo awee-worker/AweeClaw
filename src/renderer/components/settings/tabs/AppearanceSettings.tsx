@@ -76,6 +76,8 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
     const [wallpaperError, setWallpaperError] = useState('')
     // 滑块拖动期间只改 DOM，停止输入后再落盘，避免 IPC 写入风暴
     const saveWallpaperTimer = useRef<number | null>(null)
+    // 拖动过程中最近一次的调参值，落盘时以它为准
+    const pendingWallpaperRef = useRef<WallpaperConfig | null>(null)
 
     const syncWallpaperState = useCallback(() => {
         setUserWallpaperState(themeManager.getUserWallpaper())
@@ -96,15 +98,25 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
 
     /** 滑块变更：先预览，停止操作 320ms 后落盘 */
     const scheduleWallpaperSave = useCallback((next: WallpaperConfig) => {
+        // 拖动期间必须同步更新 activeWallpaper，滑块的 value 绑的是它：
+        // previewWallpaper 只改 DOM 不改状态，只调它滑块会停在原位、落盘时才跳一下
+        pendingWallpaperRef.current = next
         previewWallpaper(next)
+        setActiveWallpaperState(next)
         if (saveWallpaperTimer.current) window.clearTimeout(saveWallpaperTimer.current)
         saveWallpaperTimer.current = window.setTimeout(() => {
-            commitWallpaper(next)
+            // 取最新一次的值，避免连续拖动时闭包拿到中间态
+            if (pendingWallpaperRef.current) commitWallpaper(pendingWallpaperRef.current)
         }, 320)
     }, [previewWallpaper, commitWallpaper])
 
     useEffect(() => () => {
-        if (saveWallpaperTimer.current) window.clearTimeout(saveWallpaperTimer.current)
+        if (saveWallpaperTimer.current) {
+            window.clearTimeout(saveWallpaperTimer.current)
+            // 拖到一半就关面板：把最后一次调参补落盘，否则 DOM 上是新效果、
+            // 配置里还是旧值，重开应用会跳回原样
+            if (pendingWallpaperRef.current) themeManager.setUserWallpaper(pendingWallpaperRef.current)
+        }
     }, [])
 
     // 根据模式 + 颜色应用主题
@@ -707,7 +719,7 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                                 value={activeWallpaper.blur}
                                 onChange={e => handleWallpaperTuning({ blur: Number(e.target.value) })}
                                 style={{ accentColor: 'rgb(var(--accent))' }}
-                                className="w-full"
+                                className="w-full cursor-pointer"
                             />
                         </label>
 
@@ -724,7 +736,7 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                                 value={activeWallpaper.dim}
                                 onChange={e => handleWallpaperTuning({ dim: Number(e.target.value) })}
                                 style={{ accentColor: 'rgb(var(--accent))' }}
-                                className="w-full"
+                                className="w-full cursor-pointer"
                             />
                         </label>
 
@@ -741,7 +753,7 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                                 value={activeWallpaper.panelAlpha}
                                 onChange={e => handleWallpaperTuning({ panelAlpha: Number(e.target.value) })}
                                 style={{ accentColor: 'rgb(var(--accent))' }}
-                                className="w-full"
+                                className="w-full cursor-pointer"
                             />
                         </label>
 
