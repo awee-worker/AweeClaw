@@ -1230,16 +1230,59 @@ const ChatInput = memo(function ChatInput({
       </div>
 
       {/*
-        授权方式栏：独立底部栏，粘附在输入框容器底部
-        - 用 clip-path 让顶部 12px（= rounded-xl 圆角距离）完全透明，直接露出容器底部圆角区
-          → 永不透色（透明区无背景可渗透）、永不断开（露出容器本体），且无需匹配容器多变的状态底色
-        - 主体背景接近边框色、无边框、层级 z-10 低于容器 z-20
-        - padding-top 容纳透明区高度，内容下移不贴顶
+        授权方式栏：独立底部栏，粘附在输入框容器底部（重叠 20px）
+
+        背景拆成三块，共同拼出「输入框底部圆角以下」的形状：
+        - 主体：从重叠区下沿（20px）开始向下铺满，底部两角圆角 12px
+        - 左右补片：各 12×12，落在输入框底部圆角外侧那一小块。用径向渐变
+          （圆心在补片靠内一侧的上角、半径 12）挖掉圆角内侧，只留下弧线外面的部分
+
+        不能整块铺到输入框下面：输入框底色是半透明的（壁纸模式下只剩 18% 不透明度），
+        重叠处会叠出比周围更深的一条，且圆角外侧会露出两条直角边——就是此前看到的
+        「输入框里有两个角」。也不用 clip-path 折线近似，直边与圆弧对不齐，同样露角。
+
+        内容层不加裁剪，选择器下拉菜单可以正常向上溢出；层级 z-10 低于容器 z-20。
+        尺寸一律用像素，避免 root 字号变化时与输入框圆角错位。
       */}
-      <div
-        className="-mt-5 z-10"
-      >
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 bg-border/20 px-4 pt-6 pb-1 rounded-b-xl rounded-t-none">
+      <div className="relative z-10" style={{ marginTop: -20 }}>
+        <div
+          aria-hidden
+          className="absolute pointer-events-none"
+          style={{
+            left: 0,
+            right: 0,
+            top: 20,
+            bottom: 0,
+            backgroundColor: 'rgb(var(--border) / 0.2)',
+            borderBottomLeftRadius: 12,
+            borderBottomRightRadius: 12,
+          }}
+        />
+        <div
+          aria-hidden
+          className="absolute pointer-events-none"
+          style={{
+            left: 0,
+            top: 8,
+            width: 12,
+            height: 12,
+            background:
+              'radial-gradient(circle at 12px 0, transparent 0 11.5px, rgb(var(--border) / 0.2) 12px)',
+          }}
+        />
+        <div
+          aria-hidden
+          className="absolute pointer-events-none"
+          style={{
+            right: 0,
+            top: 8,
+            width: 12,
+            height: 12,
+            background:
+              'radial-gradient(circle at 0 0, transparent 0 11.5px, rgb(var(--border) / 0.2) 12px)',
+          }}
+        />
+        <div className="relative flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 pb-1" style={{ paddingTop: 24 }}>
           <AgentSelector language={language} onOpenSettings={onOpenSettings} onEditAgent={onEditAgent} disabled={isStreaming} />
           <ExpertSelector disabled={isStreaming} />
           <AuthorizationModeSelector disabled={isStreaming} />
