@@ -28,6 +28,35 @@ import './styles/globals.css'
 globalThis.__PROD__ = import.meta.env.PROD
 logger.refreshProductionMode()
 
+/**
+ * 擦掉全局主题单例写到根节点上的壁纸痕迹。
+ *
+ * ThemeManager 是 engine-core 里的模块级单例，构造函数会从 localStorage
+ * （同一 partition 下各窗口共享）恢复壁纸并在有主题 id 时立即 applyTheme，
+ * 于是伴侣窗口一启动就被写上 --wallpaper-image / data-wallpaper，整块铺出
+ * 主界面的壁纸。--panel-alpha 一并清掉，否则控制栏会跟着变半透明。
+ *
+ * 页面侧 CSS 已关掉壁纸伪元素，这里是第二道防线：避免残留变量影响
+ * 其他用到 --wallpaper-* / --panel-alpha 的控件。
+ */
+function clearWallpaperTraces(): void {
+  const root = document.documentElement
+  root.removeAttribute('data-wallpaper')
+  for (const name of [
+    '--wallpaper-image',
+    '--wallpaper-dim',
+    '--wallpaper-blur',
+    '--wallpaper-size',
+    '--wallpaper-repeat',
+    '--panel-alpha',
+  ]) {
+    root.style.removeProperty(name)
+  }
+}
+
+// 必须在本模块体执行时清理：engine-core 的副作用已在 import 阶段跑完
+clearWallpaperTraces()
+
 // 性能追踪跟随：主进程开始采样时本窗口自动上报。
 // 未开启追踪时的成本只有一次订阅与一次状态查询。
 void import('@intelligence/diagnostics/perfTraceAutoStart').then(({ installPerfTraceAutoStart }) =>

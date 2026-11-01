@@ -23,6 +23,20 @@
       width: 100%;
       height: 100%;
     }
+    /*
+      壁纸层与压暗层（globals.css 的 body::before / body::after）。
+
+      这两层挂在 body 的伪元素上，上面的 html/body 透明声明管不到它们：
+      ThemeManager 是 engine-core 里的模块级单例，构造函数读到 localStorage
+      （同 partition 跨窗口共享）里的壁纸配置就会 applyTheme，伴侣窗口因此
+      会被写上 --wallpaper-image，整块铺出主界面的壁纸。
+      这里用 !important 关掉，压过后加载的全局样式表。
+    */
+    body::before,
+    body::after {
+      content: none !important;
+      display: none !important;
+    }
     /* 加载占位：不渲染可见元素，避免启动闪烁 */
     #vrm-loader {
       position: absolute;
