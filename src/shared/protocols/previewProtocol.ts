@@ -164,6 +164,14 @@ export interface PreviewSession {
   deviceId?: string
   /** 非桌面档的设备逻辑视口（已含横竖屏方向；运行时态） */
   deviceViewport?: { width: number; height: number }
+  /**
+   * webview 使用的会话分区（运行时态）
+   *
+   * 缺省表示沿用主窗口的默认 session，预览页与内置浏览器因此共享用户的登录态。
+   * 托管类站点会传入自己的 `persist:awee-site-<id>`，使同一站点在后台采集窗口
+   * 与内置浏览器之间共享登录态，又不与其他站点、主窗口互相污染。
+   */
+  partition?: string
 }
 
 // ============ 设备模拟 ============

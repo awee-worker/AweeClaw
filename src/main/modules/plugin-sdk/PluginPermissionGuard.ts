@@ -66,6 +66,7 @@ export interface GuardedHostOptions {
  * - media → media.process（调用内置 ffmpeg 做视频/音频的转码、拼接等重活）
  * - asr → voice.process（调用本地离线语音引擎做识别）
  * - tts → voice.process（调用本地离线语音引擎做合成）
+ * - siteBrowser → network（加载外部站点页面并读取其数据）
  */
 const HOST_SERVICE_PERMISSION_MAP: Partial<Record<keyof HostServices, PluginPermission>> = {
   getDesktopControlManager: 'desktop.input',
@@ -89,6 +90,7 @@ const HOST_SERVICE_PERMISSION_MAP: Partial<Record<keyof HostServices, PluginPerm
   media: 'media.process',
   asr: 'voice.process',
   tts: 'voice.process',
+  siteBrowser: 'network',
 }
 
 // ─── 合法权限值列表 ────────────────────────────────────────

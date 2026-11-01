@@ -500,12 +500,29 @@ export interface LayoutSlice {
   internalBrowserUrl: string | null
   /** 内部浏览器页面标题 */
   internalBrowserTitle: string
+  /**
+   * 内部浏览器使用的会话分区（null 表示沿用主窗口默认 session）
+   *
+   * 托管类插件打开自己管理的站点时传入 `persist:awee-site-<id>`，使内置浏览器
+   * 与插件的后台采集窗口共享同一份登录态。
+   */
+  internalBrowserPartition: string | null
+  /**
+   * 内置浏览器刷新令牌
+   *
+   * 插件在站点分区里完成登录后，页面本身不会自己更新，需要一个外部入口把当前
+   * 网页重载一次，用户才能看到登录后的界面。每调用一次 reloadInternalBrowser
+   * 递增，由 InternalBrowser 消费。
+   */
+  internalBrowserReloadToken: number
   /** 当前激活的自定义菜单 ID（导航栏高亮用，null 表示未激活自定义菜单） */
   activeCustomMenuId: string | null
   /** 打开内部浏览器前的聊天窗口显隐（关闭时恢复，避免覆盖面板 / 用户的意图） */
   chatVisibleBeforeInternalBrowser: boolean | null
-  /** 打开内部浏览器 */
-  openInternalBrowser: (url: string, title?: string, menuId?: string) => void
+  /** 打开内部浏览器；partition 省略时沿用主窗口默认 session */
+  openInternalBrowser: (url: string, title?: string, menuId?: string, partition?: string) => void
+  /** 刷新内部浏览器当前页面（未打开时是空操作） */
+  reloadInternalBrowser: () => void
   /** 关闭内部浏览器 */
   closeInternalBrowser: () => void
 
@@ -567,6 +584,8 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   /* ----- 内部浏览器初始状态 ----- */
   internalBrowserUrl: null,
   internalBrowserTitle: '',
+  internalBrowserPartition: null,
+  internalBrowserReloadToken: 0,
   activeCustomMenuId: null,
   chatVisibleBeforeInternalBrowser: null,
   chromeSnapshotBeforeFocus: null,
@@ -816,10 +835,11 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
     }),
 
   /* ----- 内部浏览器操作 ----- */
-  openInternalBrowser: (url, title, menuId) =>
+  openInternalBrowser: (url, title, menuId, partition) =>
     set((state) => ({
       internalBrowserUrl: url,
       internalBrowserTitle: title ?? '',
+      internalBrowserPartition: partition ?? null,
       activeCustomMenuId: menuId ?? null,
       // 仅在「由未打开变为打开」时记录打开前的显隐，连续打开其它链接不覆盖首次快照
       chatVisibleBeforeInternalBrowser: state.internalBrowserUrl
@@ -827,7 +847,16 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
         : state.chatVisible,
       // 打开内部浏览器时隐藏聊天窗口，浏览器占据其位置；用户可随时手动恢复显示
       chatVisible: false,
+      // 新开一段浏览时令牌归零，避免上一次的刷新计数在重新挂载时多触发一次重载
+      internalBrowserReloadToken: state.internalBrowserUrl ? state.internalBrowserReloadToken : 0,
     })),
+  reloadInternalBrowser: () =>
+    set((state) =>
+      // 没打开时不做任何事：令牌空转会让下次打开白白多刷一次页面
+      state.internalBrowserUrl
+        ? { internalBrowserReloadToken: state.internalBrowserReloadToken + 1 }
+        : {},
+    ),
   closeInternalBrowser: () =>
     set((state) => {
       // 没有打开内部浏览器时只清理残留字段，不动聊天显隐。
@@ -839,12 +868,14 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
         return {
           internalBrowserUrl: null,
           internalBrowserTitle: '',
+          internalBrowserPartition: null,
           activeCustomMenuId: null,
         }
       }
       return {
         internalBrowserUrl: null,
         internalBrowserTitle: '',
+        internalBrowserPartition: null,
         activeCustomMenuId: null,
         // 关闭后恢复到打开前的显隐：面板自动隐藏的聊天不会被唤起，用户手动开的聊天仍然保留。
         // 快照缺失时保留当前值，不兜底成 true。

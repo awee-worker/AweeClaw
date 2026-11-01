@@ -647,8 +647,11 @@ export interface PluginSidebarPanelContribution {
    * - 'md'（默认）420px，适合列表、表单一类的窄面板
    * - 'lg' 920px，与插件中心「已安装 → 管理」抽屉同宽，适合多列信息、
    *   表格、运维台这类需要横向铺开的面板
+   * - 'xl' 1180px，列表 + 详情 + 阅读器这类三栏工作台
+   * - 'full' 铺满左侧导航栏以外的整块宽度，适合自带三栏布局的独立工作台
+   *   （站点托管、数据台这类需要横向铺开又多列的面板）
    */
-  drawerWidth?: 'md' | 'lg'
+  drawerWidth?: 'md' | 'lg' | 'xl' | 'full'
   /**
    * 是否隐藏导航项
    *

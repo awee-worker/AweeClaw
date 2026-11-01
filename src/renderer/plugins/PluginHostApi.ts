@@ -10,6 +10,7 @@
  * @module renderer/plugins/PluginHostApi
  */
 
+import { useStore } from '@store'
 import type { PluginHostApi, PluginToolResult } from './types'
 
 /**
@@ -278,6 +279,19 @@ export function createPluginHostApi(opts: {
         const errMsg = err instanceof Error ? err.message : String(err)
         return { success: false, error: errMsg }
       }
+    },
+
+    openInternalBrowser: (options) => {
+      const url = typeof options?.url === 'string' ? options.url.trim() : ''
+      if (!url) throw new Error('openInternalBrowser 需要 url')
+      // 只切布局、不涉及插件业务数据，直接走 store 即可；
+      // 与 sendChatMessage 不同，这里没有需要跨组件协作的异步链路。
+      useStore.getState().openInternalBrowser(url, options.title, undefined, options.partition)
+    },
+
+    reloadInternalBrowser: () => {
+      // 与 openInternalBrowser 一样只动布局状态，不需要走事件桥
+      useStore.getState().reloadInternalBrowser()
     },
 
     getConfig: () => {

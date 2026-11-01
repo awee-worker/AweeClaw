@@ -54,10 +54,12 @@ function titleFromUrl(url: string): string {
 
 
 export default function InternalBrowser() {
-  const { url, title, closeInternalBrowser, language } = useStore(
+  const { url, title, partition, reloadTokenExternal, closeInternalBrowser, language } = useStore(
     useShallow((s) => ({
       url: s.internalBrowserUrl,
       title: s.internalBrowserTitle,
+      partition: s.internalBrowserPartition,
+      reloadTokenExternal: s.internalBrowserReloadToken,
       closeInternalBrowser: s.closeInternalBrowser,
       language: s.language,
     })),
@@ -76,6 +78,19 @@ export default function InternalBrowser() {
   const [reloadToken, setReloadToken] = useState(0)
   const [address, setAddress] = useState(url ?? '')
 
+  /**
+   * 外部刷新请求（插件在自己的站点分区里登录完成后调用）
+   *
+   * 登录态写在分区里，页面本身不会跟着更新，必须由外部把当前页重载一次，
+   * 用户才看得到登录后的界面。用 ref 记住已消费的计数，首次挂载不会多刷一次。
+   */
+  const consumedReloadTokenRef = useRef(reloadTokenExternal)
+  useEffect(() => {
+    if (reloadTokenExternal === consumedReloadTokenRef.current) return
+    consumedReloadTokenRef.current = reloadTokenExternal
+    setReloadToken((value) => value + 1)
+  }, [reloadTokenExternal])
+
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]
   const activeUrl = activeTab?.url ?? ''
 
@@ -87,7 +102,9 @@ export default function InternalBrowser() {
    */
   const session = useMemo<PreviewSession>(
     () => ({
-      id: `internal-browser-${activeTab?.id ?? 'default'}`,
+      // id 里带分区：Electron 的 partition 只在 webview 创建时生效，换了站点分区
+      // 就必须重建节点，否则仍沿用上一个分区的 cookie，看起来像「登录了却没登录」。
+      id: `internal-browser-${activeTab?.id ?? 'default'}-${partition ?? 'main'}`,
       url: activeUrl,
       title: activeTab?.title ?? '',
       source: 'manual',
@@ -95,8 +112,10 @@ export default function InternalBrowser() {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       reloadToken,
+      // 托管站点带来的独立分区；undefined 时沿用主窗口 session
+      partition: partition ?? undefined,
     }),
-    [activeTab?.id, activeTab?.title, activeUrl, reloadToken],
+    [activeTab?.id, activeTab?.title, activeUrl, reloadToken, partition],
   )
 
   const controller = useWebviewController(session)
@@ -369,7 +388,7 @@ export default function InternalBrowser() {
         */}
         {session && canMount && (
           <BrowserWebView
-            key={`${activeTab?.id ?? 'default'}-${controller.reloadNonce}`}
+            key={`${activeTab?.id ?? 'default'}-${partition ?? 'main'}-${controller.reloadNonce}`}
             session={session}
             controller={controller}
           />

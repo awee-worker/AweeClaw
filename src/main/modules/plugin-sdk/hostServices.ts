@@ -48,6 +48,7 @@ import { shellBridge } from './ShellBridge'
 import { mediaBridge, setMediaWorkspaceResolver } from './MediaBridge'
 import { asrBridge } from './AsrBridge'
 import { ttsBridge } from './TtsBridge'
+import { siteBrowserBridge } from './SiteBrowserBridge'
 // v2.4：导入 PPT 解析函数（必须用 ESM import，不能用 require，
 // 否则 vite-plugin-electron 打包时会保留 require() 运行时调用，
 // 而 dist/main 下没有 pptxParserMain.js 独立文件，导致 MODULE_NOT_FOUND）
@@ -187,6 +188,16 @@ export interface HostServices {
    * 权限：需在 manifest.permissions 声明 `voice.process`。
    */
   tts: typeof ttsBridge
+  /**
+   * 站点浏览器桥（后台隐藏窗口：加载外部站点、执行脚本、翻页采集、读取 cookie）
+   *
+   * 与内置浏览器的 webview 相对：这里的窗口不参与界面布局，可以在用户继续
+   * 对话的同时跑采集任务；同一个 partition 与内置浏览器共享登录态。
+   * 只接受 `persist:awee-site-<id>` 前缀的分区，不会碰到主窗口的默认 session。
+   *
+   * 权限：需在 manifest.permissions 声明 `network`。
+   */
+  siteBrowser: typeof siteBrowserBridge
 }
 
 /** 全局变量名 */
@@ -279,6 +290,8 @@ export function initHostServices(): void {
     asr: asrBridge,
     // 语音合成桥（复用本地离线语音引擎，供插件把文本转成配音音频）
     tts: ttsBridge,
+    // 站点浏览器桥（后台隐藏窗口，供 site-hosting 等插件抓取外部系统页面）
+    siteBrowser: siteBrowserBridge,
     // 获取当前工作空间路径（供插件落盘文件到工作空间 .aweeclaw 目录）
     // 优先级：当前主窗口已绑定的工作空间 > 持久化的最近工作空间 > null
     getWorkspacePath: resolveWorkspacePath,

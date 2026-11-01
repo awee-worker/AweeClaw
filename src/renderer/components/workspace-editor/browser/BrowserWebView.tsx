@@ -29,6 +29,9 @@ export default function BrowserWebView({ session, controller }: BrowserWebViewPr
       ref={controller.webviewRef}
       src={initialSrc}
       title={session.title}
+      // 会话分区：缺省沿用主窗口 session。托管类站点传入自己的 persist 分区，
+      // 使其后台采集窗口与这里的登录态互通，同时不污染其他站点与主窗口。
+      partition={session.partition}
       // allowpopups：页面里 target=_blank / window.open 的请求必须由 guest 转发给主进程，
       // 否则浏览器内核直接把它丢掉，点击表现为完全无响应。真正开不开窗口由主进程
       // registerWebviewGuard 的 setWindowOpenHandler 决定（一律 deny 并交回渲染层新开标签页），

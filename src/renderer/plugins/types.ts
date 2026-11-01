@@ -128,6 +128,28 @@ export interface PluginHostApi {
    * 用它收起自己。宿主未提供该方法时（旧版本客户端）插件应做存在性判断。
    */
   closePanel?: () => void
+  /**
+   * 在内置浏览器中打开一个页面。
+   *
+   * 托管类插件用它实现「进入管理」：站点由插件维护，用户点一下即可带着登录态
+   * 进入该系统的页面，AI 之后可以直接用内置浏览器自动化继续操作。
+   *
+   * partition 与插件后台采集窗口保持一致，两边共享登录态；省略时沿用主窗口
+   * 默认 session。宿主未提供该方法时（旧版本客户端）插件应做存在性判断。
+   */
+  openInternalBrowser?: (options: {
+    url: string
+    title?: string
+    partition?: string
+  }) => void
+  /**
+   * 刷新内置浏览器的当前页面。
+   *
+   * 插件在自己的站点分区里完成登录后，cookie 已落盘但页面不会自己更新，需要
+   * 重载一次用户才能看到登录后的界面。内置浏览器未打开时是空操作。
+   * 宿主未提供该方法时（旧版本客户端）插件应做存在性判断。
+   */
+  reloadInternalBrowser?: () => void
   /** 当前界面语言 */
   language: 'zh' | 'en'
   /** 受控日志（前缀 [Plugin:pluginKey]） */

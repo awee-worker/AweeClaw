@@ -164,8 +164,8 @@ export interface PluginUiContributionRecord {
       wideMode?: boolean
       /** 打开方式：sidebar（默认）占侧栏+主内容区，drawer 从左侧菜单点击后以浮层打开 */
       openAs?: 'sidebar' | 'drawer'
-      /** 抽屉宽度：md（默认 420px）/ lg（920px，与管理抽屉同宽） */
-      drawerWidth?: 'md' | 'lg'
+      /** 抽屉宽度：md（默认 420px）/ lg（920px）/ xl（1180px）/ full（铺满导航栏以外） */
+      drawerWidth?: 'md' | 'lg' | 'xl' | 'full'
       /** 隐藏导航项：面板仍注册，可经 openPluginDrawer 打开 */
       hidden?: boolean
     }>

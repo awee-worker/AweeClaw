@@ -1,7 +1,7 @@
 /**
- * 历史会话部件（chat-history）
+ * 最近任务部件（chat-history）
  *
- * 从 NavigationRail 里拆出：展开态是一列可重命名的会话列表，收起态是若干
+ * 从 NavigationRail 里拆出：展开态是一列可重命名的任务列表，收起态是若干
  * 圆形入口。两种形态共用同一份数据与同一套选中规则，因此不拆成两个组件。
  *
  * 选中高亮有两条约束（与拆分前一致）：
@@ -28,7 +28,7 @@ import { HintOverlay } from '@components/ui/HintOverlay'
 import { BreathingDot } from '@components/ui/BreathingDot'
 import type { HostPartComponentProps } from '../HostPartRegistry'
 
-/** 展开态最多直接列出多少条，超出的引导到历史会话页 */
+/** 展开态最多直接列出多少条，超出的引导到历史任务页 */
 const EXPANDED_LIMIT = 34
 /** 收起态最多显示多少个入口 */
 const COLLAPSED_LIMIT = 5

@@ -24,12 +24,25 @@ import type { RegionNode } from '@shared/protocols/scenario-regions'
 import { registerPanelComponent, unregisterPanelComponent } from '@renderer/components/explorer/PanelRegistry'
 import { fetchAndRewriteBundle, buildPluginBundleUrl } from './rewriteBareSpecifiers'
 import { createPluginHostApi } from './PluginHostApi'
+import type { PanelDrawerWidth } from './pluginDrawerStore'
 import { buildPluginRegions } from './pluginRegions'
 import type { PluginHostApi, PluginPanelProps, PluginUiModule, LoadedPluginUi, PluginConfigActionHandler, WidgetCardPreviewProps } from './types'
 import { contributionToSidebarItem } from './types'
 
 /** primaryView 归一化后注册到 PanelRegistry 的面板 id 后缀 */
 const PRIMARY_PANEL_SUFFIX = ':__primary__'
+
+/**
+ * 抽屉宽度档位归一化
+ *
+ * manifest 里的 drawerWidth 可能来自旧版本声明或被手工改成未知值，
+ * 直接透传给抽屉会让 resolvePanelDrawerWidth 退化成 420px 窄档，
+ * 表现为「面板莫名其妙变窄」。这里只放行已知档位，其余按窄档处理。
+ */
+function normalizeDrawerWidth(width?: string): PanelDrawerWidth {
+  if (width === 'lg' || width === 'xl' || width === 'full') return width
+  return 'md'
+}
 
 /** 单个插件的 UI 贡献记录（来自主进程 IPC） */
 interface PluginUiContribution {
@@ -725,7 +738,7 @@ class PluginUiRegistryImpl {
    */
   getDrawerPanelMeta(
     panelId: string,
-  ): { title: string; titleZh: string; width: 'md' | 'lg' } | undefined {
+  ): { title: string; titleZh: string; width: PanelDrawerWidth } | undefined {
     for (const [, contribution] of this.discovered) {
       const panels = contribution.contributes.sidebarPanels
       if (!panels) continue
@@ -735,7 +748,7 @@ class PluginUiRegistryImpl {
           title: hit.label || hit.labelZh || panelId,
           titleZh: hit.labelZh || hit.label,
           // 未声明按窄档：抽屉默认服务的是「唤出即用」的小面板
-          width: hit.drawerWidth === 'lg' ? 'lg' : 'md',
+          width: normalizeDrawerWidth(hit.drawerWidth),
         }
       }
     }

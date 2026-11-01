@@ -13,10 +13,19 @@
 import { createElement, useCallback, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { useStore } from '@store'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { resolveNavRailWidth, resolveTrafficLightsClearance } from '@components/layout/navRailMetrics'
 import { PluginBoundary } from '@renderer/plugins/PluginBoundary'
 import { usePluginPanelComponent } from '@renderer/plugins/usePluginPanelComponent'
 import { PLUGIN_CLOSE_PANEL_EVENT } from '@renderer/plugins/PluginHostApi'
 import { closePluginDrawer, usePluginDrawerTarget } from '@renderer/plugins/pluginDrawerStore'
+
+const isMac =
+  typeof navigator !== 'undefined' &&
+  (navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
+    ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform
+      ?.toUpperCase()
+      .indexOf('MAC') ?? -1) >= 0)
 
 /** 从面板 id 取所属插件：插件面板约定以 "<pluginKey>:<name>" 命名 */
 function pluginKeyOf(panelId: string): string {
@@ -24,10 +33,45 @@ function pluginKeyOf(panelId: string): string {
   return index > 0 ? panelId.slice(0, index) : panelId
 }
 
+/**
+ * 抽屉宽度档位 → Tailwind 宽度类
+ *
+ * full 按视口减去导航栏宽度计算：插件工作台（站点托管这类三栏界面）需要
+ * 比 920px 宽得多，但铺满整屏会把左侧菜单一起盖掉，用户想切别的面板还得
+ * 先关抽屉。档位与 pluginDrawerStore 的 resolvePanelDrawerWidth 语义一致。
+ *
+ * 两个 full 档必须写成完整字面量：Tailwind 扫源码提取类名，模板拼接出来的
+ * `w-[calc(100vw-\${rail}px)]` 不会生成任何样式，抽屉会退回内容宽度。
+ */
+function drawerWidthClass(width: unknown, navRailExpanded: boolean): string {
+  if (width === 'full') {
+    // 展开态导航栏 200px，收起态 48px，与 NavigationRail 保持一致
+    return navRailExpanded ? 'w-[calc(100vw-200px)]' : 'w-[calc(100vw-48px)]'
+  }
+  if (width === 'xl') return 'w-[1180px] max-w-[94vw]'
+  // 宽档与插件中心「管理」抽屉对齐，多列信息的运维台才有横向空间
+  if (width === 'lg') return 'w-[920px] max-w-[94vw]'
+  return 'w-[420px] max-w-[85vw]'
+}
+
 export default function PluginDrawerHost() {
   const target = usePluginDrawerTarget()
   const language = useStore(s => s.language)
+  const navRailExpanded = useStore(s => s.navRailExpanded)
+  const activeScenarioId = useStore(s => s.activeScenarioId)
   const isZh = language === 'zh'
+
+  /**
+   * 抽屉左边缘落在导航栏之后，macOS 的红绿灯画在窗口左上角。
+   * 菜单收起（48px）或不渲染时，抽屉标题会正好落在三个圆点下方被盖住；
+   * 这里按导航栏当前宽度补足标题栏左内边距，菜单展开时照常留 16px。
+   */
+  const scenarioUi = scenarioRegistry.get(activeScenarioId)?.ui
+  const navRailWidth = resolveNavRailWidth(
+    navRailExpanded,
+    scenarioUi?.chrome?.hideNavRail === true,
+  )
+  const headerInset = resolveTrafficLightsClearance(navRailWidth, isMac, 16)
 
   // 内置面板走 PanelDrawerHost：这里是插件面板专用路径，
   // 不排除的话内置面板会被当成插件面板再挂一层抽屉，界面上就叠出两个浮层
@@ -115,12 +159,15 @@ export default function PluginDrawerHost() {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`relative h-full bg-popover border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out] ${
-          // 宽档与插件中心「管理」抽屉对齐，多列信息的运维台才有横向空间
-          target.width === 'lg' ? 'w-[920px] max-w-[94vw]' : 'w-[420px] max-w-[85vw]'
-        }`}
+        className={`relative h-full bg-popover border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out] ${drawerWidthClass(
+          target.width,
+          navRailExpanded,
+        )}`}
       >
-        <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50 shrink-0">
+        <header
+          className="flex items-center justify-between gap-2 pr-4 py-3 border-b border-border/50 shrink-0"
+          style={{ paddingLeft: headerInset }}
+        >
           <div className="min-w-0">
             <p className="text-sm font-medium text-text-primary truncate">{title}</p>
             <p className="text-[11px] text-text-muted truncate">{pluginKeyOf(target.panelId)}</p>
