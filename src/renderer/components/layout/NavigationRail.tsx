@@ -60,6 +60,14 @@ const MAIL_CENTER_ITEM_ID = 'mail-center'
  */
 const TODO_HUB_ITEM_ID = 'todo-hub'
 
+/**
+ * 任务中心面板 id
+ *
+ * 该面板不属于任何场景，组件在 PanelRegistry 里全局注册，
+ * 通过全屏抽屉打开；收起 / 展开都以这个 id 判定。
+ */
+const LEDGER_PANEL_ID = 'ledger'
+
 
 
 // 场景工具不再提供左侧导航入口：
@@ -340,17 +348,24 @@ export default function NavigationRail() {
    * 打开用户菜单里的功能入口
    *
    * 与账号菜单中的同名项保持完全一致的行为：专家库落到设置页的角色库分页，
-   * 任务中心切换右侧的 ledger 面板。两处各写一份属于代码重复，但这两项各自
+   * 任务中心以全屏抽屉打开 ledger 面板。两处各写一份属于代码重复，但这两项各自
    * 依赖不同的 store 动作，抽公共函数反而要在两边都解构一整套 action。
    */
   const handleAccountMenuClick = (itemId: string) => {
     if (itemId === 'taskCenter') {
+      // 任务中心与其它内置面板走同一条抽屉路径：不接管侧栏、不挤掉工作区，
+      // 再次点击已打开的那一项视为收起。
+      const currentTarget = getPluginDrawerTarget()
+      const isOpen = currentTarget?.kind === 'panel' && currentTarget.panelId === LEDGER_PANEL_ID
       closeAllFullPages()
-      closePanelDrawer()
       closeSceneToolDrawer()
       setShowWorkflow(false)
-      setActiveSidePanel(activeSidePanel === 'ledger' ? null : 'ledger')
       closeInternalBrowser()
+      if (isOpen) {
+        closePluginDrawer()
+        return
+      }
+      openBuiltinPanel(LEDGER_PANEL_ID)
       return
     }
 
@@ -461,9 +476,10 @@ export default function NavigationRail() {
 
     // 用户菜单里的功能入口（专家库 / 任务中心）：点击行为与账号菜单中的同名项一致
     for (const item of visibleAccountItems) {
+      // 任务中心已改为抽屉：选中态只能从抽屉目标取，侧栏字段不再反映它
       const isActive =
         item.id === 'taskCenter'
-          ? !showWelcomePage && !showSettingsPage && activeSidePanel === 'ledger'
+          ? drawerTarget?.kind === 'panel' && drawerTarget.panelId === LEDGER_PANEL_ID
           : showSettingsPage && settingsIntent?.tab === item.id
       entries.push({
         id: item.id,

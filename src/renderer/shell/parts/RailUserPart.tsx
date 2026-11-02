@@ -29,7 +29,11 @@ import {
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '@store'
-import { closePanelDrawer } from '@renderer/plugins/pluginDrawerStore'
+import {
+  closePanelDrawer,
+  getPluginDrawerTarget,
+  openBuiltinPanel,
+} from '@renderer/plugins/pluginDrawerStore'
 import { closeSceneToolDrawer } from '@components/scene-tools/sceneToolDrawerStore'
 import { BRAND } from '@shared/brand'
 import { formatUserDisplayName } from '@shared/toolkit/formatHelper'
@@ -477,13 +481,19 @@ export function RailUserPart({ expanded, placement = 'rail' }: RailUserPartProps
       setActiveSidePanel(activeSidePanel === 'schedule' ? null : 'schedule')
       closeInternalBrowser()
     },
+    // 任务中心与导航栏入口保持一致：以全屏抽屉打开，再点一次收起
     onLedgerClick: () => {
+      const currentTarget = getPluginDrawerTarget()
+      const isOpen = currentTarget?.kind === 'panel' && currentTarget.panelId === 'ledger'
       closeAllFullPages()
-      closePanelDrawer()
       closeSceneToolDrawer()
       setShowWorkflow(false)
-      setActiveSidePanel(activeSidePanel === 'ledger' ? null : 'ledger')
       closeInternalBrowser()
+      if (isOpen) {
+        closePanelDrawer()
+        return
+      }
+      openBuiltinPanel('ledger')
     },
     onPluginCenterClick: () => openExclusive(() => setShowPluginCenterPage(true)),
     onExpertLibraryClick: () => openExclusive(() => {

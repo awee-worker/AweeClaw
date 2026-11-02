@@ -12,6 +12,7 @@ import { MailCenterView } from './panels/mail-center/MailCenterView'
 import { SceneToolsPanel } from '../scene-tools/SceneToolsPanel'
 import { TodoHubView } from '../todo-hub/TodoHubView'
 import { ScenarioWorkspacePanel } from './panels/ScenarioWorkspacePanel'
+import { LedgerExplorer } from './panels/ledger/LedgerExplorer'
 
 type PanelComponent = ComponentType<unknown>
 
@@ -95,6 +96,10 @@ registerPanelComponent('scene-tools', SceneToolsStandalonePanel)
 // 场景工作区：区域树里 { type: 'panel', id: 'scenario-workspace' } 即可摆放，
 // 按 activeSidePanel 渲染当前场景面板，因此一棵静态树也能承载多面板切换
 registerPanelComponent('scenario-workspace', ScenarioWorkspacePanel)
+
+// 任务中心：不属于任何场景（从账号菜单与用户菜单进入），以全屏抽屉打开，
+// 因此在这里全局注册一次，PanelDrawerHost 才能按 panelId='ledger' 取到组件
+registerPanelComponent('ledger', LedgerExplorer)
 
 /**
  * 注册面板组件

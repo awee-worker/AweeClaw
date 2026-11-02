@@ -131,6 +131,21 @@ export const PANEL_DRAWER_WIDTHS: Record<string, PanelDrawerWidth> = {
   'mail-center': 'full',
   'plugin-market': 'full',
   'ai-browser': 'full',
+  /**
+   * 任务中心：概览卡 + 筛选栏 + 列表 + 详情四块并排，
+   * 窄档下详情会被挤到列表下方，宽屏才是一次能看全的形态。
+   */
+  ledger: 'full',
+}
+
+/**
+ * 未在场景 sidebarItems 中声明的内置面板标题
+ *
+ * 抽屉标题优先取场景声明；任务中心这类从账号菜单进入、不属于任何场景的
+ * 面板没有声明可取，在这里补一份中英文，省得调用点各写一遍。
+ */
+export const BUILTIN_PANEL_TITLES: Record<string, { title: string; titleZh: string }> = {
+  ledger: { title: 'Task Center', titleZh: '任务中心' },
 }
 
 /** 该面板是否以抽屉形式打开 */
@@ -146,7 +161,13 @@ export function isBuiltinDrawerPanel(panelId: string): boolean {
  */
 export function openBuiltinPanel(panelId: string): void {
   if (!panelId) return
-  openPanelDrawer({ panelId, width: PANEL_DRAWER_WIDTHS[panelId] })
+  const fallbackTitle = BUILTIN_PANEL_TITLES[panelId]
+  openPanelDrawer({
+    panelId,
+    width: PANEL_DRAWER_WIDTHS[panelId],
+    title: fallbackTitle?.title,
+    titleZh: fallbackTitle?.titleZh,
+  })
 }
 
 /** 关闭当前抽屉（内置面板与插件面板通用） */

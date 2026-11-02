@@ -7,7 +7,6 @@ import { PromptsView } from './panels/PromptLibrary'
 import { TasksView } from './panels/TaskExplorer'
 import { BookmarksView } from './panels/BookmarkExplorer'
 import { ScheduleExplorer } from './panels/ScheduleExplorer'
-import { LedgerExplorer } from './panels/ledger/LedgerExplorer'
 import { SceneToolsPanel } from '../scene-tools/SceneToolsPanel'
 import { DynamicPanelView } from './AdaptivePanelView'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
@@ -30,7 +29,8 @@ const BUILTIN_PANELS: Record<string, React.ComponentType> = {
   'todo-tasks': TasksView,
   bookmarks: BookmarksView,
   schedule: ScheduleExplorer,
-  ledger: LedgerExplorer,
+  // 任务中心（panelId: ledger）不在这一层：它是全屏抽屉面板，
+  // 组件注册在 PanelRegistry 里，由 PanelDrawerHost 渲染，避免同一面板两套呈现
   'scene-tools': SceneToolsPanel,
 }
 
