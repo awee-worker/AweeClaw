@@ -88,6 +88,24 @@ export function setFileChangeForwarder(fn: FileChangeForwarder | null): void {
   fileChangeForwarder = fn
 }
 
+/**
+ * 追加一个文件变更监听者（可多个）
+ *
+ * 与 setFileChangeForwarder 的区别：后者是覆盖式单例（设备联动占用），
+ * 本函数是追加式订阅，供事件触发器等模块在不抢占既有转发器的情况下接入。
+ *
+ * @returns 取消订阅函数
+ */
+export function addFileChangeListener(fn: FileChangeForwarder): () => void {
+  fileChangeListeners.add(fn)
+  return () => {
+    fileChangeListeners.delete(fn)
+  }
+}
+
+/** 追加式监听者集合 */
+const fileChangeListeners = new Set<FileChangeForwarder>()
+
 const LSP_FILE_CHANGE_TYPE = {
   create: 1,
   update: 2,
@@ -188,6 +206,14 @@ export async function setupFileWatcher(
         fileChangeForwarder?.({ event: eventType, path: event.path })
       } catch (err) {
         logger.security.warn('[Watcher] fileChangeForwarder threw:', err)
+      }
+      // 追加式订阅者（事件触发器等），逐个隔离，单个异常不影响其余监听者
+      for (const listener of fileChangeListeners) {
+        try {
+          listener({ event: eventType, path: event.path })
+        } catch (err) {
+          logger.security.warn('[Watcher] fileChangeListener threw:', err)
+        }
       }
       fileChangeBuffer.add({ type: eventType, path: event.path, timestamp: Date.now() })
       lspChanges.push({ path: event.path, type: eventType })

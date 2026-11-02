@@ -49,6 +49,14 @@ export const STORE_KEYS = {
   MAIL_DRAFTS: 'mail_drafts',
   // 邮件收件：本地发件箱（发送失败待重试）
   MAIL_OUTBOX: 'mail_outbox',
+  // 事件触发器：触发器规则定义（含 include/ignore/cooldown）
+  TRIGGER_RULES: 'trigger_rules',
+  // 事件触发器：冷却去重表（dedupKey → 最近命中时间戳），重启后不重复告警
+  TRIGGER_COOLDOWN: 'trigger_cooldown',
+  // 任务账本：本地任务实体（状态机 / 产物 / trace）
+  TASK_LEDGER: 'task_ledger',
+  // 本地自动化开关：事件源 / 自动建任务 / 自动执行 三层开关
+  AUTOMATION_SETTINGS: 'automation_settings',
 } as const
 
 // ============================================

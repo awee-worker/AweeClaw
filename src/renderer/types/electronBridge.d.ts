@@ -49,6 +49,59 @@ export interface WakeWordConfig {
   updatedAt: number
 }
 
+/**
+ * 任务账本视图（渲染层读取的任务实体快照）
+ *
+ * 与主进程 task-ledger/types.ts 的 LedgerTask 保持字段一致；
+ * 这里独立声明而非跨进程引用，避免渲染层打包时把主进程类型带入依赖图。
+ */
+export interface LedgerTaskView {
+  id: string
+  origin: 'trigger' | 'cron' | 'manual' | 'proactive'
+  originId?: string
+  kind: string
+  title: string
+  status: 'pending_approval' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  risk: 'low' | 'medium' | 'high'
+  request: Record<string, unknown> | null
+  progress: number | null
+  progressMsg: string | null
+  result: {
+    success: boolean
+    summary?: string
+    artifacts?: Array<{
+      type: 'text' | 'log' | 'file' | 'image' | 'url'
+      title: string
+      content?: string
+      path?: string
+      url?: string
+    }>
+    output?: string
+    error?: string
+  } | null
+  error: string | null
+  createdAt: number
+  updatedAt: number
+  finishedAt: number | null
+  /** 幂等键（历史任务可能不存在） */
+  idempotencyKey?: string
+  trace: Array<{ at: number; actor: string; message: string }>
+}
+
+/**
+ * 本地自动化开关视图
+ *
+ * 三层独立控制，默认全关：
+ * - triggersEnabled  事件源监听（省 watcher 与钩子订阅的常驻开销）
+ * - autoCreateTask   命中后自动建任务记录（纯本地写入，不调模型）
+ * - autoExecuteTask  任务进入 queued 后自动交给 Agent 执行（唯一产生 token 开销的一层）
+ */
+export interface AutomationSettingsView {
+  triggersEnabled: boolean
+  autoCreateTask: boolean
+  autoExecuteTask: boolean
+}
+
 /** 悬浮头像语音上下文（主窗口 push，头像窗口 get） */
 export interface VoiceContextPayload {
   llmConfig: unknown | null
@@ -3218,6 +3271,213 @@ export interface ElectronAPI {
       action: string
       payload: string
     }>) => Promise<{ success: boolean; data?: boolean; error?: string }>
+  }
+
+  // ============================================
+  // 事件触发器 / 任务账本
+  //
+  // 触发器负责"事情发生"的主动触发（与 cron 的"时间到点"互补），
+  // 任务账本把触发结果沉淀为可追溯、可续跑的任务实体。
+  // ============================================
+  trigger: {
+    /** 触发器事件源类型 */
+    // ── 触发器规则 ──
+    listTriggerRules: () => Promise<{
+      success: boolean
+      data?: Array<{
+        id: string
+        name: string
+        enabled: boolean
+        sourceType: 'file' | 'hook' | 'channel' | 'mail' | 'custom'
+        include: string[]
+        ignore: string[]
+        eventTypes: string[]
+        cooldownMs: number
+        action: { type: 'notify' | 'suggest' | 'task'; payload: string }
+        createdAt: number
+      }>
+      error?: string
+      code?: string
+    }>
+
+    upsertTriggerRule: (rule: {
+      id: string
+      name: string
+      enabled?: boolean
+      sourceType: 'file' | 'hook' | 'channel' | 'mail' | 'custom'
+      include?: string[]
+      ignore?: string[]
+      eventTypes?: string[]
+      cooldownMs?: number
+      action?: { type: 'notify' | 'suggest' | 'task'; payload: string }
+      createdAt?: number
+    }) => Promise<{ success: boolean; data?: unknown; error?: string; code?: string }>
+
+    removeTriggerRule: (
+      ruleId: string,
+    ) => Promise<{ success: boolean; data?: { removed: boolean }; error?: string; code?: string }>
+
+    setTriggerRuleEnabled: (
+      ruleId: string,
+      enabled: boolean,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string; code?: string }>
+
+    listTriggerSources: () => Promise<{
+      success: boolean
+      data?: Array<{ id: string; type: string }>
+      error?: string
+    }>
+
+    getTriggerStats: () => Promise<{
+      success: boolean
+      data?: {
+        ruleCount: number
+        sourceCount: number
+        receivedEvents: number
+        passedRules: number
+        dispatchedHits: number
+        suppressedByCooldown: number
+        rejectedBySemantic: number
+        /** 通过规则漏斗却未落到任何出口的次数；恒为 0，不为 0 说明漏斗分支漏了计数 */
+        unaccountedDrops: number
+      }
+      error?: string
+    }>
+
+    // ── 本地自动化开关 ──
+
+    getTriggerSettings: () => Promise<{
+      success: boolean
+      data?: AutomationSettingsView
+      error?: string
+    }>
+
+    updateTriggerSettings: (patch: Partial<AutomationSettingsView>) => Promise<{
+      success: boolean
+      data?: AutomationSettingsView
+      error?: string
+      code?: string
+    }>
+
+    resetTriggerSettings: () => Promise<{
+      success: boolean
+      data?: AutomationSettingsView
+      error?: string
+    }>
+
+    // ── 任务账本 ──
+    listLedgerTasks: (query?: {
+      status?: Array<
+        'pending_approval' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+      >
+      origin?: 'trigger' | 'cron' | 'manual' | 'proactive'
+      kind?: string
+      limit?: number
+    }) => Promise<{ success: boolean; data?: Array<LedgerTaskView>; error?: string }>
+
+    getLedgerTask: (
+      taskId: string,
+    ) => Promise<{ success: boolean; data?: LedgerTaskView; error?: string; code?: string }>
+
+    createLedgerTask: (input: {
+      origin: 'trigger' | 'cron' | 'manual' | 'proactive'
+      originId?: string
+      kind: string
+      title: string
+      risk?: 'low' | 'medium' | 'high'
+      request?: Record<string, unknown> | null
+      idempotencyKey?: string
+    }) => Promise<{
+      success: boolean
+      data?: LedgerTaskView
+      /** true 表示命中幂等键，复用了已有任务 */
+      idempotent?: boolean
+      error?: string
+      code?: string
+    }>
+
+    approveLedgerTask: (
+      taskId: string,
+    ) => Promise<{ success: boolean; data?: LedgerTaskView; idempotent?: boolean; error?: string; code?: string }>
+
+    startLedgerTask: (
+      taskId: string,
+    ) => Promise<{ success: boolean; data?: LedgerTaskView; idempotent?: boolean; error?: string; code?: string }>
+
+    succeedLedgerTask: (
+      taskId: string,
+      result: {
+        success?: boolean
+        summary?: string
+        artifacts?: Array<{
+          type: 'text' | 'log' | 'file' | 'image' | 'url'
+          title: string
+          content?: string
+          path?: string
+          url?: string
+        }>
+        output?: string
+        error?: string
+      },
+    ) => Promise<{ success: boolean; data?: LedgerTaskView; idempotent?: boolean; error?: string; code?: string }>
+
+    failLedgerTask: (
+      taskId: string,
+      error: string,
+    ) => Promise<{ success: boolean; data?: LedgerTaskView; idempotent?: boolean; error?: string; code?: string }>
+
+    cancelLedgerTask: (
+      taskId: string,
+    ) => Promise<{ success: boolean; data?: LedgerTaskView; idempotent?: boolean; error?: string; code?: string }>
+
+    retryLedgerTask: (
+      taskId: string,
+    ) => Promise<{ success: boolean; data?: LedgerTaskView; error?: string; code?: string }>
+
+    updateLedgerTaskProgress: (
+      taskId: string,
+      progress: number,
+      message?: string,
+    ) => Promise<{ success: boolean; data?: LedgerTaskView | null; error?: string; code?: string }>
+
+    getLedgerTaskCounts: () => Promise<{
+      success: boolean
+      data?: Record<
+        'pending_approval' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled',
+        number
+      >
+      error?: string
+    }>
+
+    /** 订阅触发器命中事件，返回取消订阅函数 */
+    onTriggerHit: (
+      callback: (hit: {
+        ruleId: string
+        ruleName: string
+        dedupKey: string
+        timestamp: number
+        action: { type: 'notify' | 'suggest' | 'task'; payload: string }
+        event: {
+          sourceType: 'file' | 'hook' | 'channel' | 'mail' | 'custom'
+          sourceId: string
+          eventType: string
+          subject: string
+          payload: Record<string, unknown>
+          timestamp: number
+        }
+      }) => void,
+    ) => () => void
+
+    /** 订阅任务变更事件（含创建与每次状态迁移），返回取消订阅函数 */
+    onLedgerTaskUpdated: (callback: (task: LedgerTaskView) => void) => () => void
+
+    /**
+     * 订阅"任务下发执行"指令，返回取消订阅函数
+     *
+     * 只在 autoExecuteTask 开启时由主进程广播。用户手动点「开始执行」
+     * 不经过这个频道，直接调执行器。
+     */
+    onLedgerTaskExecute: (callback: (task: LedgerTaskView) => void) => () => void
   }
 
   // ============================================

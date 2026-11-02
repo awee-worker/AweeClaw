@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
+  Activity,
   BookUser,
   ChevronUp,
   Clock,
@@ -64,6 +65,7 @@ interface UserMenuHandlers {
   onAppearanceSettingsClick: () => void
   onExploreClick: () => void
   onScheduleClick: () => void
+  onLedgerClick: () => void
   onPluginCenterClick: () => void
   onExpertLibraryClick: () => void
   onUserInfoClick: () => void
@@ -190,6 +192,13 @@ function UserMenuDropdown({
       icon: Clock,
       label: t('layout.schedule', language as Language),
       onClick: handlers.onScheduleClick,
+      badge: 0,
+      badgeTitle: '',
+    },
+    {
+      icon: Activity,
+      label: language === 'zh' ? '任务中心' : 'Task Center',
+      onClick: handlers.onLedgerClick,
       badge: 0,
       badgeTitle: '',
     },
@@ -466,6 +475,14 @@ export function RailUserPart({ expanded, placement = 'rail' }: RailUserPartProps
       closeSceneToolDrawer()
       setShowWorkflow(false)
       setActiveSidePanel(activeSidePanel === 'schedule' ? null : 'schedule')
+      closeInternalBrowser()
+    },
+    onLedgerClick: () => {
+      closeAllFullPages()
+      closePanelDrawer()
+      closeSceneToolDrawer()
+      setShowWorkflow(false)
+      setActiveSidePanel(activeSidePanel === 'ledger' ? null : 'ledger')
       closeInternalBrowser()
     },
     onPluginCenterClick: () => openExclusive(() => setShowPluginCenterPage(true)),

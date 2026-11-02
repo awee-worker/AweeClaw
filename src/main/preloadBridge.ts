@@ -46,6 +46,7 @@ import { createCodeIntelApi } from './preload/api/codeIntel'
 import { createMcpApi } from './preload/api/mcp'
 import { createChannelApi } from './preload/api/channel'
 import { createAutomationApi } from './preload/api/automation'
+import { createTriggerApi } from './preload/api/trigger'
 import { createPythonDataApi } from './preload/api/pythonData'
 import { createScenarioApi } from './preload/api/scenario'
 import { createDebugMiscApi } from './preload/api/debugMisc'
@@ -108,6 +109,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ...createMcpApi(),
   ...createChannelApi(),
   ...createAutomationApi(),
+  trigger: createTriggerApi(),
   ...createPythonDataApi(),
   ...createScenarioApi(),
   ...createDebugMiscApi(),

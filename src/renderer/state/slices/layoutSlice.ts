@@ -38,6 +38,7 @@ export type SidePanel =
   | 'plans'
   | 'benchmarks'
   | 'schedule'
+  | 'ledger'
   | 'plugin-market'
   | 'ai-browser'
   | 'mail-center'

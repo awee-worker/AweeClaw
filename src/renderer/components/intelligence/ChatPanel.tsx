@@ -83,6 +83,7 @@ import { ProactiveSuggestionsContainer } from './proactive/ProactiveSuggestionsC
 import { ProactiveCriticalUndoBar } from './proactive/ProactiveCriticalUndoBar'
 import { useProactiveInvoker } from './proactive/useProactiveInvoker'
 import { useAutomationCronExecutor } from './proactive/useAutomationCronExecutor'
+import { useLedgerTaskExecutor } from './proactive/useLedgerTaskExecutor'
 
 // ===== 自动上下文压缩中提示（消息列表末尾） =====
 // 当 AI 执行过程中触发上下文压缩/自动交接（compressionPhase 进入
@@ -478,6 +479,10 @@ export default function ChatPanel() {
   // ===== 自动化规则 Cron 执行订阅 =====
   // 监听 'cron:task-execute' 事件，用用户当前配置的模型在本地执行自动化 Agent 任务
   useAutomationCronExecutor()
+
+  // ===== 事件触发任务执行订阅 =====
+  // 监听 'ledger:task-execute'，只在 autoExecuteTask 开启时才会有事件到达
+  useLedgerTaskExecutor()
 
   // ===== 过滤消息列表 =====
   const filteredMessages = useMemo(

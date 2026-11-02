@@ -192,6 +192,7 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   await restoreAgentRouter()
   await startSessionLifecycleManager()
   await startCronScheduler()
+  await startTriggerSystem()
 
   // ==========================================
   // 6. 首屏必需模块（同步等待，确保页面加载时核心 IPC 就绪）
@@ -497,6 +498,86 @@ async function startCronScheduler(): Promise<void> {
     logger.system.info('[Main] Plugin cron scheduler bridge started')
   } catch (err) {
     logger.system.warn('[Main] Plugin cron scheduler bridge start skipped:', errMsg(err))
+  }
+}
+
+/**
+ * 启动事件触发器与任务账本
+ *
+ * 顺序要求：必须在 loadModuleDataStore() 之后（两者都依赖 ModuleDataStore 的持久化数据），
+ * 且在 IPC 注册（boot 阶段）之前完成初始化，保证渲染层首屏查询就能读到已恢复的任务。
+ *
+ * 开关分层（automationSettings）：
+ * - 任务账本无条件初始化：没有任务时零 IO，且必须让首屏查询读到历史记录
+ * - 事件广播与建档订阅者无条件挂载：前者承担任务状态的 UI 实时同步，后者空转零开销
+ * - 只有事件源监听受 triggersEnabled 控制：它才是真有常驻开销的那一层
+ *
+ * 失败处理：任何一步异常都只记日志，不影响主流程启动——主动能力属于增强项，
+ * 不应因为文件监听不可用而让应用起不来。
+ */
+async function startTriggerSystem(): Promise<void> {
+  // 1. 任务账本：始终初始化
+  //    账本是纯本地数据载体，没有任务时不做任何 IO，因此不需要开关。
+  //    必须无条件跑，否则渲染层首屏查询读不到历史任务。
+  try {
+    const { taskLedger } = await import('../modules/task-ledger/TaskLedger')
+    taskLedger.initialize()
+    logger.system.info('[Main] Task ledger initialized')
+  } catch (err) {
+    logger.system.warn('[Main] Task ledger init skipped:', errMsg(err))
+  }
+
+  // 2. 读取本地自动化开关（默认三层全关）
+  let triggersEnabled = false
+  try {
+    const { automationSettings } = await import(
+      '../modules/automation-settings/AutomationSettingsStore'
+    )
+    automationSettings.load()
+    triggersEnabled = automationSettings.get().triggersEnabled
+  } catch (err) {
+    logger.system.warn('[Main] Automation settings load skipped:', errMsg(err))
+  }
+
+  // 3. 事件广播与订阅者：无条件挂载
+  //    registerTriggerEventListeners 同时负责把任务状态推给渲染层（ledger:task-updated），
+  //    如果把它塞进 triggersEnabled 分支，关掉事件源后任务中心将收不到任何实时更新。
+  //    自动建档订阅者没有命中时零开销，同理不必受开关约束。
+  try {
+    const { registerTriggerEventListeners } = await import('../bridge/system/trigger')
+    const { taskAutoCreateSubscriber } = await import(
+      '../modules/trigger/TaskAutoCreateSubscriber'
+    )
+    registerTriggerEventListeners()
+    taskAutoCreateSubscriber.start()
+  } catch (err) {
+    logger.system.warn('[Main] Trigger subscribers mount skipped:', errMsg(err))
+  }
+
+  // 4. 事件源与注册表：受 triggersEnabled 控制
+  if (!triggersEnabled) {
+    logger.system.info('[Main] 事件触发器已关闭（可在任务中心开启），跳过事件源启动')
+    return
+  }
+
+  try {
+    const { triggerRegistry } = await import('../modules/trigger/TriggerRegistry')
+    const { FileWatchSource } = await import('../modules/trigger/sources/FileWatchSource')
+    const { HookEventSource } = await import('../modules/trigger/sources/HookEventSource')
+
+    await triggerRegistry.registerSource(new FileWatchSource({ id: 'file-watch' }))
+    await triggerRegistry.registerSource(
+      new HookEventSource({
+        id: 'hook-events',
+        // 只订阅"工具调用后"与"渠道异常"，其余钩子事件噪音大且与任务无关
+        events: ['after-tool-call', 'on-channel-error'],
+      }),
+    )
+
+    await triggerRegistry.start()
+    logger.system.info('[Main] Trigger registry started')
+  } catch (err) {
+    logger.system.warn('[Main] Trigger registry start skipped:', errMsg(err))
   }
 }
 

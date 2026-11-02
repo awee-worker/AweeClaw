@@ -77,6 +77,7 @@ import { registerDataIpcHandlers } from '../system/data'
 import { registerDesktopControlHandlers } from '../system/desktopControl'
 import { registerGatewayHandlers } from '../system/gateway'
 import { registerAutomationHandlers } from '../system/automation'
+import { registerTriggerHandlers } from '../system/trigger'
 
 // ── external-agent（外部编码智能体：Claude Code / Codex / Cursor）─────────
 import { registerExternalAgentHandlers } from '../../modules/external-agent'
@@ -285,6 +286,9 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 自动化引擎（Cron 调度器）
   registerOnce('automation', () => registerAutomationHandlers())
+
+  // 事件触发器 / 任务账本
+  registerOnce('trigger', () => registerTriggerHandlers())
 
   // 诊断工具
   registerOnce('doctor', () => registerDoctorHandlers())

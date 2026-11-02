@@ -7,6 +7,7 @@ import { PromptsView } from './panels/PromptLibrary'
 import { TasksView } from './panels/TaskExplorer'
 import { BookmarksView } from './panels/BookmarkExplorer'
 import { ScheduleExplorer } from './panels/ScheduleExplorer'
+import { LedgerExplorer } from './panels/ledger/LedgerExplorer'
 import { SceneToolsPanel } from '../scene-tools/SceneToolsPanel'
 import { DynamicPanelView } from './AdaptivePanelView'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
@@ -29,6 +30,7 @@ const BUILTIN_PANELS: Record<string, React.ComponentType> = {
   'todo-tasks': TasksView,
   bookmarks: BookmarksView,
   schedule: ScheduleExplorer,
+  ledger: LedgerExplorer,
   'scene-tools': SceneToolsPanel,
 }
 
