@@ -110,7 +110,13 @@ function UserMenuDropdown({
   useEffect(() => {
     if (!isOpen) { setShowLogoutConfirm(false); return }
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      const target = e.target as Element | null
+      // 二级菜单面板是 portal，挂在 body 上（容器带 backdrop-blur，留在里面 fixed
+      // 定位会跑偏），DOM 上并不在 ref.current 之内。不排除它的话，点选项时
+      // mousedown 会先把整个用户菜单卸掉，随后的 click 落空，表现为
+      // 「菜单消失了，但界面语言 / 界面主题没切换」。
+      if (target?.closest?.('[data-user-menu-portal]')) return
+      if (ref.current && !ref.current.contains(target as Node)) {
         onClose()
       }
     }

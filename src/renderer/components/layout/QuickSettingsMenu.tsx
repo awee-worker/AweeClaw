@@ -183,6 +183,9 @@ function useSubMenuPanel(direction: QuickSettingsDirection, width: number) {
     return createPortal(
       <div
         ref={panelRef}
+        // 标记为“属于用户菜单的浮层”：面板挂在 body 上，DOM 上不在用户菜单容器内，
+        // 宿主的点击外部关闭逻辑需要靠这个属性把它排除掉
+        data-user-menu-portal=""
         className={SUBMENU_PANEL_CLASS}
         style={panelStyle}
         onMouseEnter={handleMouseEnter}
