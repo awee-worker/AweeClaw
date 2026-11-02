@@ -34,6 +34,15 @@ interface SiteEntry {
   win: BrowserWindow
   partition: string
   allowedOrigins: string[]
+  /**
+   * 登录流程的放行截止时间（毫秒时间戳，0 表示未开）
+   *
+   * 登录常常要跨域：表单 action 指向独立 SSO 域、成功后由 CAS / OAuth 跳回、
+   * 企业 IdP 更是另一个主域。这些跳转发生在页面内部，会被 will-navigate
+   * 的白名单拦下来，页面就停在原地——用户看到的就是「点了登录但没登进去」。
+   * 登录期间给一个有时限的放行窗口，结束后立刻收回。
+   */
+  loginFlowUntil: number
   createdAt: number
 }
 
@@ -117,6 +126,21 @@ const DEFAULT_LOAD_TIMEOUT_MS = 30_000
 const MAX_WAIT_MS = 60_000
 /** 点击按下与抬起之间的间隔，保证 mousedown/mouseup 成对到达页面 */
 const CLICK_PAUSE_MS = 30
+/** 登录流程放行窗口，默认 2 分钟，上限 5 分钟 */
+const DEFAULT_LOGIN_FLOW_TTL_MS = 120_000
+const MAX_LOGIN_FLOW_TTL_MS = 300_000
+
+/**
+ * 常见的多段公共后缀
+ *
+ * 用来把 `sso.example.com.cn` 和 `oa.example.com.cn` 归到同一个主域。
+ * 清单不求全，命中不了时退化为「末两段」，对登录跳转判断已经够用。
+ */
+const MULTI_LEVEL_SUFFIXES = new Set([
+  'com.cn', 'net.cn', 'org.cn', 'gov.cn', 'edu.cn', 'ac.cn',
+  'com.hk', 'com.tw', 'com.mo', 'com.sg', 'com.au', 'com.my',
+  'co.jp', 'co.kr', 'co.uk', 'co.in', 'co.nz', 'com.br', 'com.mx',
+])
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -134,6 +158,30 @@ function originOf(url: string): string {
   } catch {
     return ''
   }
+}
+
+/**
+ * 取可注册主域（eTLD+1）
+ *
+ * 用来判断两个 origin 是不是同一家公司的一套系统：`oa.example.com` 与
+ * `sso.example.com` 都归到 `example.com`。IP 与单段主机名原样返回。
+ */
+function registrableDomainOf(origin: string): string {
+  const host = (() => {
+    try {
+      return new URL(origin).hostname.toLowerCase().replace(/\.$/, '')
+    } catch {
+      return ''
+    }
+  })()
+  if (!host) return ''
+  // IPv4 / IPv6 没有主域概念，只能精确匹配
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) return host
+  const parts = host.split('.')
+  if (parts.length <= 2) return host
+  const lastTwo = parts.slice(-2).join('.')
+  if (MULTI_LEVEL_SUFFIXES.has(lastTwo)) return parts.slice(-3).join('.')
+  return lastTwo
 }
 
 /**
@@ -562,11 +610,24 @@ class SiteBrowserBridge {
       })
     }
 
+    // 页面内的跳转（点链接、表单提交、location 赋值）都按白名单放行。
+    // 必须读活的白名单：open 复用窗口时会把新来源并进 entry.allowedOrigins，
+    // 而建窗那一刻的数组引用不会跟着更新。
     win.webContents.on('will-navigate', (event, url) => {
-      if (!isHttpUrl(url) || !this.isAllowed(allowedOrigins, url)) {
-        event.preventDefault()
-        logger.system?.warn('[SiteBrowser] blocked navigation', { siteId, url })
+      const entry = this.entries.get(siteId)
+      const origins = entry?.allowedOrigins ?? allowedOrigins
+      if (this.isNavigationAllowed(siteId, origins, url)) {
+        const origin = originOf(url)
+        // 登录期间放行的跨域跳转（SSO / CAS / IdP）记进白名单：
+        // 登录成功后它就是站点的常驻页面，后续导航不再依赖放行窗口。
+        if (entry && origin && !entry.allowedOrigins.includes(origin)) {
+          entry.allowedOrigins.push(origin)
+          logger.system?.info('[SiteBrowser] learn login origin', { siteId, origin })
+        }
+        return
       }
+      event.preventDefault()
+      logger.system?.warn('[SiteBrowser] blocked navigation', { siteId, url })
     })
 
     win.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL) => {
@@ -574,13 +635,57 @@ class SiteBrowserBridge {
       logger.system?.warn('[SiteBrowser] load failed', { siteId, errorCode, errorDescription, url: validatedURL })
     })
 
-    return { siteId, win, partition, allowedOrigins, createdAt: Date.now() }
+    return { siteId, win, partition, allowedOrigins, loginFlowUntil: 0, createdAt: Date.now() }
   }
+
 
   private isAllowed(origins: string[], url: string): boolean {
     const origin = originOf(url)
     if (!origin) return false
     return origins.some((item) => item === origin)
+  }
+
+  /**
+   * 页面内跳转是否放行
+   *
+   * 比 navigate() 的显式白名单宽一层：显式导航是插件自己拼的地址，拼错就该失败；
+   * 页面内跳转则由目标系统决定，登录流程几乎必然跨域，一律按同源拒绝会让登录
+   * 卡在提交那一刻。
+   */
+  private isNavigationAllowed(siteId: string, origins: string[], url: string): boolean {
+    if (!isHttpUrl(url)) return false
+    const origin = originOf(url)
+    if (!origin) return false
+    if (origins.some((item) => item === origin)) return true
+    // 同主域放行：oa.example.com 与 sso.example.com 之间的跳转在企业系统里是常态
+    const targetSite = registrableDomainOf(origin)
+    if (targetSite && origins.some((item) => registrableDomainOf(item) === targetSite)) return true
+    // 登录流程内放行跨主域跳转（CAS / OAuth / 企业 IdP / 门户跳板）
+    const entry = this.entries.get(siteId)
+    return Boolean(entry && entry.loginFlowUntil > Date.now())
+  }
+
+  /**
+   * 开启登录放行窗口
+   *
+   * 由插件在开始登录前调用、结束时关闭。窗口有时限：插件异常退出时放行不会一直留着。
+   */
+  beginLoginFlow(siteId: string, ttlMs?: number): { ttlMs: number } {
+    const entry = this.requireEntry(siteId)
+    const ttl = Math.min(
+      Math.max(5_000, Number(ttlMs) || DEFAULT_LOGIN_FLOW_TTL_MS),
+      MAX_LOGIN_FLOW_TTL_MS,
+    )
+    entry.loginFlowUntil = Date.now() + ttl
+    logger.system?.info('[SiteBrowser] login flow opened', { siteId, ttl })
+    return { ttlMs: ttl }
+  }
+
+  /** 关闭登录放行窗口（登录结束后立即收回，不必等 TTL） */
+  endLoginFlow(siteId: string): void {
+    const entry = this.entries.get(siteId)
+    if (!entry) return
+    entry.loginFlowUntil = 0
   }
 
   private assertAllowed(entry: SiteEntry, url: string): void {
