@@ -10,7 +10,7 @@ import type { WorkspaceConfig } from '@store'
 
 export class WorkspaceOpenError extends Error {
   constructor(
-    public readonly code: 'missing-workspace' | 'switch-failed',
+    public readonly code: 'missing-workspace' | 'switch-failed' | 'redirected',
     message: string,
     public readonly path: string
   ) {
@@ -18,6 +18,15 @@ export class WorkspaceOpenError extends Error {
     this.name = 'WorkspaceOpenError'
   }
 }
+
+/**
+ * 切换工作空间的结果
+ *
+ * `redirected` 表示该目录已在另一个窗口打开：主进程已把那个窗口聚焦，
+ * 本窗口保持原状。它与失败区分开，是因为调用方需要给出不同提示，
+ * 并且绝不能把用户刚打开的窗口关掉。
+ */
+export type WorkspaceSwitchResult = 'switched' | 'redirected' | 'failed'
 
 /** 打开工作空间选择器后的结果，供 UI 层决定提示文案 */
 export type OpenFolderOutcome =
@@ -67,16 +76,16 @@ class WorkspaceManager {
     return this.switching
   }
 
-  async switchTo(newWorkspace: WorkspaceConfig): Promise<boolean> {
+  async switchTo(newWorkspace: WorkspaceConfig): Promise<WorkspaceSwitchResult> {
     if (this.switching) {
       logger.system.warn('[WorkspaceManager] Already switching, ignoring request')
-      return false
+      return 'failed'
     }
 
     const oldWorkspace = this.getCurrentWorkspace()
     if (isSameWorkspace(oldWorkspace, newWorkspace)) {
       logger.system.info('[WorkspaceManager] Same workspace, skipping switch')
-      return true
+      return 'switched'
     }
 
     this.switching = true
@@ -88,8 +97,10 @@ class WorkspaceManager {
     try {
       const redirected = await this.handleWorkspaceRedirection(newWorkspace)
       if (redirected) {
-        api.window.close()
-        return false
+        // 不能在这里关闭窗口：用户可能正是通过「新建窗口」进来的，
+        // 静默关窗会表现为「选完目录整个窗口消失」。结果交回界面，
+        // 由界面提示并停留在原位置（选择页 / 当前工作空间）。
+        return 'redirected'
       }
 
       await this.saveCurrentWorkspace()
@@ -101,7 +112,7 @@ class WorkspaceManager {
       }
 
       logger.system.info('[WorkspaceManager] ToggleSwitch completed successfully')
-      return true
+      return 'switched'
     } catch (err) {
       const error = toAppError(err)
       logger.system.error(`[WorkspaceManager] ToggleSwitch failed: ${error.code}`, error)
@@ -114,7 +125,7 @@ class WorkspaceManager {
         }
       }
 
-      return false
+      return 'failed'
     } finally {
       this.switching = false
     }
@@ -152,8 +163,15 @@ class WorkspaceManager {
       )
     }
 
-    const switched = await this.switchTo(workspace)
-    if (!switched) {
+    const result = await this.switchTo(workspace)
+    if (result === 'redirected') {
+      throw new WorkspaceOpenError(
+        'redirected',
+        `Workspace already open in another window: ${workspace.roots[0] ?? ''}`,
+        workspace.roots[0] ?? ''
+      )
+    }
+    if (result !== 'switched') {
       throw new WorkspaceOpenError(
         'switch-failed',
         `Failed to open workspace: ${workspace.roots[0] ?? ''}`,
@@ -189,8 +207,13 @@ class WorkspaceManager {
       await this.openFolder(picked)
       return { status: 'opened' }
     } catch (err) {
-      if (err instanceof WorkspaceOpenError && err.code === 'missing-workspace') {
-        return { status: 'missing', path: err.path }
+      if (err instanceof WorkspaceOpenError) {
+        if (err.code === 'missing-workspace') {
+          return { status: 'missing', path: err.path }
+        }
+        if (err.code === 'redirected') {
+          return { status: 'redirected' }
+        }
       }
       logger.system.error('[WorkspaceManager] Open folder failed', err)
       return { status: 'failed' }

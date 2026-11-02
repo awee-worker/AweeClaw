@@ -20,6 +20,7 @@ import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
 import { api } from '../../adapters/electronBridge'
 import { workspaceManager, WorkspaceOpenError } from '@services/WorkspaceAdapter'
+import { applyActiveScenarioToWorkspace } from '@services/scenarioEntryApplier'
 import { toast } from '@components/foundation/NotificationProvider'
 import { getDirname, getFileName } from '@shared/toolkit/pathHelper'
 import { t } from '@renderer/i18n'
@@ -56,6 +57,8 @@ export default function WorkspacePickScreen() {
       // 选择器同时接受文件夹与 .aweeclaw-workspace 文件（多根）
       const outcome = await workspaceManager.openFolderFromDialog()
       if (outcome.status === 'opened') {
+        // 把上一个窗口正在用的场景落到本窗口：不做这一步，选完目录会停在默认工作台
+        applyActiveScenarioToWorkspace()
         finish()
       } else if (outcome.status === 'redirected') {
         // 该工作空间已在其他窗口打开：主进程已聚焦那个窗口
@@ -77,12 +80,19 @@ export default function WorkspacePickScreen() {
       setBusy(true)
       try {
         await workspaceManager.openFolder(path)
+        // 与「打开文件夹」一致：把当前场景落到本窗口，否则会停在默认工作台
+        applyActiveScenarioToWorkspace()
         finish()
       } catch (e) {
         if (e instanceof WorkspaceOpenError && e.code === 'missing-workspace') {
           // 目录被移走或删除：提示后刷新列表，避免同一失效项反复被点
           toast.error(t('workspace.folderNotExist', language), getFileName(path))
           void loadRecent()
+          return
+        }
+        if (e instanceof WorkspaceOpenError && e.code === 'redirected') {
+          // 该工作空间已在另一个窗口打开：主进程已聚焦那个窗口，本窗口保持在选择界面
+          toast.info(t('workspace.alreadyOpenElsewhere', language))
           return
         }
         logger.ui.error('[WorkspacePick] Failed to open recent workspace:', e)

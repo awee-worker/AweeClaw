@@ -321,6 +321,21 @@ function addRecentWorkspace(store: any, workspacePath: string): void {
  * @param currentWindow 当前窗口
  * @returns 已重定向返回 true；否则返回 false
  */
+/**
+ * 取 IPC 调用方对应的窗口 id
+ *
+ * windowWorkspaces 与 pendingWindowWorkspaces 都以 BrowserWindow id 为键，
+ * 而 event.sender.id 是 webContents id —— 两者由独立计数器分配，绝大多数情况下不相等。
+ * 混用会让登记与查找落在两套键上：判重时看不到已在其他窗口打开的工作空间，
+ * 新窗口也取不到自己在创建时登记的预置目录。因此统一经由本函数解析。
+ *
+ * @returns 窗口 id；sender 已销毁时返回 null
+ */
+function resolveSenderWindowId(event: Electron.IpcMainInvokeEvent): number | null {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  return win && !win.isDestroyed() ? win.id : null
+}
+
 function redirectToExistingWindow(
   windowManager: WindowManagerContext | undefined,
   roots: string[],
@@ -642,7 +657,10 @@ export function registerWorkspaceHandlers(
     // 带目录创建的新窗口，会话已预置在本窗口名下：必须优先消费它。
     // 若仍读全局键，新窗口会恢复成「最后打开的那个工作空间」，
     // 表现为「新建任务指定了 B，窗口打开的却是 A」。
-    const pending = windowManager?.takePendingWindowWorkspace?.(event.sender.id) ?? null
+    const senderWindowId = resolveSenderWindowId(event)
+    const pending = senderWindowId === null
+      ? null
+      : (windowManager?.takePendingWindowWorkspace?.(senderWindowId) ?? null)
     const session = pending ?? (store.get('lastWorkspaceSession') as StoredWorkspaceSession | null)
 
     if (session) {
@@ -664,8 +682,8 @@ export function registerWorkspaceHandlers(
         return result
       }
 
-      if (windowManager?.setWindowWorkspace && session.roots.length > 0) {
-        windowManager.setWindowWorkspace(event.sender.id, session.roots)
+      if (windowManager?.setWindowWorkspace && session.roots.length > 0 && senderWindowId !== null) {
+        windowManager.setWindowWorkspace(senderWindowId, session.roots)
       }
 
       securityManager.setWorkspacePath(session.roots[0] || null)
@@ -693,8 +711,8 @@ export function registerWorkspaceHandlers(
         return result
       }
 
-      if (windowManager?.setWindowWorkspace) {
-        windowManager.setWindowWorkspace(event.sender.id, [legacyPath])
+      if (windowManager?.setWindowWorkspace && senderWindowId !== null) {
+        windowManager.setWindowWorkspace(senderWindowId, [legacyPath])
       }
 
       securityManager.setWorkspacePath(legacyPath)
@@ -710,13 +728,20 @@ export function registerWorkspaceHandlers(
   ipcMain.handle('workspace:setActive', async (event, roots: string[]) => {
     if (!roots || roots.length === 0) return false
 
-    const mainWindow = getMainWindowFn()
-    if (redirectToExistingWindow(windowManager, roots, mainWindow!)) {
+    // 判重必须以发起请求的窗口为准。取「最后活跃窗口」会让调用方被当成别人：
+    // 新建窗口刚 show 时它恰好是 lastActiveWindow，判重虽能命中已开窗口，
+    // 但只要焦点顺序稍有不同就会漏判，同一目录于是被两个窗口同时打开。
+    const senderWindow = BrowserWindow.fromWebContents(event.sender)
+    const currentWindow =
+      senderWindow && !senderWindow.isDestroyed() ? senderWindow : getMainWindowFn()
+    if (!currentWindow) return false
+
+    if (redirectToExistingWindow(windowManager, roots, currentWindow)) {
       return { redirected: true, roots }
     }
 
     if (windowManager?.setWindowWorkspace) {
-      windowManager.setWindowWorkspace(event.sender.id, roots)
+      windowManager.setWindowWorkspace(currentWindow.id, roots)
     }
 
     const workspaceId = roots[0] ? await ensureWorkspaceMarker(roots[0]) : null

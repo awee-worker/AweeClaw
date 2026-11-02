@@ -411,7 +411,11 @@ export function ExplorerView() {
 
   const handleOpenFolder = async () => {
     // 选择器同时接受文件夹与 .aweeclaw-workspace 文件（多根）
-    await workspaceManager.openFolderFromDialog()
+    const outcome = await workspaceManager.openFolderFromDialog()
+    // 目标已在其他窗口打开：主进程已聚焦那个窗口，本窗口保持不变，只做提示
+    if (outcome.status === 'redirected') {
+      toast.info(t('workspace.alreadyOpenElsewhere', language))
+    }
   }
 
   const handleStartCreate = useCallback((path: string, type: 'file' | 'folder') => {
