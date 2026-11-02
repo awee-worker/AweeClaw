@@ -19,7 +19,6 @@ import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { scenarioLoader } from '@/scenarios'
-import { activateScenarioPanels, switchToFirstPanel } from '@components/scenario/panelUtils'
 import type { ScenarioPlugin } from '@shared/protocols/scenario'
 
 /**
@@ -39,7 +38,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** 把场景落到当前窗口：注册面板组件并切换侧栏首面板 */
-function applyScenario(scenario: ScenarioPlugin): void {
+async function applyScenario(scenario: ScenarioPlugin): Promise<void> {
   const scenarioId = scenario.id
   const workspaceRoot = useStore.getState().workspace?.roots?.[0] ?? null
 
@@ -49,6 +48,18 @@ function applyScenario(scenario: ScenarioPlugin): void {
       // 激活失败不影响面板落位：面板组件与 loader 生命周期相互独立
       void scenarioLoader.activate(scenarioId, workspaceRoot)
     }
+
+    // 面板注册工具必须动态导入，不能写成顶层静态 import。
+    //
+    // panelUtils 依赖 explorer/PanelRegistry，而 PanelRegistry 与「侧栏」分包
+    // 同属 sidebar chunk；sidebar chunk 顶层（todoHubStore 等）又会读取本 chunk
+    // （engine-core）的 sceneToolsPersistStorage。若这里静态导入，就会形成
+    // engine-core ↔ sidebar 的 chunk 循环：启动时 sidebar 先求值，读取本 chunk
+    // 尚未初始化的绑定，直接抛 "Cannot access '_x' before initialization"，
+    // 整窗白屏。动态导入把这条边推迟到工作空间就绪之后，chunk 图恢复无环。
+    const { activateScenarioPanels, switchToFirstPanel } = await import(
+      '@components/scenario/panelUtils'
+    )
     activateScenarioPanels(scenario)
     switchToFirstPanel(scenario)
     logger.ui.info('[ScenarioEntry] Applied active scenario to new window', {
@@ -71,7 +82,7 @@ async function waitThenApply(scenarioId: string): Promise<void> {
     while (Date.now() < deadline) {
       const scenario = scenarioRegistry.get(scenarioId)
       if (scenario) {
-        applyScenario(scenario)
+        await applyScenario(scenario)
         return
       }
       await sleep(SCENARIO_READY_POLL_MS)
@@ -98,7 +109,7 @@ export function applyActiveScenarioToWorkspace(): void {
 
   const scenario = scenarioRegistry.get(scenarioId)
   if (scenario) {
-    applyScenario(scenario)
+    void applyScenario(scenario)
     return
   }
 
