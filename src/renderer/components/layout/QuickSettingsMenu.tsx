@@ -6,11 +6,13 @@
  * - 界面主题：亮色 / 暗色 / 跟随系统、4 种配色、内置壁纸与用户保存的自定义壁纸主题，
  *   末尾通向完整的外观设置
  *
- * 交互：鼠标 hover 父项时向右展开二级菜单，点击选项立即生效。
- * 实现：父项与二级菜单放在同一个 div 内，统一管理 hover，避免移动断开。
+ * 交互：鼠标 hover 父项时向侧边展开二级菜单，点击选项立即生效。
+ * 实现：父项与二级菜单放在同一个 div 内统一管理 hover，面板位置与最大高度
+ *       由 useSubMenuPanel 按视口剩余空间实时计算。
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Globe, Sun, Moon, Monitor, Check, ChevronRight, ChevronLeft, Palette } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -26,6 +28,10 @@ import {
 import { api } from '@renderer/adapters/electronBridge'
 import { t, type Language } from '@renderer/i18n'
 import type { ThemeMode, ThemeColor } from '@store'
+import {
+  computeSubMenuPlacement,
+  type QuickSettingsDirection,
+} from './quickSettingsPlacement'
 
 /**
  * 二级菜单展开方向
@@ -34,7 +40,7 @@ import type { ThemeMode, ThemeColor } from '@store'
  * left：一级菜单来自顶部右上角的账号按钮，右侧已到窗口边缘，必须向左展开，
  *       否则二级菜单整块溢出到可视区之外。
  */
-export type QuickSettingsDirection = 'right' | 'left'
+export type { QuickSettingsDirection }
 
 interface QuickSettingsMenuProps {
   language: Language
@@ -51,18 +57,146 @@ interface QuickSettingsMenuProps {
 }
 
 /**
- * 二级菜单容器样式：按方向贴在一级菜单的左/右边缘
+ * 二级菜单面板的外观样式
+ *
+ * 位置、宽度与最大高度不写在这里，由 useSubMenuPanel 量完可用空间后用
+ * style 下发：面板贴着一级项摆放，而一级项又跟着用户菜单走，用户菜单
+ * 是贴着屏幕底部向上展开的，写死 top 会把「我的壁纸主题」那一长串推出
+ * 视口之外。
  *
  * 底色用 bg-popover（固定 96%）而不是 bg-surface/95：后者会乘 --panel-alpha，
  * 壁纸模式下只剩一成多不透明度，菜单直接和后面的页面糊在一起，字都看不清。
  */
-function subMenuClass(direction: QuickSettingsDirection, width = 'w-44'): string {
-  const anchor =
-    direction === 'left'
-      ? 'right-full mr-1 top-0'
-      : 'left-full ml-1 top-0'
-  return `absolute ${anchor} ${width} py-1 rounded-xl bg-popover backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-[10000]`
+const SUBMENU_PANEL_CLASS =
+  'py-1 rounded-xl bg-popover backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-[10000] overscroll-contain'
+
+/** 鼠标穿过缝隙时的关闭延迟，留出移动到面板上的时间 */
+const SUBMENU_CLOSE_DELAY = 150
+
+/**
+ * 二级菜单的展开逻辑
+ *
+ * 三件事一起管：
+ * 1. 定位：宽度固定，水平方向按 direction 贴在一级项的对应侧并夹在视口内；
+ *    垂直方向默认向下展开，只有会越过视口底边时才整体上移。
+ * 2. 高度：上移多少取决于面板内容高度，因此展开后要量一次 scrollHeight 再重算。
+ * 3. 悬停：一级项与面板之间有缝隙，鼠标穿过时会触发一次 mouseleave，
+ *    因此收起要延迟，重新进入任一侧都会撤销。
+ */
+function useSubMenuPanel(direction: QuickSettingsDirection, width: number) {
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const closeTimerRef = useRef<number | null>(null)
+  // 已量到的面板高度：为 0 表示还没量过，按「向下展开」算一次
+  const panelHeightRef = useRef(0)
+  const [isOpen, setIsOpen] = useState(false)
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
+
+  const cancelClose = useCallback(() => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }, [])
+
+  const place = useCallback((panelHeight = 0) => {
+    const trigger = triggerRef.current
+    if (!trigger) return
+
+    // 定位交给纯函数，边界情况（顶边对齐、底部溢出、视口矮）由它统一兜住
+    const placement = computeSubMenuPlacement(
+      trigger.getBoundingClientRect(),
+      { width: window.innerWidth, height: window.innerHeight },
+      direction,
+      width,
+      panelHeight,
+    )
+
+    // 还没量到高度时不设 maxHeight：一旦给了约束，面板会被压成 0 高，
+    // scrollHeight 也跟着变 0，测量就再也进行不下去了
+    const style: React.CSSProperties = {
+      position: 'fixed',
+      width,
+      left: placement.left,
+      top: placement.top,
+    }
+    if (panelHeight > 0) {
+      style.maxHeight = placement.maxHeight
+      style.overflowY = 'auto'
+    }
+    setPanelStyle(style)
+  }, [direction, width])
+
+  const handleMouseEnter = useCallback(() => {
+    cancelClose()
+    // 每次展开都重新量：壁纸主题数量变了，面板高度跟着变
+    panelHeightRef.current = 0
+    place()
+    setIsOpen(true)
+  }, [cancelClose, place])
+
+  /**
+   * 展开后量一次内容高度并重算位置。
+   *
+   * 用 layout effect 在绘制前完成：首次渲染不限制高度，量到的 scrollHeight 就是
+   * 面板完整高度，随后按它决定是否上移，用户看不到中间那一帧的溢出。
+   * 高度没变就不再 setState，避免每次渲染都重排。
+   */
+  useLayoutEffect(() => {
+    if (!isOpen) return
+    const el = panelRef.current
+    if (!el) return
+    const measured = el.scrollHeight
+    if (measured > 0 && measured !== panelHeightRef.current) {
+      panelHeightRef.current = measured
+      place(measured)
+    }
+  })
+
+  const handleMouseLeave = useCallback(() => {
+    cancelClose()
+    closeTimerRef.current = window.setTimeout(() => {
+      setIsOpen(false)
+      closeTimerRef.current = null
+    }, SUBMENU_CLOSE_DELAY)
+  }, [cancelClose])
+
+  useEffect(() => () => cancelClose(), [cancelClose])
+
+  // 窗口尺寸变化时重新量一次，否则面板会停在旧位置上
+  useEffect(() => {
+    if (!isOpen) return
+    const onResize = () => place(panelHeightRef.current)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [isOpen, place])
+
+  /**
+   * 把面板挂到 body 上渲染。
+   *
+   * 用户菜单容器带 backdrop-blur，backdrop-filter 会让它成为后代 fixed 元素的
+   * 包含块 —— 面板留在里面时，按视口算出的 top 会相对那个贴着屏幕底部的菜单盒
+   * 偏移，整块被推到屏幕下方。挂到 body 才能让 fixed 真正相对视口。
+   */
+  const renderPanel = useCallback((children: ReactNode) => {
+    if (!isOpen) return null
+    return createPortal(
+      <div
+        ref={panelRef}
+        className={SUBMENU_PANEL_CLASS}
+        style={panelStyle}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        {children}
+      </div>,
+      document.body,
+    )
+  }, [isOpen, panelStyle, handleMouseEnter, handleMouseLeave])
+
+  return { triggerRef, isOpen, renderPanel, handleMouseEnter, handleMouseLeave }
 }
+
 
 /**
  * 应用主题模式 + 配色并落盘。
@@ -112,7 +246,8 @@ const GROUP_TITLE_CLASS =
 
 /** 界面语言快速切换 */
 function LanguageSubMenu({ language, onClose, direction = 'right' }: QuickSettingsMenuProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const { triggerRef, renderPanel, handleMouseEnter, handleMouseLeave } =
+    useSubMenuPanel(direction, 176)
 
   const handleSelect = useCallback(async (lang: Language) => {
     try {
@@ -132,8 +267,9 @@ function LanguageSubMenu({ language, onClose, direction = 'right' }: QuickSettin
 
   return (
     <div
-      onMouseEnter={() => setIsOpen(true)}
-      onMouseLeave={() => setIsOpen(false)}
+      ref={triggerRef}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className="relative"
     >
       <div className={TRIGGER_CLASS}>
@@ -141,26 +277,25 @@ function LanguageSubMenu({ language, onClose, direction = 'right' }: QuickSettin
         <span className="flex-1 text-left">{t('layout.interfacelanguage', language)}</span>
         <SubMenuArrow direction={direction} />
       </div>
-      {isOpen && (
-        <div className={subMenuClass(direction)}>
-          {options.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => handleSelect(opt.value)}
-              className={ITEM_CLASS}
-            >
-              <span className="text-base">{opt.flag}</span>
-              <span className="flex-1 text-left">{opt.label}</span>
-              {language === opt.value && (
-                <Check className="w-3.5 h-3.5 text-accent" strokeWidth={2.5} />
-              )}
-            </button>
-          ))}
-        </div>
+      {renderPanel(
+        options.map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => handleSelect(opt.value)}
+            className={ITEM_CLASS}
+          >
+            <span className="text-base">{opt.flag}</span>
+            <span className="flex-1 text-left">{opt.label}</span>
+            {language === opt.value && (
+              <Check className="w-3.5 h-3.5 text-accent" strokeWidth={2.5} />
+            )}
+          </button>
+        )),
       )}
     </div>
   )
 }
+
 
 /** 界面主题快速切换：明暗模式、配色、壁纸，以及进入完整设置页的入口 */
 function ThemeSubMenu({
@@ -169,7 +304,8 @@ function ThemeSubMenu({
   direction = 'right',
   onOpenAppearanceSettings,
 }: QuickSettingsMenuProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const { triggerRef, isOpen, renderPanel, handleMouseEnter, handleMouseLeave } =
+    useSubMenuPanel(direction, 240)
   // 壁纸经 themeManager 直接写 DOM，不会触发 React 重渲染，选中态因此由本地状态承担
   const [activeWallpaperId, setActiveWallpaperId] = useState(() => {
     const active = themeManager.getActiveWallpaper()
@@ -286,8 +422,9 @@ function ThemeSubMenu({
 
   return (
     <div
-      onMouseEnter={() => setIsOpen(true)}
-      onMouseLeave={() => setIsOpen(false)}
+      ref={triggerRef}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className="relative"
     >
       <div className={TRIGGER_CLASS}>
@@ -295,8 +432,8 @@ function ThemeSubMenu({
         <span className="flex-1 text-left">{t('layout.interfacetheme', language)}</span>
         <SubMenuArrow direction={direction} />
       </div>
-      {isOpen && (
-        <div className={subMenuClass(direction, 'w-60')}>
+      {renderPanel(
+        <>
           {/* 主题模式 */}
           <div className={GROUP_TITLE_CLASS}>
             {t('layout.thememode', language)}
@@ -446,11 +583,12 @@ function ThemeSubMenu({
             </span>
             <ChevronRight className="w-3 h-3 text-text-muted" />
           </button>
-        </div>
+        </>,
       )}
     </div>
   )
 }
+
 
 export function QuickSettingsMenu({
   language,

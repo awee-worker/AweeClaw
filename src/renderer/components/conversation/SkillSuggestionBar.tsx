@@ -140,13 +140,18 @@ function SkillIcon({ icon, fallback = Wrench }: { icon?: string; fallback?: Luci
   return <Icon className="w-3.5 h-3.5" strokeWidth={1.5} />
 }
 
+/** 两端淡出的宽度：比按钮直径略宽一截，内容经过按钮前后各有一个缓冲带 */
+const EDGE_FADE = 44
+
 /**
- * 单侧滚动控件：渐变遮罩 + 圆形按钮，绝对定位浮在列表两端
+ * 单侧滚动按钮，绝对定位浮在列表两端
  *
  * 用绝对定位而不是流内排版，显隐只切换透明度与指针事件，
  * 不占用横向空间，因此列表宽度恒定，滚动到两端时不会因按钮消失而抖动。
- * 遮罩自身不接收指针事件（pointer-events-none），只有按钮可点，
- * 这样覆盖区域内的技能按钮依然可以正常点击与滚动。
+ *
+ * 按钮本身留一点透：底色 60% 再叠背景模糊，壁纸会隐约透过来，
+ * 静止时不再是一块实心色片；hover 才提到接近实底，可点性依然清楚。
+ * 边缘柔化交给 ScrollRow 的 mask，按钮只负责可点，不承担任何遮挡。
  */
 function ScrollEdge({
   direction,
@@ -165,9 +170,7 @@ function ScrollEdge({
       className={[
         'absolute inset-y-0 z-10 flex items-center pointer-events-none',
         'transition-opacity duration-200',
-        isLeft
-          ? 'left-0 pr-10 bg-gradient-to-r from-background-chat via-background-chat/75 to-transparent'
-          : 'right-0 pl-10 bg-gradient-to-l from-background-chat via-background-chat/75 to-transparent',
+        isLeft ? 'left-0' : 'right-0',
         visible ? 'opacity-100' : 'opacity-0',
       ].join(' ')}
     >
@@ -177,8 +180,11 @@ function ScrollEdge({
         tabIndex={visible ? 0 : -1}
         aria-label={isLeft ? '向左滚动' : '向右滚动'}
         className={[
-          'shrink-0 p-1 rounded-full border border-border/50 bg-surface/80 text-text-muted shadow-sm',
-          'hover:text-text-primary hover:border-accent/40 transition-all',
+          'shrink-0 flex items-center justify-center w-6 h-6 rounded-full',
+          'bg-popover/60 backdrop-blur-md ring-1 ring-white/10 text-text-muted',
+          'shadow-[0_2px_6px_rgb(0_0_0/0.28)]',
+          'hover:text-text-primary hover:bg-popover-hover hover:ring-accent/40',
+          'transition-colors duration-150',
           visible ? 'pointer-events-auto' : 'pointer-events-none',
         ].join(' ')}
       >
@@ -237,11 +243,36 @@ function ScrollRow({
     trackRef.current?.scrollBy({ left: direction * 240, behavior: 'smooth' })
   }, [])
 
+  /**
+   * 两端淡出：直接让滚动内容自己透明，不叠任何底色块
+   *
+   * 早前这里放过一层渐变色块来遮挡滚动中的内容，问题是它再柔也是矩形：
+   * 浅色主题下贴着列表两端会留下两个接近纯白的硬角，加圆角也只是把直角
+   * 修成圆角方块，白色补丁本身还在，且会盖住渐变、显得发闷。
+   * 改成对内容施加 mask 之后，边缘是「化开」而不是「被盖住」：
+   * 不存在任何形状的边缘，自然也谈不上白角；渐变全部由内容自身完成，
+   * 比底色块更通透，壁纸下也不会显形。
+   *
+   * 到头的哪一侧就不再淡出，因此起始位置左端、末尾右端都是干净边缘。
+   */
+  const edgeFade = useMemo<React.CSSProperties>(() => {
+    if (!overflowing) return {}
+    const left = atStart ? 0 : EDGE_FADE
+    const right = atEnd ? 0 : EDGE_FADE
+    const mask = `linear-gradient(to right, transparent 0, #000 ${left}px, #000 calc(100% - ${right}px), transparent 100%)`
+    return { maskImage: mask, WebkitMaskImage: mask }
+  }, [overflowing, atStart, atEnd])
+
   return (
     <div ref={wrapRef} className="flex items-center gap-1.5 w-full min-w-0">
       {leading}
       <div className="relative flex-1 min-w-0">
-        <div ref={trackRef} onScroll={sync} className="w-full overflow-x-auto scrollbar-none">
+        <div
+          ref={trackRef}
+          onScroll={sync}
+          style={edgeFade}
+          className="w-full overflow-x-auto scrollbar-none"
+        >
           <div className="flex w-max items-center gap-2 px-0.5 py-0.5">{children}</div>
         </div>
         <ScrollEdge direction={-1} visible={overflowing && !atStart} onClick={() => step(-1)} />
