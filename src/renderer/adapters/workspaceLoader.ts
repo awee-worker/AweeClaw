@@ -40,20 +40,95 @@ function buildThreadMessageVersions(threads: Record<string, ChatThread>): Record
   return versions
 }
 
-export async function rehydrateWorkspaceAgentStore(): Promise<void> {
+/** 线程是否正在执行（流式输出、工具循环或等待工具返回） */
+function isThreadExecuting(thread: ChatThread | undefined): boolean {
+  if (!thread) return false
+  const phase = thread.streamState?.phase
+  if (phase && phase !== 'idle') return true
+  const loopState = thread.executionMeta?.loopState
+  return loopState === 'running' || loopState === 'waiting_for_tools'
+}
+
+/**
+ * 合并磁盘快照与内存线程
+ *
+ * 重新登录会重新加载会话，但正在执行的任务并不会随登录态停止：内存里的线程比磁盘
+ * 快照新，甚至可能因为归属过滤而不在快照里。直接用磁盘快照覆盖会让正在跑的任务从
+ * 会话列表消失，而引擎仍在推进同一个 threadId —— 界面没有记录、后台还在执行。
+ * 因此保留执行中或版本更新的内存线程，其余以磁盘为准。
+ */
+function mergePreservingActiveThreads(
+  memoryThreads: Record<string, ChatThread>,
+  diskThreads: Record<string, ChatThread>,
+  currentUserId?: string,
+): Record<string, ChatThread> {
+  const merged: Record<string, ChatThread> = { ...diskThreads }
+
+  for (const [threadId, memoryThread] of Object.entries(memoryThreads)) {
+    // 换了账号登录时不要把上一个账号的线程带进当前会话列表
+    const ownerId = memoryThread.userId
+    if (ownerId && currentUserId && ownerId !== currentUserId) continue
+
+    const diskThread = diskThreads[threadId]
+    const executing = isThreadExecuting(memoryThread)
+
+    if (!diskThread) {
+      // 执行中的线程必须留在内存里，否则引擎与界面就断开了
+      if (executing) merged[threadId] = memoryThread
+      continue
+    }
+
+    if (executing || memoryThread.lastModified > diskThread.lastModified) {
+      merged[threadId] = memoryThread
+    }
+  }
+
+  return merged
+}
+
+export interface RehydrateAgentStoreOptions {
+  /**
+   * 是否保留内存中执行中 / 更新的线程。
+   * 认证恢复（重新登录）时必须开启，否则会覆盖掉正在执行的任务。
+   */
+  preserveActiveThreads?: boolean
+}
+
+export async function rehydrateWorkspaceAgentStore(
+  options: RehydrateAgentStoreOptions = {},
+): Promise<void> {
   const snapshot = await agentSessionRepository.getSnapshot()
-  const threads = snapshot?.threads || {}
+  const diskThreads = (snapshot?.threads || {}) as Record<string, ChatThread>
+
+  const previous = useAgentStore.getState()
+  const threads = options.preserveActiveThreads
+    ? mergePreservingActiveThreads(
+      previous.threads,
+      diskThreads,
+      useStore.getState().cloudUser?.id,
+    )
+    : diskThreads
+
+  // 合并后当前线程可能只存在于内存（执行中），优先保留它
+  const memoryCurrentThreadId = previous.currentThreadId
+  const currentThreadId = options.preserveActiveThreads
+    && memoryCurrentThreadId
+    && threads[memoryCurrentThreadId]
+    ? memoryCurrentThreadId
+    : (snapshot?.currentThreadId || null)
+
   logger.agent.info('[WorkspaceLoad] Session snapshot loaded', {
     threadCount: Object.keys(threads).length,
-    currentThreadId: snapshot?.currentThreadId || null,
+    currentThreadId,
     threadIds: Object.keys(threads),
+    preservedActiveThreads: options.preserveActiveThreads === true,
   })
 
   suspendAgentStorageWrites()
   try {
     useAgentStore.setState({
       threads,
-      currentThreadId: snapshot?.currentThreadId || null,
+      currentThreadId,
       threadMessageVersions: buildThreadMessageVersions(threads),
       branches: (snapshot?.branches || {}) as Record<string, Branch[]>,
       activeBranchId: (snapshot?.activeBranchId || {}) as Record<string, string | null>,
@@ -75,6 +150,11 @@ export interface RestoreAgentStoreOptions {
    *   空状态，由用户从左侧历史列表主动进入某个会话。
    */
   activateLastThread?: boolean
+  /**
+   * 是否保留内存中执行中 / 更新的线程（重新登录时使用）。
+   * 默认 false：应用启动、切换工作空间按磁盘快照整体恢复。
+   */
+  preserveActiveThreads?: boolean
 }
 
 export async function restoreWorkspaceAgentStore(options: RestoreAgentStoreOptions = {}): Promise<void> {
@@ -83,7 +163,9 @@ export async function restoreWorkspaceAgentStore(options: RestoreAgentStoreOptio
   // 初始化存储引擎（SQLite + 迁移 + 全量加载），统一在此完成，避免与 bindWorkspaceRootLite 重复加载
   await workspaceStorageRuntime.initializeStorage()
 
-  await rehydrateWorkspaceAgentStore()
+  await rehydrateWorkspaceAgentStore({
+    preserveActiveThreads: options.preserveActiveThreads,
+  })
 
   const { threads } = useAgentStore.getState()
   const threadIds = Object.keys(threads)

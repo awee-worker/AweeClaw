@@ -15,6 +15,7 @@ type AuthStep = 'login' | 'forgot' | 'reset'
 export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hideButton }: { language: Language; forceLoginOpen?: boolean; onLoginClose?: () => void; hideButton?: boolean }) {
   const {
     isAuthenticated,
+    sessionExpired,
     cloudUser,
     quota,
     login,
@@ -26,6 +27,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
   } = useStore(
     useShallow((s) => ({
       isAuthenticated: s.isAuthenticated,
+      sessionExpired: s.sessionExpired,
       cloudUser: s.cloudUser,
       quota: s.quota,
       login: s.login,
@@ -36,6 +38,9 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
       fetchQuota: s.fetchQuota,
     })),
   )
+
+  // 登录态失效（token 过期但任务仍在跑）时按未登录展示，引导用户从头像入口重新登录
+  const signedIn = isAuthenticated && Boolean(cloudUser) && !sessionExpired
 
   const [showLoginModal, setShowLoginModal] = useState(false)
 
@@ -61,19 +66,19 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
   const [forgotSuccess, setForgotSuccess] = useState(false)
 
   useEffect(() => {
-    if (isAuthenticated && !quota) {
+    if (signedIn && !quota) {
       fetchQuota().catch(() => {})
     }
-  }, [isAuthenticated])
+  }, [signedIn])
 
   useEffect(() => {
-    if (forceLoginOpen && !(isAuthenticated && cloudUser)) {
+    if (forceLoginOpen && !signedIn) {
       setShowLoginModal(true)
     }
     if (!forceLoginOpen && onLoginClose) {
       setShowLoginModal(false)
     }
-  }, [forceLoginOpen, isAuthenticated, cloudUser, onLoginClose])
+  }, [forceLoginOpen, signedIn, onLoginClose])
 
   const resetAuthForm = useCallback(() => {
     setAuthStep('login')
@@ -92,12 +97,12 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
   }, [])
 
   const handleClick = useCallback(() => {
-    if (isAuthenticated && cloudUser) {
+    if (signedIn) {
       useStore.getState().setShowUserProfilePage(true)
     } else {
       setShowLoginModal(true)
     }
-  }, [isAuthenticated, cloudUser])
+  }, [signedIn])
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -259,7 +264,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
 
   const displayName = formatUserDisplayName(cloudUser?.username || cloudUser?.email || cloudUser?.phone || '')
 
-  const tooltipText = (isAuthenticated && cloudUser)
+  const tooltipText = signedIn
     ? displayName
     : t('layout.notsignedin', language as Language)
 
@@ -286,7 +291,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
             ${showLoginModal ? 'bg-accent/10' : 'hover:bg-accent/5 active:scale-95'}
           `}
         >
-          {isAuthenticated ? (
+          {signedIn ? (
             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-accent/20 group-hover:shadow-accent/40 transition-shadow">
               {initial}
             </div>

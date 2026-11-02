@@ -487,17 +487,22 @@ export class SessionDb {
   /** 保存/更新线程元数据 */
   upsertThreadMeta(threadId: string, data: any): void {
     const now = Date.now()
-    const existing = this.db.prepare('SELECT thread_id, title FROM thread_meta WHERE thread_id = ?').get(threadId) as any
+    const existing = this.db.prepare('SELECT thread_id, title, user_id FROM thread_meta WHERE thread_id = ?').get(threadId) as any
 
     // 保护已有标题：如果新数据没有标题但数据库中已有标题，保留数据库中的标题
     const effectiveTitle = data.title?.trim() || (existing?.title ?? null)
+
+    // 保护已有归属：会话对象不一定携带 userId（例如登录态刚失效时保存的快照），
+    // 此时不能把数据库里已归属用户的线程改成未归属 —— 那会让该会话在重新登录后
+    // 从用户列表中消失。
+    const effectiveUserId = data.userId ?? existing?.user_id ?? null
 
     const fields = {
       title: effectiveTitle,
       created_at: data.createdAt ?? now,
       last_modified: data.lastModified ?? now,
       message_count: data.messageCount ?? 0,
-      user_id: data.userId ?? null,
+      user_id: effectiveUserId,
       context_items: JSON.stringify(data.contextItems ?? []),
       message_checkpoints: JSON.stringify(data.messageCheckpoints ?? []),
       context_summary: data.contextSummary ?? null,

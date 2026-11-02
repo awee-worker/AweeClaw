@@ -246,6 +246,7 @@ export const en = {
   'app.reload': 'Reload',
   'app.sessionexpired': 'Session Expired',
   'app.yoursessionhasexpiredplease': 'Your session has expired. Please sign in again.',
+  'app.sessionexpiredtaskrunning': 'The running task continues — sign in again from the account menu in the top-right corner.',
   'app.cannotopenbinaryfile': 'Cannot open binary file',
   'app.filenotfound': 'File not found',
   'app.fileistoolargeto': 'File is too large to open',

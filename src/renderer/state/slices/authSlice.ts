@@ -61,7 +61,9 @@ async function onAuthSuccess(userId: string | undefined): Promise<void> {
     logger.system.warn('[Auth] repairMissingTitles failed:', e)
   }
   try {
-    await restoreWorkspaceAgentStore()
+    // 保留执行中的线程：重新登录期间任务可能仍在跑，磁盘快照比内存旧，
+    // 整体覆盖会让正在执行的任务从会话列表消失
+    await restoreWorkspaceAgentStore({ preserveActiveThreads: true })
     logger.system.info('[Auth] Agent store rehydrated after auth')
   } catch (e) {
     logger.system.warn('[Auth] Rehydrate after auth failed:', e)
@@ -168,6 +170,14 @@ export interface CloudProviderModel {
 
 export interface AuthSlice {
   isAuthenticated: boolean
+  /**
+   * 登录态已失效（token 过期且刷新失败），但界面仍保留执行中的任务视图
+   *
+   * 与 isAuthenticated 分开维护：执行中失效时若清掉登录态，会话列表会按
+   * 「未登录用户」过滤，正在跑的任务记录立刻消失。这里只标记失效，
+   * 由账号入口显示「请登录」引导用户重新登录。
+   */
+  sessionExpired: boolean
   cloudUser: CloudUser | null
   cloudMode: 'local' | 'cloud'
   serverUrl: string
@@ -237,23 +247,58 @@ async function resolveServerUrlFromConfig(): Promise<string> {
 
 let authFailedHandler: (() => void) | null = null
 
+/** 是否存在正在执行的任务（流式输出、工具循环或等待工具返回） */
+async function hasRunningAgentTask(): Promise<boolean> {
+  try {
+    const { useAgentStore } = await import('@intelligence/state/IntelligenceStore')
+    const threads = useAgentStore.getState().threads
+    return Object.values(threads).some((thread) => {
+      const phase = thread?.streamState?.phase
+      if (phase && phase !== 'idle') return true
+      const loopState = thread?.executionMeta?.loopState
+      return loopState === 'running' || loopState === 'waiting_for_tools'
+    })
+  } catch (e) {
+    logger.system.warn('[Auth] Failed to inspect running tasks:', e)
+    return false
+  }
+}
+
 export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set, get) => {
   authFailedHandler = () => {
-    logger.system.warn('[Auth] authFailedHandler called, clearing all auth state')
-    clearPersistedAuth();
-    clearFeatureGuardCache();
+    void (async () => {
+      const wasAuthenticated = get().isAuthenticated
+      const runningTask = wasAuthenticated && (await hasRunningAgentTask())
 
-    const wasAuthenticated = get().isAuthenticated;
+      if (runningTask) {
+        // 任务执行中登录失效：不清登录态、不切界面。
+        // 清掉 cloudUser 会让会话列表按「未登录用户」过滤，正在执行的任务记录立刻消失；
+        // 跳欢迎页又会结束当前视图，而引擎其实仍在推进任务，最终表现为
+        // 「记录没了、AI 还在跑」。这里只提示重新登录，任务与视图保持原状，
+        // 用户可通过右上角账号入口重新登录，登录后按磁盘快照补齐会话。
+        clearFeatureGuardCache()
+        set({ sessionExpired: true })
+        logger.system.warn('[Auth] Session expired while task is running, keep UI state')
+        const language = useStore.getState().language as 'en' | 'zh'
+        toast.error(
+          t('app.sessionexpired', language as Language),
+          t('app.sessionexpiredtaskrunning', language as Language),
+        )
+        return
+      }
 
-    set({
-      isAuthenticated: false,
-      cloudUser: null,
-      quota: null,
-      cloudMode: 'local',
-      cloudModels: [],
-    });
+      logger.system.warn('[Auth] authFailedHandler called, clearing all auth state')
+      clearPersistedAuth();
+      clearFeatureGuardCache();
 
-    import('@store').then(({ useStore }) => {
+      set({
+        isAuthenticated: false,
+        cloudUser: null,
+        quota: null,
+        cloudMode: 'local',
+        cloudModels: [],
+      });
+
       const storeState = useStore.getState()
       useStore.setState({
         llmConfig: {
@@ -273,15 +318,12 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
         );
         useStore.getState().setShowWelcomePage(true);
       }
-    }).catch(() => {
-      if (wasAuthenticated) {
-        toast.error('登录已过期', '您的登录已过期，请重新登录');
-      }
-    });
+    })()
   }
 
   return {
   isAuthenticated: false,
+  sessionExpired: false,
   cloudUser: null,
   cloudMode: 'local',
   serverUrl: '',
@@ -302,7 +344,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     const hasCustomModel = hasUserCustomModelConfig();
     const targetMode = hasCustomModel ? 'local' : 'cloud';
     persistAuth({ serverUrl: effectiveUrl, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: targetMode });
-    set({ serverUrl: effectiveUrl, isAuthenticated: true, cloudMode: targetMode });
+    set({ serverUrl: effectiveUrl, isAuthenticated: true, sessionExpired: false, cloudMode: targetMode });
 
     // 顺序：先获取 profile，再并发获取其他数据
     await get().fetchProfile();
@@ -330,7 +372,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     const hasCustomModel = hasUserCustomModelConfig();
     const targetMode = hasCustomModel ? 'local' : 'cloud';
     persistAuth({ serverUrl: effectiveUrl, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: targetMode });
-    set({ serverUrl: effectiveUrl, isAuthenticated: true, cloudMode: targetMode });
+    set({ serverUrl: effectiveUrl, isAuthenticated: true, sessionExpired: false, cloudMode: targetMode });
 
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
@@ -355,7 +397,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     const hasCustomModel = hasUserCustomModelConfig();
     const targetMode = hasCustomModel ? 'local' : 'cloud';
     persistAuth({ serverUrl: effectiveUrl, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: targetMode });
-    set({ serverUrl: effectiveUrl, isAuthenticated: true, cloudMode: targetMode });
+    set({ serverUrl: effectiveUrl, isAuthenticated: true, sessionExpired: false, cloudMode: targetMode });
 
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
@@ -393,7 +435,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     setTokens(null);
     clearFeatureGuardCache();
     clearPersistedAuth();
-    set({ isAuthenticated: false, cloudUser: null, quota: null, cloudMode: 'local' });
+    set({ isAuthenticated: false, sessionExpired: false, cloudUser: null, quota: null, cloudMode: 'local' });
     restoreWorkspaceAgentStore().catch(() => {});
     // 通知主进程断开设备联动 WebSocket 连接、清除 IoT Bridge 云端凭据
     clearCloudCredentialsInMain();
@@ -573,7 +615,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     // backendApi.request 内部自动处理 401 和 token refresh
     try {
       const profile = await backendApi.get<CloudUser>('/api/v1/user/profile');
-      set({ isAuthenticated: true, cloudUser: profile });
+      set({ isAuthenticated: true, sessionExpired: false, cloudUser: profile });
     } catch (e) {
       // 检查 token 是否已被 backendApi 的 401 处理器清除
       if (!getTokens()) {
@@ -582,7 +624,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       }
       // token 有效但 profile 请求失败（网络问题等），保留认证状态
       logger.system.error('[Auth] Fetch profile after restore failed:', e);
-      set({ isAuthenticated: true });
+      set({ isAuthenticated: true, sessionExpired: false });
     }
 
     // 会话恢复成功后
@@ -622,7 +664,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     setServerUrl(effectiveServerUrl);
     setTokens({ accessToken: persisted.accessToken, refreshToken: persisted.refreshToken });
     // 先按已登录渲染：profile 请求失败（网络抖动等）不应该让新窗口退回未登录
-    set({ serverUrl: effectiveServerUrl, cloudMode: persisted.cloudMode, isAuthenticated: true });
+    set({ serverUrl: effectiveServerUrl, cloudMode: persisted.cloudMode, isAuthenticated: true, sessionExpired: false });
 
     // 用户信息在后台补齐，不阻塞新窗口启动；凭据失效时 backendApi 会清空 token，
     // 这里据此把登录态退回未登录，避免带着死 token 继续发请求

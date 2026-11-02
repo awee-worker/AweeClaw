@@ -255,6 +255,7 @@ export const zh = {
   'app.reload': '重新加载',
   'app.sessionexpired': '登录已过期',
   'app.yoursessionhasexpiredplease': '您的登录已过期，请重新登录',
+  'app.sessionexpiredtaskrunning': '当前任务仍在执行，请在右上角账号入口重新登录，任务不会中断',
   'app.cannotopenbinaryfile': '无法打开二进制文件',
   'app.filenotfound': '文件不存在',
   'app.fileistoolargeto': '文件太大，无法打开',

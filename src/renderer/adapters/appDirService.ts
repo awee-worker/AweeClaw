@@ -653,7 +653,8 @@ class ScenarioDirectoryManager {
   }
 
   private async reconcileSessionMeta(meta: SessionMeta): Promise<SessionMeta> {
-    const userId = this.getCurrentUserId() ?? null
+    const currentUserId = this.getCurrentUserId()
+    const userId = currentUserId ?? null
     const summaries = await this.sessionDb.listPersistedThreadSummaries(userId)
     const reconciledMeta = buildEffectiveSessionMeta(meta, summaries)
     const indexedThreadIds = [...meta.threadIds].sort()
@@ -665,6 +666,13 @@ class ScenarioDirectoryManager {
 
     if (!hasThreadSetDrift && !hasCurrentThreadDrift) {
       return meta
+    }
+
+    // 未登录（含登录过期）时摘要只覆盖「未归属」线程，据此回写会把当前用户的会话
+    // 从索引里抹掉：重新登录后就找不到登录前正在用的会话。这种情况只读不写。
+    if (!currentUserId) {
+      logger.system.info('[AweeClawDir] Skip session meta write-back: no authenticated user')
+      return reconciledMeta
     }
 
     await this.sessionDb.writeSessionMeta(toSessionIndexMeta(reconciledMeta))
