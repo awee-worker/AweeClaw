@@ -235,7 +235,7 @@ export default function AIEditPanel({
   return (
     <div
       ref={panelRef}
-      className={`absolute z-30 rounded-xl border border-border/60 bg-background-secondary/95 backdrop-blur-md ${
+      className={`absolute z-30 rounded-xl border border-border/60 bg-popover backdrop-blur-md ${
         dragging ? 'shadow-2xl shadow-black/30' : 'shadow-2xl'
       }`}
       style={{
@@ -320,7 +320,7 @@ export default function AIEditPanel({
           }}
           rows={2}
           placeholder={t('editor.browser.aiEditPlaceholder', language)}
-          className="w-full resize-none rounded-lg bg-background border border-border/50 px-2.5 py-2 text-xs text-text-primary placeholder:text-text-muted/70 focus:outline-none focus:border-accent/60"
+          className="w-full resize-none rounded-lg bg-input border border-input-border px-2.5 py-2 text-xs text-text-primary placeholder:text-text-muted/70 focus:outline-none focus:border-accent/60"
         />
 
         <div className="mt-2 flex items-center gap-2">
