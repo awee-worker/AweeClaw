@@ -52,6 +52,7 @@ describe('registerPrivilegedSchemes', () => {
       'plugin-bundle',
       'scenario-bundle',
       'vrm-asset',
+      'wallpaper-asset',
     ])
   })
 

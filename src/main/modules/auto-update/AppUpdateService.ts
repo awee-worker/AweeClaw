@@ -82,6 +82,17 @@ class UpdateService {
   private suppressStatusEvents = false
   /** 幂等保护：initialize() 重复调用时跳过，避免重复注册事件监听与定时器 */
   private isInitialized = false
+  /**
+   * 正在进行的下载任务
+   *
+   * 启动检查、周期性检查和用户手动点击可能同时触发下载。每触发一次就起一轮
+   * 新下载，进度会反复归零、带宽翻倍，因此同一时刻只允许一轮，后续调用复用该 Promise。
+   */
+  private downloadTask: Promise<void> | null = null
+  /** 已完成下载的版本号，避免同一版本被重复下载 */
+  private downloadedVersion: string | null = null
+  /** 本轮下载已上报的最高进度，用于抑制字节统计抖动导致的进度回退 */
+  private reportedProgress = 0
 
   initialize(mainWindow: BrowserWindow): void {
     if (this.isInitialized) {
@@ -195,14 +206,12 @@ class UpdateService {
     })
 
     autoUpdater.on('download-progress', (progress: ProgressInfo) => {
-      this.updateStatus({
-        status: 'downloading',
-        progress: Math.round(progress.percent),
-      })
+      this.handleDownloadProgress(Math.round(progress.percent))
     })
 
     autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
       logger.system.info(`[Updater] Update downloaded: ${info.version}, files:`, info.files)
+      this.downloadedVersion = info.version
       this.updateStatus({
         status: 'downloaded',
         version: info.version,
@@ -233,6 +242,14 @@ class UpdateService {
   }
 
   async checkForUpdates(): Promise<UpdateStatus> {
+    // 下载进行中或已下载完成时直接返回当前状态。
+    // 检查流程会先把状态推回 checking、再推成 available，那个 available 又会触发
+    // 新一轮下载，界面上的表现就是进度冲到 100% 后倒退回起点、反复重下。
+    if (this.isUpdateInFlight()) {
+      logger.system.info('[Updater] Skip update check: a download is already in progress')
+      return this.status
+    }
+
     // 优先走后端版本管理；失败或无更新时回退到 electron-updater / GitHub
     const backendResult = await this.checkForUpdatesViaBackend().catch(err => {
       logger.system.warn('[Updater] Backend version check failed, will fall back:', err)
@@ -337,6 +354,12 @@ class UpdateService {
    * - 接口不可用或返回无更新时返回 null，由调用方回退到原逻辑。
    */
   async checkForUpdatesViaBackend(setCheckingStatus = true): Promise<UpdateStatus | null> {
+    // 同 checkForUpdates：下载途中不再发起检查，避免把下载状态覆盖成 available
+    if (this.isUpdateInFlight()) {
+      logger.system.info('[Updater] Skip backend version check: a download is already in progress')
+      return this.status
+    }
+
     const serverUrl = this.readServerUrl()
     if (!serverUrl) {
       // 未配置后端地址，跳过后端检查
@@ -429,6 +452,12 @@ class UpdateService {
   }
 
   async checkForUpdatesViaGitHub(setCheckingStatus = true): Promise<UpdateStatus> {
+    // 同 checkForUpdates：下载途中不再发起检查
+    if (this.isUpdateInFlight()) {
+      logger.system.info('[Updater] Skip GitHub version check: a download is already in progress')
+      return this.status
+    }
+
     // 优先走后端版本管理（手动下载模式下同样适用，可拿到 critical/forceUpdate 元数据）
     const backendResult = await this.checkForUpdatesViaBackend(setCheckingStatus).catch(err => {
       logger.system.warn('[Updater] Backend version check failed (manual-download path):', err)
@@ -524,9 +553,68 @@ class UpdateService {
   }
 
   async downloadUpdate(): Promise<void> {
+    // 并发保护：启动检查、周期性检查和用户手动点击可能同时走到这里，
+    // 各起一轮下载会让进度反复归零，也会同时占用多份带宽。
+    if (this.downloadTask) {
+      logger.system.info('[Updater] Download already in progress, reusing the running task')
+      return this.downloadTask
+    }
+
+    // 已下载完成的版本不再重复下载，等待用户重启安装即可
+    if (this.status.status === 'downloaded') {
+      return
+    }
+
     if (this.status.status !== 'available') {
       throw new Error('No update available')
     }
+
+    const task = this.performDownload()
+    this.downloadTask = task
+    try {
+      await task
+    } finally {
+      if (this.downloadTask === task) {
+        this.downloadTask = null
+      }
+    }
+  }
+
+  /**
+   * 是否已有一轮下载在进行中
+   *
+   * downloaded 也必须算在内：安装包已落盘、只等重启时若放行检查，
+   * 后端会再次返回 available，状态被覆盖后又触发一轮全新下载，
+   * 表现就是进度跑满后倒退回起点、反复重下。
+   */
+  private isUpdateInFlight(): boolean {
+    return (
+      this.downloadTask !== null ||
+      this.status.status === 'downloading' ||
+      (this.status.status === 'downloaded' && this.downloadedVersion !== null)
+    )
+  }
+
+  /**
+   * 上报下载进度
+   *
+   * 百分比由字节数换算而来，收尾阶段会有几个点的抖动；electron-updater 内部重试
+   * 时则会真的从 0 重来。小幅回退直接丢弃，大幅回落到起点才认定是新的一轮。
+   */
+  private handleDownloadProgress(percent: number): void {
+    if (percent + 50 < this.reportedProgress) {
+      this.reportedProgress = percent
+    } else if (percent < this.reportedProgress) {
+      return
+    } else {
+      this.reportedProgress = percent
+    }
+
+    this.updateStatus({ status: 'downloading', progress: percent })
+  }
+
+  private async performDownload(): Promise<void> {
+    this.reportedProgress = 0
 
     // macOS 未签名应用兜底：Squirrel.Mac 要求应用必须签名才能用 quitAndInstall 重启，
     // 否则会出现「下载完成但点击立即重启无反应」或「应用退出后不重启」。
@@ -622,6 +710,8 @@ class UpdateService {
     this.suppressStatusEvents = true
 
     try {
+      // 新一轮下载：重置进度基线
+      this.reportedProgress = 0
       this.updateStatus({ status: 'downloading', progress: 0 })
 
       // electron-updater 需要先 checkForUpdates 获取 latest.yml，然后才能 downloadUpdate
@@ -682,6 +772,8 @@ class UpdateService {
     const fileName = this.extractFileName(url) || `AweeClaw-Setup-${this.status.version || 'unknown'}.${this.getInstallerExtension()}`
     const filePath = path.join(tempDir, `aweeclaw-update-${Date.now()}-${fileName}`)
 
+    // 回退到自建下载器意味着从头下载，进度基线一并重置
+    this.reportedProgress = 0
     this.updateStatus({ status: 'downloading', progress: 0 })
 
     logger.system.info(`[Updater] Downloading update from: ${url} -> ${filePath}`)
@@ -689,6 +781,7 @@ class UpdateService {
     try {
       await this.downloadFile(url, filePath)
       this.downloadedInstallerPath = filePath
+      this.downloadedVersion = this.status.version ?? null
       // 自定义下载的安装包（dmg/exe）需要用户手动打开安装，不走自动重启流程
       this.updateStatus({ status: 'downloaded', progress: 100, installerType: 'manual-open' })
       logger.system.info(`[Updater] Update downloaded successfully: ${filePath}`)
@@ -873,6 +966,10 @@ class UpdateService {
       this.currentDownloadRequest.destroy()
       this.currentDownloadRequest = null
     }
+    // 释放下载互斥状态，允许 destroy 后重新 initialize
+    this.downloadTask = null
+    this.downloadedVersion = null
+    this.reportedProgress = 0
     // 清理下载的临时文件
     if (this.downloadedInstallerPath) {
       try { fs.unlinkSync(this.downloadedInstallerPath) } catch { /* ignore */ }

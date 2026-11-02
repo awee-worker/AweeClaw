@@ -26,6 +26,7 @@
  */
 
 import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { buildLocalFileUrl } from '@shared/protocols/bundleUrl'
 import { scenarioLoader } from './ScenarioLoader'
 import { ProgrammaticScenarioModule } from './ProgrammaticScenarioModule'
 import type { ProgrammaticScenarioConfig } from './ProgrammaticScenarioModule'
@@ -125,19 +126,12 @@ export async function loadProgrammaticScenario(
     // 该协议在 Electron 主进程中注册为 standard: true，支持 dynamic import()
     // file:// 协议在 Electron 渲染进程中被 webSecurity 阻止，无法用于 import()
     //
-    // URL 构造说明：
-    // - 将 Windows 反斜杠转换为正斜杠
-    // - 使用 encodeURI 编码路径中的特殊字符（如空格）
-    // - 必须使用 'localhost' 作为 host，否则 Chrome 解析 standard 协议时会把
-    //   `scenario-bundle:///Users/liwei/...` 中的 `Users` 当作 host（会被小写化为 `users`），
-    //   导致路径前导 / 丢失，最终变成 `scenario-bundle://users/liwei/...` 而 fetch 失败。
-    // - 使用 `scenario-bundle://localhost/path` 格式：
+    // URL 构造统一由 buildLocalFileUrl 负责：host 固定 localhost，绝对路径必须带
+    // 前导 / 才会落在 pathname 上。Windows 的 C:/Users/... 缺少这个斜杠，
+    // 直接拼接会让 host 变成 localhostC 并丢掉盘符，协议处理器读文件返回 404。
     //   macOS/Linux: scenario-bundle://localhost/Users/liwei/...
     //   Windows:     scenario-bundle://localhost/C:/Users/...（handler 会剥离前导 /）
-    const normalizedDir = scenarioDir.replace(/\\/g, '/')
-    const encodedDir = encodeURI(normalizedDir)
-    const encodedEntry = encodeURI(config.entryPoint)
-    const scenarioBundleUrl = `scenario-bundle://localhost${encodedDir}/${encodedEntry}`
+    const scenarioBundleUrl = buildLocalFileUrl('scenario-bundle', scenarioDir, config.entryPoint)
 
     // 加载 bundle 内容并重写 bare specifier import
     // 重写后的代码用 Blob URL 加载，原始 scenarioBundleUrl 保留用于样式文件加载

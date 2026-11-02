@@ -10,6 +10,8 @@
  * @module shared/bareSpecifierRewriter
  */
 
+import { buildLocalFileUrl } from '@shared/protocols/bundleUrl'
+
 /**
  * 共享依赖 bare specifier → 全局模块 key 映射
  *
@@ -213,19 +215,14 @@ export async function fetchAndRewriteBundle(bundleUrl: string): Promise<string> 
 /**
  * 构造 plugin-bundle:// 协议的 URL
  *
- * URL 构造说明（与 scenario-bundle 一致）：
- * - 将 Windows 反斜杠转换为正斜杠
- * - 使用 encodeURI 编码路径中的特殊字符（如空格）
- * - 必须使用 'localhost' 作为 host，否则 Chrome 解析 standard 协议时会把
- *   路径中的首段当作 host（会被小写化），导致路径前导 / 丢失而 fetch 失败。
+ * 路径拼接统一交给 buildLocalFileUrl：Windows 的 C:/... 缺少前导斜杠时，
+ * 直接拼成 `plugin-bundle://localhostC:/...` 会让 host 变成 localhostC 并丢掉盘符，
+ * 协议处理器读文件返回 404。
  *
  * @param absDir 绝对目录路径（插件安装目录）
  * @param entry 相对入口文件名（如 "ui.js"）
  * @returns plugin-bundle://localhost/<encodedAbsDir>/<encodedEntry>
  */
 export function buildPluginBundleUrl(absDir: string, entry: string): string {
-  const normalizedDir = absDir.replace(/\\/g, '/')
-  const encodedDir = encodeURI(normalizedDir)
-  const encodedEntry = encodeURI(entry)
-  return `plugin-bundle://localhost${encodedDir}/${encodedEntry}`
+  return buildLocalFileUrl('plugin-bundle', absDir, entry)
 }
