@@ -11,6 +11,9 @@ import type { SceneMode } from '@protocols/sceneModeProtocol'
 import { BRAND } from '@shared/brand'
 import { StorageService } from '@shared/toolkit/StorageService'
 import { logger } from '@shared/toolkit/LogEngine'
+import { DEFAULT_HIDDEN_NAV_ITEMS } from '@shared/configuration/navAccountMenuItems'
+
+export { DEFAULT_HIDDEN_NAV_ITEMS }
 
 /** 侧边栏可选面板类型 */
 export type SidePanel =
@@ -331,6 +334,107 @@ function persistCustomMenus(menus: CustomMenu[]): void {
   }
 }
 
+/* ===================== 导航菜单显隐持久化 ===================== */
+
+const HIDDEN_NAV_ITEMS_STORAGE_KEY = `${BRAND.cssPrefix}-hidden-nav-items`
+
+/**
+ * 存储结构版本
+ *
+ * v1 是裸数组，无法区分「用户主动取消了默认隐藏」与「还没选择过」；
+ * v2 改为带版本号的对象，升级时把默认隐藏项合并进旧数据，之后用户怎么改
+ * 就是什么，不会每次启动又被加回来。
+ *
+ * 默认隐藏项本身定义在 shared/configuration/navAccountMenuItems，与可管理清单同源，
+ * 两边不会各自漂移。
+ */
+const HIDDEN_NAV_ITEMS_STORAGE_VERSION = 2
+
+
+interface StoredHiddenNavItems {
+  version: number
+  ids: string[]
+}
+
+const sanitizeNavIds = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? Array.from(new Set(value.filter((id): id is string => typeof id === 'string' && id.length > 0)))
+    : []
+
+/** 从 localStorage 恢复用户隐藏的导航菜单 id 列表 */
+function loadHiddenNavItems(): string[] {
+  try {
+    const raw = StorageService.get<string>(HIDDEN_NAV_ITEMS_STORAGE_KEY)
+    if (!raw) return [...DEFAULT_HIDDEN_NAV_ITEMS]
+
+    const parsed = JSON.parse(raw) as unknown
+
+    // 旧格式（裸数组）：视为未选择过默认隐藏项，合并后按新格式写回
+    if (Array.isArray(parsed)) {
+      const merged = Array.from(new Set([...sanitizeNavIds(parsed), ...DEFAULT_HIDDEN_NAV_ITEMS]))
+      persistHiddenNavItems(merged)
+      return merged
+    }
+
+    if (parsed && typeof parsed === 'object') {
+      const stored = parsed as Partial<StoredHiddenNavItems>
+      const ids = sanitizeNavIds(stored.ids)
+      if (stored.version === HIDDEN_NAV_ITEMS_STORAGE_VERSION) return ids
+      // 未来若新增默认隐藏项，在这里按版本号增量合并
+      const merged = Array.from(new Set([...ids, ...DEFAULT_HIDDEN_NAV_ITEMS]))
+      persistHiddenNavItems(merged)
+      return merged
+    }
+  } catch (e) {
+    logger.ui.warn('[LayoutSlice] Failed to load hidden nav items:', e)
+  }
+  return [...DEFAULT_HIDDEN_NAV_ITEMS]
+}
+
+/** 持久化用户隐藏的导航菜单 id 列表 */
+function persistHiddenNavItems(ids: string[]): void {
+  try {
+    const payload: StoredHiddenNavItems = {
+      version: HIDDEN_NAV_ITEMS_STORAGE_VERSION,
+      ids,
+    }
+    StorageService.set(HIDDEN_NAV_ITEMS_STORAGE_KEY, JSON.stringify(payload))
+  } catch (e) {
+    logger.ui.warn('[LayoutSlice] Failed to persist hidden nav items:', e)
+  }
+}
+
+/* ===================== 导航菜单排序持久化 ===================== */
+
+const NAV_MENU_ORDER_STORAGE_KEY = `${BRAND.cssPrefix}-nav-menu-order`
+
+/**
+ * 从 localStorage 恢复用户自定义的导航菜单顺序
+ *
+ * 只记录 id 序列，不记录菜单内容：菜单本身随场景 / 插件增删，顺序表里
+ * 可能留着已经不存在的 id，排序时无匹配项会被忽略，不需要在这里清理。
+ */
+function loadNavMenuOrder(): string[] {
+  try {
+    const raw = StorageService.get<string>(NAV_MENU_ORDER_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    return sanitizeNavIds(parsed)
+  } catch (e) {
+    logger.ui.warn('[LayoutSlice] Failed to load nav menu order:', e)
+  }
+  return []
+}
+
+/** 持久化导航菜单顺序 */
+function persistNavMenuOrder(ids: string[]): void {
+  try {
+    StorageService.set(NAV_MENU_ORDER_STORAGE_KEY, JSON.stringify(ids))
+  } catch (e) {
+    logger.ui.warn('[LayoutSlice] Failed to persist nav menu order:', e)
+  }
+}
+
 export interface LayoutSlice {
   /* ===== 面板可见性 ===== */
   activeSidePanel: SidePanel
@@ -505,6 +609,33 @@ export interface LayoutSlice {
   /** 删除自定义菜单 */
   removeCustomMenu: (id: string) => void
 
+  /* ===== 导航菜单显隐 ===== */
+  /**
+   * 用户手动隐藏的导航菜单 id（持久化到 localStorage）
+   *
+   * 场景菜单、插件菜单、自定义菜单共用一套 id：它们在导航栏里本就是同一列，
+   * 用户也不关心某个入口来自哪一方。
+   *
+   * 与 SidebarItemDescriptor.hidden 的区别：那是场景声明层面的「不作为常驻入口」，
+   * 这里是用户偏好，随时可在「菜单显示」里改回来。
+   */
+  hiddenNavItems: string[]
+  /** 整体覆盖隐藏列表（穿梭框一次提交多个变化） */
+  setHiddenNavItems: (ids: string[]) => void
+  /** 设置单个菜单的显隐 */
+  setNavItemHidden: (id: string, hidden: boolean) => void
+
+  /* ===== 导航菜单排序 ===== */
+  /**
+   * 用户在「菜单显示」里拖曳调整的导航菜单顺序（持久化到 localStorage）
+   *
+   * 与 hiddenNavItems 一样跨场景 / 插件 / 自定义菜单共用一套 id：顺序表只描述
+   * 「谁排在谁前面」，未列出的入口按原有分组顺序跟在后面。
+   */
+  navMenuOrder: string[]
+  /** 整体覆盖菜单顺序（拖曳结束后一次提交） */
+  setNavMenuOrder: (ids: string[]) => void
+
   /* ===== 内部浏览器 ===== */
   /** 内部浏览器当前打开的 URL（null 表示未打开） */
   internalBrowserUrl: string | null
@@ -591,6 +722,11 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
 
   /* ----- 自定义菜单初始状态（从 localStorage 恢复） ----- */
   customMenus: loadCustomMenus(),
+
+  /* ----- 导航菜单显隐初始状态（从 localStorage 恢复） ----- */
+  hiddenNavItems: loadHiddenNavItems(),
+  /* ----- 导航菜单排序初始状态（从 localStorage 恢复） ----- */
+  navMenuOrder: loadNavMenuOrder(),
 
   /* ----- 内部浏览器初始状态 ----- */
   internalBrowserUrl: null,
@@ -845,6 +981,35 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
       const next = state.customMenus.filter((m) => m.id !== id)
       persistCustomMenus(next)
       return { customMenus: next }
+    }),
+
+  /* ----- 导航菜单显隐操作 ----- */
+  setHiddenNavItems: (ids) =>
+    set(() => {
+      // 去重后再落盘：穿梭框会成批提交，重复 id 会让隐藏计数虚高
+      const next = Array.from(new Set(ids.filter((id) => typeof id === 'string' && id.length > 0)))
+      persistHiddenNavItems(next)
+      return { hiddenNavItems: next }
+    }),
+  setNavItemHidden: (id, hidden) =>
+    set((state) => {
+      const exists = state.hiddenNavItems.includes(id)
+      // 状态未变时不写盘、不触发订阅者重渲染
+      if (hidden === exists) return state
+      const next = hidden
+        ? [...state.hiddenNavItems, id]
+        : state.hiddenNavItems.filter((item) => item !== id)
+      persistHiddenNavItems(next)
+      return { hiddenNavItems: next }
+    }),
+
+  /* ----- 导航菜单排序操作 ----- */
+  setNavMenuOrder: (ids) =>
+    set(() => {
+      // 拖曳结束一次性提交，去重后落盘，避免同一 id 出现两次导致排序不稳定
+      const next = Array.from(new Set(ids.filter((id) => typeof id === 'string' && id.length > 0)))
+      persistNavMenuOrder(next)
+      return { navMenuOrder: next }
     }),
 
   /* ----- 内部浏览器操作 ----- */

@@ -8,7 +8,6 @@ import { getLucideIcon } from '../foundation/IconMap'
 import { Logo } from '../foundation/BrandMark'
 import { PanelLeftIcon } from '../foundation/PanelLeftIcon'
 import { useAgentActions } from '@hooks/useAgent'
-import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
 import { resolveUserMenuPlacement } from '@shared/protocols/scenario'
 import type { SidePanel } from '@store/slices'
 import { BRAND } from '@shared/brand'
@@ -21,6 +20,8 @@ import AddCustomMenuDialog from '../browser/AddCustomMenuDialog'
 import { useMailUnreadCount } from '@renderer/hooks/useMailUnreadCount'
 import { useTodoHubStore } from '../todo-hub/todoHubStore'
 import { NAV_RAIL_WIDTH_EXPANDED, NAV_RAIL_WIDTH_COLLAPSED } from './navRailMetrics'
+import { resolveScenarioSidebarItems, ACCOUNT_MENU_ITEMS } from './navMenuCatalog'
+import { shouldScrollMenu, sortMenusByOrder } from './menuVisibilityModel'
 import ChatHistoryPart from '@renderer/shell/parts/ChatHistoryPart'
 import RailUserPart from '@renderer/shell/parts/RailUserPart'
 
@@ -32,15 +33,16 @@ const isMac = typeof navigator !== 'undefined' && (
 
 
 /**
- * 场景未声明 sidebarItems 时的兜底菜单。
+ * 菜单条目超过该数量时，菜单区改为内部滚动
  *
- * explorer 标记 hidden：它由「新建任务」按钮按需激活（打开工作空间文件面板），
- * 不作为常驻导航项，避免与「新建任务」的语义重复。
+ * 这一列原本是 flex-shrink-0 的：菜单越多，下方「最近任务」被压得越扁，
+ * 插件装得多的时候整块列表会直接消失。超过阈值后把菜单区限高滚动，
+ * 与「最近任务」各自持有自己的可视区域。
  */
-const DEFAULT_ITEMS: SidebarItemDescriptor[] = [
-  { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作空间', component: 'ExplorerView', position: 0, hidden: true },
-  { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1 },
-]
+const MENU_SCROLL_THRESHOLD = 15
+
+/** 单个菜单项占位高度（条目 38px + 间距 2px），用于换算滚动区上限 */
+const MENU_ITEM_SLOT_HEIGHT = 40
 
 /**
  * 邮件中心导航项 id
@@ -83,6 +85,30 @@ function NavPill({ active }: { active: boolean }) {
  * 用于「工作场景」「插件与技能」「费用中心」等入口：这些页面内部虽然有
  * 到期提醒横幅，但用户不主动点进去就看不到，角标是唯一能提前暴露风险的信号。
  */
+/**
+ * 导航栏渲染用的统一条目
+ *
+ * 场景菜单、用户菜单里的功能入口、自定义网页菜单原本各成一段渲染，顺序被分组锁死。
+ * 合并成同一形状之后，才能按用户在「菜单显示」里拖曳的顺序统一排序与渲染。
+ */
+interface NavRailEntry {
+  id: string
+  /** lucide 图标名，取值见 IconMap */
+  icon: string
+  /** 已按当前界面语言取好的显示文案 */
+  label: string
+  /** 悬停提示，自定义菜单用它显示 URL */
+  title?: string
+  /** 角标数量（邮件未读 / 待办未完成） */
+  badge?: number
+  /** 展开态是否在标签右侧挂角标：待办的数量已写进标签，不再重复挂 */
+  showLabelBadge?: boolean
+  isActive: boolean
+  onSelect: () => void
+  /** 自定义菜单的删除按钮 */
+  onDelete?: () => void
+}
+
 function MenuBadge({ count, title }: { count: number; title?: string }) {
   if (count <= 0) return null
   return (
@@ -115,11 +141,15 @@ export default function NavigationRail() {
     setShowWelcomePage,
     closeAllFullPages,
     customMenus,
+    hiddenNavItems,
+    setShowSettingsPage,
+    setSettingsIntent,
     removeCustomMenu,
     openInternalBrowser,
     activeCustomMenuId,
     closeInternalBrowser,
     setChatVisible,
+    navMenuOrder,
     enterFocusLayout,
   } = useStore(useShallow(s => ({
     activeSidePanel: s.activeSidePanel,
@@ -135,11 +165,15 @@ export default function NavigationRail() {
     setShowWelcomePage: s.setShowWelcomePage,
     closeAllFullPages: s.closeAllFullPages,
     customMenus: s.customMenus,
+    hiddenNavItems: s.hiddenNavItems,
+    setShowSettingsPage: s.setShowSettingsPage,
+    setSettingsIntent: s.setSettingsIntent,
     removeCustomMenu: s.removeCustomMenu,
     openInternalBrowser: s.openInternalBrowser,
     activeCustomMenuId: s.activeCustomMenuId,
     closeInternalBrowser: s.closeInternalBrowser,
     setChatVisible: s.setChatVisible,
+    navMenuOrder: s.navMenuOrder,
     enterFocusLayout: s.enterFocusLayout,
   })))
 
@@ -150,6 +184,14 @@ export default function NavigationRail() {
    * 这里单独订阅，避免为一个布尔值把账号相关的整组动作塞进上面的解构里。
    */
   const showUserProfilePage = useStore(s => s.showUserProfilePage)
+
+  /**
+   * 设置页的打开意图
+   *
+   * 「专家库」在导航栏里的选中态只能从意图判断：它打开的就是设置页的角色库分页，
+   * 没有独立的面板 id 可以比对。
+   */
+  const settingsIntent = useStore(s => s.settingsIntent)
 
   const { createThread } = useAgentActions()
 
@@ -169,21 +211,25 @@ export default function NavigationRail() {
 
 
   const scenario = scenarioRegistry.get(activeScenarioId)
-  const rawSidebarItems = scenario?.ui?.sidebarItems?.length
-    ? [...scenario.ui.sidebarItems].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-    : DEFAULT_ITEMS
-  const scenarioSidebarItems = rawSidebarItems.filter(item => {
-    if (item.id === 'checkpoint' && activeScenarioId !== 'dev-assistant') return false
-    // hidden 入口不在导航菜单显示，但仍注册到 PanelRegistry 可被代码激活
-    if (item.hidden) return false
-    return true
-  })
+  // 场景导航项的排序与过滤统一在 navMenuCatalog 里做：「菜单显示」设置读的是同一份清单
+  const scenarioSidebarItems = resolveScenarioSidebarItems(activeScenarioId)
 
   // 合并插件贡献的侧边栏面板（来自 PluginUiRegistry）
   // 显隐完全由 sidebarItems[].hidden 决定（上方已过滤），不再做全局硬编码屏蔽，
   // 否则场景无法控制自己的导航项，声明的入口会静默失效。
   const { sidebarItems: pluginSidebarItems } = usePluginExtensions()
-  const sidebarItems = [...scenarioSidebarItems, ...pluginSidebarItems]
+  const sidebarItems = [...scenarioSidebarItems, ...pluginSidebarItems.filter(item => !item.hidden)]
+
+  // 用户在「菜单显示」里隐藏的入口：只影响导航栏渲染，面板本身仍可被代码激活
+  const visibleSidebarItems = sidebarItems.filter((item) => !hiddenNavItems.includes(item.id))
+  const visibleCustomMenus = customMenus.filter((menu) => !hiddenNavItems.includes(menu.id))
+  // 从用户菜单并入的功能入口（专家库 / 任务中心）：默认隐藏；
+  // 场景或插件已声明同名入口时不重复渲染，避免左侧出现两个指向同一页的按钮
+  const visibleAccountItems = ACCOUNT_MENU_ITEMS.filter(
+    (item) => !hiddenNavItems.includes(item.id) && !sidebarItems.some((sidebar) => sidebar.id === item.id),
+  )
+
+  // 菜单数量与是否滚动在合并排序之后计算，见下方 visibleNavEntries
 
   /**
    * 插件更新可能删掉它原先贡献的导航项，此时该项对应的面板组件已在
@@ -205,6 +251,16 @@ export default function NavigationRail() {
 
     setActiveSidePanel(null)
   }, [pluginSidebarItems, activeSidePanel, setActiveSidePanel])
+
+  /**
+   * 用户刚把「正停在上面」的面板隐藏掉：左侧已经没有回它的入口，
+   * 主区域却还停在那个面板上，看起来像界面卡住了。这里收回面板视图。
+   */
+  useEffect(() => {
+    if (!activeSidePanel) return
+    if (!hiddenNavItems.includes(activeSidePanel)) return
+    setActiveSidePanel(null)
+  }, [hiddenNavItems, activeSidePanel, setActiveSidePanel])
 
   const scenarioChrome = scenario?.ui?.chrome
 
@@ -281,6 +337,30 @@ export default function NavigationRail() {
   }
 
   /**
+   * 打开用户菜单里的功能入口
+   *
+   * 与账号菜单中的同名项保持完全一致的行为：专家库落到设置页的角色库分页，
+   * 任务中心切换右侧的 ledger 面板。两处各写一份属于代码重复，但这两项各自
+   * 依赖不同的 store 动作，抽公共函数反而要在两边都解构一整套 action。
+   */
+  const handleAccountMenuClick = (itemId: string) => {
+    if (itemId === 'taskCenter') {
+      closeAllFullPages()
+      closePanelDrawer()
+      closeSceneToolDrawer()
+      setShowWorkflow(false)
+      setActiveSidePanel(activeSidePanel === 'ledger' ? null : 'ledger')
+      closeInternalBrowser()
+      return
+    }
+
+    // 其余项（专家库）都是设置页的分页：先清掉全屏页，再带意图打开设置页
+    closeAllFullPages()
+    setSettingsIntent({ tab: itemId })
+    setShowSettingsPage(true)
+  }
+
+  /**
    * 打开自定义菜单（内部浏览器）
    *
    * 分两步走：收起侧边栏、关闭全屏页面都会让主区域重新分配宽度，紧接着挂载
@@ -344,6 +424,74 @@ export default function NavigationRail() {
   // 当前会话的选中态统一由历史会话列表体现（见 ChatHistoryPart）。
   // 若绑定 activeSidePanel === 'explorer'，会导致仅打开工作空间面板时误高亮。
   const newTaskActive = false
+
+  /**
+   * 导航条目：场景 / 插件菜单、用户菜单里的功能入口、自定义网页菜单合成一列
+   *
+   * 合并后再按用户拖曳的顺序整体排一次。原本三类各自成段渲染，顺序被分组锁死，
+   * 「菜单显示」里拖出来的顺序最多只能在自己那一段内生效，跨段调序会静默失效。
+   */
+  const visibleNavEntries: NavRailEntry[] = (() => {
+    const entries: NavRailEntry[] = visibleSidebarItems.map((item) => {
+      const baseLabel = language === 'zh' ? item.labelZh : item.label
+      // 邮件中心 / 待办中心各自挂角标（待办已在标签显示数量，展开态不重复挂）
+      const badge =
+        item.id === MAIL_CENTER_ITEM_ID
+          ? mailUnread
+          : item.id === TODO_HUB_ITEM_ID
+            ? pendingTodoCount
+            : 0
+      const isActive =
+        drawerTarget?.panelId === item.id ||
+        (!showWelcomePage && !showSettingsPage && !showUserProfilePage && activeSidePanel === item.id)
+      return {
+        id: item.id,
+        icon: item.icon,
+        // 待办项在标签后直接显示未完成数量，如「待办（5）」
+        label:
+          item.id === TODO_HUB_ITEM_ID && pendingTodoCount > 0
+            ? `${baseLabel}（${pendingTodoCount}）`
+            : baseLabel,
+        badge,
+        showLabelBadge: item.id !== TODO_HUB_ITEM_ID,
+        isActive,
+        onSelect: () => handleMenuItemClick(item.id, isActive),
+      }
+    })
+
+    // 用户菜单里的功能入口（专家库 / 任务中心）：点击行为与账号菜单中的同名项一致
+    for (const item of visibleAccountItems) {
+      const isActive =
+        item.id === 'taskCenter'
+          ? !showWelcomePage && !showSettingsPage && activeSidePanel === 'ledger'
+          : showSettingsPage && settingsIntent?.tab === item.id
+      entries.push({
+        id: item.id,
+        icon: item.icon,
+        label: language === 'zh' ? item.labelZh : item.label,
+        isActive,
+        onSelect: () => handleAccountMenuClick(item.id),
+      })
+    }
+
+    // 自定义菜单：网页入口，由内部浏览器打开
+    for (const menu of visibleCustomMenus) {
+      entries.push({
+        id: menu.id,
+        icon: menu.icon,
+        label: menu.name,
+        title: menu.url,
+        isActive: !showWelcomePage && activeCustomMenuId === menu.id,
+        onSelect: () => handleOpenCustomMenu(menu),
+        onDelete: () => removeCustomMenu(menu.id),
+      })
+    }
+
+    return sortMenusByOrder(entries, navMenuOrder)
+  })()
+
+  const menuItemCount = visibleNavEntries.length
+  const menuScrollable = shouldScrollMenu(menuItemCount, MENU_SCROLL_THRESHOLD)
 
 
   /*
@@ -516,6 +664,12 @@ export default function NavigationRail() {
         }
         .${p}-nav-rail[data-expanded="false"] .${p}-nav-rail-label {
           display: none;
+        }
+        .${p}-nav-rail-menu-scroll {
+          /* 限高生效后由内部滚动接管，不参与外层纵向压缩 */
+          flex-shrink: 0;
+          min-height: 0;
+          overscroll-behavior: contain;
         }
         .${p}-nav-rail-divider {
           width: 100%;
@@ -707,59 +861,85 @@ export default function NavigationRail() {
         </HintOverlay>
       ))}
 
+      {/*
+        菜单区：场景菜单与自定义菜单共用一块可视区域。
+        条目超过阈值后这里限高滚动 —— 这一列原本是 flex-shrink-0 的，菜单越多
+        下方「最近任务」被压得越扁，插件装得多时整块列表会直接消失。
+      */}
+      <div
+        className={`${p}-nav-rail-menu-scroll w-full flex flex-col ${
+          menuScrollable ? `overflow-y-auto ${navRailExpanded ? 'custom-scrollbar pr-0.5' : 'no-scrollbar'}` : ''
+        }`}
+        style={
+          menuScrollable
+            ? { maxHeight: `min(${MENU_SCROLL_THRESHOLD * MENU_ITEM_SLOT_HEIGHT}px, 55vh)` }
+            : undefined
+        }
+      >
+      {/*
+        导航菜单：场景 / 插件菜单、用户菜单里的功能入口、自定义网页菜单已经合并成
+        一份有序清单（见 visibleNavEntries），这里只负责按顺序渲染，不再分组。
+      */}
       <div className="flex-shrink-0 w-full flex flex-col gap-0.5">
-        {sidebarItems.map((item) => {
-          const IconComponent = getLucideIcon(item.icon)
-          const baseLabel = language === 'zh' ? item.labelZh : item.label
-          // 待办项在标签后直接显示未完成数量，如「待办（5）」
-          const label =
-            item.id === TODO_HUB_ITEM_ID && pendingTodoCount > 0
-              ? `${baseLabel}（${pendingTodoCount}）`
-              : baseLabel
-          // 邮件中心 / 待办中心各自挂一个角标（待办已在标签显示数量，不再重复挂角标）
-          const badge =
-            item.id === MAIL_CENTER_ITEM_ID
-              ? mailUnread
-              : item.id === TODO_HUB_ITEM_ID
-                ? pendingTodoCount
-                : 0
-          const isActive =
-            drawerTarget?.panelId === item.id ||
-            (!showWelcomePage && !showSettingsPage && !showUserProfilePage && activeSidePanel === item.id)
-          const onSelect = () => handleMenuItemClick(item.id, isActive)
+        {visibleNavEntries.map((entry) => {
+          const IconComponent = getLucideIcon(entry.icon)
+          const badge = entry.badge ?? 0
           return navRailExpanded ? (
             <button
-              key={item.id}
-              onClick={onSelect}
-              className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
-              data-active={isActive}
+              key={entry.id}
+              title={entry.title}
+              onClick={entry.onSelect}
+              className={`${p}-nav-rail-item hover:bg-text-primary/[0.06] ${entry.onDelete ? 'group' : ''}`}
+              data-active={entry.isActive}
             >
               <IconComponent
-                className={`w-[18px] h-[18px] transition-all duration-200 flex-shrink-0 ${isActive ? 'scale-105' : 'opacity-60'}`}
-                strokeWidth={isActive ? 2 : 1.5}
+                className={`w-[18px] h-[18px] transition-all duration-200 flex-shrink-0 ${entry.isActive ? 'scale-105' : 'opacity-60'}`}
+                strokeWidth={entry.isActive ? 2 : 1.5}
               />
-              <span className={`${p}-nav-rail-label ${isActive ? 'text-accent' : ''}`}>
-                {label}
+              <span
+                className={`${p}-nav-rail-label ${entry.onDelete ? 'flex-1 truncate' : ''} ${entry.isActive ? 'text-accent' : ''}`}
+              >
+                {entry.label}
               </span>
-              {badge > 0 && item.id !== TODO_HUB_ITEM_ID && (
+              {badge > 0 && entry.showLabelBadge !== false && (
                 <MenuBadge
                   count={badge}
-                  title={language === 'zh' ? '有未读邮件' : 'Unread mail'}
+                  title={
+                    entry.id === MAIL_CENTER_ITEM_ID
+                      ? language === 'zh'
+                        ? '有未读邮件'
+                        : 'Unread mail'
+                      : undefined
+                  }
                 />
+              )}
+              {/* 自定义菜单的删除按钮：悬停该项时才出现，避免误删 */}
+              {entry.onDelete && (
+                <span
+                  role="button"
+                  title={t('layout.deletemenu', language as Language)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    entry.onDelete?.()
+                  }}
+                  className="w-5 h-5 mr-1 rounded flex items-center justify-center text-text-muted opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-500/10 transition-all flex-shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </span>
               )}
             </button>
           ) : (
-            <HintOverlay key={item.id} content={label} side="right" delay={400}>
+            <HintOverlay key={entry.id} content={entry.label} side="right" delay={400}>
               <button
-                onClick={onSelect}
+                onClick={entry.onSelect}
                 className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
-                data-active={isActive}
+                data-active={entry.isActive}
               >
-                <NavPill active={isActive} />
+                <NavPill active={entry.isActive} />
                 <span className="relative inline-flex">
                   <IconComponent
-                    className={`w-[18px] h-[18px] transition-all duration-200 ${isActive ? 'scale-105' : 'opacity-60'}`}
-                    strokeWidth={isActive ? 2 : 1.5}
+                    className={`w-[18px] h-[18px] transition-all duration-200 ${entry.isActive ? 'scale-105' : 'opacity-60'}`}
+                    strokeWidth={entry.isActive ? 2 : 1.5}
                   />
                   {badge > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] px-[3px] flex items-center justify-center text-[9px] font-semibold bg-accent text-white rounded-full leading-none">
@@ -772,49 +952,9 @@ export default function NavigationRail() {
           )
         })}
       </div>
+      </div>
 
-      {/* 自定义菜单：用户通过「自定义菜单」入口添加的网页菜单（内部浏览器打开） */}
-      {customMenus.length > 0 && (
-        <div className="flex flex-col gap-0.5 mt-1">
-          {customMenus.map((menu) => {
-            const MenuIcon = getLucideIcon(menu.icon)
-            const isCustomMenuActive = !showWelcomePage && activeCustomMenuId === menu.id
-            return navRailExpanded ? (
-              <button
-                key={menu.id}
-                title={menu.url}
-                onClick={() => handleOpenCustomMenu(menu)}
-                className={`${p}-nav-rail-item hover:bg-text-primary/[0.06] group`}
-                data-active={isCustomMenuActive}
-              >
-                <MenuIcon className={`w-[18px] h-[18px] transition-all duration-200 flex-shrink-0 ${isCustomMenuActive ? 'scale-105' : 'opacity-60'}`} strokeWidth={isCustomMenuActive ? 2 : 1.5} />
-                <span className={`${p}-nav-rail-label flex-1 truncate ${isCustomMenuActive ? 'text-accent' : ''}`}>{menu.name}</span>
-                <span
-                  role="button"
-                  title={t('layout.deletemenu', language as Language)}
-                  onClick={(e) => { e.stopPropagation(); removeCustomMenu(menu.id) }}
-                  className="w-5 h-5 mr-1 rounded flex items-center justify-center text-text-muted opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-500/10 transition-all flex-shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </span>
-              </button>
-            ) : (
-              <HintOverlay key={menu.id} content={menu.name} side="right" delay={400}>
-                <button
-                  onClick={() => handleOpenCustomMenu(menu)}
-                  className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
-                  data-active={isCustomMenuActive}
-                >
-                  <NavPill active={isCustomMenuActive} />
-                  <MenuIcon className={`w-[18px] h-[18px] transition-all duration-200 ${isCustomMenuActive ? 'scale-105' : 'opacity-60'}`} strokeWidth={isCustomMenuActive ? 2 : 1.5} />
-                </button>
-              </HintOverlay>
-            )
-          })}
-        </div>
-      )}
-
-      {/* 自定义菜单添加入口 */}
+      {/* 自定义菜单添加入口（固定在滚动区外，菜单再多也始终可点） */}
       {(() => {
         const customMenuLabel = t('layout.custommenu', language as Language)
         return navRailExpanded ? (
