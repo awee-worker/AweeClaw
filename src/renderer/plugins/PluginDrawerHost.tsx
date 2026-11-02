@@ -156,11 +156,17 @@ export default function PluginDrawerHost() {
         onClick={handleClose}
         aria-hidden
       />
+      {/*
+        标题栏压在窗口顶部 44px 的拖拽区上，抽屉又是后加的浮层，不声明 no-drag
+        的话这一条区域仍被标题栏的 drag-region 吃掉：返回 / 关闭按钮看得见点不动，
+        鼠标落在上面反而是拖窗口。抽屉本体统一降级为非拖拽区，插件面板自带的
+        drag-region 标题也一并处理——它们在抽屉里同样只会让按钮失灵。
+      */}
       <aside
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative h-full bg-popover border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out]"
+        className="plugin-drawer no-drag relative h-full bg-popover border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out]"
         style={{ width: resolvedWidth, maxWidth }}
       >
         <header
@@ -198,6 +204,14 @@ export default function PluginDrawerHost() {
             {renderBody()}
           </PluginBoundary>
         </div>
+
+        {/* 插件面板可能自带 drag-region 标题条（面板原本按整页设计），
+            放进抽屉后这些区域同样会吞掉点击，统一降级为普通区域。 */}
+        <style>{`
+          .plugin-drawer .drag-region {
+            -webkit-app-region: no-drag;
+          }
+        `}</style>
       </aside>
     </div>
   )

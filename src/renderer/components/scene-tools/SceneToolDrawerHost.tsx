@@ -41,11 +41,16 @@ export default function SceneToolDrawerHost() {
         onClick={handleClose}
         aria-hidden
       />
+      {/*
+        抽屉铺满窗口高度，顶部工具面板的标题与关闭按钮落在窗口顶部 44px 的
+        拖拽区里。抽屉是后挂的浮层，不声明 no-drag 的话这一条区域仍被标题栏的
+        drag-region 吃掉：按钮看得见点不动，鼠标落在上面反而是拖窗口。
+      */}
       <aside
         role="dialog"
         aria-modal="true"
         aria-label={isZh ? '场景工具' : 'Scene tools'}
-        className="relative h-full w-[480px] max-w-[92vw] bg-popover border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out]"
+        className="no-drag relative h-full w-[480px] max-w-[92vw] bg-popover border-l border-border/60 shadow-2xl flex flex-col animate-[slideInRight_180ms_ease-out]"
       >
         <SceneToolsPanel initialToolId={target.toolId} onClose={handleClose} />
       </aside>
