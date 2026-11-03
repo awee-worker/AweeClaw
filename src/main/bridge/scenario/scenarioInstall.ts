@@ -445,6 +445,15 @@ async function downloadFile(
         return
       }
 
+      // 存储服务不支持 Range 时会对续传请求回 200 全量内容：
+      // 此时继续追加会把旧残留和新内容拼在一起，包大小必然不符。
+      // 追加模式每次写入都定位到文件末尾，截断到 0 即可等价于从头写，
+      // 比销毁句柄再重开更稳（Windows 上重开可能撞到未释放的句柄）
+      if (existingSize > 0 && response.statusCode === 200) {
+        fs.truncateSync(destPath, 0)
+        bytesDownloaded = 0
+      }
+
       const contentLength = response.headers['content-length']
       if (contentLength) {
         const cl = Array.isArray(contentLength) ? contentLength[0] : contentLength
@@ -462,9 +471,12 @@ async function downloadFile(
         }
       })
 
+      // 写入是异步的：必须等流 flush 完成再 resolve，
+      // 否则调用方紧接着的 statSync 读到的仍是未落盘的大小，会被误判为文件损坏
       response.on('end', () => {
+        fileStream.once('finish', () => resolve())
+        fileStream.once('error', reject)
         fileStream.end()
-        resolve()
       })
 
       response.on('error', (err) => {
