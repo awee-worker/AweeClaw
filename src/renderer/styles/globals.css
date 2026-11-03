@@ -460,7 +460,8 @@ textarea,
 
 .scroll-shadow-container::before {
   top: 0;
-  background: linear-gradient(to bottom, rgb(var(--background)) 0%, transparent 100%);
+  /* 顶色只取背景一半的不透明度：全不透明时暗色主题下会压成一块深色横带 */
+  background: linear-gradient(to bottom, rgb(var(--background) / 0.5) 0%, transparent 100%);
 }
 
 .scroll-shadow-container::after {
