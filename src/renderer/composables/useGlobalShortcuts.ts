@@ -31,6 +31,7 @@ interface ShortcutContext {
   setShowCommandPalette: (v: boolean) => void
   setShowWorkflow: (v: boolean) => void
   setShowQuickOpen: (v: boolean) => void
+  setQuickOpenTab: (tab: 'files' | 'sessions' | 'symbols') => void
   setShowAbout: (v: boolean) => void
   setTerminalVisible: (v: boolean) => void
   setDebugVisible: (v: boolean) => void
@@ -74,6 +75,18 @@ const HANDLERS: KeyHandler[] = [
   (e, ctx) => {
     if (kb.matches(e, 'workbench.action.quickOpen')) {
       e.preventDefault()
+      ctx.setQuickOpenTab('files')
+      ctx.setShowQuickOpen(true)
+      return true
+    }
+    return false
+  },
+
+  // 转到符号：打开快速打开面板并直接落在符号 Tab
+  (e, ctx) => {
+    if (kb.matches(e, 'editor.goToWorkspaceSymbol')) {
+      e.preventDefault()
+      ctx.setQuickOpenTab('symbols')
       ctx.setShowQuickOpen(true)
       return true
     }
@@ -214,6 +227,7 @@ export function useGlobalShortcuts() {
   const setShowCommandPalette = useStore((s) => s.setShowCommandPalette)
   const setShowWorkflow = useStore((s) => s.setShowWorkflow)
   const setShowQuickOpen = useStore((s) => s.setShowQuickOpen)
+  const setQuickOpenTab = useStore((s) => s.setQuickOpenTab)
   const setShowAbout = useStore((s) => s.setShowAbout)
   const setTerminalVisible = useStore((s) => s.setTerminalVisible)
   const setDebugVisible = useStore((s) => s.setDebugVisible)
@@ -245,6 +259,7 @@ export function useGlobalShortcuts() {
     setShowCommandPalette,
     setShowWorkflow,
     setShowQuickOpen,
+    setQuickOpenTab,
     setShowAbout,
     setTerminalVisible,
     setDebugVisible,

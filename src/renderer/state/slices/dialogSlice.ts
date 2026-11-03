@@ -29,6 +29,13 @@ export interface DialogSlice {
   showComposer: boolean
   showWorkflow: boolean
   showQuickOpen: boolean
+  /**
+   * 快速打开的初始 Tab
+   *
+   * 由打开入口决定（Ctrl+P 进文件、Ctrl+T 进符号），
+   * 面板读取一次后即复位，避免下次普通打开继承上一次的 Tab。
+   */
+  quickOpenTab: QuickOpenTab
   showAbout: boolean
 
   setShowSettings: (show: boolean, initialTab?: string) => void
@@ -37,9 +44,13 @@ export interface DialogSlice {
   setShowComposer: (show: boolean) => void
   setShowWorkflow: (show: boolean) => void
   setShowQuickOpen: (show: boolean) => void
+  setQuickOpenTab: (tab: QuickOpenTab) => void
   setShowAbout: (show: boolean) => void
   closeAllDialogs: () => void
 }
+
+/** 快速打开面板的 Tab */
+export type QuickOpenTab = 'files' | 'sessions' | 'symbols'
 
 /** 全部关闭时的状态 */
 const ALL_CLOSED = {
@@ -50,6 +61,7 @@ const ALL_CLOSED = {
   showComposer: false,
   showWorkflow: false,
   showQuickOpen: false,
+  quickOpenTab: 'sessions',
   showAbout: false,
 } as const
 
@@ -63,6 +75,7 @@ export const createDialogSlice: StateCreator<DialogSlice, [], [], DialogSlice> =
   setShowComposer: (show) => set({ showComposer: show }),
   setShowWorkflow: (show) => set({ showWorkflow: show }),
   setShowQuickOpen: (show) => set({ showQuickOpen: show }),
+  setQuickOpenTab: (tab) => set({ quickOpenTab: tab }),
   setShowAbout: (show) => set({ showAbout: show }),
 
   closeAllDialogs: () => set({ ...ALL_CLOSED }),

@@ -65,6 +65,7 @@ export interface CommandContext {
   setTerminalVisible: (visible: boolean) => void
   /** 显示快速打开 */
   setShowQuickOpen: (show: boolean) => void
+  setQuickOpenTab: (tab: 'files' | 'sessions' | 'symbols') => void
   /** 显示工作流 */
   setShowWorkflow: (show: boolean) => void
   /** 显示关于 */
@@ -158,6 +159,13 @@ const STATIC_COMMANDS: CommandDefinition[] = [
     description: 'Search and open files by name',
     icon: Search,
     category: 'File',
+  },
+  {
+    id: 'go-to-symbol',
+    label: 'Go to Symbol...',
+    description: 'Search symbols across the workspace',
+    icon: Search,
+    category: 'Editor',
   },
   {
     id: 'toggle-terminal',
@@ -301,6 +309,11 @@ function executeCommand(id: string, ctx: CommandContext): void {
       ctx.setChatVisible(!ctx.chatVisible)
       break
     case 'quick-open':
+      ctx.setQuickOpenTab('files')
+      ctx.setShowQuickOpen(true)
+      break
+    case 'go-to-symbol':
+      ctx.setQuickOpenTab('symbols')
       ctx.setShowQuickOpen(true)
       break
     case 'open-workflow':

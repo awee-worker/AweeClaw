@@ -41,6 +41,7 @@ export interface EditorConfigSchema {
   lsp?: {
     timeoutMs?: number
     completionTimeoutMs?: number
+    hoverTimeoutMs?: number
     crashCooldownMs?: number
   }
   performance?: {
@@ -125,6 +126,7 @@ export function cleanEditorConfig(config: Record<string, unknown>): EditorConfig
     cleaned.lsp = {}
     if (typeof l.timeoutMs === 'number') cleaned.lsp.timeoutMs = l.timeoutMs
     if (typeof l.completionTimeoutMs === 'number') cleaned.lsp.completionTimeoutMs = l.completionTimeoutMs
+    if (typeof l.hoverTimeoutMs === 'number') cleaned.lsp.hoverTimeoutMs = l.hoverTimeoutMs
     if (typeof l.crashCooldownMs === 'number') cleaned.lsp.crashCooldownMs = l.crashCooldownMs
   }
 

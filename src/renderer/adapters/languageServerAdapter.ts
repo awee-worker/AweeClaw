@@ -9,10 +9,26 @@ import { useStore } from '@store'
 import { EXTENSION_TO_LANGUAGE, LSP_SUPPORTED_LANGUAGES } from '@shared/languageRegistry'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { pathToLspUri } from '@shared/toolkit/uriHelper'
+import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
+import { isLspAvailable } from '@renderer/modes/lspAvailability'
+
+/**
+ * 当前场景是否允许发起 LSP 请求
+ *
+ * provider 注册在 monaco 全局实例上且无法撤销，从代码开发场景切走后它们仍然挂着。
+ * 服务已经停止，若不在请求入口拦截，每次悬停 / 补全都会走一趟 IPC 到主进程
+ * 再以「no running server」失败——结果正确但白耗跨进程往返，日志也会被刷满。
+ */
+function isLspRequestAllowed(): boolean {
+  return isLspAvailable(useSceneModeStore.getState().currentSceneMode)
+}
 
 // 文档版本追踪
 const documentVersions = new Map<string, number>()
 const openedDocuments = new Set<string>()
+
+/** 查找引用的渲染侧超时：超过后落错误态，避免面板无限加载 */
+const REFERENCES_TIMEOUT_MS = 15000
 
 function getFileDirectory(filePath: string): string {
   const normalized = filePath.replace(/\\/g, '/')
@@ -74,6 +90,8 @@ async function executeLspRequest<T>(
   request: (params: LspRequestParams) => Promise<T>,
   defaultValue: T
 ): Promise<T> {
+  if (!isLspRequestAllowed()) return defaultValue
+
   const uri = pathToLspUri(filePath)
   const workspacePath = getFileWorkspaceRoot(filePath)
   try {
@@ -93,11 +111,21 @@ async function executeLspPositionRequest<T>(
   request: (params: LspPositionParams) => Promise<T>,
   defaultValue: T
 ): Promise<T> {
+  if (!isLspRequestAllowed()) return defaultValue
+
   const uri = pathToLspUri(filePath)
   const workspacePath = getFileWorkspaceRoot(filePath)
   try {
     return await request({ uri, line, character, workspacePath })
-  } catch {
+  } catch (err) {
+    // 静默返回默认值会让「请求失败」与「确实没有结果」无法区分，
+    // 排查时只能看到 provider 返回空。保留一条 debug 记录。
+    logger.lsp.debug('[LSP] position request failed', {
+      filePath,
+      line,
+      character,
+      message: toAppError(err).message,
+    })
     return defaultValue
   }
 }
@@ -339,17 +367,44 @@ export async function goToDefinition(
 
 /**
  * 查找引用
+ *
+ * 语言服务器在索引未就绪时可能长时间不返回，主进程侧虽有 30s 超时，
+ * 但引用面板会一直停在「正在查找引用...」。这里加一层更短的超时并抛出，
+ * 让面板落到错误态提示重试，而不是无限转圈。
  */
 export async function findReferences(
   filePath: string,
   line: number,
   character: number
 ): Promise<{ uri: string; range: any }[] | null> {
-  return executeLspPositionRequest(
-    filePath, line, character,
-    (params) => api.lsp.references(params),
-    null
-  )
+  // 非代码开发场景下服务已停止，这里必须提前返回：
+  // 否则会白等 REFERENCES_TIMEOUT_MS（15s）才抛超时，引用面板一直停在加载态
+  if (!isLspRequestAllowed()) return null
+
+  const uri = pathToLspUri(filePath)
+  const workspacePath = getFileWorkspaceRoot(filePath)
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`查找引用超时（${REFERENCES_TIMEOUT_MS / 1000}s 无响应）`)),
+        REFERENCES_TIMEOUT_MS,
+      )
+    })
+
+    return await Promise.race([
+      api.lsp.references({ uri, line, character, workspacePath }),
+      timeoutPromise,
+    ])
+  } catch (err) {
+    logger.lsp.warn('[LSP] Find references failed', {
+      filePath, line, character, message: toAppError(err).message,
+    })
+    throw err
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 /**
@@ -501,6 +556,7 @@ export async function getDocumentSymbols(filePath: string): Promise<any[]> {
  * 搜索工作空间符号
  */
 export async function searchWorkspaceSymbols(query: string): Promise<any[]> {
+  if (!isLspRequestAllowed()) return []
   try {
     return await api.lsp.workspaceSymbol({ query }) || []
   } catch {
@@ -582,6 +638,7 @@ export async function getFoldingRanges(filePath: string): Promise<any[]> {
  * 解析补全项
  */
 export async function resolveCompletionItem(item: any): Promise<any> {
+  if (!isLspRequestAllowed()) return item
   try {
     return await api.lsp.completionResolve(item)
   } catch {
@@ -658,6 +715,7 @@ export async function getOutgoingCalls(
  * 用于在文件修改后等待 LSP 返回最新的诊断结果
  */
 export async function waitForDiagnostics(filePath: string): Promise<boolean> {
+  if (!isLspRequestAllowed()) return false
   const uri = pathToLspUri(filePath)
   try {
     const result = await api.lsp.waitForDiagnostics({ uri })

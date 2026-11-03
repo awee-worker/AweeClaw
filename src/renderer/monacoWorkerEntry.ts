@@ -64,10 +64,11 @@ javascriptDefaults.setDiagnosticsOptions({
   noSuggestionDiagnostics: true,
 })
 
-// 禁用 eager model sync，减少 inmemory model 被提前处理的情况
-// 注意：这会在 initMonacoTypeService 中被设置为 true
-typescriptDefaults.setEagerModelSync(false)
-javascriptDefaults.setEagerModelSync(false)
+// 开启 eager model sync：model 只有被同步进 ts.worker 才会有补全与悬停，
+// 关闭时语言服务对新建 model 一无所知，表现为编辑器「什么都弹不出来」。
+// initMonacoTypeService 也会设置为 true，这里保持同一取值，避免初始化顺序差异。
+typescriptDefaults.setEagerModelSync(true)
+javascriptDefaults.setEagerModelSync(true)
 
 // 配置编译选项
 typescriptDefaults.setCompilerOptions({

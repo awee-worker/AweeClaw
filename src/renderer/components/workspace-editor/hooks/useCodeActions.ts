@@ -125,6 +125,16 @@ export function useEditorActions(
     editorInstance: editor.IStandaloneCodeEditor,
     monaco: typeof import('monaco-editor')
   ) => {
+    // Monaco 内置的 Ctrl/Cmd+hover 定义预览（gotoDefinitionAtPosition）：
+    // ClickLinkGesture 在修饰键+悬停时探测定义，单结果时对目标文件调用
+    // createModelReference 读取预览 —— 工作空间文件由宿主管理、未登记进
+    // model registry，standalone 下必然 reject 成 "Model not found"，且这条
+    // promise 链没有 catch，直接冒到全局成为 Unhandled Promise rejection。
+    // 注意 ID 是全小写 'editor.contrib.gotodefinitionatposition'（Monaco 0.55），
+    // 传驼峰会拿到 null、静默跳过等于没禁。下划线提示由本 hook 的
+    // updateDefinitionHoverDecoration 独立负责，禁用不影响转定义体验。
+    editorInstance.getContribution('editor.contrib.gotodefinitionatposition')?.dispose()
+
     const teardownFns: Array<() => void> = []
     let definitionDecorationIds: string[] = []
     let modifierPressed = false
@@ -296,6 +306,43 @@ export function useEditorActions(
         }
       }
     })
+
+    // ── 覆盖 Monaco 内置的 Definition / Peek 动作 ───────────────────────────
+    // Monaco 内置的 revealDefinition 会走 createModelReference 打开目标文件，
+    // 而工作空间里的文件由宿主自己管理，并未登记进 Monaco 的 model registry，
+    // 因此跨文件跳转必然抛 "Model not found"。
+    // 仅在 onMouseDown 里 preventDefault 拦不住：Ctrl+Click 由 MouseHandler 在
+    // 鼠标事件派发之前就直接 trigger 了该 action，只有用同一个 action id 覆盖
+    // 实现才能接管全部入口（命令面板、菜单、Ctrl+Click、Peek）。
+    // keybindings 留空：F12 仍由下面的 addCommand 处理，避免同一按键触发两次。
+    const definitionActionOverrides: Array<{ id: string; label: string }> = [
+      { id: 'editor.action.revealDefinition', label: '转到定义' },
+      { id: 'editor.action.peekDefinition', label: '速览定义' },
+      { id: 'editor.action.revealDefinitionAside', label: '在侧边打开定义' },
+    ]
+
+    for (const overrideAction of definitionActionOverrides) {
+      editorInstance.addAction({
+        id: overrideAction.id,
+        label: overrideAction.label,
+        // 闭包捕获的编辑器实例就是 action 的宿主，直接用它取 model / 光标位置，
+        // 避免把 ICodeEditor 强转成 IStandaloneCodeEditor
+        run: async () => {
+          const model = editorInstance.getModel()
+          const position = editorInstance.getPosition()
+          if (!model || !position) return
+          try {
+            await navigateToDefinition(
+              editorInstance,
+              lspUriToPath(model.uri.toString()),
+              position.lineNumber - 1,
+              position.column - 1,
+              model.getValue(),
+            )
+          } catch { /* 目标不可访问（stdlib / 工作空间外）时静默 */ }
+        },
+      })
+    }
 
     // ── F12: Go to Definition（覆盖 Monaco 内置 revealDefinition）──────────
     // 使用 addCommand 的优先级高于 Monaco 内置 F12 绑定

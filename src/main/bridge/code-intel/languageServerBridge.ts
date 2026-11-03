@@ -10,6 +10,7 @@
 
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
+import { promises as fs } from 'node:fs'
 import { ipcMain } from 'electron'
 import { lspManager, LanguageId } from '../../language-server/languageServerManager'
 import { EXTENSION_TO_LANGUAGE } from '@shared/languageRegistry'
@@ -22,6 +23,7 @@ import {
   setCustomLspBinDir,
 } from '../../language-server/serverInstaller'
 import { lspUriToPath } from '@shared/toolkit/uriHelper'
+import { LSP_DEFAULTS } from '@shared/configuration/defaultProfile'
 
 function getFallbackRoot(filePath: string): string {
   const normalized = filePath.replace(/\\/g, '/')
@@ -42,6 +44,58 @@ function getLanguageIdFromUri(uri: string): string {
   return getLanguageId(filePath) || 'plaintext'
 }
 
+/**
+ * 「语言 + 文件目录」到 LSP 实例 key 的缓存
+ *
+ * ensureServerForFile 每次都会跑一遍 findBestRoot（逐级向上找 package.json /
+ * pyproject.toml 等）再确保服务器存活。悬停、补全、跳转这类请求按鼠标动作触发，
+ * 横穿一行代码就会重复十几次，磁盘遍历成了每个请求的固定开销。
+ * 同目录下的文件根目录必然相同，缓存到目录粒度即可消除这部分重复。
+ *
+ * 实例被空闲回收或崩溃移除后缓存自动失效：命中前会校验服务器仍在运行。
+ */
+const serverKeyCache = new Map<string, string>()
+const SERVER_KEY_CACHE_MAX = 500
+
+function cacheServerKey(cacheKey: string, serverKey: string): void {
+  if (serverKeyCache.size >= SERVER_KEY_CACHE_MAX) serverKeyCache.clear()
+  serverKeyCache.set(cacheKey, serverKey)
+}
+
+/** 清空实例缓存（工作空间切换 / 服务器全部停止时调用） */
+export function resetServerKeyCache(): void {
+  serverKeyCache.clear()
+}
+
+/**
+ * 请求前确保文档已在服务器侧打开
+ *
+ * 渲染进程只在自己首次打开文件时发 didOpen。主进程这边的服务器可能因空闲回收、
+ * 崩溃重启或进程数超限被淘汰后重建，而渲染进程仍认为文档处于打开状态，不会重发。
+ * 服务器手里没有该文档时，hover / 定义 / 引用一律返回空，表现就是「编辑器突然
+ * 失去智能提示」。这里在请求前补齐：未打开则从磁盘读取并补发一次 didOpen。
+ *
+ * 有未保存修改的文档走的是另一条链路 —— didChange 处理器在发现文档未打开时
+ * 会带上内存中的文本补 didOpen，因此这里读到的是与编辑器一致的内容。
+ */
+async function ensureDocumentOpened(serverName: string, uri: string): Promise<void> {
+  if (lspManager.isDocumentOpen(serverName, uri)) return
+
+  const filePath = lspUriToPath(uri)
+  const languageId = getLanguageId(filePath)
+  if (!languageId) return
+
+  try {
+    const text = await fs.readFile(filePath, 'utf-8')
+    lspManager.trackDocumentOpen(serverName, uri, languageId, 1, text)
+    lspManager.sendNotification(serverName, 'textDocument/didOpen', {
+      textDocument: { uri, languageId, version: 1, text },
+    })
+  } catch {
+    // 文件不可读时交给具体请求返回空结果，不额外报错
+  }
+}
+
 async function getServerForUri(uri: string, workspacePath: string): Promise<string | null> {
   const filePath = lspUriToPath(uri)
   const effectiveWorkspacePath = workspacePath || getFallbackRoot(filePath)
@@ -49,8 +103,18 @@ async function getServerForUri(uri: string, workspacePath: string): Promise<stri
   const languageId = getLanguageId(filePath)
   if (!languageId) return null
 
+  const dir = filePath.replace(/\\/g, '/').replace(/\/[^/]*$/, '') || '/'
+  const cacheKey = `${languageId}@${dir}@${effectiveWorkspacePath}`
+
+  const cached = serverKeyCache.get(cacheKey)
+  if (cached && lspManager.getRunningServers().includes(cached)) {
+    return cached
+  }
+
   // 使用智能根目录检测启动服务器
-  return lspManager.ensureServerForFile(filePath, languageId, effectiveWorkspacePath)
+  const serverKey = await lspManager.ensureServerForFile(filePath, languageId, effectiveWorkspacePath)
+  if (serverKey) cacheServerKey(cacheKey, serverKey)
+  return serverKey
 }
 
 // preferencesStore 引用，用于保存 LSP 配置
@@ -74,6 +138,7 @@ export function registerLspHandlers(preferencesStore?: any): void {
   // 停止服务器
   ipcMain.handle('lsp:stop', async () => {
     await lspManager.stopAllServers()
+    resetServerKeyCache()
     return { success: true }
   })
 
@@ -150,16 +215,26 @@ export function registerLspHandlers(preferencesStore?: any): void {
 
   // ============ LSP 请求 ============
 
-  const createPositionHandler = (method: string) => {
+  const createPositionHandler = (method: string, timeoutMs?: number) => {
     return async (_: any, params: { uri: string; line: number; character: number; workspacePath?: string }) => {
       const serverName = await getServerForUri(params.uri, params.workspacePath || '')
-      if (!serverName) return null
+      // 定位不到实例是「静默失败」的最常见来源：渲染侧只看到请求发出，
+      // 收不到任何结果，表现就是悬停一直转圈、跳转无反应。这里必须留痕。
+      if (!serverName) {
+        logger.lsp.warn('[LSP IPC] no running server for request', {
+          method,
+          uri: params.uri,
+          workspacePath: params.workspacePath || '',
+        })
+        return null
+      }
+      await ensureDocumentOpened(serverName, params.uri)
 
       try {
         const result = await lspManager.sendRequest(serverName, method, {
           textDocument: { uri: params.uri },
           position: { line: params.line, character: params.character },
-        })
+        }, timeoutMs)
         if (method === 'textDocument/definition') {
           logger.lsp.info('[LSP IPC] Definition result:', {
             serverName,
@@ -172,7 +247,17 @@ export function registerLspHandlers(preferencesStore?: any): void {
           })
         }
         return result
-      } catch {
+      } catch (err) {
+        // 超时、进程退出、写管道失败都会落到这里。此前是空 catch，
+        // 故障在两端日志里都留不下痕迹，只能靠猜。
+        logger.lsp.warn('[LSP IPC] request failed', {
+          method,
+          serverName,
+          uri: params.uri,
+          line: params.line,
+          character: params.character,
+          message: toAppError(err).message,
+        })
         return null
       }
     }
@@ -181,7 +266,9 @@ export function registerLspHandlers(preferencesStore?: any): void {
   ipcMain.handle('lsp:definition', createPositionHandler('textDocument/definition'))
   ipcMain.handle('lsp:typeDefinition', createPositionHandler('textDocument/typeDefinition'))
   ipcMain.handle('lsp:implementation', createPositionHandler('textDocument/implementation'))
-  ipcMain.handle('lsp:hover', createPositionHandler('textDocument/hover'))
+  // hover 在主进程侧的超时比渲染侧稍长：渲染侧先放弃并隐藏浮层，
+  // 主进程随即清理挂起的请求，避免连续悬停把 pending 队列堆满
+  ipcMain.handle('lsp:hover', createPositionHandler('textDocument/hover', LSP_DEFAULTS.hoverTimeoutMs + 2000))
   ipcMain.handle('lsp:completion', createPositionHandler('textDocument/completion'))
   ipcMain.handle('lsp:signatureHelp', createPositionHandler('textDocument/signatureHelp'))
   ipcMain.handle('lsp:documentHighlight', createPositionHandler('textDocument/documentHighlight'))
@@ -190,6 +277,7 @@ export function registerLspHandlers(preferencesStore?: any): void {
   ipcMain.handle('lsp:references', async (_, params: { uri: string; line: number; character: number; workspacePath?: string }) => {
     const serverName = await getServerForUri(params.uri, params.workspacePath || '')
     if (!serverName) return null
+    await ensureDocumentOpened(serverName, params.uri)
 
     try {
       return await lspManager.sendRequest(serverName, 'textDocument/references', {
@@ -216,6 +304,7 @@ export function registerLspHandlers(preferencesStore?: any): void {
   ipcMain.handle('lsp:documentSymbol', async (_, params: { uri: string; workspacePath?: string }) => {
     const serverName = await getServerForUri(params.uri, params.workspacePath || '')
     if (!serverName) return null
+    await ensureDocumentOpened(serverName, params.uri)
 
     try {
       return await lspManager.sendRequest(serverName, 'textDocument/documentSymbol', {

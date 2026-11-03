@@ -135,9 +135,39 @@ export function bootstrapLanguageHost(
         isolatedModules: true,
         noEmit: true,
         baseUrl: '.',
+        // 与 tsconfig.json 的 paths 保持一致：内置 ts.worker 只按这份映射解析模块，
+        // 缺哪个别名，对应 import 在补全与跳转里就断在哪里。
         paths: {
             '@/*': ['src/*'],
-            '~/*': ['src/*'],
+            '@main/*': ['src/main/*'],
+            '@renderer/*': ['src/renderer/*'],
+            '@shared/*': ['src/shared/*'],
+            '@components/*': ['src/renderer/components/*'],
+            '@features/*': ['src/renderer/features/*'],
+            '@services/*': ['src/renderer/adapters/*'],
+            '@store': ['src/renderer/state'],
+            '@store/*': ['src/renderer/state/*'],
+            '@hooks': ['src/renderer/composables'],
+            '@hooks/*': ['src/renderer/composables/*'],
+            '@utils/*': ['src/renderer/toolkit/*'],
+            '@app-types/*': ['src/renderer/types/*'],
+            '@intelligence/*': ['src/renderer/intelligence/*'],
+            '@bridge/*': ['src/main/bridge/*'],
+            '@guard/*': ['src/main/guard/*'],
+            '@modules/*': ['src/main/modules/*'],
+            '@search-engine/*': ['src/main/search-engine/*'],
+            '@toolkit': ['src/shared/toolkit'],
+            '@toolkit/*': ['src/shared/toolkit/*'],
+            '@protocols': ['src/shared/protocols'],
+            '@protocols/*': ['src/shared/protocols/*'],
+            '@configuration': ['src/shared/configuration'],
+            '@configuration/*': ['src/shared/configuration/*'],
+            '@renderer-configuration': ['src/renderer/configuration'],
+            '@renderer-configuration/*': ['src/renderer/configuration/*'],
+            '@scenario-system/*': ['src/scenario-system/*'],
+            '@scenarios/*': ['src/scenarios/*'],
+            '@shared/exceptions': ['src/shared/exceptions'],
+            '@shared/exceptions/*': ['src/shared/exceptions/*'],
         },
     }
 
@@ -159,9 +189,97 @@ export function bootstrapLanguageHost(
     typescriptDefaults.setEagerModelSync(true)
     javascriptDefaults.setEagerModelSync(true)
 
+    applyBuiltinSemanticMode(builtinSemanticEnabled)
+
     injectScenarioTypeDeclarations()
 
-    logger.system.info('[ScenarioLanguageHost] Bootstrapped with eager model sync')
+    logger.system.info(
+        `[ScenarioLanguageHost] Bootstrapped with eager model sync, builtin semantic: ${builtinSemanticEnabled ? 'on' : 'off'}`,
+    )
+}
+
+/* ------------------------------------------------------------------ */
+/* 内置 TypeScript 语义兜底开关                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 内置语义 provider 当前是否启用
+ *
+ * 默认开启：内置 ts.worker 对**当前文件**的补全、悬停、定义跳转是确定可用的，
+ * 它是外部 LSP 不可用时的唯一保障。外部 LSP 就绪后再由上层关闭，
+ * 避免同一个位置被两条链路同时应答、浮层等待最慢的一路。
+ */
+let builtinSemanticEnabled = true
+
+/** 内置语义关闭时的 mode 配置：只保留语法高亮与语法诊断 */
+const BUILTIN_SEMANTIC_OFF = {
+    completionItems: false,
+    hovers: false,
+    documentSymbols: false,
+    definitions: false,
+    references: false,
+    documentHighlights: false,
+    rename: false,
+    signatureHelp: false,
+    onTypeFormattingEdits: false,
+    codeActions: false,
+    inlayHints: false,
+    documentRangeFormattingEdits: false,
+}
+
+/** 内置语义开启时的 mode 配置：语义全开，格式化仍交给外部 LSP */
+const BUILTIN_SEMANTIC_ON = {
+    ...BUILTIN_SEMANTIC_OFF,
+    completionItems: true,
+    hovers: true,
+    documentSymbols: true,
+    definitions: true,
+    references: true,
+    documentHighlights: true,
+    rename: true,
+    signatureHelp: true,
+    codeActions: true,
+}
+
+/**
+ * 应用内置语义 mode 配置
+ *
+ * monaco 0.55 打包出的类型声明没有覆盖 setModeConfiguration（运行时存在），
+ * 这里用窄接口断言补齐，其余成员的类型检查不受影响。
+ */
+function applyBuiltinSemanticMode(enabled: boolean): void {
+    const config = enabled ? BUILTIN_SEMANTIC_ON : BUILTIN_SEMANTIC_OFF
+    const apply = (defaults: typeof typescriptDefaults): void => {
+        const target = defaults as unknown as {
+            setModeConfiguration(config: Record<string, boolean>): void
+        }
+        if (typeof target.setModeConfiguration !== 'function') {
+            logger.system.warn('[ScenarioLanguageHost] setModeConfiguration unavailable, skip mode switch')
+            return
+        }
+        target.setModeConfiguration(config)
+    }
+    apply(typescriptDefaults)
+    apply(javascriptDefaults)
+}
+
+/**
+ * 切换内置语义 provider
+ *
+ * 由 LSP 集成层调用：外部 LSP 就绪 → 关闭内置（单一路径，避免双路等待）；
+ * LSP 未就绪或断开 → 重新开启，保证编辑器始终有补全与跳转能力。
+ */
+export function setBuiltinSemanticMode(enabled: boolean): void {
+    if (!isInitialized) {
+        // bootstrap 之前只记录意图，bootstrap 时会按该值应用
+        builtinSemanticEnabled = enabled
+        return
+    }
+    if (builtinSemanticEnabled === enabled) return
+
+    builtinSemanticEnabled = enabled
+    applyBuiltinSemanticMode(enabled)
+    logger.system.info(`[ScenarioLanguageHost] Builtin semantic ${enabled ? 'enabled' : 'disabled'}`)
 }
 
 function injectScenarioTypeDeclarations(): void {

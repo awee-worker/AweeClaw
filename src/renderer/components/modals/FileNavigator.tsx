@@ -1,11 +1,18 @@
 import { api } from '../../adapters/electronBridge'
 import { useState, useEffect, useCallback, useRef, memo } from 'react'
-import { Search, X, Clock, Star, MessageSquare, FileText } from 'lucide-react'
+import {
+  Search, X, Clock, Star, MessageSquare, FileText,
+  Braces, Box, FunctionSquare, Variable, Hash, ChevronRight,
+} from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { getFileName } from '@shared/toolkit/pathHelper'
+import { lspUriToPath } from '@shared/toolkit/uriHelper'
 import { StorageService } from '@shared/toolkit/StorageService'
 import { keybindingService } from '@services/keybindingAdapter'
+import { getDocumentSymbols, searchWorkspaceSymbols } from '@services/languageServerAdapter'
+import { getActiveEditorInstance } from '@services/editorNavigation'
+import { setPendingNavigation } from '@services/editorNavigator'
 import {t, type Language} from '@renderer/i18n'
 import { ActionButton } from '../ui'
 import FileIcon from '../foundation/FileTypeIcon'
@@ -36,7 +43,130 @@ interface SessionCandidate {
   preview: string
 }
 
-type TabType = 'files' | 'sessions'
+type TabType = 'files' | 'sessions' | 'symbols'
+
+/** 符号候选（行列为 1-based，可直接用于编辑器定位） */
+interface SymbolCandidate {
+  id: string
+  name: string
+  kind: number
+  container: string
+  filePath: string
+  relativePath: string
+  line: number
+  col: number
+}
+
+/** 符号搜索防抖时长 */
+const SYMBOL_SEARCH_DEBOUNCE_MS = 180
+
+/** LSP SymbolKind → 图标 */
+function getSymbolKindIcon(kind: number): React.ComponentType<{ className?: string }> {
+  switch (kind) {
+    case 2: case 3: case 4: return Braces
+    case 5: case 10: case 11: case 23: return Box
+    case 6: case 9: case 12: return FunctionSquare
+    case 7: case 8: case 13: case 14: case 22: return Variable
+    default: return Hash
+  }
+}
+
+/**
+ * documentSymbol 归一化
+ *
+ * 语言服务器可能返回树形 DocumentSymbol，也可能返回平铺的 SymbolInformation，
+ * 两种结构统一展开成扁平列表，避免不同语言的返回值形态差异渗透到渲染层。
+ */
+function normalizeDocumentSymbols(raw: unknown[], filePath: string, relativePath: string): SymbolCandidate[] {
+  const out: SymbolCandidate[] = []
+
+  const walk = (nodes: unknown[], depth: number) => {
+    for (const node of nodes) {
+      if (!node || typeof node !== 'object') continue
+      const n = node as Record<string, unknown>
+      const range = (n.range ?? (n.location as Record<string, unknown> | undefined)?.range ?? n.selectionRange) as
+        | { start?: { line?: number; character?: number } }
+        | undefined
+
+      if (range?.start) {
+        out.push({
+          id: `${filePath}:${range.start.line ?? 0}:${String(n.name ?? '')}:${out.length}`,
+          name: String(n.name ?? ''),
+          kind: typeof n.kind === 'number' ? n.kind : 99,
+          container: typeof n.containerName === 'string' ? n.containerName : '',
+          filePath,
+          relativePath,
+          line: (range.start.line ?? 0) + 1,
+          col: (range.start.character ?? 0) + 1,
+        })
+      }
+
+      if (depth < 6 && Array.isArray(n.children)) walk(n.children, depth + 1)
+    }
+  }
+
+  walk(raw, 0)
+  return out
+}
+
+/** 工作区符号归一化 */
+function normalizeWorkspaceSymbols(raw: unknown[], workspacePath: string): SymbolCandidate[] {
+  const out: SymbolCandidate[] = []
+  const normalizedRoot = workspacePath.replace(/\\/g, '/').replace(/\/$/, '')
+
+  for (const node of raw) {
+    if (!node || typeof node !== 'object') continue
+    const n = node as Record<string, unknown>
+    const location = (n.location ?? {}) as Record<string, unknown>
+    const uri = typeof location.uri === 'string' ? location.uri : typeof n.uri === 'string' ? n.uri : ''
+    const range = (location.range ?? n.range) as
+      | { start?: { line?: number; character?: number } }
+      | undefined
+    if (!uri) continue
+
+    const filePath = lspUriToPath(uri)
+    const normalizedFile = filePath.replace(/\\/g, '/')
+    const relativePath = normalizedFile.startsWith(`${normalizedRoot}/`)
+      ? normalizedFile.slice(normalizedRoot.length + 1)
+      : normalizedFile
+
+    out.push({
+      id: `${uri}:${String(n.name ?? '')}:${out.length}`,
+      name: String(n.name ?? ''),
+      kind: typeof n.kind === 'number' ? n.kind : 99,
+      container: typeof n.containerName === 'string' ? n.containerName : '',
+      filePath,
+      relativePath,
+      line: (range?.start?.line ?? 0) + 1,
+      col: (range?.start?.character ?? 0) + 1,
+    })
+  }
+
+  return out
+}
+
+/** 按关键词排序：前缀命中 > 包含命中，同类内短名优先 */
+function rankSymbols(symbols: SymbolCandidate[], term: string, limit = 50): SymbolCandidate[] {
+  const lower = term.toLowerCase()
+
+  return symbols
+    .map((symbol) => {
+      const name = symbol.name.toLowerCase()
+      let score: number
+      if (!lower) score = 1
+      else if (name === lower) score = 100
+      else if (name.startsWith(lower)) score = 80
+      else if (name.includes(lower)) score = 50
+      else if (symbol.container.toLowerCase().includes(lower)) score = 20
+      else if (symbol.relativePath.toLowerCase().includes(lower)) score = 10
+      else score = -1
+      return { symbol, score }
+    })
+    .filter((entry) => entry.score >= 0)
+    .sort((a, b) => b.score - a.score || a.symbol.name.length - b.symbol.name.length)
+    .slice(0, limit)
+    .map((entry) => entry.symbol)
+}
 
 const RECENT_FILES_KEY = 'recent_files'
 const FAVORITES_KEY = 'file_favorites'
@@ -251,10 +381,57 @@ const SessionCandidateRow = memo(function SessionCandidateRow({
   )
 })
 
+const SymbolCandidateRow = memo(function SymbolCandidateRow({
+  candidate,
+  isSelected,
+  onSelect,
+}: {
+  candidate: SymbolCandidate
+  isSelected: boolean
+  onSelect: () => void
+}) {
+  const Icon = getSymbolKindIcon(candidate.kind)
+
+  return (
+    <div
+      onClick={onSelect}
+      className={`
+        relative flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-all duration-150 mx-2 rounded-lg group
+        ${isSelected ? 'bg-accent/10 text-text-primary ring-1 ring-accent/15' : 'text-text-secondary hover:bg-surface-hover'}
+      `}
+    >
+      <div className="flex-shrink-0 p-1.5 rounded-md bg-surface/60 text-text-muted group-hover:text-accent transition-colors">
+        <Icon className="w-4 h-4" />
+      </div>
+
+      <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="text-[13px] font-medium truncate leading-tight">{candidate.name}</span>
+          {candidate.container && (
+            <span className="text-[11px] text-text-muted truncate opacity-60">{candidate.container}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1 text-[11px] text-text-muted truncate opacity-50 leading-tight">
+          <span className="truncate">{candidate.relativePath}</span>
+          <ChevronRight className="w-3 h-3 flex-shrink-0" />
+          <span className="font-mono flex-shrink-0">{candidate.line}</span>
+        </div>
+      </div>
+
+      {isSelected && (
+        <div className="flex-shrink-0 text-[10px] font-mono text-text-muted bg-surface px-1.5 py-0.5 rounded border border-border opacity-0 group-hover:opacity-100 transition-opacity">
+          ⏎ Go
+        </div>
+      )}
+    </div>
+  )
+})
+
 export default function FileNavigator({ onClose }: FileNavigatorProps) {
   useElevatedToastLayer(true)
-  const { workspacePath, openFile, language, setChatVisible } = useStore(useShallow(s => ({
+  const { workspacePath, activeFilePath, openFile, language, setChatVisible } = useStore(useShallow(s => ({
     workspacePath: s.workspacePath,
+    activeFilePath: s.activeFilePath,
     openFile: s.openFile,
     language: s.language,
     setChatVisible: s.setChatVisible,
@@ -264,16 +441,26 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
   const allThreads = useAllThreads()
 
   const [query, setQuery] = useState('')
-  const [activeTab, setActiveTab] = useState<TabType>('sessions')
+  // 初始 Tab 由入口决定（Ctrl+P 进文件、Ctrl+T 进符号）；
+  // 读取后立即复位，避免下次普通打开继承上一次的 Tab
+  const [activeTab, setActiveTab] = useState<TabType>(() => useStore.getState().quickOpenTab)
   const [allFiles, setAllFiles] = useState<string[]>([])
   const [fileCandidates, setFileCandidates] = useState<FileCandidate[]>([])
   const [sessionCandidates, setSessionCandidates] = useState<SessionCandidate[]>([])
+  const [symbolCandidates, setSymbolCandidates] = useState<SymbolCandidate[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const [isSymbolLoading, setIsSymbolLoading] = useState(false)
   const [showRecent, setShowRecent] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const favorites = useRef(loadFavorites())
+  /** 符号搜索请求序号，用于丢弃过期响应 */
+  const symbolRequestRef = useRef(0)
+
+  useEffect(() => {
+    useStore.getState().setQuickOpenTab('sessions')
+  }, [])
 
   const collectWorkspaceFiles = useCallback(async (dirPath: string, prefix: string = ''): Promise<string[]> => {
     const items = await api.file.readDir(dirPath)
@@ -391,6 +578,54 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
     setSelectedIndex(0)
   }, [query, allThreads, activeTab])
 
+  // 符号 Tab：默认搜工作区符号，输入以 `@` 开头则只搜当前文件
+  useEffect(() => {
+    if (activeTab !== 'symbols') return
+    if (!workspacePath) return
+
+    const requestId = ++symbolRequestRef.current
+    setIsSymbolLoading(true)
+
+    const term = query.trim()
+    const currentFileOnly = term.startsWith('@')
+    const keyword = currentFileOnly ? term.slice(1).trim() : term
+
+    const timer = setTimeout(async () => {
+      try {
+        if (currentFileOnly) {
+          if (!activeFilePath) {
+            if (requestId === symbolRequestRef.current) setSymbolCandidates([])
+            return
+          }
+
+          const raw = await getDocumentSymbols(activeFilePath)
+          if (requestId !== symbolRequestRef.current) return
+
+          const normalizedFile = activeFilePath.replace(/\\/g, '/')
+          const normalizedRoot = workspacePath.replace(/\\/g, '/').replace(/\/$/, '')
+          const relativePath = normalizedFile.startsWith(`${normalizedRoot}/`)
+            ? normalizedFile.slice(normalizedRoot.length + 1)
+            : normalizedFile
+
+          const symbols = normalizeDocumentSymbols(raw, activeFilePath, relativePath)
+          setSymbolCandidates(rankSymbols(symbols, keyword))
+        } else {
+          const raw = await searchWorkspaceSymbols(keyword)
+          if (requestId !== symbolRequestRef.current) return
+          setSymbolCandidates(rankSymbols(normalizeWorkspaceSymbols(raw, workspacePath), keyword))
+        }
+
+        if (requestId === symbolRequestRef.current) setSelectedIndex(0)
+      } catch {
+        if (requestId === symbolRequestRef.current) setSymbolCandidates([])
+      } finally {
+        if (requestId === symbolRequestRef.current) setIsSymbolLoading(false)
+      }
+    }, keyword ? SYMBOL_SEARCH_DEBOUNCE_MS : 0)
+
+    return () => clearTimeout(timer)
+  }, [activeTab, query, activeFilePath, workspacePath])
+
   const openFilePath = useCallback(async (filePath: string) => {
     if (!workspacePath) return
     const fullPath = `${workspacePath}/${filePath}`
@@ -402,13 +637,50 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
     }
   }, [workspacePath, openFile, onClose])
 
+  /** 打开符号所在文件并定位到声明处 */
+  const openSymbol = useCallback(async (candidate: SymbolCandidate) => {
+    const state = useStore.getState()
+    const normalizedTarget = candidate.filePath.replace(/\\/g, '/')
+    const alreadyOpen = state.openFiles.some(f => f.path.replace(/\\/g, '/') === normalizedTarget)
+
+    if (!alreadyOpen) {
+      const content = await api.file.read(candidate.filePath)
+      if (content === null) return
+
+      // 最近文件列表按工作空间相对路径存储，这里统一换算后再记录
+      const normalizedRoot = (workspacePath || '').replace(/\\/g, '/').replace(/\/$/, '')
+      if (normalizedRoot && normalizedTarget.startsWith(`${normalizedRoot}/`)) {
+        saveRecentFile(normalizedTarget.slice(normalizedRoot.length + 1))
+      }
+      openFile(candidate.filePath, content)
+    }
+
+    const editor = getActiveEditorInstance()
+    const isSameFile = (state.activeFilePath || '').replace(/\\/g, '/') === normalizedTarget
+
+    if (isSameFile && editor) {
+      // 目标就在当前文件：直接定位，不必等文件切换后的待处理跳转
+      editor.setPosition({ lineNumber: candidate.line, column: candidate.col })
+      editor.revealPositionInCenter({ lineNumber: candidate.line, column: candidate.col })
+      editor.focus()
+    } else {
+      setPendingNavigation({ filePath: candidate.filePath, line: candidate.line, col: candidate.col })
+    }
+
+    onClose()
+  }, [workspacePath, openFile, onClose])
+
   const openSession = useCallback((threadId: string) => {
     switchThread(threadId)
     setChatVisible(true)
     onClose()
   }, [switchThread, setChatVisible, onClose])
 
-  const currentCandidates = activeTab === 'files' ? fileCandidates : sessionCandidates
+  const currentCandidates = activeTab === 'files'
+    ? fileCandidates
+    : activeTab === 'sessions'
+      ? sessionCandidates
+      : symbolCandidates
   const currentCount = currentCandidates.length
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -424,12 +696,14 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
         openFilePath(fileCandidates[selectedIndex].path)
       } else if (activeTab === 'sessions' && sessionCandidates[selectedIndex]) {
         openSession(sessionCandidates[selectedIndex].thread.id)
+      } else if (activeTab === 'symbols' && symbolCandidates[selectedIndex]) {
+        void openSymbol(symbolCandidates[selectedIndex])
       }
     } else if (keybindingService.matches(e, 'list.cancel')) {
       e.preventDefault()
       onClose()
     }
-  }, [currentCount, activeTab, fileCandidates, sessionCandidates, selectedIndex, openFilePath, openSession, onClose])
+  }, [currentCount, activeTab, fileCandidates, sessionCandidates, symbolCandidates, selectedIndex, openFilePath, openSession, openSymbol, onClose])
 
   useEffect(() => { inputRef.current?.focus() }, [])
   useEffect(() => { setSelectedIndex(0) }, [query, activeTab, showRecent])
@@ -442,15 +716,23 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
 
   const placeholder = activeTab === 'files'
     ? t('modals.searchFilesPlaceholder', language)
-    : (t('modals.searchsessionhistory', language as Language))
+    : activeTab === 'symbols'
+      ? t('modals.searchWorkspaceSymbolsPlaceholder', language)
+      : (t('modals.searchsessionhistory', language as Language))
 
   const emptyText = activeTab === 'files'
     ? (query ? t('modals.noFilesFound', language) : t('modals.noFilesInWorkspace', language))
-    : (t('modals.nosessionrecordsyet', language as Language))
+    : activeTab === 'symbols'
+      ? t('modals.noSymbolsFound', language)
+      : (t('modals.nosessionrecordsyet', language as Language))
 
   const emptySearchText = activeTab === 'files'
     ? (query ? t('modals.noFilesFound', language) : t('modals.noFilesInWorkspace', language))
-    : (t('modals.nomatchingsessionsfound', language as Language))
+    : activeTab === 'symbols'
+      ? t('modals.noSymbolsFound', language)
+      : (t('modals.nomatchingsessionsfound', language as Language))
+
+  const showLoading = (activeTab === 'files' && isLoading) || (activeTab === 'symbols' && isSymbolLoading)
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[12vh] animate-fade-in" onClick={onClose}>
@@ -495,6 +777,13 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
             <FileText className="w-3 h-3" />
             {t('modals.files', language as Language)}
           </button>
+          <button
+            onClick={() => { setActiveTab('symbols'); setShowRecent(false); setQuery('') }}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${activeTab === 'symbols' ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
+          >
+            <Box className="w-3 h-3" />
+            {t('modals.symbols', language as Language)}
+          </button>
           {activeTab === 'files' && (
             <button
               onClick={() => { setShowRecent(true); setQuery('') }}
@@ -508,14 +797,19 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
         </div>
 
         <div ref={listRef} className="flex-1 overflow-y-auto py-2 custom-scrollbar scroll-p-2">
-          {isLoading && activeTab === 'files' ? (
+          {showLoading ? (
             <div className="px-4 py-14 text-center text-text-muted flex flex-col items-center gap-3">
               <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-              <p className="text-xs font-medium opacity-60">{t('modals.loadingFiles', language)}</p>
+              <p className="text-xs font-medium opacity-60">
+                {activeTab === 'symbols' ? t('modals.loadingSymbols', language) : t('modals.loadingFiles', language)}
+              </p>
             </div>
           ) : currentCount === 0 ? (
             <div className="px-4 py-14 text-center text-text-muted flex flex-col items-center gap-2">
               <p className="text-sm font-medium">{query ? emptySearchText : emptyText}</p>
+              {activeTab === 'symbols' && !query && (
+                <p className="text-[11px] opacity-50">{t('modals.symbolSearchHint', language)}</p>
+              )}
             </div>
           ) : activeTab === 'files' ? (
             <div className="flex flex-col gap-0.5">
@@ -525,6 +819,18 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
                     candidate={candidate}
                     isSelected={idx === selectedIndex}
                     onSelect={() => openFilePath(candidate.path)}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : activeTab === 'symbols' ? (
+            <div className="flex flex-col gap-0.5">
+              {symbolCandidates.map((candidate, idx) => (
+                <div key={candidate.id} data-index={idx}>
+                  <SymbolCandidateRow
+                    candidate={candidate}
+                    isSelected={idx === selectedIndex}
+                    onSelect={() => void openSymbol(candidate)}
                   />
                 </div>
               ))}
@@ -554,7 +860,7 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
             </span>
             <span className="flex items-center gap-1">
               <kbd className="font-sans bg-surface/70 border border-border/40 px-1.5 py-0.5 rounded text-[9px]">↵</kbd>
-              <span>{activeTab === 'files' ? 'open' : 'switch'}</span>
+              <span>{activeTab === 'files' ? 'open' : activeTab === 'symbols' ? 'go' : 'switch'}</span>
             </span>
             <span className="flex items-center gap-1">
               <kbd className="font-sans bg-surface/70 border border-border/40 px-1.5 py-0.5 rounded text-[9px]">esc</kbd>

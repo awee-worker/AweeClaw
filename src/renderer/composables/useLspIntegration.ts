@@ -9,6 +9,7 @@ import { useStore } from '@store'
 import { logger } from '@toolkit/LogEngine'
 import {
   startLspServer,
+  stopLspServer,
   didOpenDocument,
   onDiagnostics,
 } from '@services/languageServerAdapter'
@@ -18,6 +19,8 @@ import { useDiagnosticsStore } from '@services/diagnosticRepository'
 import { normalizeLspUri } from '@shared/toolkit/uriHelper'
 import type { editor } from 'monaco-editor'
 import { LSP_SUPPORTED_LANGUAGES } from '@shared/languageRegistry'
+import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
+import { isLspAvailable } from '@renderer/modes/lspAvailability'
 
 /** 路径链接支持的语言（LSP 语言 + markdown） */
 const PATH_LINK_LANGUAGES: string[] = [...LSP_SUPPORTED_LANGUAGES, 'markdown']
@@ -86,11 +89,32 @@ export function useLspIntegration() {
   const workspacePath = useStore((state) => state.workspacePath)
   const isLspReady = useStore((state) => state.isLspReady)
   const setIsLspReady = useStore((state) => state.setIsLspReady)
+  const currentSceneMode = useSceneModeStore((state) => state.currentSceneMode)
 
-  const disposablesRef = useRef<Disposable[]>([])
+  // 语言服务器只在代码开发场景下启用：其它场景不启动进程、不注册 provider、
+  // 也不把文档同步给服务器，避免后台常驻一个用不上的服务实例
+  const lspAvailable = isLspAvailable(currentSceneMode)
 
-  /* ---------------- 启动 LSP 服务 ---------------- */
+  /**
+   * 路径链接 provider 句柄
+   *
+   * provider 注册在 monaco 全局实例上，编辑器重新挂载时不需要（也不应该）重复注册：
+   * 重复注册会让一次 Ctrl+Click 触发多份解析。这里只保留首个句柄，
+   * 与 LSP provider 一样跟随渲染进程生命周期。
+   */
+  const linkProviderRef = useRef<Disposable | null>(null)
+
+  /* ---------------- 启动 / 停止 LSP 服务 ---------------- */
   useEffect(() => {
+    if (!lspAvailable) {
+      // 从开发场景切走后回收已启动的实例
+      if (isLspReady) {
+        logger.ui.info('[LSP] Scene mode left dev, stopping language servers')
+        void stopLspServer().then(() => setIsLspReady(false))
+      }
+      return
+    }
+
     if (!workspacePath || isLspReady) return
 
     let cancelled = false
@@ -109,31 +133,33 @@ export function useLspIntegration() {
     return () => {
       cancelled = true
     }
-  }, [workspacePath, isLspReady, setIsLspReady])
+  }, [workspacePath, isLspReady, setIsLspReady, lspAvailable])
 
-  /* ---------------- 卸载时清理 ---------------- */
-  useEffect(() => {
-    return () => {
-      disposablesRef.current.forEach((d) => d.dispose())
-      disposablesRef.current = []
-    }
-  }, [])
+  /*
+   * 内置语义常开，不随 LSP 状态关闭。
+   *
+   * 内置 ts.worker 对当前文件的补全、悬停、定义跳转不依赖索引与 IPC，
+   * 写入即可用；外部 LSP 需要启动进程、建推断项目、索引 node_modules，
+   * 首次响应往往要几十秒，且超时后只返回 null。两条链路并存时 Monaco 会
+   * 合并结果 —— 慢的那一路只是让浮层晚一点收敛，而关掉内置那一路会让
+   * 编辑器在 LSP 未响应期间彻底失去语言能力。宁可慢，不可无。
+   */
 
   /* ---------------- 注册 Provider ---------------- */
   const registerProviders = useCallback((monaco: MonacoNS) => {
-    disposablesRef.current.forEach((d) => d.dispose())
-    disposablesRef.current = []
-
-    const lspDisposables = registerLspProviders(monaco as typeof import('monaco-editor'))
-    if (Array.isArray(lspDisposables)) {
-      disposablesRef.current.push(...lspDisposables)
+    // LSP provider 注册即生效、无法按场景撤销，因此非开发场景直接跳过；
+    // 路径链接是纯文本解析，与语言服务器无关，任何场景都保留
+    if (isLspAvailable(useSceneModeStore.getState().currentSceneMode)) {
+      // 注册入口内部保证幂等：provider 全局唯一，不随编辑器实例累积
+      registerLspProviders(monaco as typeof import('monaco-editor'))
     }
 
-    const linkDisposable = monaco.languages.registerLinkProvider(
-      PATH_LINK_LANGUAGES,
-      pathLinkService.createLinkProvider(),
-    )
-    disposablesRef.current.push(linkDisposable)
+    if (!linkProviderRef.current) {
+      linkProviderRef.current = monaco.languages.registerLinkProvider(
+        PATH_LINK_LANGUAGES,
+        pathLinkService.createLinkProvider(),
+      )
+    }
   }, [])
 
   /* ---------------- 诊断同步 ---------------- */
@@ -221,6 +247,7 @@ export function useLspIntegration() {
   /* ---------------- 通知文件打开 ---------------- */
   const notifyFileOpened = useCallback(
     (filePath: string, content: string) => {
+      if (!isLspAvailable(useSceneModeStore.getState().currentSceneMode)) return
       void didOpenDocument(filePath, content).then((success) => {
         if (success && !useStore.getState().isLspReady) {
           setIsLspReady(true)

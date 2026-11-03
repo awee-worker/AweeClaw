@@ -14,6 +14,8 @@ import type { ScenarioDomain } from '@configuration/defaultProfile'
 import { settingsService } from '@renderer/settings/preferencesService'
 import { useFeatureGuard } from '@hooks/useFeatureGuard'
 import type { ClientCapabilityKey } from '@services/featureGuardService'
+import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
+import { isLspAvailable } from '@renderer/modes/lspAvailability'
 
 
 const ModelProviderPanel = lazy(() =>
@@ -174,6 +176,11 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         setShowSettings, setShowSettingsPage,
         applyLanguageImmediately, commitProviderConfigs,
     } = useSettingsLocalState(embedded)
+
+    // 语言服务器只服务代码开发场景：其它场景下不展示该设置入口，
+    // 与 useLspIntegration 的启停判定共用同一判据，避免出现「看不到入口但服务在跑」
+    const currentSceneMode = useSceneModeStore(s => s.currentSceneMode)
+    const lspAvailable = isLspAvailable(currentSceneMode)
 
     // 设置面板打开意图：用于「创建智能体」等入口定位到指定 Tab / 子 Tab
     const settingsIntent = useStore(s => s.settingsIntent)
@@ -340,8 +347,10 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
             isPlugin: true,
             featureKey: null as ClientCapabilityKey | null,
         }))
-        return [...builtinTabs, ...pluginTabs]
-    }, [tabs, pluginSettingsTabs, language])
+        const merged = [...builtinTabs, ...pluginTabs]
+        // 语言服务器（lsp）仅在代码开发场景可见
+        return merged.filter((tab) => tab.id !== 'lsp' || lspAvailable)
+    }, [tabs, pluginSettingsTabs, language, lspAvailable])
 
 
     const renderActiveTab = () => {

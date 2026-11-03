@@ -26,6 +26,8 @@ import { getCacheConfig } from '@configuration/agentProfile'
 import {
   getInstalledServerPath,
   commandExists,
+  isServerRuntimeBroken,
+  getLspBinDir,
 } from './serverInstaller'
 import { pythonManager } from '../modules/python-runtime'
 
@@ -108,6 +110,72 @@ async function findNearestRoot(
   }
 
   return undefined
+}
+
+// ============ TypeScript SDK 解析 ============
+
+/**
+ * 解析 Volar 需要的 TypeScript SDK 目录
+ *
+ * Volar（vue-language-server）不内置 TypeScript，而是通过
+ * initializationOptions.typescript.tsdk 定位一份 tsserverlibrary.js 所在目录。
+ * 解析不到 tsdk 时它内部的 tsserver 起不来，hover / 补全 / 跳转的请求会一直
+ * 挂在等待初始化上，直到客户端超时 —— 表现是编辑器对这些操作毫无反应，
+ * 而且不会报「找不到 tsserver」，只会看到请求超时。
+ *
+ * 优先级：工作区（含上溯多级，兼容 monorepo）自带的 typescript →
+ * 托管 LSP 目录下的 typescript 运行时 → 应用自身。都没有时返回 null。
+ */
+function resolveTypeScriptTsdk(workspacePath: string): string | null {
+  const isSdkDir = (dir: string): boolean =>
+    fs.existsSync(path.join(dir, 'tsserverlibrary.js')) ||
+    fs.existsSync(path.join(dir, 'typescript.js'))
+
+  const candidates: string[] = []
+
+  let dir = workspacePath
+  for (let depth = 0; depth < 6 && dir; depth++) {
+    candidates.push(path.join(dir, 'node_modules', 'typescript', 'lib'))
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+
+  try {
+    candidates.push(path.join(getLspBinDir(), 'node_modules', 'typescript', 'lib'))
+  } catch {
+    // 托管目录不可用（权限 / 创建失败）时跳过，不影响其它候选
+  }
+
+  candidates.push(path.join(process.cwd(), 'node_modules', 'typescript', 'lib'))
+
+  for (const candidate of candidates) {
+    if (candidate && isSdkDir(candidate)) {
+      return candidate.replace(/\\/g, '/')
+    }
+  }
+
+  logger.lsp.warn('[LSP vue] No TypeScript SDK found, Volar may have no type service', {
+    workspacePath,
+    tried: candidates.length,
+  })
+  return null
+}
+
+/**
+ * Volar 的初始化配置
+ *
+ * 同时用于 initialize 的 initializationOptions 与 workspace/configuration 的回包：
+ * 两处必须给出同样的形状，否则 Volar 会在其中一次读到空配置并把 tsserver 关掉。
+ */
+function buildVueConfig(workspacePath: string): Record<string, unknown> {
+  const tsdk = resolveTypeScriptTsdk(workspacePath)
+  return {
+    ...(tsdk ? { typescript: { tsdk } } : {}),
+    vue: {
+      hybridMode: false,
+    },
+  }
 }
 
 // ============ 服务器命令获取函数 ============
@@ -465,6 +533,10 @@ class LspManager {
   private static readonly MAX_CRASH_COUNT = 3
   private static readonly CRASH_COOLDOWN_MS = LSP_DEFAULTS.crashCooldownMs
 
+  // 崩溃计数按 key 跨实例保存：重启会新建 instance，计数若只挂在实例上
+  // 就永远是 1，MAX_CRASH_COUNT 形同虚设，坏掉的服务器会被无限重启
+  private crashHistory: Map<string, { count: number; lastTime: number }> = new Map()
+
   /**
    * 同时运行的 LSP 进程上限。
    *
@@ -676,6 +748,18 @@ class LspManager {
     const { command, args } = cmdInfo
     const key = this.getInstanceKey(config.name, workspacePath)
 
+    // TS 系服务器的运行时预检：typescript 7 起不再提供 tsserverlibrary.js，
+    // 服务端会在打开文件时抛 TypeError 退出。这里提前拦下，给出可执行的提示，
+    // 而不是让它反复崩溃重启刷日志
+    if (isServerRuntimeBroken(config.name, args[0] ?? null)) {
+      logger.lsp.error(
+        `[LSP ${config.name}] TypeScript runtime is unusable (missing tsserverlibrary.js). ` +
+          `请到「设置 → 语言服务器」重新安装该服务。`,
+        { command, script: args[0] },
+      )
+      return false
+    }
+
     // 使用 ELECTRON_RUN_AS_NODE=1 让 Electron 作为纯 Node.js 运行时工作
     const proc = spawn(command, args, {
       cwd: workspacePath,
@@ -687,6 +771,14 @@ class LspManager {
 
     if (!proc.stdout || !proc.stdin) return false
 
+    // 冷却窗口内的历史崩溃次数要继承下来，否则重启后的新实例总是从 0 开始，
+    // 崩溃上限永远达不到，进程会被无限拉起
+    const prevCrash = this.crashHistory.get(key)
+    const inheritedCrash =
+      prevCrash && Date.now() - prevCrash.lastTime <= LspManager.CRASH_COOLDOWN_MS
+        ? prevCrash.count
+        : 0
+
     const instance: LspServerInstance = {
       config,
       process: proc,
@@ -696,8 +788,8 @@ class LspManager {
       contentLength: -1,
       initialized: false,
       workspacePath,
-      crashCount: 0,
-      lastCrashTime: 0,
+      crashCount: inheritedCrash,
+      lastCrashTime: inheritedCrash > 0 ? prevCrash!.lastTime : 0,
     }
 
     this.servers.set(key, instance)
@@ -716,8 +808,8 @@ class LspManager {
       if (msg) logger.lsp.warn(`[LSP ${key}] STDERR:`, msg)
     })
 
-    proc.on('close', (code) => {
-      logger.lsp.debug(`[LSP ${key}] Closed with code: ${code}`)
+    proc.on('close', (code, signal) => {
+      logger.lsp.debug(`[LSP ${key}] Closed with code: ${code}, signal: ${signal ?? 'none'}`)
 
       const current = this.servers.get(key)
       const isCurrent = current === instance
@@ -732,7 +824,7 @@ class LspManager {
       const wasStopping = this.stoppingServers.delete(key)
       if (wasStopping || !isCurrent) return
 
-      // 自动重启逻辑（改进版）
+      // 自动重启逻辑
       if (code !== 0 && code !== null) {
         const now = Date.now()
 
@@ -744,10 +836,16 @@ class LspManager {
         }
         instance.lastCrashTime = now
 
+        // 计数写回 key 级别，供下一次 spawn 继承
+        this.crashHistory.set(key, { count: instance.crashCount, lastTime: now })
+
         // 只有在崩溃次数未超限时才重启
         if (instance.crashCount <= LspManager.MAX_CRASH_COUNT) {
           const delay = Math.min(1000 * instance.crashCount, 5000) // 递增延迟，最大 5 秒
-          logger.lsp.warn(`[LSP ${key}] Server crashed (${instance.crashCount}/${LspManager.MAX_CRASH_COUNT}), restarting in ${delay}ms...`)
+          logger.lsp.warn(
+            `[LSP ${key}] Server crashed (${instance.crashCount}/${LspManager.MAX_CRASH_COUNT}, ` +
+              `code=${code}, signal=${signal ?? 'none'}), restarting in ${delay}ms...`,
+          )
 
           setTimeout(() => {
             // 再次检查是否应该重启（可能已换成另一个实例）
@@ -758,8 +856,16 @@ class LspManager {
             }
           }, delay)
         } else {
-          logger.lsp.error(`[LSP ${key}] Server crashed ${instance.crashCount} times, giving up`)
+          // 放弃重启后清掉计数，下一次显式请求重新获得完整的重试额度
+          this.crashHistory.delete(key)
+          logger.lsp.error(
+            `[LSP ${key}] Server crashed ${instance.crashCount} times, giving up. ` +
+              `最后一次退出码 code=${code}，请检查该语言服务器安装是否完整。`,
+          )
         }
+      } else {
+        // 正常退出（code 0 或收到信号）不累计崩溃，避免把主动回收算成故障
+        this.crashHistory.delete(key)
       }
     })
 
@@ -768,6 +874,8 @@ class LspManager {
     try {
       await this.initializeServer(key, workspacePath)
       instance.initialized = true
+      // 初始化成功即视为健康，清掉历史崩溃计数，避免偶发失败长期占用重试额度
+      this.crashHistory.delete(key)
       logger.lsp.debug(`[LSP ${key}] Initialized successfully`)
       return true
     } catch (err) {
@@ -815,14 +923,49 @@ class LspManager {
     const instance = this.servers.get(key)
     if (!instance) return
 
+    // 带 method 的一律是服务器发起的消息，不带 method 才是我们请求的响应。
+    // 必须先按 method 分流：两台机器的 id 各自从 0 自增，服务器请求的 id 很容易
+    // 撞上某个在途客户端请求的 id，此时若先按 id 匹配，configuration 这类请求会被
+    // 当成响应吞掉且永不回包 —— 服务端在等它，hover 就永远停在加载态。
+    if (message.method !== undefined) {
+      if (message.id !== undefined) {
+        this.handleServerRequest(key, instance, message)
+      } else {
+        this.handleNotification(key, message)
+      }
+      return
+    }
+
     if (message.id !== undefined && instance.pendingRequests.has(message.id)) {
       const { resolve, reject, timeout } = instance.pendingRequests.get(message.id)!
       instance.pendingRequests.delete(message.id)
       clearTimeout(timeout)
       if (message.error) reject(message.error)
       else resolve(message.result)
-    } else if (message.method === 'workspace/configuration' && message.id !== undefined) {
-      // 处理 workspace/configuration 请求（某些 LSP 服务器需要）
+    }
+  }
+
+  /**
+   * 回应服务器发起的请求。
+   *
+   * 服务器在等客户端回包期间会阻塞相关能力（vscode-jsonrpc 里这类请求的
+   * promise 不 resolve，后续依赖它的请求就不会返回），所以这里的原则是：
+   * 认识的给出配置，不认识的也必须回一个 null，绝不静默丢弃。
+   */
+  private handleServerRequest(key: string, instance: LspServerInstance, message: any): void {
+    const respond = (result: unknown): void => {
+      const body = JSON.stringify({ jsonrpc: '2.0', id: message.id, result })
+      const responseMessage = `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`
+      try {
+        if (instance.process?.stdin) {
+          instance.process.stdin.write(responseMessage)
+        }
+      } catch (e) {
+        logger.lsp.error(`[LSP ${key}] Failed to respond to ${message.method}:`, e)
+      }
+    }
+
+    if (message.method === 'workspace/configuration') {
       const items = message.params?.items || []
       const settings = items.map((item: any) => {
         const section = item.section || ''
@@ -872,37 +1015,34 @@ class LspManager {
           }
         }
 
-        // Vue
-        if (section === 'vue' || section.startsWith('volar.')) {
-          return {
-            server: {
-              hybridMode: false
-            }
-          }
+        // Vue (Volar)：tsdk 必须指向真实的 TypeScript lib 目录，
+        // 否则内部 tsserver 起不来，hover / 补全 / 跳转全部无响应直到超时
+        if (
+          instance.config.name === 'vue' &&
+          (section === 'vue' || section.startsWith('volar.') ||
+            section === 'typescript' || section.startsWith('typescript.'))
+        ) {
+          return buildVueConfig(instance.workspacePath)
         }
 
         return null
       })
 
-      // 发送响应
-      const response = {
-        jsonrpc: '2.0',
-        id: message.id,
-        result: settings
-      }
-      const body = JSON.stringify(response)
-      const responseMessage = `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`
-
-      try {
-        if (instance.process?.stdin) {
-          instance.process.stdin.write(responseMessage)
-        }
-      } catch (e) {
-        logger.lsp.error(`[LSP ${key}] Failed to send configuration response:`, e)
-      }
-    } else if (message.method) {
-      this.handleNotification(key, message)
+      respond(settings)
+      return
     }
+
+    // workspace/workspaceFolders：回当前实例绑定的工作空间
+    if (message.method === 'workspace/workspaceFolders') {
+      const rootPath = instance.workspacePath?.replace(/\\/g, '/')
+      respond(rootPath ? [{ uri: `file://${rootPath}`, name: path.basename(rootPath) }] : null)
+      return
+    }
+
+    // 其余请求（client/registerCapability、window/workDoneProgress/create、
+    // window/showMessageRequest 等）不需要额外处理，但必须回包解除阻塞
+    logger.lsp.debug(`[LSP ${key}] Unhandled server request, replied null: ${message.method}`)
+    respond(null)
   }
 
   private handleNotification(key: string, message: any): void {
@@ -1021,12 +1161,12 @@ class LspManager {
     const instance = this.servers.get(key)
     const serverName = instance?.config.name
 
-    // 为 Pyright 添加 Python 解释器配置
+    // 为 Pyright 添加 Python 解释器配置；为 Volar 指定 TypeScript SDK
     const initializationOptions = serverName === 'python' ? {
       python: {
         pythonPath: pythonManager.getPythonPath() || (process.platform === 'win32' ? 'python' : 'python3'),
       },
-    } : undefined
+    } : serverName === 'vue' ? buildVueConfig(workspacePath) : undefined
 
     await this.sendRequest(key, 'initialize', {
       processId: process.pid,
@@ -1053,6 +1193,13 @@ class LspManager {
             }
           }
         }
+      })
+    }
+
+    // Volar 在 initialized 之后还会再读一次配置，两处保持一致
+    if (serverName === 'vue') {
+      this.sendNotification(key, 'workspace/didChangeConfiguration', {
+        settings: buildVueConfig(workspacePath),
       })
     }
   }

@@ -324,7 +324,24 @@ class ConsoleSink implements LogSink {
       entry.duration !== undefined ? ` ${ANSI.yellow}(${entry.duration}ms)${ANSI.reset}` : ''
     const msgColor =
       entry.level === 'error' ? ANSI.red : entry.level === 'warn' ? ANSI.yellow : ''
-    const message = `${msgColor}${entry.message}${ANSI.reset}`
+    // 附加参数必须一并输出：错误对象、子进程 stderr 等诊断信息都在 data 里，
+    // 只拼 message 会让这类日志只剩半句，排障时完全看不到原因
+    let message = `${msgColor}${entry.message}${ANSI.reset}`
+    if (entry.data !== undefined) {
+      // 字符串（子进程 stderr、错误消息）按原文输出，JSON 转义会把换行压成
+      // 一整行 \n，堆栈信息完全没法读
+      let text: string
+      if (typeof entry.data === 'string') {
+        text = entry.data
+      } else {
+        try {
+          text = JSON.stringify(entry.data) ?? ''
+        } catch {
+          text = String(entry.data)
+        }
+      }
+      if (text && text !== '{}') message += ` ${ANSI.dim}${text}${ANSI.reset}`
+    }
 
     return `${timeStr} ${sourceTag} ${levelStr} ${categoryStr} ${message}${durationStr}`
   }

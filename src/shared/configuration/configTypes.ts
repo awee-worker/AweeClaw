@@ -178,6 +178,13 @@ export interface GitConfig {
 export interface LspConfig {
   timeoutMs: number
   completionTimeoutMs: number
+  /**
+   * 悬停信息超时（毫秒）
+   *
+   * hover 是鼠标移动触发的高频请求，用户对它的等待预期在百毫秒级。
+   * 超时后直接返回空结果让浮层静默消失，比长时间保持 loading 更符合预期。
+   */
+  hoverTimeoutMs: number
   crashCooldownMs: number
 }
 

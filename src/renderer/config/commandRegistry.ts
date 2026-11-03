@@ -18,6 +18,7 @@ export const registerCoreCommands = () => {
         { id: 'editor.goToImplementation',              title: 'Go to Implementation',          category: 'Editor',     defaultKey: isMac ? 'Ctrl+F12' : 'Ctrl+F12' },
         { id: 'editor.findReferences',                  title: 'Find All References',           category: 'Editor',     defaultKey: 'Shift+F12' },
         { id: 'editor.quickOutline',                    title: 'Go to Symbol in Editor',        category: 'Editor',     defaultKey: 'Ctrl+Shift+O' },
+        { id: 'editor.goToWorkspaceSymbol',             title: 'Go to Symbol in Workspace',      category: 'Editor',     defaultKey: 'Ctrl+T' },
         { id: 'editor.goBack',                          title: 'Go Back',                       category: 'Editor',     defaultKey: isMac ? 'Ctrl+-' : 'Alt+Left' },
         { id: 'editor.goForward',                       title: 'Go Forward',                    category: 'Editor',     defaultKey: isMac ? 'Ctrl+Shift+-' : 'Alt+Right' },
 

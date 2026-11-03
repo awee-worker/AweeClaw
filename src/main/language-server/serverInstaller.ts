@@ -22,6 +22,77 @@ import Store from 'electron-store'
 const store = new Store({ name: 'lsp-config' })
 const CONFIG_KEY_BIN_DIR = 'lspBinDir'
 
+/**
+ * TypeScript 运行时版本约束
+ *
+ * typescript-language-server 与 @vue/language-server 都在运行时
+ * require('typescript')，并直接访问 tsserverlibrary 暴露的 ts.server API。
+ * TypeScript 7 是原生移植版，lib/ 目录下不再提供 tsserverlibrary.js，
+ * ts.server 为 undefined，服务端一打开文件就抛 TypeError 退出进程。
+ * 因此这里固定 5.x，不跟随 npm 的 latest 标签。
+ */
+const TYPESCRIPT_RUNTIME_SPEC = 'typescript@~5.9'
+
+/**
+ * Vue 语言服务器版本约束
+ *
+ * @vue/language-server 3.x 起只支持 hybrid 模式：服务端自己不再跑 tsserver，
+ * 而是把 ProjectInfo / Quickinfo 等请求通过 tsserver/request 通知转发给
+ * LSP 客户端，要求客户端自行维护一个 tsserver 进程并回 tsserver/response。
+ * 当前桥接层没有实现这套协议，3.x 的服务一切 TS 相关请求都会挂到超时。
+ * 2.2.x 读取 initializationOptions.typescript.tsdk 与 vue.hybridMode，
+ * 非混合模式下自己拉起 tsserver，与 languageServerManager 里的
+ * buildVueConfig 配置直接配套，因此锁在 2.x 线。
+ */
+const VUE_LANGUAGE_SERVER_SPEC = '@vue/language-server@~2.2.12'
+
+/**
+ * 语言服务器的 TypeScript 运行时是否可用
+ *
+ * 只判断 tsserverlibrary.js 是否存在——它是 ts.server API 的唯一入口，
+ * 缺失即意味着该版本无法为语言服务器提供类型服务。
+ */
+export function isTypeScriptRuntimeReady(baseDir: string): boolean {
+  return fs.existsSync(path.join(baseDir, 'node_modules', 'typescript', 'lib', 'tsserverlibrary.js'))
+}
+
+/** 依赖 TypeScript tsserverlibrary 的语言服务器 */
+const TYPESCRIPT_RUNTIME_SERVERS = new Set(['typescript', 'vue'])
+
+/**
+ * 读取托管目录内 @vue/language-server 的主版本号
+ *
+ * 仅对 npm 装进托管目录的安装有效；返回 null 表示无法判定
+ * （不在托管目录、读不到 package.json 或解析失败），此时交由其它检查决定。
+ */
+function readManagedVueMajorVersion(binDir: string): number | null {
+  try {
+    const pkgPath = path.join(binDir, 'node_modules', '@vue', 'language-server', 'package.json')
+    if (!fs.existsSync(pkgPath)) return null
+    const version = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))?.version as string | undefined
+    if (!version) return null
+    return Number.parseInt(version.split('.')[0], 10)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 判断某个语言服务器是否因 TypeScript 运行时缺失而不可用
+ *
+ * 只对装在托管目录内、且属于 TS 运行时依赖的服务器生效；
+ * 用户自行用系统 PATH 安装的服务器不受此处约束。
+ */
+export function isServerRuntimeBroken(serverType: string, serverPath: string | null): boolean {
+  if (!serverPath) return false
+  if (!TYPESCRIPT_RUNTIME_SERVERS.has(serverType)) return false
+
+  const binDir = getLspBinDir()
+  if (!path.resolve(serverPath).startsWith(path.resolve(binDir) + path.sep)) return false
+
+  return !isTypeScriptRuntimeReady(binDir)
+}
+
 // 默认 LSP 服务器安装目录
 const DEFAULT_LSP_BIN_DIR = path.join(app.getPath('userData'), 'lsp-servers')
 
@@ -746,16 +817,25 @@ export async function installTypeScriptServer(): Promise<LspInstallResult> {
   logger.lsp.info('[LSP Installer] Starting TypeScript Language Server installation')
   logEnvironmentInfo()
 
+  const binDir = getLspBinDir()
   const existing = getInstallCheckServerPath('typescript')
-  if (existing) {
+
+  // 二进制在但 TypeScript 运行时不可用（例如早前装到了 TS 7）时必须重装，
+  // 否则服务端会在第一次打开文件时崩溃，而这里会误报“已安装”
+  if (existing && isTypeScriptRuntimeReady(binDir)) {
     logger.lsp.info(`[LSP Installer] TypeScript server already installed at: ${existing}`)
     return { success: true, path: existing }
   }
+  if (existing) {
+    logger.lsp.warn('[LSP Installer] TypeScript runtime is missing tsserverlibrary, reinstalling', {
+      binDir,
+      existing,
+    })
+  }
 
-  const binDir = getLspBinDir()
   logger.lsp.info(`[LSP Installer] Installing to: ${binDir}`)
 
-  const success = await npmInstall(['typescript-language-server', 'typescript'], binDir)
+  const success = await npmInstall(['typescript-language-server', TYPESCRIPT_RUNTIME_SPEC], binDir)
 
   if (success) {
     logger.lsp.debug('[LSP Installer] npm install completed, verifying installation...')
@@ -857,31 +937,67 @@ export async function installVueServer(): Promise<LspInstallResult> {
   logger.lsp.info('[LSP Installer] Starting Vue Language Server installation')
   logEnvironmentInfo()
 
+  const binDir = getLspBinDir()
   const existing = getInstallCheckServerPath('vue')
-  if (existing) {
+
+  // typescript 是 vue-language-server 的 peer 依赖，且必须是提供 tsserverlibrary
+  // 的 5.x：二进制存在但运行时不可用时同样要重装。
+  // 托管目录里装的 3.x 只支持 hybrid 模式（客户端未实现 tsserver 桥，
+  // 全部 TS 请求会超时），检测到非 2.x 时也按未安装处理、强制重装；
+  // 版本读不出来的安装（内置 / 系统 PATH）不在此约束内，维持原有判定。
+  const installedVueMajor = readManagedVueMajorVersion(binDir)
+  if (existing && isTypeScriptRuntimeReady(binDir) && (installedVueMajor === null || installedVueMajor === 2)) {
     logger.lsp.info(`[LSP Installer] Vue server already installed at: ${existing}`)
     return { success: true, path: existing }
   }
+  if (existing && installedVueMajor !== null && installedVueMajor !== 2) {
+    logger.lsp.warn('[LSP Installer] Vue server version is not 2.x (hybrid-only), reinstalling', {
+      binDir,
+      existing,
+      installedVueMajor,
+    })
+  } else if (existing) {
+    logger.lsp.warn('[LSP Installer] Vue server runtime is missing tsserverlibrary, reinstalling', {
+      binDir,
+      existing,
+    })
+  }
 
-  const binDir = getLspBinDir()
   logger.lsp.info(`[LSP Installer] Installing to: ${binDir}`)
 
-  // typescript 是 vue-language-server 的 peer 依赖，缺了会在启动时 require 失败
-  const success = await npmInstall(['@vue/language-server', 'typescript'], binDir)
+  const success = await npmInstall([VUE_LANGUAGE_SERVER_SPEC, TYPESCRIPT_RUNTIME_SPEC], binDir)
 
   if (success) {
     logger.lsp.debug('[LSP Installer] npm install completed, verifying installation...')
     const serverPath = getInstalledServerPath('vue')
-    if (serverPath) {
-      logger.lsp.info(`[LSP Installer] @vue/language-server installed successfully at: ${serverPath}`)
-      return { success: true, path: serverPath }
-    } else {
+    if (!serverPath) {
       logger.lsp.error('[LSP Installer] Installation succeeded but server binary not found', {
         binDir,
         expectedPaths: SERVER_PATHS.vue.userPaths,
       })
       return { success: false, error: 'Server binary not found after installation. Check installation directory.' }
     }
+
+    // npm 只是「命令返回 0」，不代表装进了满足约束的版本：依赖树里其它包的
+    // peer/override 可能把 @vue/language-server 抬到 3.x，装完一切正常但服务
+    // 依然不可用。这里按实际落盘版本复核，不符合就直接报失败，避免把问题
+    // 拖到用户第一次悬停时才以「请求超时」的形式暴露。
+    const verifiedMajor = readManagedVueMajorVersion(binDir)
+    if (verifiedMajor !== null && verifiedMajor !== 2) {
+      logger.lsp.error('[LSP Installer] Installed Vue server major version violates constraint', {
+        binDir,
+        serverPath,
+        verifiedMajor,
+        expected: VUE_LANGUAGE_SERVER_SPEC,
+      })
+      return {
+        success: false,
+        error: `Installed @vue/language-server ${verifiedMajor}.x is not supported (hybrid-only). Expected ${VUE_LANGUAGE_SERVER_SPEC}.`,
+      }
+    }
+
+    logger.lsp.info(`[LSP Installer] @vue/language-server installed successfully at: ${serverPath}`)
+    return { success: true, path: serverPath }
   }
 
   logger.lsp.error('[LSP Installer] npm install failed for @vue/language-server')
@@ -1391,9 +1507,11 @@ export function getLspServerStatus(): Record<string, { installed: boolean; path?
 
   for (const server of servers) {
     const serverPath = getInstalledServerPath(server)
+    // 运行时不可用的服务器不报“已安装”，否则界面上看起来正常、实际一打开文件就崩
+    const broken = isServerRuntimeBroken(server, serverPath)
     status[server] = {
-      installed: !!serverPath,
-      path: serverPath || undefined,
+      installed: !!serverPath && !broken,
+      path: broken ? undefined : serverPath || undefined,
     }
   }
 

@@ -53,6 +53,7 @@ export const AI_COMPLETION_DEFAULTS = {
 export const LSP_DEFAULTS = {
   timeoutMs: 30000,
   completionTimeoutMs: 2000,
+  hoverTimeoutMs: 3000,
   crashCooldownMs: 5000,
 } as const
 

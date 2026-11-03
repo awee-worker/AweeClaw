@@ -7,6 +7,7 @@ import { logger } from '@toolkit/LogEngine'
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
 import type * as Monaco from 'monaco-editor'
 import { lspUriToPath } from '@shared/toolkit/uriHelper'
+import { LSP_DEFAULTS } from '@shared/configuration/defaultProfile'
 
 // 扩展 CompletionItem 类型以支持 LSP data 字段
 interface CompletionItemWithData extends Monaco.languages.CompletionItem {
@@ -105,9 +106,51 @@ const symbolKindMap: Record<number, number> = {
 }
 
 /**
+ * 给 LSP 请求套一层超时保护
+ *
+ * 语言服务器在索引未就绪、文档未同步或进程卡住时可能长时间不返回结果。
+ * Monaco 把"尚未返回"的 provider 视为仍在计算，浮层会一直停留在加载态，
+ * 用户看到的就是悬停后无限转圈。超时后按「无结果」处理，浮层静默消失。
+ */
+async function withLspTimeout<T>(
+  request: Promise<T>,
+  timeoutMs: number | undefined,
+  fallback: T,
+): Promise<T> {
+  if (!timeoutMs || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return request.catch(() => fallback)
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), timeoutMs)
+  })
+
+  try {
+    return await Promise.race([request.catch(() => fallback), timeoutPromise])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+/**
+ * 编辑器实例是否已注册过 LSP provider
+ *
+ * provider 挂在 monaco 全局实例上，与具体编辑器实例无关：
+ * - 重复注册会让同一个位置并发多份请求，浮层要等最慢的一份，表现为悬停
+ *   长期停在加载态、引用面板迟迟不收敛（编辑器重新挂载就会多出一整套）；
+ * - 反过来随编辑器实例卸载释放，又会让其它仍在使用的实例失去语言能力。
+ * 因此这里只注册一次，跟随渲染进程生命周期。
+ */
+let providersRegistered = false
+
+/**
  * 注册所有 LSP 提供者
  */
-export function registerLspProviders(monaco: typeof Monaco) {
+export function registerLspProviders(monaco: typeof Monaco): void {
+  if (providersRegistered) return
+  providersRegistered = true
+
   // 支持的语言列表
   const languages = [
     // TypeScript/JavaScript
@@ -159,18 +202,20 @@ export function registerLspProviders(monaco: typeof Monaco) {
     provideHover: async (model, position) => {
       const modelUri = model.uri.toString()
       const filePath = lspUriToPath(modelUri)
-      
-      logger.lsp.info('[LSP Hover] Request:', { modelUri, filePath, line: position.lineNumber - 1, col: position.column - 1 })
-      
-      const result = await getHoverInfo(
-        filePath,
-        position.lineNumber - 1,
-        position.column - 1
+      const line = position.lineNumber - 1
+      const col = position.column - 1
+
+      // 超时后返回 null：hover 是鼠标移动触发的高频请求，
+      // 让浮层静默消失远好过长时间停留在加载态
+      const result = await withLspTimeout(
+        getHoverInfo(filePath, line, col),
+        getEditorConfig().lsp?.hoverTimeoutMs ?? LSP_DEFAULTS.hoverTimeoutMs,
+        null,
       )
 
-      logger.lsp.info('[LSP Hover] Result:', result)
-
       if (!result || !result.contents) return null
+
+      logger.lsp.debug('[LSP Hover] resolved', { filePath, line, col })
 
       // 转换 LSP hover 内容到 Monaco 格式
       const contents: Monaco.IMarkdownString[] = []
@@ -210,7 +255,10 @@ export function registerLspProviders(monaco: typeof Monaco) {
       
       let timer: ReturnType<typeof setTimeout>
       const timeoutPromise = new Promise<null>((resolve) => {
-        timer = setTimeout(() => resolve(null), getEditorConfig().lsp.completionTimeoutMs)
+        timer = setTimeout(
+          () => resolve(null),
+          getEditorConfig().lsp?.completionTimeoutMs ?? LSP_DEFAULTS.completionTimeoutMs,
+        )
       })
       const completionPromise = getCompletions(
         filePath,
@@ -315,15 +363,22 @@ export function registerLspProviders(monaco: typeof Monaco) {
     },
   })
 
-  // 引用提供者
+  // 引用提供者（引用结果面板有独立链路，这里只负责 Monaco 内置引用入口）
   monaco.languages.registerReferenceProvider(languages, {
     provideReferences: async (model, position, _context) => {
       const filePath = lspUriToPath(model.uri.toString())
-      const result = await findReferences(
-        filePath,
-        position.lineNumber - 1,
-        position.column - 1
-      )
+
+      let result: Awaited<ReturnType<typeof findReferences>>
+      try {
+        result = await findReferences(
+          filePath,
+          position.lineNumber - 1,
+          position.column - 1
+        )
+      } catch {
+        // 超时或请求失败按「无结果」处理，异常不向上冒泡到 Monaco
+        return null
+      }
 
       if (!result) return null
 

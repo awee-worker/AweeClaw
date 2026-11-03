@@ -31,7 +31,18 @@ const CRITICAL_FEATURES = ['gpu_compositing', 'webgl', 'webgl2'] as const
  * 异常，单独归入告警而不与「主动回退」混为一谈。
  */
 const SOFTWARE_ONLY_STATUSES = new Set(['software_only', 'disabled_software'])
-const UNAVAILABLE_STATUSES = new Set(['unavailable_software', 'disabled_off'])
+/**
+ * 真正的硬故障状态值。
+ *
+ * 只保留 `unavailable_software`：它表示硬件与软件两条路径都不可用。
+ *
+ * 这里刻意排除 `disabled_off`。它是 Chromium 在 GPU 合成已经回退到软件渲染时
+ * 对 webgl / webgl2 给出的连带状态，与 `gpu_compositing: disabled_software`
+ * 是同一件事的两个侧面，不是独立的第二处故障。此前把它归入硬故障，导致
+ * 一次软件回退被记成「关键渲染特征不可用」的 error；开发态（未打包 Electron）
+ * 下这会长期刷屏，反而掩盖真正的 `unavailable_software`。
+ */
+const UNAVAILABLE_STATUSES = new Set(['unavailable_software'])
 
 /** 应用级监听只注册一次：反复创建窗口不应重复查询、重复刷屏 */
 let gpuDiagnosticsRegistered = false
@@ -82,6 +93,8 @@ async function reportGpuStatus(reason: string): Promise<boolean> {
     featureStatus,
     softwareFeatures,
     unavailableFeatures,
+    // 开发态（未打包）与打包态的回退成因不同，处置方式也不同，需要能区分
+    developmentRuntime: !app.isPackaged,
     platform: process.platform,
     driver,
   }
@@ -92,11 +105,17 @@ async function reportGpuStatus(reason: string): Promise<boolean> {
   }
 
   if (softwareFeatures.length > 0) {
-    logger.system.warn(
+    // 开发态用 warn：未打包 Electron 在部分系统版本上会因 GPU 检测表不识别而
+    // 回退软件渲染，这是已知现象，界面仍然可用；把它记成 error 只会长期刷屏
+    const message =
       '[GPU] 已回退到软件渲染（SwiftShader），CPU 占用将显著高于硬件加速。' +
-        '常见成因：显卡驱动过旧 / 虚拟机或远程桌面环境 / 显卡被系统禁用',
-      payload,
-    )
+      '常见成因：显卡驱动过旧 / 虚拟机或远程桌面环境 / 显卡被系统禁用 / ' +
+      '系统版本新于 Electron 内置的 GPU 检测表'
+    if (app.isPackaged) {
+      logger.system.warn(message, payload)
+    } else {
+      logger.system.warn(`${message}（当前为开发态，打包后请复核该告警）`, payload)
+    }
     return true
   }
 
