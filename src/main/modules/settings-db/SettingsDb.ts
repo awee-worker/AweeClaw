@@ -619,6 +619,22 @@ export class SettingsDb {
     }
   }
 
+  /**
+   * 仅更新 provider 的模型清单（custom_models 一列）。
+   *
+   * 为什么不能用 upsertProviderConfig：那个方法是「保存整份配置」，
+   * 会把 api_key / is_current / enabled 一并按入参覆盖。模型清单同步
+   * 只该动一列，走 upsert 会把当前服务商标记清零、把密钥重新加密一遍。
+   *
+   * 幂等性：同一份 models 重复写入结果一致（仅 updated_at 变化）。
+   * 事务：单条 UPDATE，由 SQLite 隐式提交，无需显式事务包裹。
+   */
+  updateProviderCustomModels(providerId: string, models: string[]): void {
+    this.db.prepare(
+      'UPDATE provider_config SET custom_models = ?, updated_at = ? WHERE provider_id = ?'
+    ).run(JSON.stringify(models), Date.now(), providerId)
+  }
+
   /** 批量保存 provider 配置（事务） */
   batchUpsertProviderConfigs(configs: Record<string, any>, currentProviderId: string): void {
     const tx = this.db.prepare('BEGIN TRANSACTION')

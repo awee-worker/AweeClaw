@@ -43,7 +43,9 @@ const PROTOCOL_OPTIONS = [
   { value: 'openai-responses', label: 'OpenAI Responses API' },
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'google', label: 'Google (Gemini)' },
-  { value: 'custom', label: 'Custom' },
+  // 「自定义」在传输层等同于 OpenAI 兼容协议（走 createOpenAICompatible，
+  // 只是 baseUrl 由用户填写），标签写清这一点，避免被误解为可自定义报文格式
+  { value: 'custom', label: 'Custom (OpenAI Compatible)' },
 ]
 
 type EditableHeader = { key: string; value: string; isCustom?: boolean }

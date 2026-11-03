@@ -6,10 +6,15 @@ import {
   getCacheFeatureErrorReason,
   markCacheFeatureUnsupported,
 } from './ProviderCacheAdapter'
+import {
+  detectUnsupportedParameter,
+  markParameterSuppressed,
+} from './ProviderParameterAdapter'
 import { LLMError } from '../providerTypes'
 
 interface RecoveryState {
   cacheRetryCount: number
+  parameterRetryCount: number
   transientRetryCount: number
 }
 
@@ -21,6 +26,7 @@ export interface GenerationRecoveryOptions<T> {
   execute: (useCache: boolean, attempt: number) => Promise<T>
   maxCacheRetries?: number
   maxTransientRetries?: number
+  maxParameterRetries?: number
 }
 
 export const DEFAULT_RETRYABLE_GENERATION_CODES = new Set<ErrorCode>([
@@ -42,10 +48,12 @@ export async function executeWithGenerationRecovery<T>(
     execute,
     maxCacheRetries = 1,
     maxTransientRetries = 2,
+    maxParameterRetries = 3,
   } = options
 
   const state: RecoveryState = {
     cacheRetryCount: 0,
+    parameterRetryCount: 0,
     transientRetryCount: 0,
   }
 
@@ -74,6 +82,22 @@ export async function executeWithGenerationRecovery<T>(
         continue
       }
 
+      // 参数级降级：服务商拒收某个参数（例如 top_k / temperature / reasoning_effort）
+      // 时，标记该参数在此 provider+model 组合下不可用，去掉后重试。
+      // 每个参数只降级一次并带冷却期，因此循环必然收敛；上限兜底防止异常放大。
+      const unsupportedParameter = state.parameterRetryCount < maxParameterRetries
+        ? detectUnsupportedParameter(error)
+        : null
+      if (unsupportedParameter) {
+        markParameterSuppressed(
+          config,
+          unsupportedParameter.parameter,
+          unsupportedParameter.reason,
+        )
+        state.parameterRetryCount += 1
+        continue
+      }
+
       const llmError = error instanceof LLMError ? error : LLMError.fromError(error)
       if (
         llmError.retryable &&
@@ -99,7 +123,7 @@ export async function executeWithGenerationRecovery<T>(
         continue
       }
 
-      if (state.transientRetryCount > 0 || state.cacheRetryCount > 0) {
+      if (state.transientRetryCount > 0 || state.cacheRetryCount > 0 || state.parameterRetryCount > 0) {
         logger.llm.error('[GenerationRecovery] Generation failed after retries', {
           operation,
           provider: config.provider,
@@ -110,6 +134,7 @@ export async function executeWithGenerationRecovery<T>(
           message: llmError.message,
           attempt,
           cacheRetries: state.cacheRetryCount,
+          parameterRetries: state.parameterRetryCount,
           transientRetries: state.transientRetryCount,
         })
       }

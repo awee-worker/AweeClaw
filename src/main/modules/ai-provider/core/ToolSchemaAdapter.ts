@@ -1,96 +1,42 @@
 /**
- * 工具转换器 - 将应用工具定义转换为 AI SDK Tool 格式
- * 使用 AI SDK 6.0 的标准类型
+ * 工具转换器 — 把工具声明的 JSON Schema 原样交给 AI SDK
+ *
+ * 之前的实现用 `switch (type)` 把 JSON Schema 重建成 Zod，重建过程会丢掉
+ * anyOf / oneOf / $ref / 联合类型（type 为数组）/ 数值范围 / additionalProperties
+ * 等约束。MCP 工具里这些写法很常见，结果是模型收到的契约与插件真实契约不一致，
+ * 参数校验形同虚设。
+ *
+ * AI SDK 提供 `jsonSchema()` 可直接透传原始 JSON Schema，因此这里不做任何
+ * 有损转换。
  */
 
-import { tool } from '@ai-sdk/provider-utils'
-import { z } from 'zod'
+import { jsonSchema, tool } from '@ai-sdk/provider-utils'
 import type { Tool } from '@ai-sdk/provider-utils'
+import type { JSONSchema7 } from '@ai-sdk/provider'
 import type { ToolDefinition } from '@protocols'
 
 export class ToolConverter {
-  /**
-   * 转换工具列表
-   */
+  /** 转换工具列表 */
   convert(tools: ToolDefinition[]): Record<string, Tool> {
     const result: Record<string, Tool> = {}
 
     for (const t of tools) {
-      const schema = this.convertSchema(t.parameters)
       result[t.name] = tool({
         description: t.description,
-        inputSchema: schema as any,
-        // 不提供 execute - 工具执行由外部处理
+        // 不做有损的 Zod 重建：anyOf / $ref / 联合类型 / 数值范围等约束
+        // 才能原样到达模型。未声明 additionalProperties 时 JSON Schema 默认
+        // 允许额外字段，与原有 passthrough 行为一致。
+        inputSchema: jsonSchema<Record<string, unknown>>(toJSONSchema(t.parameters)),
+        // 不提供 execute — 工具执行由外部处理
       })
     }
 
     return result
   }
-
-  /**
-   * 转换 JSON Schema 到 Zod Schema
-   */
-  private convertSchema(jsonSchema: Record<string, unknown>): z.ZodType {
-    // 根级通常是一个 object schema
-    return this.buildZodType({
-      type: 'object',
-      properties: jsonSchema.properties,
-      required: jsonSchema.required
-    })
-  }
-
-  private buildZodType(prop: Record<string, any>): z.ZodTypeAny {
-    let zodType: z.ZodTypeAny
-
-    switch (prop.type) {
-      case 'string':
-        if (Array.isArray(prop.enum) && prop.enum.length > 0) {
-          zodType = z.enum(prop.enum as [string, ...string[]])
-        } else {
-          zodType = z.string()
-        }
-        break
-      case 'number':
-      case 'integer':
-        zodType = z.number()
-        break
-      case 'boolean':
-        zodType = z.boolean()
-        break
-      case 'array':
-        if (prop.items) {
-          zodType = z.array(this.buildZodType(prop.items))
-        } else {
-          zodType = z.array(z.any())
-        }
-        break
-      case 'object':
-        const properties = prop.properties || {}
-        const requiredFields = Array.isArray(prop.required) ? prop.required : []
-        const shape: Record<string, z.ZodTypeAny> = {}
-
-        for (const [key, value] of Object.entries(properties)) {
-          const isRequired = requiredFields.includes(key)
-          let fieldSchema = this.buildZodType(value as Record<string, any>)
-          if (!isRequired) {
-            fieldSchema = fieldSchema.optional()
-          }
-          shape[key] = fieldSchema
-        }
-        // 透传未声明字段：MCP 工具里存在大量「结构不由属性表穷举」的对象参数
-        //（例如 z.record 声明的大纲数组项、自定义载荷）。若在这里按已知字段收窄，
-        // 模型实际传入的内容会被 zod 静默剥离，工具只能收到空对象，
-        // 表现为「参数通道传不进内容」
-        zodType = z.object(shape).passthrough()
-        break
-      default:
-        zodType = z.any()
-    }
-
-    if (prop.description) {
-      zodType = zodType.describe(prop.description)
-    }
-
-    return zodType
-  }
 }
+
+/** 工具声明的 parameters 本身就是 JSON Schema 结构，这里只做类型对齐 */
+function toJSONSchema(parameters: ToolDefinition['parameters']): JSONSchema7 {
+  return parameters as unknown as JSONSchema7
+}
+

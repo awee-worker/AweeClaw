@@ -34,6 +34,10 @@ import {
   mergeProviderOptions,
   resolveThinkingCompatibility,
 } from '../../ai-provider/core/ProviderFeatureMatrix'
+import {
+  detectUnsupportedParameter,
+  markParameterSuppressed,
+} from '../../ai-provider/core/ProviderParameterAdapter'
 import { logger } from '@shared/toolkit/LogEngine'
 import { resolveModelRequest, getActiveModelId } from '../OpenApiModelSource'
 import type { OpenAiChatRequest, OpenAiUsage } from '@shared/protocols/openApiProtocol'
@@ -52,6 +56,23 @@ const MAX_MESSAGE_CHARS = 200_000
 
 /** 消息条数上限 */
 const MAX_MESSAGE_COUNT = 200
+
+/** 参数降级重试上限（服务商每拒收一个参数就多一轮） */
+const MAX_PARAMETER_RETRIES = 3
+
+/**
+ * 构建 providerOptions。
+ *
+ * 抽成函数是为了参数降级后能重建：降级改变的是「哪些参数允许下发」，
+ * 复用降级前拼好的对象会把刚被拒收的参数再带上去，重试必然失败。
+ */
+function buildProviderOptions(config: LLMConfig, messages: LLMMessage[]) {
+  let providerOptions = buildProtocolProviderOptions(config)
+  if (resolveThinkingCompatibility(config, messages).enabled) {
+    providerOptions = mergeProviderOptions(providerOptions, buildThinkingProviderOptions(config))
+  }
+  return providerOptions
+}
 
 // ============================================
 // 请求归一化
@@ -259,10 +280,7 @@ async function streamCompletion(
     settings = buildGenerationSettings(config)
     headers = buildRequestExecutionOptions(config).headers
 
-    providerOptions = buildProtocolProviderOptions(config)
-    if (resolveThinkingCompatibility(config, messages).enabled) {
-      providerOptions = mergeProviderOptions(providerOptions, buildThinkingProviderOptions(config))
-    }
+    providerOptions = buildProviderOptions(config, messages)
   } catch (err) {
     ctx.reportError(err, 'POST /v1/chat/completions (stream, prepare)')
     ctx.respondJson(res, 502, openAiError(describeGenerationError(err), 'upstream_error'))
@@ -315,21 +333,54 @@ async function streamCompletion(
     // 首个 chunk 只带 role，符合 OpenAI 客户端预期
     writeChunk({ role: 'assistant' }, null)
 
-    // ⚠️ 必须包一层对象返回：streamText 的返回值是 thenable，
-    // 直接 return 会被 async 函数 await 掉 —— 那就等到流结束才拿到结果，SSE 全废
-    const result = streamText({
-      model,
-      messages: baseMessages,
-      ...settings,
-      ...(headers ? { headers } : {}),
-      providerOptions,
-      abortSignal: controller.signal,
-      // 不传 timeout：AI 生成耗时不设上限（见文件头注释）
-    })
+    // 参数降级重试：服务商以 400 拒收某个参数（top_k / temperature / reasoning_effort 等）时，
+    // 去掉该参数重建请求并重发。仅限「尚未向客户端吐出正文」的情况 ——
+    // 一旦有内容发出，重试就会把同样的内容再发一遍，比失败更糟。
+    let parameterRetry = 0
+    let streamedAny = false
 
-    for await (const delta of result.textStream) {
-      if (clientGone) break
-      if (delta) writeChunk({ content: delta }, null)
+    while (true) {
+      // 降级会改变「哪些参数允许下发」，因此每次重试都要重新构建，
+      // 否则会把刚被拒收的参数原样再带上去。
+      const currentSettings = parameterRetry === 0
+        ? settings
+        : buildGenerationSettings(config)
+      const currentProviderOptions = parameterRetry === 0
+        ? providerOptions
+        : buildProviderOptions(config, messages)
+
+      try {
+        // ⚠️ 必须包一层对象返回：streamText 的返回值是 thenable，
+        // 直接 return 会被 async 函数 await 掉 —— 那就等到流结束才拿到结果，SSE 全废
+        const result = streamText({
+          model,
+          messages: baseMessages,
+          ...currentSettings,
+          ...(headers ? { headers } : {}),
+          providerOptions: currentProviderOptions,
+          abortSignal: controller.signal,
+          // 不传 timeout：AI 生成耗时不设上限（见文件头注释）
+        })
+
+        for await (const delta of result.textStream) {
+          if (clientGone) break
+          if (delta) {
+            streamedAny = true
+            writeChunk({ content: delta }, null)
+          }
+        }
+        break
+      } catch (err) {
+        const unsupported =
+          !streamedAny && parameterRetry < MAX_PARAMETER_RETRIES
+            ? detectUnsupportedParameter(err)
+            : null
+
+        if (!unsupported) throw err
+
+        markParameterSuppressed(config, unsupported.parameter, unsupported.reason)
+        parameterRetry += 1
+      }
     }
 
     if (!clientGone) {

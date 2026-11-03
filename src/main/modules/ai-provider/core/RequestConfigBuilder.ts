@@ -1,8 +1,9 @@
 import type { LLMConfig } from '@protocols'
 import { logger } from '@shared/toolkit/LogEngine'
-import { resolveFixedTemperature } from '@shared/configuration/modelConstraints'
+import { resolveModelCapabilityProfile } from '@shared/configuration/modelCapabilityProfile'
 import { resolveHeaderPlaceholders } from '../modelRegistry'
 import { resolveCacheProtocol } from './cacheProtocolSpec'
+import { isParameterSuppressed } from './ProviderParameterAdapter'
 
 export interface GenerationSettings {
   maxOutputTokens?: number
@@ -51,34 +52,52 @@ function normalizeHeaders(headers: Record<string, string> | undefined): Record<s
   return entries.length > 0 ? Object.fromEntries(entries) : undefined
 }
 
-function isOpenAIReasoningModel(model: string): boolean {
-  return /^(gpt-5|o1|o3|o4|computer-use-preview)/i.test(model)
-}
+/**
+ * 去掉服务商已明确拒收的参数。
+ *
+ * 与「模型能力档案」互补：档案是静态已知约束，这里是运行期探测到的约束，
+ * 由 400 响应的降级重试写入（见 ProviderParameterAdapter）。
+ */
+function applyParameterSuppression(
+  config: LLMConfig,
+  settings: GenerationSettings,
+): GenerationSettings {
+  const result: GenerationSettings = { ...settings }
 
-function supportsOpenAINonReasoningParameters(model: string): boolean {
-  return /^gpt-5\.(1|2)/i.test(model)
-}
+  const mapping: Array<[keyof GenerationSettings, Parameters<typeof isParameterSuppressed>[1]]> = [
+    ['temperature', 'temperature'],
+    ['topP', 'topP'],
+    ['topK', 'topK'],
+    ['frequencyPenalty', 'frequencyPenalty'],
+    ['presencePenalty', 'presencePenalty'],
+    ['stopSequences', 'stopSequences'],
+    ['seed', 'seed'],
+  ]
 
-function supportsOpenAIReasoningSampling(config: LLMConfig): boolean {
-  const protocol = resolveCacheProtocol(config.protocol, config.provider)
-
-  if ((protocol === 'openai' || protocol === 'openai-responses') && isOpenAIReasoningModel(config.model)) {
-    return config.reasoningEffort === 'none' && supportsOpenAINonReasoningParameters(config.model)
+  for (const [field, parameter] of mapping) {
+    if (result[field] === undefined) continue
+    if (!isParameterSuppressed(config, parameter)) continue
+    delete (result as Record<string, unknown>)[field]
   }
 
-  return true
+  return result
 }
 
 export function buildGenerationSettings(config: LLMConfig): GenerationSettings {
-  const fixedTemperature = resolveFixedTemperature(config.model)
-  const supportsOpenAIReasoningExtras = supportsOpenAIReasoningSampling(config)
+  const profile = resolveModelCapabilityProfile(config.model)
+  const protocol = resolveCacheProtocol(config.protocol, config.provider)
+
   // 温度被模型锁死的场景（如 Moonshot Kimi K2）不再下发任何采样参数，
   // 由服务端按模型自身默认值处理。
+  const fixedTemperature = profile.fixedTemperature
   const allowsSamplingParams = fixedTemperature === undefined
-  const protocol = resolveCacheProtocol(config.protocol, config.provider)
+
+  // OpenAI 风格推理模型默认不接受采样参数；GPT-5.1 / 5.2 在 effort=none 时例外。
   const isOpenAIReasoningRoute =
-    (protocol === 'openai' || protocol === 'openai-responses') &&
-    isOpenAIReasoningModel(config.model)
+    (protocol === 'openai' || protocol === 'openai-responses') && profile.openAIReasoning
+  const supportsOpenAIReasoningExtras = isOpenAIReasoningRoute
+    ? config.reasoningEffort === 'none' && profile.samplingRestoredWhenEffortNone
+    : true
   const supportsFrequencyPenalties =
     allowsSamplingParams &&
     protocol !== 'openai-responses' &&
@@ -93,7 +112,15 @@ export function buildGenerationSettings(config: LLMConfig): GenerationSettings {
   // 思考上，正文拿不到空间，流会以 finishReason=length 结束且正文为空 ——
   // 这正是「AI 思考几十秒后自动结束会话」的配置诱因。此处只做诊断，
   // 不擅自放大请求参数（避免超出 Provider 的输出上限导致 400）。
-  if (maxOutputTokens !== undefined && thinkingBudget !== undefined && thinkingBudget >= maxOutputTokens) {
+  //
+  // 注意：Anthropic 的额度是叠加的（SDK 计算 max_tokens = maxOutputTokens + thinkingBudget），
+  // 二者不争夺额度，因此这类模型不产生该告警。
+  if (
+    profile.thinkingBudgetMode === 'shared' &&
+    maxOutputTokens !== undefined &&
+    thinkingBudget !== undefined &&
+    thinkingBudget >= maxOutputTokens
+  ) {
     logger.llm.warn('[RequestConfig] 思考预算不低于最大输出 tokens，正文可能没有输出空间', {
       provider: config.provider,
       model: config.model,
@@ -120,7 +147,7 @@ export function buildGenerationSettings(config: LLMConfig): GenerationSettings {
     })
   }
 
-  return {
+  return applyParameterSuppression(config, {
     maxOutputTokens,
     temperature: fixedTemperature ?? (supportsOpenAIReasoningExtras ? config.temperature : undefined),
     topP: allowsSamplingParams && supportsOpenAIReasoningExtras ? config.topP : undefined,
@@ -129,7 +156,7 @@ export function buildGenerationSettings(config: LLMConfig): GenerationSettings {
     presencePenalty: supportsFrequencyPenalties ? config.presencePenalty : undefined,
     stopSequences: config.stopSequences?.length ? config.stopSequences : undefined,
     seed: normalizeNonNegativeInteger(config.seed),
-  }
+  })
 }
 
 export function buildRequestExecutionOptions(config: LLMConfig): RequestExecutionOptions {

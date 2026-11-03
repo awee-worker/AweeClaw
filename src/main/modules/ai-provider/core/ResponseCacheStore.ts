@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import type { ModelMessage } from '@ai-sdk/provider-utils'
 import type { LLMConfig } from '@protocols'
 import { logger } from '@shared/toolkit/LogEngine'
+import { resolveModelCapabilityProfile } from '@shared/configuration/modelCapabilityProfile'
 import { countTokens } from '@shared/toolkit/tokenEstimator'
 import { resolveHeaderPlaceholders } from '../modelRegistry'
 import { applyCaching, getCacheConfig } from './PromptCacheLayer'
@@ -303,7 +304,7 @@ function buildOpenAICacheOptions(
       .digest('hex'),
   }
 
-  if (/gpt-5(?:\.1|\.2)?/i.test(config.model) || /gpt-4\.1/i.test(config.model)) {
+  if (resolveModelCapabilityProfile(config.model).promptCacheRetention24h) {
     cacheOptions.promptCacheRetention = '24h'
   }
 

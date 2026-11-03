@@ -70,6 +70,7 @@ import { initializeMediaPermissionModule } from '../modules/media-permission'
 import { initializeCharacterCardModule } from '../modules/character-card'
 import { initializeEmotionModule } from '../modules/emotion'
 import { SettingsDb } from '../modules/settings-db/SettingsDb'
+import { scheduleModelCatalogSync } from '../modules/ai-provider/modelCatalogSync'
 import { initCapabilityGuardModule } from '../modules/capability-guard'
 import {
   registerMailIpc,
@@ -344,6 +345,13 @@ function deferredModules(firstWin: BrowserWindow): ModuleManifest[] {
         GroupMemoryManager.getInstance().init()
         registerGroupMemoryIpcHandlers()
       },
+    },
+    // 模型清单同步：启动后延迟拉取各服务商的 /models，补齐为空的清单。
+    // 只填空、只写 custom_models 一列，失败不影响启动（见 modelCatalogSync）
+    {
+      id: 'ModelCatalogSync',
+      phase: 'deferred',
+      init: () => scheduleModelCatalogSync(() => SettingsDb.getInstance()),
     },
     // 本地语音引擎（默认关闭）
     { id: 'LocalVoice', phase: 'deferred', init: initializeLocalVoiceModule },

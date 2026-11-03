@@ -6,7 +6,11 @@ import {
   isOpenAIStyleProtocol,
   supportsFullOpenAIStyleFeatures,
 } from '@shared/configuration/aiProviders'
+import { resolveModelCapabilityProfile } from '@shared/configuration/modelCapabilityProfile'
 import { resolveCacheProtocol } from './cacheProtocolSpec'
+import { resolveProtocolAdapter } from './ProtocolAdapter'
+import { isParameterSuppressed } from './ProviderParameterAdapter'
+
 
 export type RequestProviderOptions = ProviderOptions
 
@@ -79,9 +83,18 @@ export function buildOpenAIStyleProviderOptions(
 export function buildThinkingProviderOptions(config: LLMConfig): RequestProviderOptions | undefined {
   const protocol = resolveCacheProtocol(config.protocol, config.provider)
 
+  // 服务商已明确拒收 thinking 参数时不再注入，等冷却期过后重新探测
+  if (isParameterSuppressed(config, 'thinking')) {
+    return undefined
+  }
+
+  const reasoningEffortSuppressed = isParameterSuppressed(config, 'reasoningEffort')
+
   if (config.provider === 'gemini' || protocol === 'google') {
     const isGemini3 = /gemini-3/i.test(config.model)
-    const thinkingLevel = resolveGoogleThinkingLevel(config.reasoningEffort)
+    const thinkingLevel = reasoningEffortSuppressed
+      ? undefined
+      : resolveGoogleThinkingLevel(config.reasoningEffort)
     return {
       google: {
         thinkingConfig: isGemini3
@@ -95,7 +108,9 @@ export function buildThinkingProviderOptions(config: LLMConfig): RequestProvider
   }
 
   if (usesAnthropicProtocol(config)) {
-    const effort = resolveAnthropicEffort(config.reasoningEffort)
+    const effort = reasoningEffortSuppressed
+      ? undefined
+      : resolveAnthropicEffort(config.reasoningEffort)
     return {
       anthropic: {
         thinking: {
@@ -108,6 +123,11 @@ export function buildThinkingProviderOptions(config: LLMConfig): RequestProvider
   }
 
   if (!usesOpenAIProtocol(config)) {
+    return undefined
+  }
+
+  // OpenAI 侧 reasoningEffort 是注入内容的全部来源，被拒收时整体跳过
+  if (reasoningEffortSuppressed) {
     return undefined
   }
 
@@ -147,17 +167,28 @@ export function buildThinkingProviderOptions(config: LLMConfig): RequestProvider
   return buildOpenAIStyleProviderOptions(config, { reasoningEffort })
 }
 
+
 export function buildProtocolProviderOptions(config: LLMConfig): RequestProviderOptions | undefined {
   let providerOptions = buildConfiguredProviderOptions(config)
 
-  if (usesOpenAIProtocol(config) && supportsFullOpenAIProfile(config) && config.parallelToolCalls !== undefined) {
+  if (
+    usesOpenAIProtocol(config) &&
+    supportsFullOpenAIProfile(config) &&
+    config.parallelToolCalls !== undefined &&
+    !isParameterSuppressed(config, 'parallelToolCalls')
+  ) {
     providerOptions = mergeProviderOptions(
       providerOptions,
       buildOpenAIStyleProviderOptions(config, { parallelToolCalls: config.parallelToolCalls }),
     )
   }
 
-  if (usesOpenAIProtocol(config) && supportsFullOpenAIProfile(config) && config.logitBias) {
+  if (
+    usesOpenAIProtocol(config) &&
+    supportsFullOpenAIProfile(config) &&
+    config.logitBias &&
+    !isParameterSuppressed(config, 'logitBias')
+  ) {
     providerOptions = mergeProviderOptions(
       providerOptions,
       buildOpenAIStyleProviderOptions(config, { logitBias: config.logitBias }),
@@ -166,6 +197,7 @@ export function buildProtocolProviderOptions(config: LLMConfig): RequestProvider
 
   return providerOptions
 }
+
 
 function buildConfiguredProviderOptions(config: LLMConfig): RequestProviderOptions | undefined {
   let providerOptions: RequestProviderOptions | undefined
@@ -213,24 +245,22 @@ function buildConfiguredProviderOptions(config: LLMConfig): RequestProviderOptio
   return providerOptions
 }
 
+/**
+ * providerOptions 的顶层 key 由协议适配器给出，避免「协议事实」出现两个来源。
+ *
+ * 该函数只在 OpenAI 风格路径上使用，因此取到的永远是 `openai`
+ * 或 `openaiCompatible` / `custom-openai` 这一组。
+ */
 function resolveOpenAIStyleProviderOptionKeys(
   config: LLMConfig,
 ): readonly string[] {
   const protocol = resolveCacheProtocol(config.protocol, config.provider)
 
-  if (protocol === 'openai-responses') {
-    return ['openai']
-  }
-
-  if (protocol === 'openai' && isBuiltinProvider(config.provider) && config.provider === 'openai') {
-    return ['openai']
-  }
-
-  if (protocol === 'openai') {
-    return ['openaiCompatible', 'custom-openai']
-  }
-
-  return ['openaiCompatible']
+  return resolveProtocolAdapter({
+    providerId: config.provider,
+    protocol,
+    isBuiltin: isBuiltinProvider(config.provider),
+  }).providerOptionsKeys()
 }
 
 function resolveFullOpenAIReasoningEffort(
@@ -282,15 +312,18 @@ function resolveGoogleThinkingLevel(
 }
 
 /**
- * 判断是否为智谱 GLM-5.x 系列模型。
+ * 判断模型的思考是否强制开启（当前为智谱 GLM-5.x）。
  *
  * GLM-5 系列 API 行为与 GLM-4 不同：
  * - thinking.type 仅支持 "enabled"，思考强制开启，不允许关闭
  * - reasoning_effort 仅支持 low / high / max 三档（默认 max）
+ *
+ * 判定规则统一放在 modelCapabilityProfile，此处只读档案。
  */
 export function isZhipuGLM5Model(model: string): boolean {
-  return /^glm-5/i.test(model.trim())
+  return resolveModelCapabilityProfile(model).thinkingForced
 }
+
 
 /**
  * 将内部 6 档推理强度映射为智谱 GLM-5.x 支持的档位。

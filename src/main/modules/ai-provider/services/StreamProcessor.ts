@@ -19,6 +19,7 @@ import { ToolConverter } from '../core/ToolSchemaAdapter'
 import { prepareExecutionRequest } from '@modules/ai-provider/core/ModelRequestRunner'
 import { executeWithGenerationRecovery } from '../core/GenerationResilience'
 import { resolveThinkingCompatibility } from '../core/ProviderFeatureMatrix'
+import { providerSupportsTools } from '@shared/configuration/providerCapabilities'
 import { LLMError, convertUsage } from '../providerTypes'
 import type { StreamEvent, TokenUsage, ResponseMetadata } from '../providerTypes'
 import type { LLMConfig, LLMMessage, ToolDefinition } from '@protocols'
@@ -343,7 +344,11 @@ export class StreamingService {
       })
       coreMessages = prepared.messages
 
-      const coreTools = tools ? this.toolConverter.convert(tools) : undefined
+      // 服务商能力声明表明该接口不支持工具调用时不再携带 tools：
+      // 部分网关会对未知字段直接返回 400，导致整轮对话不可用
+      const coreTools = tools && providerSupportsTools(config.provider, config.protocol)
+        ? this.toolConverter.convert(tools)
+        : undefined
 
       // 思考感知：推理模型（或已开启思考的模型）在思考阶段可能长时间不产出分片。
       const thinkingTolerant = resolveThinkingTolerance(config, messages)

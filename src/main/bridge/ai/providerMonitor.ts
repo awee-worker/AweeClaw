@@ -10,8 +10,15 @@
 import { ipcMain } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
-import { BUILTIN_PROVIDERS, isBuiltinProvider } from '@shared/configuration/aiProviders'
+import type { ApiProtocol } from '@shared/configuration/aiProviders'
+import { resolveProviderCapabilities } from '@shared/configuration/providerCapabilities'
+import {
+    buildProviderModelsRequest,
+    resolveProviderTransport,
+} from '@shared/configuration/providerTransport'
+import type { ProviderTransport } from '@shared/configuration/providerTransport'
 import { createModel, resolveHeaderPlaceholders } from '../../modules/ai-provider/modelRegistry'
+import { parseModelCatalogPayload } from '../../modules/ai-provider/modelCatalogSync'
 import { generateText } from 'ai'
 import { IpcChannelGuard } from '../core/ipcGuard'
 
@@ -34,16 +41,6 @@ export interface ModelTestReport {
     protocol?: string
 }
 
-const PROVIDER_DEFAULT_ENDPOINTS: Record<string, string> = {
-    openai: 'https://api.openai.com/v1',
-    anthropic: 'https://api.anthropic.com',
-    gemini: 'https://generativelanguage.googleapis.com',
-    deepseek: 'https://api.deepseek.com/v1',
-    groq: 'https://api.groq.com/openai/v1',
-    mistral: 'https://api.mistral.ai/v1',
-    ollama: 'http://localhost:11434/v1',
-    nvidia: 'https://integrate.api.nvidia.com/v1',
-}
 
 const SCENARIO_REQUIRED_CAPABILITIES: Record<string, string[]> = {
     legal: ['structured_output', 'long_context'],
@@ -71,11 +68,6 @@ function getConsecutiveFailures(provider: string): number {
     return count
 }
 
-function normalizeResponsesBaseUrl(baseUrl?: string): string | undefined {
-    if (!baseUrl) return undefined
-    const trimmed = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
-    return /\/v\d+(?:beta)?$/i.test(trimmed) ? trimmed : `${trimmed}/v1`
-}
 
 function extractResponsesOutputText(payload: unknown): string {
     if (!payload || typeof payload !== 'object') return ''
@@ -106,13 +98,14 @@ function extractResponsesOutputText(payload: unknown): string {
 }
 
 async function testOpenAIResponsesModel(config: any): Promise<string> {
-    const builtinProvider = isBuiltinProvider(config.provider)
-        ? BUILTIN_PROVIDERS[config.provider]
-        : undefined
-    const baseUrl = normalizeResponsesBaseUrl(config.baseUrl || builtinProvider?.baseUrl)
-    if (!baseUrl) {
-        throw new Error('OpenAI Responses provider requires baseUrl')
-    }
+    // 该函数只在 Responses 协议下调用，缺省协议需显式声明，
+    // 否则自定义 provider 会被推断成 openai 兼容协议而漏掉 /v1 版本段
+    const transport = resolveTransport(
+        config.provider,
+        config.baseUrl,
+        config.protocol || 'openai-responses',
+    )
+
 
     const timeoutMs = typeof config.timeout === 'number' && config.timeout > 0
         ? config.timeout
@@ -131,7 +124,7 @@ async function testOpenAIResponsesModel(config: any): Promise<string> {
     }
 
     try {
-        const response = await fetch(`${baseUrl}/responses`, {
+        const response = await fetch(`${transport.apiRoot}/responses`, {
             method: 'POST',
             headers,
             signal: controller.signal,
@@ -166,51 +159,55 @@ async function testOpenAIResponsesModel(config: any): Promise<string> {
     }
 }
 
-function resolveProviderEndpoint(provider: string, baseUrl?: string): string {
-    const url = (baseUrl || PROVIDER_DEFAULT_ENDPOINTS[provider] || PROVIDER_DEFAULT_ENDPOINTS.openai).replace(/\/$/, '')
-    return url
-}
+/**
+ * 解析 provider 传输参数。
+ *
+ * 与对话链路共用 `resolveProviderTransport`：同一份 baseUrl 在「发消息」
+ * 与「健康检查 / 拉模型列表」两条路径上被解释成同一个地址，不会出现
+ * 一边通一边 404。
+ */
+function resolveTransport(
+    provider: string,
+    baseUrl?: string,
+    protocol?: string,
+): ProviderTransport {
+    const transport = resolveProviderTransport(
+        provider,
+        protocol as ApiProtocol | undefined,
+        baseUrl,
+    )
 
-function resolveProtocol(provider: string, protocol?: string): string {
-    return protocol || (provider === 'gemini' ? 'google' : provider === 'anthropic' ? 'anthropic' : 'openai')
-}
-
-function buildHealthCheckRequest(_provider: string, url: string, apiKey: string, activeProtocol: string) {
-    let fetchUrl: string
-    let headers: Record<string, string> = { 'Content-Type': 'application/json' }
-
-    if (activeProtocol === 'google') {
-        if (url.includes('/v1beta') || url.includes('/v1')) {
-            fetchUrl = `${url}/models`
-        } else {
-            fetchUrl = `${url}/v1beta/models`
-        }
-        if (apiKey) fetchUrl += `?key=${apiKey}`
-    } else if (activeProtocol === 'anthropic') {
-        if (url.includes('/v1')) {
-            fetchUrl = `${url}/models`
-        } else {
-            fetchUrl = `${url}/v1/models`
-        }
-        headers['x-api-key'] = apiKey
-        headers['anthropic-version'] = '2023-06-01'
-    } else {
-        if (/\/v\d+/.test(url)) {
-            fetchUrl = `${url}/models`
-        } else {
-            fetchUrl = `${url}/v1/models`
-        }
-        headers['Authorization'] = `Bearer ${apiKey}`
+    if (!transport) {
+        throw new Error(`Provider ${provider} 未配置可用的 baseUrl`)
     }
 
-    return { fetchUrl, headers }
+    return transport
 }
 
-function assessScenarioAvailability(_provider: string, _modelList?: string[]): Record<string, boolean> {
+
+/**
+ * 场景可用性 — 由服务商能力声明推导，而不是一律返回 true。
+ *
+ * 需求项与技术能力名的对应关系见 SCENARIO_REQUIRED_CAPABILITIES；
+ * 无法映射的能力项（如 structured_output）不参与判定，避免误报不可用。
+ */
+function assessScenarioAvailability(provider: string): Record<string, boolean> {
+    const capabilities = resolveProviderCapabilities(provider)
     const result: Record<string, boolean> = {}
-    for (const [scenario, _capabilities] of Object.entries(SCENARIO_REQUIRED_CAPABILITIES)) {
-        result[scenario] = true
+
+    for (const [scenario, required] of Object.entries(SCENARIO_REQUIRED_CAPABILITIES)) {
+        result[scenario] = required.every((item) => {
+            switch (item) {
+                case 'function_calling':
+                    return capabilities.tools
+                case 'streaming':
+                    return capabilities.streaming
+                default:
+                    return true
+            }
+        })
     }
+
     return result
 }
 
@@ -219,16 +216,18 @@ export function registerHealthCheckHandlers() {
 
     ipcMain.handle('healthCheck:check', async (_, provider: string, apiKey: string, baseUrl?: string, timeout = 10000, protocol?: string) => {
         const startTime = Date.now()
-        const url = resolveProviderEndpoint(provider, baseUrl)
-        const activeProtocol = resolveProtocol(provider, protocol)
 
         try {
-            logger.ipc.info(`[HealthMonitor] Checking ${provider} at ${url} (protocol: ${activeProtocol})`)
+            const transport = resolveTransport(provider, baseUrl, protocol)
+            const activeProtocol = transport.protocol
+
+            logger.ipc.info(`[HealthMonitor] Checking ${provider} at ${transport.apiRoot} (protocol: ${activeProtocol})`)
 
             const controller = new AbortController()
             const timeoutId = setTimeout(() => controller.abort(), timeout)
 
-            const { fetchUrl, headers } = buildHealthCheckRequest(provider, url, apiKey, activeProtocol)
+            const { url: fetchUrl, headers } = buildProviderModelsRequest(transport, apiKey)
+
 
             const response = await fetch(fetchUrl, { method: 'GET', headers, signal: controller.signal })
             clearTimeout(timeoutId)
@@ -322,11 +321,10 @@ export function registerHealthCheckHandlers() {
         try {
             logger.ipc.info(`[HealthMonitor] Fetching models for ${provider} (protocol: ${protocol})`)
 
-            let url = baseUrl || PROVIDER_DEFAULT_ENDPOINTS[provider] || PROVIDER_DEFAULT_ENDPOINTS.openai
-            url = url.endsWith('/') ? url.slice(0, -1) : url
+            const transport = resolveTransport(provider, baseUrl, protocol)
+            const activeProtocol = transport.protocol
+            const { url: fetchUrl, headers } = buildProviderModelsRequest(transport, apiKey)
 
-            const activeProtocol = resolveProtocol(provider, protocol)
-            const { fetchUrl, headers } = buildHealthCheckRequest(provider, url, apiKey, activeProtocol)
 
             logger.ipc.info(`[HealthMonitor] Requesting models from: ${fetchUrl}`)
 
@@ -336,21 +334,11 @@ export function registerHealthCheckHandlers() {
             }
 
             const data = await response.json() as unknown
-            let models: string[] = []
-
-            if (activeProtocol === 'google' || provider === 'gemini') {
-                if (data && typeof data === 'object' && 'models' in data && Array.isArray(data.models)) {
-                    models = data.models.map((m: any) => m.name.replace('models/', ''))
-                }
-            } else {
-                if (data && typeof data === 'object' && 'data' in data && Array.isArray(data.data)) {
-                    models = data.data.map((m: any) => m.id)
-                } else if (Array.isArray(data)) {
-                    models = data.map((m: any) => typeof m === 'string' ? m : (m.id || m.name))
-                }
-            }
-
-            models = models.filter(Boolean).sort()
+            // 解析统一走 modelCatalogSync：启动时的自动同步与这里的手动拉取
+            // 共用同一份实现，避免两条链路对同一接口的理解出现分歧
+            const models = parseModelCatalogPayload(data, activeProtocol)
+                .filter(Boolean)
+                .sort()
             logger.ipc.info(`[HealthMonitor] Successfully fetched ${models.length} models`)
             guard.recordCall('healthCheck:fetchModels', true)
             return { success: true, models }

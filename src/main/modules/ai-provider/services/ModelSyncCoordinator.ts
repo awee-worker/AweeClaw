@@ -20,6 +20,7 @@ import { MessageConverter } from '../core/MessageAdapter'
 import { ToolConverter } from '../core/ToolSchemaAdapter'
 import { executePreparedRequest } from '@modules/ai-provider/core/ModelRequestRunner'
 import { resolveRequestTimeoutMs, resolveThinkingTolerance } from './StreamProcessor'
+import { providerSupportsTools } from '@shared/configuration/providerCapabilities'
 import { LLMError, convertUsage } from '../providerTypes'
 import type { LLMResponse } from '../providerTypes'
 import type { LLMConfig, LLMMessage, ToolDefinition } from '@protocols'
@@ -54,7 +55,10 @@ export class SyncService {
     try {
       const model = createModel(config)
       const baseMessages = this.messageConverter.convert(messages, systemPrompt)
-      const coreTools = tools ? this.toolConverter.convert(tools) : undefined
+      // 与流式路径一致：服务商不支持工具调用时不携带 tools
+      const coreTools = tools && providerSupportsTools(config.provider, config.protocol)
+        ? this.toolConverter.convert(tools)
+        : undefined
 
       const result = await executePreparedRequest({
         config,

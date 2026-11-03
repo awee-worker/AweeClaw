@@ -42,6 +42,7 @@ import type {
   PersistedLLMConfig,
 } from '@shared/configuration/providerTypes'
 import type { AgentConfig } from '@shared/configuration/configTypes'
+import { mergeDbProviderConfigs } from './mergeDbProviderConfigs'
 
 // ============================================
 // 常量
@@ -151,40 +152,6 @@ function stripUnserializable<T>(value: T, seen = new WeakSet<object>()): T {
     if (cleaned !== undefined) result[key] = cleaned
   }
   return result as unknown as T
-}
-
-/** 将 SQLite 中的 provider 配置合并默认值，生成运行时 ProviderModelConfig */
-function mergeDbProviderConfigs(
-  dbConfigs: Record<string, any>,
-): Record<string, ProviderModelConfig> {
-  const defaults = SETTINGS.providerConfigs.default
-  const merged: Record<string, ProviderModelConfig> = { ...defaults }
-
-  for (const [id, config] of Object.entries(dbConfigs)) {
-    if (isBuiltinProvider(id)) {
-      const resolved = { ...defaults[id], ...config }
-      merged[id] = {
-        ...resolved,
-        openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
-          id,
-          resolved.protocol ?? defaults[id]?.protocol,
-          resolved.openAICompatibilityProfile,
-        ),
-      }
-      continue
-    }
-
-    merged[id] = {
-      ...config,
-      openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
-        id,
-        config.protocol,
-        config.openAICompatibilityProfile,
-      ),
-    }
-  }
-
-  return merged
 }
 
 /** 从 SQLite 数据重建完整的 SettingsState */

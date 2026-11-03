@@ -138,6 +138,13 @@ export interface LLMConfig {
     serverUrl?: string
     accessToken?: string
     refreshToken?: string
+    /**
+     * 云端自定义服务商凭证 id。
+     *
+     * 配置后由后端按 id 解析真实密钥，明文 apiKey 不再随请求头穿过网关；
+     * 未配置时保持原有的 X-Api-Key 透传（兼容旧后端）。
+     */
+    providerCredentialId?: string
     /** 云端视觉模式：走后端 /api/v1/llm/vision/chat/completions 接口 */
     cloudVisionMode?: boolean
     /** Maximum context window tokens for the model. */
