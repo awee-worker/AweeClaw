@@ -17,7 +17,7 @@
 
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, app } from 'electron'
 import { spawn, execFile, type ChildProcessWithoutNullStreams } from 'child_process'
 import { promisify } from 'util'
 import * as path from 'path'
@@ -340,6 +340,56 @@ async function resolveRepoRemoteHost(cwd: string): Promise<string> {
     // 非 git 仓库 / dugite 不可用 → 无 host，走无凭证路径
   }
   return ''
+}
+
+/**
+ * 为 AI 终端准备最小 zsh 运行环境
+ *
+ * PTY 后端必须带 `-i` 才有行编辑能力（ZLE 提供退格、方向键、光标移动），
+ * 而交互式 zsh 的提示符来自 .zshrc：主题提示符本身，以及 PROMPT_SP 的
+ * 断行标记，都会混进命令输出 —— 在终端面板里就表现为「命令后面凭空多出一个 %」。
+ *
+ * 把 ZDOTDIR 指到一个只含最小 .zshrc 的目录：既保留 `-i` 的行编辑能力，
+ * 又让提示符为空，zsh 不再有机会打印任何提示符字符。
+ *
+ * 代价是用户 .zshrc 里的自定义环境变量在 AI 终端中不生效。Node / Python 的
+ * bin 目录已由调用方直接前置注入 PATH，不依赖 nvm / pyenv 的初始化脚本；
+ * 用户手动打开的终端不受影响，仍加载完整配置。
+ */
+function ensureMinimalZshHome(): string | null {
+  try {
+    const fs = require('fs')
+    const dir = path.join(app.getPath('userData'), 'agent-shell')
+    fs.mkdirSync(dir, { recursive: true })
+
+    const content = [
+      '# AI 终端专用配置：只压制提示符，不加载主题、插件与别名。',
+      '# 提示符字符（含 PROMPT_SP 断行标记）会混进命令输出，必须清空。',
+      "PROMPT=''",
+      "RPROMPT=''",
+      "PROMPT_EOL_MARK=''",
+      'unsetopt PROMPT_SP 2>/dev/null',
+      'true',
+      '',
+    ].join('\n')
+
+    const rcPath = path.join(dir, '.zshrc')
+    let existing = ''
+    try {
+      existing = fs.readFileSync(rcPath, 'utf8')
+    } catch {
+      // 首次创建，没有旧内容
+    }
+    // 内容有变才落盘，避免每次创建终端都触碰磁盘
+    if (existing !== content) {
+      fs.writeFileSync(rcPath, content, 'utf8')
+    }
+
+    return dir
+  } catch (err) {
+    logger.security.warn('[Terminal] Failed to prepare minimal zsh home:', err)
+    return null
+  }
 }
 
 /**
@@ -1131,12 +1181,21 @@ export function registerSecureTerminalHandlers(
    */
   safeIpcHandle('terminal:interactive', async (
     event,
-    options: { id: string; cwd?: string; shell?: string; backend?: TerminalBackend; remote?: { host: string; port?: number; username?: string; password?: string; privateKeyPath?: string; remotePath?: string } }
+    options: { id: string; cwd?: string; shell?: string; backend?: TerminalBackend; minimalPrompt?: boolean; remote?: { host: string; port?: number; username?: string; password?: string; privateKeyPath?: string; remotePath?: string } }
   ) => {
     const mainWindow = getMainWindow()
     const workspace = getWorkspace(event)
-    const { id, cwd, shell, backend = 'pty', remote } = options
+    const { id, cwd, shell, backend = 'pty', minimalPrompt = false, remote } = options
     const effectiveBackend: TerminalBackend = backend
+    /**
+     * 实际生效的后端。
+     *
+     * node-pty 加载失败或 spawn 抛原生错误时会降级到 pipe 会话，
+     * 此时渲染层若仍按 pty 处理，就会发出「上移 + 清行」序列 ——
+     * 而 pipe 的 stdin 不是 TTY、根本没有回显可清，结果是把上方真实输出删掉。
+     * 因此把真实后端回报给调用方，由它同步到终端实例上。
+     */
+    let actualBackend: TerminalBackend = effectiveBackend
 
     if (effectiveBackend === 'pty' && !pty) {
       return { success: false, error: 'node-pty not available' }
@@ -1186,7 +1245,18 @@ export function registerSecureTerminalHandlers(
         }) || '/bin/bash'
 
         logger.security.info(`[Terminal] Using shell: ${shellPath}`)
-        shellArgs = effectiveBackend === 'pipe' ? ['-il'] : ['-l']
+        /**
+         * PTY 用 `-il`：`-i` 是行编辑能力的前提（ZLE 提供退格、方向键、
+         * 光标移动），少了它就只是「一次性执行 + 不可编辑」。
+         *
+         * 交互式 shell 会打印提示符，提示符字符会混进命令输出 —— 这个副作用
+         * 由 ZDOTDIR 指向空提示符配置来消除（见 ensureMinimalZshHome），
+         * 而不是靠砍掉 `-i` 来回避。
+         *
+         * pipe 用 `-l`：stdin 是管道而非 TTY，没有行编辑层，启用交互模式
+         * 只会让提示符污染输出，因此不带 `-i`。
+         */
+        shellArgs = effectiveBackend === 'pipe' ? ['-l'] : ['-il']
       } else {
         shellPath = process.env.SHELL || '/bin/bash'
       }
@@ -1218,6 +1288,16 @@ export function registerSecureTerminalHandlers(
       }
       if (pathPrefix.length > 0) {
         terminalEnv.PATH = `${pathPrefix.join(path.delimiter)}${path.delimiter}${process.env.PATH}`
+      }
+
+      // AI 终端压制提示符：交互式 shell 的提示符字符会混进命令输出，
+      // 用最小 zsh 环境把 PROMPT 清空，保留行编辑能力但不留提示符痕迹。
+      if (effectiveBackend === 'pty' && minimalPrompt && !isWindows) {
+        const zshHome = ensureMinimalZshHome()
+        if (zshHome) {
+          terminalEnv.ZDOTDIR = zshHome
+          logger.security.info(`[Terminal] Agent shell ZDOTDIR: ${zshHome}`)
+        }
       }
 
       if (pathModule.isAbsolute(shellPath) && !fs.existsSync(shellPath)) {
@@ -1287,7 +1367,8 @@ export function registerSecureTerminalHandlers(
 
           if (errorMsg.includes('Napi::Error') || errorMsg.includes('native') || errorMsg.includes('module') || errorMsg.includes('libc++abi')) {
             logger.security.warn('[Terminal] Falling back to pipe backend due to PTY error')
-            const child = spawn(shellPath, ['-il'], {
+            // 与 pipe 后端保持一致：不加 -i，避免交互式 shell 把提示符混进命令输出
+            const child = spawn(shellPath, ['-l'], {
               cwd: targetCwd,
               env: terminalEnv,
               stdio: 'pipe',
@@ -1295,6 +1376,7 @@ export function registerSecureTerminalHandlers(
               windowsHide: true,
             }) as ChildProcessWithoutNullStreams
 
+            actualBackend = 'pipe'
             terminalProcess = new PipeShellSession(child)
           } else {
             return { success: false, error: `Failed to spawn terminal: ${errorMsg}` }
@@ -1308,12 +1390,12 @@ export function registerSecureTerminalHandlers(
         id,
         cwd: targetCwd,
         shell: shellPath,
-        backend: remote?.host ? 'ssh2' : effectiveBackend,
+        backend: remote?.host ? 'ssh2' : actualBackend,
         remoteHost: remote?.host,
       })
 
-      logger.security.info(`[Terminal] Created ${remote?.host ? 'ssh2' : effectiveBackend} terminal ${id} with shell ${shellPath}`)
-      return { success: true }
+      logger.security.info(`[Terminal] Created ${remote?.host ? 'ssh2' : actualBackend} terminal ${id} with shell ${shellPath}`)
+      return { success: true, backend: actualBackend }
     } catch (err) {
       logger.security.error('[Terminal] Failed to create terminal:', err)
       return { success: false, error: toAppError(err).message }

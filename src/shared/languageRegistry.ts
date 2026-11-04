@@ -13,7 +13,7 @@ export type LanguageId =
     | 'typescript' | 'typescriptreact' | 'javascript' | 'javascriptreact'
     | 'html' | 'css' | 'scss' | 'less' | 'json' | 'jsonc'
     | 'python' | 'go' | 'rust' | 'cpp' | 'c' | 'vue' | 'php'
-    | 'zig' | 'csharp'
+    | 'zig' | 'csharp' | 'java'
 
 // ==========================================
 // 文件扩展名 -> 语言 ID 映射
@@ -272,6 +272,15 @@ export const LSP_SERVER_DEFINITIONS: LspServerDefinition[] = [
         installable: false, // 需要用户自行安装 Deno
     },
     {
+        id: 'java',
+        name: 'Java',
+        description: 'Eclipse JDT Language Server (需要 JDK 21+)',
+        languages: ['java'],
+        displayLanguages: ['Java'],
+        builtin: false,
+        installable: true, // 从 download.eclipse.org 下载，运行需要 JDK
+    },
+    {
         id: 'php',
         name: 'PHP',
         description: 'Intelephense (通过 npm 安装)',
@@ -290,7 +299,6 @@ export const LSP_SUPPORTED_LANGUAGES = LSP_SERVER_DEFINITIONS.flatMap(s => s.lan
 
 // 可扩展支持（需要额外 LSP 服务器，暂未实现自动安装）
 export const LSP_EXTENSIBLE_LANGUAGES = [
-    'java',    // jdtls
     'kotlin',  // kotlin-language-server
     'swift',   // sourcekit-lsp
     'ruby',    // solargraph

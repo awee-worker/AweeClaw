@@ -1,1 +1,6 @@
-export { javaManager, type JavaStatus } from './JavaRuntimeManager'
+export {
+  javaManager,
+  parseJavaMajorVersion,
+  type JavaStatus,
+  type JavaRequirementResult,
+} from './JavaRuntimeManager'

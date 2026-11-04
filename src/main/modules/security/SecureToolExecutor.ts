@@ -102,7 +102,14 @@ class SecureToolExecutor {
       }
     }
 
-    // 2. 命令类工具：通过沙箱执行
+    // 2. 命令类工具：只做校验，不执行
+    //
+    // 这里是「预检查」，它的产出只有 allowed / reason，调用方（toolRegistry.securityPreCheck）
+    // 也只读这两个字段。曾经在此处调用 sandboxExecutor.execute() 真实执行命令，结果每条
+    // run_command 都被跑了两遍：一遍在预检查里、结果被丢弃，一遍在终端/沙箱路由里。
+    // 表现为「命令本身 20 秒，整轮却要 40 秒」，且写文件、装依赖这类命令会被重复执行两次。
+    // 真正的沙箱执行有独立入口（渲染层 sandboxCommandRoute → api.sandbox.execute），
+    // 预检查不应产生任何执行副作用。
     if (isCommandTool || COMMAND_TOOLS.has(toolName)) {
       const cmd = command || toolArgs.command as string || toolArgs.cmd as string
       if (!cmd) {
@@ -112,7 +119,6 @@ class SecureToolExecutor {
         }
       }
 
-      // 验证命令
       const cmdValidation = sandboxExecutor.validateCommand(cmd, agentId)
       if (!cmdValidation.allowed) {
         return {
@@ -121,19 +127,7 @@ class SecureToolExecutor {
         }
       }
 
-      // 通过沙箱执行
-      const sandboxResult = await sandboxExecutor.execute(cmd, request.cwd, agentId)
-      return {
-        allowed: true,
-        sandboxResult: {
-          success: sandboxResult.success,
-          stdout: sandboxResult.stdout,
-          stderr: sandboxResult.stderr,
-          exitCode: sandboxResult.exitCode,
-          timedOut: sandboxResult.timedOut,
-          duration: sandboxResult.duration,
-        },
-      }
+      return { allowed: true }
     }
 
     // 3. 非命令类工具：审批通过后由渲染进程自行执行

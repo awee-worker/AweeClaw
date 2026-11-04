@@ -28,8 +28,11 @@ import {
   commandExists,
   isServerRuntimeBroken,
   getLspBinDir,
+  getJdtlsRequiredJava,
 } from './serverInstaller'
+import { buildJdtlsLaunchPlan } from './jdtlsLauncher'
 import { pythonManager } from '../modules/python-runtime'
+import { javaManager } from '../modules/java-runtime'
 
 // 重新导出 LanguageId 供其他模块使用
 export type { LanguageId } from '@shared/languageRegistry'
@@ -338,6 +341,62 @@ async function getPhpServerCommand(): Promise<{ command: string; args: string[] 
   return null
 }
 
+// Java LSP (Eclipse JDT Language Server)
+async function getJdtlsCommand(): Promise<{ command: string; args: string[] } | null> {
+  const launcherPath = getInstalledServerPath('java')
+  if (!launcherPath) return null
+
+  // jdtls 需要数据目录存放工作区索引，放在托管目录内，随安装目录一起清理
+  const dataDir = path.join(getLspBinDir(), 'jdtls-data')
+  if (!fs.existsSync(dataDir)) {
+    try {
+      fs.mkdirSync(dataDir, { recursive: true })
+    } catch (e) {
+      logger.lsp.warn('[LSP java] Failed to create jdtls data directory:', e)
+    }
+  }
+
+  // 系统 PATH 里找到的 jdtls 是启动脚本（非托管安装）：不带 plugins/config 目录结构，
+  // 由脚本自己定位 java 与配置，这里只补数据目录
+  if (!path.isAbsolute(launcherPath)) {
+    logger.lsp.info('[LSP java] Using jdtls launcher from system PATH')
+    return { command: launcherPath, args: ['-data', dataDir] }
+  }
+
+  // 归档解压后为 jdtls/{plugins,config_*}，launcher jar 位于 plugins 下
+  const jdtlsRoot = path.dirname(path.dirname(launcherPath))
+
+  // jdtls 本身是 Java 程序，必须由满足其版本要求的 JDK 拉起。
+  // 安装时可能为此下载了托管 JDK 21，这里只做查找、不再触发下载：
+  // 打开 Java 文件时静默下 200MB 会把界面卡住，缺失时提示用户去设置里装。
+  const requiredJava = getJdtlsRequiredJava(jdtlsRoot)
+  const runtime = await javaManager.ensureJavaFor(requiredJava, { allowDownload: false })
+  if (!runtime.ok || !runtime.javaPath) {
+    logger.lsp.warn(
+      `[LSP java] jdtls requires JDK ${requiredJava}+ but none is available: ${runtime.error || 'unknown reason'}`
+    )
+    return null
+  }
+  const javaPath = runtime.javaPath
+
+  const plan = buildJdtlsLaunchPlan({
+    launcherPath,
+    jdtlsRoot,
+    dataDir,
+    platform: process.platform,
+    arch: process.arch,
+    exists: fs.existsSync,
+  })
+
+  // config_* 缺失时 jdtls 会以 0 退出且不返回任何 LSP 响应，这里直接拦下
+  if (!plan.configDir) {
+    logger.lsp.warn(`[LSP java] jdtls configuration directory missing under: ${jdtlsRoot}`)
+    return null
+  }
+
+  return { command: javaPath, args: plan.args }
+}
+
 // ============ 服务器配置 ============
 
 const LSP_SERVERS: LspServerConfig[] = [
@@ -505,6 +564,21 @@ const LSP_SERVERS: LspServerConfig[] = [
         ['composer.json', 'composer.lock', 'phpunit.xml', 'phpstan.neon']
       )
       return root || workspacePath
+    },
+  },
+  {
+    name: 'java',
+    languages: ['java'],
+    getCommand: getJdtlsCommand,
+    // 智能根目录检测：Maven / Gradle 工程根，找不到再退回工作区根
+    findRoot: async (filePath, workspacePath) => {
+      const fileDir = path.dirname(filePath)
+      const buildRoot = await findNearestRoot(
+        fileDir,
+        workspacePath,
+        ['pom.xml', 'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts', '.classpath']
+      )
+      return buildRoot || workspacePath
     },
   },
 ]

@@ -18,6 +18,8 @@ export function createTerminalApi() {
       cwd?: string
       shell?: string
       backend?: 'pty' | 'pipe'
+      /** 压制 shell 提示符（AI 终端使用，避免提示符混进命令输出） */
+      minimalPrompt?: boolean
       remote?: RemoteShellServer
     }) => invoke('terminal:interactive')(options),
     writeTerminal: (id: string, data: string) => invoke('terminal:input')({ id, data }),

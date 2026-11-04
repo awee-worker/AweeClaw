@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import type { Language } from '@renderer/i18n'
 import { ActionButton } from '@components/ui/ActionButton'
+import { useToast } from '@components/foundation/NotificationProvider'
 import { api } from '@services/electronBridge'
 import { LSP_SERVER_DEFINITIONS, type LspServerDefinition } from '@shared/languageRegistry'
 
@@ -50,6 +51,7 @@ function groupKeyOf(serverId: string): string {
 
 export function LspSettingsPanel({ language }: LspSettingsPanelProps) {
   const zh = language === 'zh'
+  const toast = useToast()
 
   const [status, setStatus] = useState<ServerStatusMap>({})
   const [binDir, setBinDir] = useState('')
@@ -58,6 +60,8 @@ export function LspSettingsPanel({ language }: LspSettingsPanelProps) {
   const [busy, setBusy] = useState<string | null>(null)
   const [outcome, setOutcome] = useState<InstallOutcome | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
+  /** 按服务器记录安装结果，直接显示在对应行下方——列表较长时顶部横幅会被滚出视野 */
+  const [rowOutcome, setRowOutcome] = useState<Record<string, InstallOutcome>>({})
 
   const refresh = useCallback(async () => {
     try {
@@ -95,32 +99,42 @@ export function LspSettingsPanel({ language }: LspSettingsPanelProps) {
       if (busy) return
       setBusy(server.id)
       setOutcome(null)
+      setRowOutcome((prev) => {
+        if (!prev[server.id]) return prev
+        const next = { ...prev }
+        delete next[server.id]
+        return next
+      })
       try {
         const result = await api.lsp.installServer(server.id)
         if (result?.success) {
-          setOutcome({
-            type: 'ok',
-            text: zh
+          const text = result.warning
+            ? result.warning
+            : zh
               ? `${server.name} 安装完成，代码检查已可覆盖 ${server.displayLanguages.join(' / ')}。`
-              : `${server.name} installed. Lint now covers ${server.displayLanguages.join(' / ')}.`,
-          })
+              : `${server.name} installed. Lint now covers ${server.displayLanguages.join(' / ')}.`
+          // 降级安装（如 JDK 版本不足时的兼容版 jdtls）按警告提示，避免用户误以为是最新能力
+          if (result.warning) toast.warning(result.warning, zh ? '安装完成，但使用了兼容方案' : 'Installed with a compatibility fallback')
+          else toast.success(zh ? `${server.name} 安装完成` : `${server.name} installed`)
+          setOutcome({ type: 'ok', text })
+          setRowOutcome((prev) => ({ ...prev, [server.id]: { type: 'ok', text } }))
         } else {
-          setOutcome({
-            type: 'error',
-            text: result?.error || (zh ? '安装失败，请查看日志。' : 'Installation failed. Check the logs.'),
-          })
+          const text = result?.error || (zh ? '安装失败，请查看日志。' : 'Installation failed. Check the logs.')
+          toast.error(zh ? `${server.name} 安装失败` : `${server.name} installation failed`, text)
+          setOutcome({ type: 'error', text })
+          setRowOutcome((prev) => ({ ...prev, [server.id]: { type: 'error', text } }))
         }
       } catch (err) {
-        setOutcome({
-          type: 'error',
-          text: err instanceof Error ? err.message : String(err),
-        })
+        const text = err instanceof Error ? err.message : String(err)
+        toast.error(zh ? `${server.name} 安装失败` : `${server.name} installation failed`, text)
+        setOutcome({ type: 'error', text })
+        setRowOutcome((prev) => ({ ...prev, [server.id]: { type: 'error', text } }))
       } finally {
         await refresh()
         setBusy(null)
       }
     },
-    [busy, refresh, zh],
+    [busy, refresh, zh, toast],
   )
 
   const installBasic = useCallback(async () => {
@@ -129,24 +143,23 @@ export function LspSettingsPanel({ language }: LspSettingsPanelProps) {
     setOutcome(null)
     try {
       const result = await api.lsp.installBasicServers()
-      setOutcome(
-        result?.success
-          ? { type: 'ok', text: zh ? '基础服务器已就绪。' : 'Basic servers are ready.' }
-          : {
-              type: 'error',
-              text: result?.error || (zh ? '部分服务器安装失败。' : 'Some servers failed to install.'),
-            },
-      )
+      if (result?.success) {
+        toast.success(zh ? '基础服务器已就绪' : 'Basic servers are ready')
+        setOutcome({ type: 'ok', text: zh ? '基础服务器已就绪。' : 'Basic servers are ready.' })
+      } else {
+        const text = result?.error || (zh ? '部分服务器安装失败。' : 'Some servers failed to install.')
+        toast.error(zh ? '基础服务器安装未全部成功' : 'Some servers failed to install', text)
+        setOutcome({ type: 'error', text })
+      }
     } catch (err) {
-      setOutcome({
-        type: 'error',
-        text: err instanceof Error ? err.message : String(err),
-      })
+      const text = err instanceof Error ? err.message : String(err)
+      toast.error(zh ? '基础服务器安装失败' : 'Basic servers installation failed', text)
+      setOutcome({ type: 'error', text })
     } finally {
       await refresh()
       setBusy(null)
     }
-  }, [busy, refresh, zh])
+  }, [busy, refresh, zh, toast])
 
   const changeBinDir = useCallback(async () => {
     const picked = await api.file.selectFolder()
@@ -193,6 +206,11 @@ export function LspSettingsPanel({ language }: LspSettingsPanelProps) {
   const manualHint = (serverId: string): string | null => {
     if (serverId === 'rust') return zh ? '通过 rustup component add rust-analyzer 安装' : 'rustup component add rust-analyzer'
     if (serverId === 'deno') return zh ? '从 https://deno.land 安装后自动可用' : 'Install from https://deno.land'
+    if (serverId === 'java') {
+      return zh
+        ? '优先使用 JDK 21+：本机不足时会自动下载 JDK 21（仅给语言服务用），下载失败则退回兼容 JDK 17 的旧版本。安装包约 50MB，首次索引较慢'
+        : 'Prefers JDK 21+: if your local JDK is older, JDK 21 is downloaded for the server only; if that fails, a Java 17-compatible build is installed. Archive is ~50MB and the first index takes a while'
+    }
     return null
   }
 
@@ -323,6 +341,31 @@ export function LspSettingsPanel({ language }: LspSettingsPanelProps) {
 
                   {hint && !entry?.installed && (
                     <p className="text-[11px] text-text-muted">{hint}</p>
+                  )}
+
+                  {installing && server.id === 'java' && (
+                    <p className="text-[11px] text-amber-300/90">
+                      {zh
+                        ? '首次安装可能需要先下载 JDK 或语言服务器包，请耐心等待，窗口可以继续操作。'
+                        : 'The first install may download a JDK or the server archive — this can take a while.'}
+                    </p>
+                  )}
+
+                  {!installing && rowOutcome[server.id] && (
+                    <div
+                      className={`flex items-start gap-2 px-2.5 py-1.5 rounded-lg text-[11px] border ${
+                        rowOutcome[server.id].type === 'ok'
+                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                          : 'bg-red-500/10 border-red-500/20 text-red-300'
+                      }`}
+                    >
+                      {rowOutcome[server.id].type === 'ok' ? (
+                        <Check className="w-3 h-3 mt-0.5 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                      )}
+                      <span className="leading-relaxed break-words">{rowOutcome[server.id].text}</span>
+                    </div>
                   )}
 
                   {isOpen && entry?.path && (

@@ -96,6 +96,46 @@ export interface JavaStatus {
   error?: string
 }
 
+/** 按最低大版本索取 Java 运行时的结果 */
+export interface JavaRequirementResult {
+  ok: boolean
+  javaPath: string | null
+  javaHome: string | null
+  version: string | null
+  source: 'system' | 'managed' | 'none'
+  /** 本次调用是否为此新下载了 JDK */
+  downloaded: boolean
+  /** 失败原因：not-found（本机无 Java）/ too-old（版本不足）/ download-failed（下载失败） */
+  reason?: 'not-found' | 'too-old' | 'download-failed'
+  error?: string
+}
+
+/** 满足最低大版本要求的 JDK 描述 */
+interface ManagedJdkInfo {
+  javaPath: string
+  javaHome: string
+  version: string
+}
+
+/**
+ * 解析 Java 版本号的大版本。
+ *
+ * `21.0.2` → 21；JDK 8 及更早的 `1.8.0_392` → 8（直接取首段会误判成 1，
+ * 把 8 当成比 21 还老没问题，但会误判 `1.x` 系列全部为 1，无法区分 8 与 11）。
+ */
+export function parseJavaMajorVersion(version: string | null | undefined): number | null {
+  const trimmed = (version || '').trim()
+  if (!trimmed) return null
+  const parts = trimmed.split(/[._+-]/)
+  const first = Number.parseInt(parts[0], 10)
+  if (!Number.isFinite(first)) return null
+  if (first === 1) {
+    const second = Number.parseInt(parts[1] || '', 10)
+    return Number.isFinite(second) ? second : null
+  }
+  return first
+}
+
 // ============================================
 // 平台工具函数
 // ============================================
@@ -395,6 +435,9 @@ class JavaManager {
   /** 进行中的轻量检测，防止并发重复探测 */
   private detectPromise: Promise<JavaStatus> | null = null
 
+  /** 为高版本需求（如 jdtls 要求 JDK 21）准备好的托管 JDK */
+  private _managedJdk: ManagedJdkInfo | null = null
+
   /** 安装进度回调，供 EnvironmentSetupService / 设置页订阅 */
   private statusCallback: ((message: string) => void) | null = null
 
@@ -481,6 +524,162 @@ class JavaManager {
     this.detected = false
     this.detectPromise = null
     return this.detect()
+  }
+
+  /**
+   * 按最低大版本索取 Java 运行时。
+   *
+   * 与 ensureReady 的区别：ensureReady 只关心"有没有 Java"，本机 17 也算就绪；
+   * jdtls 这类工具要求 21，因此需要"够不够高"的判断。查找顺序：
+   *   1. 已探测到的本机 Java（大版本达标即用）
+   *   2. 托管目录里此前下载的 JDK（达标即用，不重复下载）
+   *   3. 下载 Temurin JDK（allowDownload 为 false 时跳过）
+   *
+   * 不会覆盖用户手动指定的 java 路径来源以外的配置：只在缓存为空或本来指向托管目录时更新状态。
+   */
+  async ensureJavaFor(
+    minMajor: number,
+    options: { allowDownload?: boolean } = {}
+  ): Promise<JavaRequirementResult> {
+    const allowDownload = options.allowDownload !== false
+
+    // 0. 本进程内已经为此准备过托管 JDK，省掉一次磁盘探测与 java -version
+    const cachedMajor = parseJavaMajorVersion(this._managedJdk?.version)
+    if (this._managedJdk && cachedMajor !== null && cachedMajor >= minMajor) {
+      return {
+        ok: true,
+        javaPath: this._managedJdk.javaPath,
+        javaHome: this._managedJdk.javaHome,
+        version: this._managedJdk.version,
+        source: 'managed',
+        downloaded: false,
+      }
+    }
+
+    await this.detect()
+
+    // 1. 本机现有运行时够用
+    const currentMajor = parseJavaMajorVersion(this._status.version)
+    if (this._status.ready && this._status.javaPath && currentMajor !== null && currentMajor >= minMajor) {
+      return {
+        ok: true,
+        javaPath: this._status.javaPath,
+        javaHome: this._status.javaHome,
+        version: this._status.version,
+        source: this._status.source === 'managed' ? 'managed' : 'system',
+        downloaded: false,
+      }
+    }
+
+    // 2. 托管目录里已有达标 JDK
+    const existing = await this._findManagedJdk(minMajor)
+    if (existing) {
+      this._rememberManagedJdk(existing)
+      return {
+        ok: true,
+        javaPath: existing.javaPath,
+        javaHome: existing.javaHome,
+        version: existing.version,
+        source: 'managed',
+        downloaded: false,
+      }
+    }
+
+    if (!allowDownload) {
+      return {
+        ok: false,
+        javaPath: this._status.javaPath,
+        javaHome: this._status.javaHome,
+        version: this._status.version,
+        source: this._status.ready ? 'system' : 'none',
+        downloaded: false,
+        reason: this._status.ready ? 'too-old' : 'not-found',
+        error: this._status.ready
+          ? `本机 Java ${this._status.version || ''} 低于要求的 ${minMajor}，且托管目录中没有可用的 JDK`
+          : `未检测到 Java 运行环境（要求 ${minMajor}+）`,
+      }
+    }
+
+    // 3. 下载托管 JDK
+    logger.system.info(`[JavaManager] Downloading JDK ${minMajor} for a tool that requires it`)
+    const installed = await this._installManagedJava(minMajor)
+    if (!installed) {
+      return {
+        ok: false,
+        javaPath: this._status.javaPath,
+        javaHome: this._status.javaHome,
+        version: this._status.version,
+        source: this._status.ready ? 'system' : 'none',
+        downloaded: false,
+        reason: 'download-failed',
+        error: `下载 JDK ${minMajor} 失败，请检查网络后重试`,
+      }
+    }
+
+    const info: ManagedJdkInfo = {
+      javaPath: installed.javaPath,
+      javaHome: installed.javaHome,
+      version: installed.version,
+    }
+    this._rememberManagedJdk(info)
+    return {
+      ok: true,
+      javaPath: info.javaPath,
+      javaHome: info.javaHome,
+      version: info.version,
+      source: 'managed',
+      downloaded: true,
+    }
+  }
+
+  /**
+   * 查找托管目录里满足最低大版本的 JDK。
+   * 只看 {userData}/java-env/jdk，不触发下载。
+   */
+  private async _findManagedJdk(minMajor: number): Promise<ManagedJdkInfo | null> {
+    const jdkRoot = path.join(getDefaultJavaDir(), 'jdk')
+    if (!fs.existsSync(jdkRoot)) return null
+
+    const javaHome = this._findHomeInside(jdkRoot)
+    if (!javaHome) return null
+
+    const javaPath = path.join(javaHome, 'bin', getExecutableName('java'))
+    if (!fs.existsSync(javaPath)) return null
+
+    const version = await this._getJavaVersion(javaPath)
+    const major = parseJavaMajorVersion(version)
+    if (!version || major === null || major < minMajor) return null
+
+    return { javaPath, javaHome, version }
+  }
+
+  /**
+   * 记录一份达标的高版本托管 JDK，并同步状态。
+   * 缓存里已有用户手动指定的 Java 时不覆盖，避免悄悄改掉用户的编译环境。
+   */
+  private _rememberManagedJdk(info: ManagedJdkInfo): void {
+    this._managedJdk = info
+
+    const cachedJava = store.get(CONFIG_KEY_JAVA_PATH) as string | undefined
+    const cachedIsManaged = cachedJava ? cachedJava.startsWith(getDefaultJavaDir()) : false
+    if (cachedJava && !cachedIsManaged) return
+
+    const javacPath = this._resolveJavac(info.javaHome)
+    this._status = {
+      ready: true,
+      javaPath: info.javaPath,
+      javacPath,
+      javaHome: info.javaHome,
+      source: 'managed',
+      version: info.version,
+      isJdk: Boolean(javacPath),
+      javaHomeEnv: process.env.JAVA_HOME || null,
+    }
+    this.detected = true
+    store.set(CONFIG_KEY_JAVA_PATH, info.javaPath)
+    store.set(CONFIG_KEY_JAVAC_PATH, javacPath || '')
+    store.set(CONFIG_KEY_JAVA_HOME, info.javaHome)
+    store.set(CONFIG_KEY_VERSION, info.version)
   }
 
   /** 未找到 Java 时的状态快照 */
@@ -826,9 +1025,10 @@ class JavaManager {
 
   /**
    * 下载并安装 Temurin JDK 到 {userData}/java-env/jdk
+   * @param featureVersion 下载的 JDK 大版本，默认 JAVA_FEATURE_VERSION
    * @returns 安装结果，失败返回 null
    */
-  private async _installManagedJava(): Promise<{
+  private async _installManagedJava(featureVersion: number = JAVA_FEATURE_VERSION): Promise<{
     javaPath: string
     javacPath: string | null
     javaHome: string
@@ -838,19 +1038,19 @@ class JavaManager {
     const arch = getAdoptiumArch()
     const ext = process.platform === 'win32' ? '.zip' : '.tar.gz'
     const officialUrl =
-      `https://api.adoptium.net/v3/binary/latest/${JAVA_FEATURE_VERSION}/ga/${os}/${arch}/jdk/hotspot/normal/eclipse`
+      `https://api.adoptium.net/v3/binary/latest/${featureVersion}/ga/${os}/${arch}/jdk/hotspot/normal/eclipse`
 
     this.notifyStatus('正在获取 JDK 推荐下载源...')
     const backendUrl = await resolveBackendAssetUrl()
     const downloadUrl = backendUrl || officialUrl
     const sourceName = backendUrl ? '后端托管源' : 'Adoptium 官方'
 
-    logger.system.info(`[JavaManager] Downloading JDK ${JAVA_FEATURE_VERSION} from: ${downloadUrl} (${sourceName})`)
-    this.notifyStatus(`正在下载 JDK ${JAVA_FEATURE_VERSION}（${sourceName}）...`)
+    logger.system.info(`[JavaManager] Downloading JDK ${featureVersion} from: ${downloadUrl} (${sourceName})`)
+    this.notifyStatus(`正在下载 JDK ${featureVersion}（${sourceName}）...`)
 
     const tmpDir = path.join(getDefaultJavaDir(), 'tmp')
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
-    const archivePath = path.join(tmpDir, `temurin-jdk-${JAVA_FEATURE_VERSION}${ext}`)
+    const archivePath = path.join(tmpDir, `temurin-jdk-${featureVersion}${ext}`)
     const extractDir = path.join(tmpDir, 'extract')
 
     try {

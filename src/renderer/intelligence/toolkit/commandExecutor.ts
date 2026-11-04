@@ -253,7 +253,11 @@ export function resolveCommandTimeout(
 }
 
 export function getInteractiveTerminalBackend(
-  platform: NodeJS.Platform = currentPlatform,
+  _platform: NodeJS.Platform = currentPlatform,
 ): InteractiveTerminalBackend {
-  return platform === 'darwin' ? 'pipe' : 'pty'
+  // 统一走 PTY：AI 终端的面板同时充当用户的交互终端，需要行编辑、光标移动、
+  // 回显与完整渲染能力。macOS 早期用 pipe 是为了躲开 zsh 提示符污染输出，
+  // 那个问题改由「AI 终端注入最小 zsh 配置 + 清空 PROMPT」解决，
+  // 不必以牺牲交互能力为代价。
+  return 'pty'
 }

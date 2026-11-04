@@ -2324,7 +2324,15 @@ export interface ElectronAPI {
   lspGetBinDir: () => Promise<string>
   lspGetDefaultBinDir: () => Promise<string>
   lspSetCustomBinDir: (customPath: string | null) => Promise<{ success: boolean }>
-  lspInstallServer: (serverType: string) => Promise<{ success: boolean; path?: string; error?: string }>
+  lspInstallServer: (serverType: string) => Promise<{
+    success: boolean
+    path?: string
+    error?: string
+    /** 失败原因标识，用于界面给出针对性提示 */
+    code?: 'JAVA_MISSING' | 'JAVA_TOO_OLD' | 'INSTALL_FAILED'
+    /** 安装成功但存在降级/替代方案时的说明 */
+    warning?: string
+  }>
   lspInstallBasicServers: () => Promise<{ success: boolean; error?: string }>
 
   // HTTP

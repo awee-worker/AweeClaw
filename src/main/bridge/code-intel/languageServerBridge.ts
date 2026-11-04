@@ -548,8 +548,9 @@ export function registerLspHandlers(preferencesStore?: any): void {
 
   ipcMain.handle('lsp:installBasicServers', async () => {
     try {
-      await installBasicServers()
-      return { success: true }
+      // 结果必须原样回传：installBasicServers 会把失败项汇总成 { success: false, error }，
+      // 吞掉它会让界面永远显示"安装成功"，用户看不到任何失败原因
+      return await installBasicServers()
     } catch (err) {
       return { success: false, error: toAppError(err).message }
     }

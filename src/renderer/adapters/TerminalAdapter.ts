@@ -753,7 +753,8 @@ export class TerminalManagerClass {
     this.notify();
 
     // 创建 PTY
-    const ptyPromise = this.createPty(id, options.cwd, options.shell, backend, options.remote);
+    // Agent 终端压制提示符：它的输出会作为命令结果回传，提示符字符属于噪声。
+    const ptyPromise = this.createPty(id, options.cwd, options.shell, backend, options.remote, !!options.isAgent);
     this.pendingPtyCreation.set(id, ptyPromise);
 
     try {
@@ -774,9 +775,10 @@ export class TerminalManagerClass {
     shell?: string,
     backend: TerminalBackend = 'pty',
     remote?: TerminalInstance['remote'],
+    minimalPrompt = false,
   ): Promise<boolean> {
     try {
-      const result = await api.terminal.create({ id, cwd, shell, backend, remote });
+      const result = await api.terminal.create({ id, cwd, shell, backend, remote, minimalPrompt });
       if (!result?.success) {
         const errorMsg = result?.error || "Unknown error";
         logger.system.error(
@@ -795,6 +797,20 @@ export class TerminalManagerClass {
           }
         }
         return false;
+      }
+      // 主进程可能因 node-pty 异常降级到 pipe：同步真实后端。
+      // 否则渲染层仍按 pty 发「上移 + 清行」序列，而 pipe 没有回显可清，
+      // 只会把上方的真实输出删掉，看起来就是一屏错位。
+      const actualBackend = (result as { backend?: TerminalBackend } | undefined)?.backend
+      if (actualBackend && actualBackend !== backend) {
+        const instance = this.state.terminals.find(t => t.id === id)
+        if (instance) {
+          instance.backend = actualBackend
+          logger.system.warn(
+            `[TerminalManager] Terminal ${id} degraded to "${actualBackend}" backend`,
+          )
+          this.notify()
+        }
       }
       return true;
     } catch (err) {
@@ -1253,6 +1269,14 @@ export class TerminalManagerClass {
 
         // shell 已退出（例如命令超时/中止后被强制终止）→ 终端不可复用，重建
         const lastStatus = commandInfo.last?.status
+        /**
+         * 中断卡住的命令后，确认这台终端还能不能用。
+         * pipe 后端的中断会直接关闭终端（Ctrl+C 会连带杀掉 shell），
+         * 此时不能再返回该 id，必须落到下面的新建流程，否则新命令会被写进
+         * 一台已经关闭的终端，表现为「命令没有任何输出、一直等到超时」。
+         */
+        const stillAlive = () => this.state.terminals.some(t => t.id === agentTerminalId)
+
         if (lastStatus === 'shell_exited') {
           this.agentTerminalIds.delete(ownerKey)
         }
@@ -1270,7 +1294,8 @@ export class TerminalManagerClass {
           if (lastAbnormal) {
             this.interruptStaleAgentCommand(agentTerminalId)
           }
-          return agentTerminalId
+          if (stillAlive()) return agentTerminalId
+          this.agentTerminalIds.delete(ownerKey)
         }
 
         // 长进程（detached）正确占用终端：不能中断，创建新终端
@@ -1282,7 +1307,8 @@ export class TerminalManagerClass {
           // 避免每次卡住都创建新标签。
           // 这里只会中断「本占用方」自己的终端：不同会话的执行不会互踩。
           this.interruptStaleAgentCommand(agentTerminalId)
-          return agentTerminalId
+          if (stillAlive()) return agentTerminalId
+          this.agentTerminalIds.delete(ownerKey)
         }
       }
       // 已被关闭，重置
@@ -1356,6 +1382,22 @@ export class TerminalManagerClass {
       } catch {
         // finalize 可能已执行，忽略
       }
+    }
+
+    // pipe 后端的 Ctrl+C 语义是「杀掉整棵进程组」，会把承载会话的 shell 一起杀掉。
+    // 杀掉之后写进这台终端的命令全部落在一个已死的 shell 上，只能靠超时收场，
+    // 上层看到的就是一条条「超时 + 重跑」。这类终端不再尝试中断，直接关闭并解除绑定，
+    // 由调用方（getOrCreateAgentTerminal）发现终端已不存在后重新创建。
+    if (this.state.terminals.find(t => t.id === terminalId)?.backend === 'pipe') {
+      this.currentCommandSessions.delete(terminalId)
+      this.closeTerminal(terminalId)
+      for (const [owner, id] of [...this.agentTerminalIds.entries()]) {
+        if (id === terminalId) this.agentTerminalIds.delete(owner)
+      }
+      logger.agent.info(
+        `[TerminalManager] Closed stale pipe agent terminal ${terminalId} instead of sending Ctrl+C`,
+      )
+      return
     }
 
     // 2. 发送 Ctrl+C 中断可能还在运行的进程
@@ -1442,13 +1484,32 @@ export class TerminalManagerClass {
    *
    * @param cwd 可选工作目录。若提供，用 Push-Location/popd（PS）或子 shell（Unix）临时切换目录。
    */
-  executeCommandWithOutput(
+  async executeCommandWithOutput(
     termId: string,
     command: string,
     timeoutMs: number,
     cwd?: string,
     onPartialOutput?: (partialOutput: string) => void,
   ): Promise<CommandResult> {
+    /**
+     * 同一终端上的命令必须串行
+     *
+     * 一个 shell 只有一个前台任务，并发写入 stdin 的结果是两条命令排队执行：
+     * 前一条的输出混进后一条的捕获窗口，两条命令的耗时还会叠加
+     * （sleep 100 看起来就变成了「等两百秒、而且好像跑了两遍」）。
+     * 这里不打断前一条，等它结算完再继续；前一条自身有超时兜底，
+     * 额外的截至时间只为避免状态异常时无限等待。
+     */
+    if (this.activeExecutions.has(termId)) {
+      logger.agent.warn(
+        `[TerminalManager] Terminal ${termId} is busy, queueing command: ${summarizeCommand(command)}`,
+      )
+      const deadline = Date.now() + 60_000
+      while (this.activeExecutions.has(termId) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+    }
+
     const sentinelId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
     // OSC 序列格式：ESC ] 9001 ; <payload> BEL
     // xterm.js 在序列解析阶段静默消耗未注册的 OSC 编号，完全不渲染任何文本。
@@ -1493,6 +1554,8 @@ export class TerminalManagerClass {
       let settled = false
       let sentinelMatched = false
       let idleTimer: ReturnType<typeof setTimeout> | null = null
+      /** 命令真正写入终端的时刻，用于区分「准备阶段」与「shell 启动 + 执行阶段」 */
+      let writeAtMs = 0
 
       const getVisibleOutput = () => {
         const output = textAtStart !== -1
@@ -1550,6 +1613,11 @@ export class TerminalManagerClass {
       ) => {
         if (settled) return
         settled = true
+        // 时间线诊断：一条命令的耗时由「准备 + shell 启动 + 真实执行」三段构成，
+        // 只报总时长无法区分是命令本身慢，还是终端/哨兵链路把它拖慢了。
+        logger.agent.info(
+          `[Terminal] settled(${reason}) total=${Date.now() - startedAt}ms terminal=${termId} :: ${summarizeCommand(command)}`,
+        )
         unsubRaw()
         if (timer) clearTimeout(timer)
         clearIdleTimer()
@@ -1608,16 +1676,86 @@ export class TerminalManagerClass {
         resolve(result)
       }
 
+      /** START sentinel 出现在原始缓冲中的位置与时刻（用于排除「命令开始前的残留提示符」） */
+      let startSeenAtRawLength = -1
+      let startSeenAtMs = 0
+      /** 最近一次「START 之后的数据让末尾成为提示符」的那批数据的到达时刻 */
+      let lastPromptChunkAtMs = 0
+
+      /** 提示符判定前，距 START 至少要经过的窗口（毫秒） */
+      const PROMPT_SETTLE_MIN_AFTER_START_MS = 800
+
+      /**
+       * 判断「命令确实已经结束」——要求 START 之后的数据里，出现提示符的那批数据
+       * 距 START 至少已过 800ms
+       *
+       * 时间基准必须是**数据到达时刻**，不能用检查时刻：兜底检查本身就在 1.2 秒之后，
+       * 拿它和 START 相减必然超过窗口，残留提示符照样会被当成结束信号。
+       *
+       * 为什么需要这个窗口：shell 启动较慢或终端复用时，上一条命令的提示符会在
+       * 新命令写入之后才刷出来，紧跟在 START 后面（相差几十毫秒）。若不加区分地
+       * 「看到提示符就判结束」，一条刚刚开始的命令（sleep 100）会在 1.2 秒后被结算成
+       * interrupted，上层据此认为没执行完而重跑，终端里于是出现两次同一条命令，耗时翻倍。
+       */
+      const isFinishedByPrompt = (): boolean => {
+        if (startSeenAtRawLength < 0 || lastPromptChunkAtMs === 0) return false
+        if (lastPromptChunkAtMs - startSeenAtMs < PROMPT_SETTLE_MIN_AFTER_START_MS) return false
+        const region = rawAccumulator.slice(startSeenAtRawLength)
+        if (!region) return false
+        return looksLikeShellPrompt(region.slice(-400))
+      }
+
+      /**
+       * 从已累积的原始数据里解析 END sentinel 并按真实退出码结算
+       *
+       * stdout / stderr 是两条独立管道（macOS 的 pipe 后端），经 IPC 转发到渲染层时
+       * 相互顺序没有保证：END sentinel 走 stdout，shell 提示符走 stderr，
+       * 于是「看起来命令已结束」的先后可能与实际相反。
+       *
+       * 只靠「收到提示符就判结束」会把一条已经正常跑完的命令结算成 interrupted，
+       * 上层据此认为命令失败并重跑同一条命令 —— 表现就是 sleep 100 等了两百秒。
+       * 因此所有「已结束」的判定都必须先查 END sentinel，查到就按真实退出码结算。
+       *
+       * @returns 是否已经结算
+       */
+      const trySettleFromSentinel = (): boolean => {
+        if (settled) return true
+        const endIdx = rawAccumulator.indexOf(RAW_END_MARKER)
+        if (endIdx === -1) return false
+        const afterMarker = rawAccumulator.slice(endIdx + RAW_END_MARKER.length)
+        const codeMatch = afterMarker.match(/^(\d+)\x07/)
+        if (!codeMatch) return false
+
+        sentinelMatched = true
+        const exitCode = parseInt(codeMatch[1], 10)
+        this.updateCurrentCommandSession(termId, (session) => ({
+          ...session,
+          sentinelMatched: true,
+        }))
+        // 结算路径不受 UI 节流影响：现场读取完整输出，保证交给调用方的内容不缺失
+        const finalVisibleOutput = trimRetainedText(getVisibleOutput(), MAX_COMMAND_OUTPUT_CHARS)
+        settle('sentinel_matched', {
+          finalStatus: exitCode === 0 ? 'completed' : 'failed',
+          exitCode,
+          output: finalVisibleOutput,
+          partialOutput: finalVisibleOutput,
+          sentinelMatched: true,
+        })
+        return true
+      }
+
       const scheduleIdleFallback = () => {
         clearIdleTimer()
-        // 已通过 sentinel 完成则不再调度；START sentinel 是否检测到不影响提示符兜底——
+        // 已结算则不再调度；START sentinel 是否检测到不影响提示符兜底——
         // 即使 START 未检测到（极端时序/数据丢失），只要 shell 回到提示符就说明命令已结束，
         // 应立即结束等待，而不是干等到超时。
-        if (sentinelMatched) return
+        if (settled || sentinelMatched) return
         idleTimer = setTimeout(() => {
           if (settled) return
-          const tail = rawAccumulator.slice(-400)
-          if (looksLikeShellPrompt(tail)) {
+          // 提示符可能先于 END sentinel 到达（stdout/stderr 乱序），
+          // 因此判定「结束」之前必须先看 sentinel 是否已经到齐。
+          if (trySettleFromSentinel()) return
+          if (isFinishedByPrompt()) {
             settle('sentinel_missing_prompt', {
               finalStatus: 'interrupted',
               output: getVisibleOutput(),
@@ -1625,8 +1763,8 @@ export class TerminalManagerClass {
               sentinelMatched: false,
             })
           } else {
-            // 未检测到 shell prompt，重新调度（周期性检查）
-            // 覆盖 sentinel 失败 + 长命令无输出后恢复的场景（如 sleep 10 结束后 shell 回显 prompt）
+            // 还没有可信的结束信号（未收到 END，也没看到命令执行后的提示符），
+            // 重新调度（周期性检查）：覆盖 sentinel 失败 + 长命令无输出后恢复的场景
             scheduleIdleFallback()
           }
         }, 1200)
@@ -1636,13 +1774,36 @@ export class TerminalManagerClass {
       // 仅在显式指定正数超时的情况下才设置定时器
       const timer = timeoutMs > 0
         ? setTimeout(() => {
-            // 超时兜底：先向终端发送 Ctrl+C 中断可能挂起的进程（如无超时的 fetch/网络脚本），
+            // 超时与「命令刚好跑完」经常落在同一时刻（显式 timeout 恰好等于命令自然时长时尤其常见）。
+            // 先确认 END sentinel 是否已经到齐：到了就按真实退出码结算，不算超时。
+            // 否则会凭空多出一条「超时失败」，上层重跑同一条命令，耗时直接翻倍。
+            if (trySettleFromSentinel()) return
+            // 同理，命令执行完之后提示符已经回到终端，说明它跑完了，只是 sentinel 没收全
+            if (isFinishedByPrompt()) {
+              settle('sentinel_missing_prompt', {
+                finalStatus: 'interrupted',
+                output: getVisibleOutput(),
+                partialOutput: getVisibleOutput(),
+                sentinelMatched: false,
+              })
+              return
+            }
+
+            // 超时兜底：向终端发送 Ctrl+C 中断可能挂起的进程（如无超时的 fetch/网络脚本），
             // 确保挂起的进程被终止、shell 回到可接受新命令的状态。
             // 否则超时后终端被残留进程占用，下一次 run_command 复用终端会连锁超时。
-            try {
-              this.writeToTerminal(termId, '\x03')
-            } catch {
-              // 终端可能已关闭，忽略
+            //
+            // pipe 后端例外：它的 Ctrl+C 语义是「杀掉整棵进程组」，会连带把承载会话的
+            // shell 一起杀掉。此后写进这台终端的命令全部落在一个已死的 shell 上，
+            // 只能靠超时收场，表现为一条条「超时 + 重跑」。这类终端交给下面 1500ms
+            // 后的 closeTerminal 由主进程回收进程树并重建。
+            const backendKind = this.state.terminals.find(t => t.id === termId)?.backend
+            if (backendKind !== 'pipe') {
+              try {
+                this.writeToTerminal(termId, '\x03')
+              } catch {
+                // 终端可能已关闭，忽略
+              }
             }
             settle('timeout', {
               finalStatus: 'timed_out',
@@ -1703,6 +1864,15 @@ export class TerminalManagerClass {
 
         if (textAtStart === -1 && startSeen) {
           textAtStart = textAccumulator.length
+          // 结束判定只看「START 之后」的数据：这里记录起点与时刻，
+          // 让 isFinishedByPrompt 能排除命令开始前残留的那条提示符。
+          startSeenAtRawLength = rawAccumulator.length
+          startSeenAtMs = Date.now()
+          // 时间线诊断：START 到达时刻减去发起时刻 = 排队 + shell 启动 + 回显准备。
+          // 这一段与命令本身无关，却在总耗时里占比很高时最容易被误判成「命令跑得慢」。
+          logger.agent.info(
+            `[Terminal] START sentinel after ${startSeenAtMs - startedAt}ms (write ${writeAtMs > 0 ? `${writeAtMs - startedAt}ms` : 'n/a'}) terminal=${termId} :: ${summarizeCommand(command)}`,
+          )
           this.updateCurrentCommandSession(termId, (session) => ({
             ...session,
             status: 'running',
@@ -1718,31 +1888,20 @@ export class TerminalManagerClass {
         // 逐块只登记一次待刷新，实际处理与推送由节拍器合并执行
         scheduleUiFlush()
 
-        // 在原始数据中检测 OSC end sentinel：ESC]9001;ADNIFY_CMD_END_..._N BEL
-        const endIdx = rawAccumulator.indexOf(RAW_END_MARKER)
-        if (endIdx !== -1) {
-          const afterMarker = rawAccumulator.slice(endIdx + RAW_END_MARKER.length)
-          const codeMatch = afterMarker.match(/^(\d+)\x07/)
-          if (codeMatch) {
-            sentinelMatched = true
-            const exitCode = parseInt(codeMatch[1], 10)
-            this.updateCurrentCommandSession(termId, (session) => ({
-              ...session,
-              captureEndSeq: event.seq,
-              sentinelMatched: true,
-            }))
-            // 结算路径不受 UI 节流影响：现场读取完整输出，保证交给 AI 的内容不缺失
-            const finalVisibleOutput = trimRetainedText(getVisibleOutput(), MAX_COMMAND_OUTPUT_CHARS)
-            settle('sentinel_matched', {
-              finalStatus: exitCode === 0 ? 'completed' : 'failed',
-              exitCode,
-              output: finalVisibleOutput,
-              partialOutput: finalVisibleOutput,
-              sentinelMatched: true,
-            })
-            return
+        // 记录「START 之后的数据让末尾成为提示符」那批数据的到达时刻。
+        // 兜底判定必须用到达时刻而不是检查时刻，否则命令开始前残留的提示符
+        // 会因为检查发生在 1.2 秒后而被当成结束信号。
+        if (startSeenAtRawLength >= 0) {
+          const region = rawAccumulator.slice(startSeenAtRawLength)
+          if (region && looksLikeShellPrompt(region.slice(-400))) {
+            lastPromptChunkAtMs = Date.now()
           }
         }
+
+        // 在原始数据中检测 OSC end sentinel：ESC]9001;ADNIFY_CMD_END_..._N BEL
+        // 统一走 trySettleFromSentinel：END 与退出码可能分属两批数据到达，
+        // 判定必须基于累积缓冲而不是当前这一块。
+        if (trySettleFromSentinel()) return
 
         scheduleIdleFallback()
       })
@@ -1802,11 +1961,26 @@ export class TerminalManagerClass {
         try { xtermInst.fitAddon.fit() } catch { /* 终端未挂载时忽略 */ }
       }
 
+      // ── 回显文本规范化 ──
+      // 这里只决定终端面板里「看到的样子」，不参与执行（真正执行的是 mainCommand）。
+      // 原样的制表符在 xterm 里按 8 列展开，多行脚本的行首缩进再叠加一层，
+      // 命令就会在面板里被推到很右边。统一把制表符展开为两个空格、去掉行首空白，
+      // 让每一行（包括换行后的续行）都从行首开始，行首对齐。
+      const echoCommand = command
+        .replace(/\r\n?/g, '\n')
+        // 完整 ANSI / OSC 序列先整体移除，避免只删 ESC 后留下 "[31m" 这类残片
+        .replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '')
+        .replace(/\u001b\][^\u0007]*\u0007/g, '')
+        .split('\n')
+        .map((line) => line.replace(/\t/g, '  ').replace(/^[ \t]+/, ''))
+        .join('\n')
+        .trim()
+
       // Windows PS double-quoted string 转义：` → ``，" → `"，$ → `$
       // Unix double-quoted string 转义：\ → \\，" → \"，$ → \$，` → \`
       const displayCmd = isWindows
-        ? command.replace(/`/g, '``').replace(/"/g, '`"').replace(/\$/g, '`$')
-        : command.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`')
+        ? echoCommand.replace(/`/g, '``').replace(/"/g, '`"').replace(/\$/g, '`$')
+        : echoCommand.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`')
       // 提示符路径：有 cwd 时直接嵌入，否则运行时动态获取当前目录
       const promptPath = cwd ? cwd.replace(/\\/g, '/') : '$(pwd)'
 
@@ -1814,14 +1988,22 @@ export class TerminalManagerClass {
       // 此时「清除回显」既没有对象可清，还会把上方的真实输出删掉、把光标上移，
       // 后续输出从错误位置续写，看起来就是一屏错位。这里只补一行伪提示符，
       // 不发送任何光标控制序列，输出按行自然追加。
-      const backend = this.state.terminals.find(t => t.id === termId)?.backend ?? 'pty'
+      const terminalInstance = this.state.terminals.find(t => t.id === termId)
+      const backend = terminalInstance?.backend ?? 'pty'
       const needsEchoClear = backend !== 'pipe'
+      /**
+       * Agent 终端的 shell 提示符已被清空（见主进程 ensureMinimalZshHome），
+       * 回显里不再包含提示符字符。此时若仍按「提示符占 35 / 60 列」估算清除行数，
+       * 就会多清掉上方的真实输出 —— 表现为命令执行后上一屏内容被吃掉一截。
+       */
+      const agentPromptSuppressed =
+        terminalInstance?.isAgent === true && backend === 'pty' && !isWindows
 
       let fakeEchoCmd: string
       if (needsEchoClear) {
         // N 的计算：ceil((提示符估算长度 + 完整命令长度) / 终端列数) + 冗余行
         const cols = xtermInst?.fitAddon?.proposeDimensions?.()?.cols ?? 80
-        const promptLen = isWindows ? 60 : 35
+        const promptLen = agentPromptSuppressed ? 0 : (isWindows ? 60 : 35)
         // 每个清除单元的字面长度（PS 使用 $([char]N) 表达式，Unix 使用 octal 转义）
         // 清除单元 = 上移1行 + 清除整行 + 回车（光标回行首）
         const clearUnit = isWindows
@@ -1849,12 +2031,22 @@ export class TerminalManagerClass {
           : `printf '%s\\n' "${promptPath}\\$ ${displayCmd}"`
       }
 
-      const wrapped = `${fakeEchoCmd}; ${mainCommand}\r`
+      // ── 行结束符 ──
+      // PTY 后端的命令由行规程提交，必须用 `\r`（这是终端的回车语义）。
+      // pipe 后端的 stdin 是管道，shell 按 `\n` 分行读取，`\r` 不会被当成行结束：
+      // 命令会一直停在输入缓冲里不执行，直到下一条写入把它补全 —— 表现为
+      // 「命令没有任何输出、等到超时」。两者必须按后端区分。
+      const lineTerminator = backend === 'pipe' ? '\n' : '\r'
+      const wrapped = `${fakeEchoCmd}; ${mainCommand}${lineTerminator}`
 
       this.updateCurrentCommandSession(termId, (session) => ({
         ...session,
         status: 'running',
       }))
+      writeAtMs = Date.now()
+      logger.agent.info(
+        `[Terminal] command written at +${writeAtMs - startedAt}ms terminal=${termId} :: ${summarizeCommand(command)}`,
+      )
       this.writeToTerminal(termId, wrapped)
     })
   }

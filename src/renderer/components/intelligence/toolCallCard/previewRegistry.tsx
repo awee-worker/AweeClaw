@@ -92,10 +92,33 @@ function TruncatedText({ text, max, language }: { text: string; max?: number; la
   )
 }
 
+/**
+ * 命令行显示文本规范化
+ *
+ * 命令原文常带制表符和多行脚本的缩进，而卡片用 `whitespace-pre-wrap` 渲染，
+ * 空白会被原样保留：行首制表符按 8 列展开、嵌套脚本的缩进再叠加一层，
+ * 就会出现「某几行被推到很右边」的错位观感。
+ *
+ * 命令卡片的作用是让人一眼看清执行了什么，因此统一左对齐：
+ * 去掉行首空白、制表符换成两空格，并丢弃回车与控制字符（ANSI 片段会让整行撑歪）。
+ */
+function formatCommandText(command: string): string {
+  return command
+    .replace(/\r\n?/g, '\n')
+    // 完整 ANSI 序列先整体移除，避免只删掉 ESC 后把 "[31m" 这类残片留在行内
+    .replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '')
+    .replace(/\u001b\][^\u0007]*\u0007/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .split('\n')
+    .map(line => line.replace(/\t/g, '  ').replace(/^[ \t]+/, ''))
+    .join('\n')
+    .trim()
+}
+
 /** 命令行工具预览 */
 const renderRunCommand: PreviewRenderer = (ctx) => {
   const { args, toolCall, isRunning, language, previewState } = ctx
-  const cmd = asString(args.command)
+  const cmd = formatCommandText(asString(args.command))
   const stringResult = typeof toolCall.result === 'string' ? toolCall.result : ''
   // 流式输出：命令执行过程中实时显示终端输出
   const streamingOutput = previewState?.partialOutput || ''
@@ -104,8 +127,10 @@ const renderRunCommand: PreviewRenderer = (ctx) => {
     <div className="font-mono text-[12px] space-y-1">
       <div className="flex items-start gap-1.5">
         <span className="text-accent/60 select-none flex-shrink-0 mt-px">$</span>
-        {/* 命令脚本：长脚本限制最大高度并支持滚动查看，短命令不受影响 */}
-        <div className="text-text-primary whitespace-pre-wrap break-all flex-1 min-w-0 max-h-[200px] overflow-y-auto custom-scrollbar">
+        {/* 命令脚本：长脚本限制最大高度并支持滚动查看，短命令不受影响
+            break-words（overflow-wrap）只在单个词放不下时才断行，
+            避免 break-all 把路径/参数从中间劈开的错位观感 */}
+        <div className="text-text-primary whitespace-pre-wrap break-words flex-1 min-w-0 max-h-[200px] overflow-y-auto custom-scrollbar">
           {cmd}
         </div>
         {isRunning && !stringResult && !streamingOutput && (
@@ -117,13 +142,13 @@ const renderRunCommand: PreviewRenderer = (ctx) => {
       {/* 优先显示最终结果，其次显示流式输出 */}
       {stringResult ? (
         <CommandOutputContainer maxHeightPx={400}>
-          <div className="text-text-muted/90 whitespace-pre-wrap break-all p-2 font-mono text-[12px]">
+          <div className="text-text-muted/90 whitespace-pre-wrap break-words p-2 font-mono text-[12px]">
             <TruncatedText text={stringResult} language={language} />
           </div>
         </CommandOutputContainer>
       ) : streamingOutput ? (
         <CommandOutputContainer maxHeightPx={400}>
-          <div className="text-text-muted/90 whitespace-pre-wrap break-all p-2 font-mono text-[12px]">
+          <div className="text-text-muted/90 whitespace-pre-wrap break-words p-2 font-mono text-[12px]">
             <TruncatedText text={streamingOutput} language={language} />
             {isRunning && (
               <span className="inline-block w-1.5 h-3 bg-accent/60 animate-pulse ml-0.5 align-middle" />

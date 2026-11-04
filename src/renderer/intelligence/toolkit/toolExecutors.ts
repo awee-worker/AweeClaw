@@ -2734,6 +2734,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
     async run_command(args, ctx) {
         const command = args.command as string
+        // 时间线诊断基准：从这里到终端就绪之间的耗时全部属于「执行前准备」，
+        // 它和被观测到的命令耗时无关，却会计入上层 tool-execution 管道的总时长。
+        const runCommandEntryAt = Date.now()
         // cwd 解析：若 AI 传了 cwd 参数，解析为绝对路径；否则用工作空间根目录
         const resolvedCwd = args.cwd ? resolvePath(args.cwd, ctx.workspacePath, true) : null
         const isBackground = args.is_background as boolean
@@ -2979,10 +2982,16 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 只在**非长进程**时尝试：长进程要的是活着的会话（stdin 交互 / 持续读日志），
         // 而沙箱是「起进程 → 收敛输出 → 回收」的一次性模型，送进去只会被超时杀掉。
         if (!isLongRunningProcess) {
+            const sandboxAt = Date.now()
             const sandboxResult = await tryRunCommandInSandbox(
                 command,
                 resolvedCwd || ctx.workspacePath || '',
                 timeout,
+            )
+            // 沙箱探测是一次 IPC 往返，正常情况下是毫秒级。它出现在终端创建之前，
+            // 一旦这里变慢，表现出来就是「命令本身很快、整轮却很慢」。
+            logger.agent.info(
+                `[run_command] sandbox probe in ${Date.now() - sandboxAt}ms :: ${command.slice(0, 120)}`,
             )
             if (sandboxResult) {
                 cleanupAbortListener()
@@ -3023,10 +3032,16 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             // 不要退化成 '/'：主进程会校验终端目录是否位于工作空间内，
             // 传根目录必然被拒（「终端只能在工作空间内创建」），命令根本不会启动。
             // 传空串让主进程回落到工作空间根目录。
+            // 时间线诊断：创建/复用终端本身就是一段可能很长的准备，必须与命令执行分开计时。
+            const terminalReadyAt = Date.now()
             const termId = await terminalManager.getOrCreateAgentTerminal(
                 ctx.workspacePath || '',
                 undefined,
                 termOwner,
+            )
+            logger.agent.info(
+                `[run_command] terminal ready in ${Date.now() - terminalReadyAt}ms ` +
+                `(entry-to-ready ${Date.now() - runCommandEntryAt}ms, ${termId}) :: ${command.slice(0, 120)}`,
             )
 
             // 不自动激活终端 tab：静默执行，避免打断用户当前关注的终端
@@ -3206,9 +3221,13 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
 
             if (commandResult.finalStatus === 'interrupted' && !commandResult.sentinelMatched) {
+                // 这类结果的语义是「命令已经跑完，只是没抓到退出码」，不是失败。
+                // 文案必须说清楚，否则模型会把上一条命令当成没执行、再跑一遍，
+                // 长命令（sleep / 编译）就会被硬生生执行两次。
+                const endedHint = '命令已经执行结束（shell 提示符已恢复），仅未捕获退出码。不要重复执行同一条命令；如需确认结果，请检查它的副作用（文件、端口、进程）或读取输出。'
                 resultText = displayOutput
-                    ? `[Partial output captured before prompt recovery]\n${displayOutput}`
-                    : 'Command ended without a sentinel. Partial output may have been recovered from the terminal prompt.'
+                    ? `[命令已结束，退出码未捕获]\n${displayOutput}\n\n${endedHint}`
+                    : `[命令已结束，退出码未捕获，无输出]\n${endedHint}`
             }
 
             if (commandResult.finalStatus === 'shell_exited' && displayOutput) {

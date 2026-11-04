@@ -16,6 +16,7 @@ import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { getExecutableName, getNpmCommand } from '@shared/toolkit/pathHelper'
 import Store from 'electron-store'
+import { javaManager } from '../modules/java-runtime'
 
 // ============ 配置持久化 ============
 
@@ -713,6 +714,13 @@ const SERVER_PATHS: Record<string, ServerPathConfig> = {
     builtinPaths: ['intelephense/lib/intelephense.js'],
     systemCommand: 'intelephense',
   },
+  // jdtls 没有固定的入口二进制：启动对象是 plugins 下带版本号的 equinox launcher jar，
+  // 因此用通配符匹配文件名，目录其余部分（config_* / plugins）由启动参数补齐
+  java: {
+    userPaths: ['jdtls/plugins/org.eclipse.equinox.launcher_*.jar'],
+    builtinPaths: [],
+    systemCommand: 'jdtls',
+  },
 }
 
 /**
@@ -806,7 +814,22 @@ export interface LspInstallResult {
   success: boolean
   path?: string
   error?: string
+  /**
+   * 失败原因的结构化标识，供界面按语言本地化提示。
+   * error 里是可直接展示的完整说明，code 用于界面做针对性引导。
+   */
+  code?: LspInstallErrorCode
+  /** 安装成功但有需要告知用户的降级/替代方案说明 */
+  warning?: string
 }
+
+export type LspInstallErrorCode =
+  /** 本机没有可用的 Java 运行时 */
+  | 'JAVA_MISSING'
+  /** 本机 Java 版本过低，且无法自动补齐 */
+  | 'JAVA_TOO_OLD'
+  /** 通用安装失败（下载 / 解压 / 校验） */
+  | 'INSTALL_FAILED'
 
 // ============ 各语言服务器安装函数 ============
 
@@ -1457,11 +1480,236 @@ export async function installIntelephense(): Promise<LspInstallResult> {
   return { success: false, error: 'npm install failed. Check logs for details.' }
 }
 
-// ============ 统一安装入口 ============
+/**
+ * 解析 jdtls milestone 归档地址
+ *
+ * 官方只发布带时间戳的归档（jdt-language-server-<ver>-<timestamp>.tar.gz），
+ * 文件名无法拼出来：先读 milestones 目录里最大的版本号，再读该版本目录的
+ * latest.txt 取确切文件名。
+ *
+ * @param pinnedVersion 指定里程碑版本（用于降级安装），省略则取目录里最新的
+ */
+async function resolveJdtlsArchiveUrl(pinnedVersion?: string): Promise<string | null> {
+  const base = 'https://download.eclipse.org/jdtls/milestones/'
+
+  let latest: string
+  if (pinnedVersion) {
+    latest = pinnedVersion
+  } else {
+    const indexRes = await fetch(base)
+    if (!indexRes.ok) {
+      logger.lsp.error(`[LSP Installer] Failed to list jdtls milestones: HTTP ${indexRes.status}`)
+      return null
+    }
+
+    const html = await indexRes.text()
+    const versions: number[][] = []
+    // 目录页里每个版本是一个 <a href='/jdtls/milestones/1.63.0'> 链接，取 href 里的版本号
+    const pattern = /\/jdtls\/milestones\/(\d+)\.(\d+)\.(\d+)/g
+    let matched: RegExpExecArray | null
+    while ((matched = pattern.exec(html)) !== null) {
+      versions.push([Number(matched[1]), Number(matched[2]), Number(matched[3])])
+    }
+
+    if (versions.length === 0) {
+      logger.lsp.error('[LSP Installer] No jdtls milestone version found in directory index')
+      return null
+    }
+
+    versions.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2])
+    latest = versions[versions.length - 1].join('.')
+  }
+
+  const fileRes = await fetch(`${base}${latest}/latest.txt`)
+  if (!fileRes.ok) {
+    logger.lsp.error(`[LSP Installer] Failed to read jdtls latest.txt for ${latest}: HTTP ${fileRes.status}`)
+    return null
+  }
+
+  const fileName = (await fileRes.text()).trim().split('\n')[0]?.trim()
+  if (!fileName) {
+    logger.lsp.error(`[LSP Installer] Empty jdtls latest.txt for ${latest}`)
+    return null
+  }
+
+  logger.lsp.info(`[LSP Installer] Latest jdtls milestone: ${latest} (${fileName})`)
+  return `${base}${latest}/${fileName}`
+}
+
+// ============ jdtls 的 Java 运行时要求 ============
+
+/** 最新版 jdtls（1.40+）要求的最低 Java 大版本 */
+const JDTLS_MIN_JAVA = 21
 
 /**
- * 根据服务器 ID 安装对应的 LSP 服务器
+ * 最后一个兼容 JDK 17 的里程碑版本。
+ * 拿不到 JDK 21 时（离线、镜像不可达）降级到它，让只有 17 的机器也能用上 Java 语言服务，
+ * 代价是索引与重构能力落后于最新版。
  */
+const JDTLS_COMPAT_MILESTONE = '1.39.0'
+const JDTLS_COMPAT_MIN_JAVA = 17
+
+/** 标记文件：位于 jdtls 根目录，记录本次装的是降级兼容版，启动时据此选 Java */
+const JDTLS_COMPAT_MARKER = '.ac-jdtls-compat'
+
+/**
+ * 读取一次 jdtls 安装所需的最低 Java 大版本
+ *
+ * 兼容版标记由 installJdtls 写入；没有标记按最新版的要求处理。
+ */
+export function getJdtlsRequiredJava(jdtlsRoot: string): number {
+  try {
+    if (fs.existsSync(path.join(jdtlsRoot, JDTLS_COMPAT_MARKER))) {
+      return JDTLS_COMPAT_MIN_JAVA
+    }
+  } catch {
+    // 判断不了按最严格的要求处理，避免用旧 JDK 拉起新版 jdtls 后直接退出
+  }
+  return JDTLS_MIN_JAVA
+}
+
+/**
+ * 安装 Eclipse JDT Language Server (Java LSP)
+ *
+ * 归档内没有顶层目录，直接展开到 jdtls/ 下，启动对象是其中的 equinox launcher jar。
+ * jdtls 本身是 Java 程序，必须先有可用的 JDK：
+ *   1. 本机 JDK 21+ → 装最新版，直接用本机 JDK
+ *   2. 本机版本不足 → 自动下载托管 Temurin JDK 21（只给 jdtls 用，不动系统环境）
+ *   3. 下载也失败但本机有 JDK 17+ → 装兼容版 jdtls 1.39.0
+ *   4. 都没有 → 返回结构化失败原因，由界面给出可操作的提示
+ */
+export async function installJdtls(): Promise<LspInstallResult> {
+  logger.lsp.info('[LSP Installer] Starting Eclipse JDT Language Server installation')
+  logEnvironmentInfo()
+
+  const existing = getInstallCheckServerPath('java')
+  if (existing) {
+    // 系统 PATH 上的是启动脚本，java 由脚本自己找，无法也不必在此校验
+    if (!path.isAbsolute(existing)) {
+      logger.lsp.info(`[LSP Installer] jdtls already installed at: ${existing}`)
+      return { success: true, path: existing }
+    }
+
+    // 已装但运行时被换掉（例如后来重装了低版本 JDK）时不能直接返回成功：
+    // 那样界面上显示"已安装"，点安装也没有任何反应，实际每次打开 Java 文件都起不来
+    const existingRoot = path.dirname(path.dirname(existing))
+    const requiredJava = getJdtlsRequiredJava(existingRoot)
+    const usable = await javaManager.ensureJavaFor(requiredJava, { allowDownload: true })
+    if (usable.ok) {
+      logger.lsp.info(`[LSP Installer] jdtls already installed at: ${existing}`)
+      return { success: true, path: existing }
+    }
+
+    logger.lsp.warn('[LSP Installer] Installed jdtls has no usable Java runtime, reinstalling', {
+      requiredJava,
+      javaVersion: usable.version,
+    })
+  }
+
+  const runtime = await javaManager.ensureJavaFor(JDTLS_MIN_JAVA, { allowDownload: true })
+  let pinnedMilestone: string | undefined
+  let warning: string | undefined
+
+  if (!runtime.ok) {
+    // 补齐 JDK 21 失败：只要能跑兼容版就先把语言服务装上，而不是让功能整体缺席
+    const compat = await javaManager.ensureJavaFor(JDTLS_COMPAT_MIN_JAVA, { allowDownload: false })
+    if (!compat.ok) {
+      const detected = compat.version ? `Java ${compat.version}` : '未检测到 Java'
+      const errorMsg = compat.reason === 'not-found'
+        ? `未检测到可用的 Java 运行环境（${detected}）。Java 语言服务需要 JDK ${JDTLS_MIN_JAVA}+，自动下载 JDK ${JDTLS_MIN_JAVA} 也失败了。请从 https://adoptium.net 安装 JDK ${JDTLS_MIN_JAVA} 或更高版本后重试。`
+        : `本机 ${detected} 版本过低，Java 语言服务至少需要 JDK ${JDTLS_COMPAT_MIN_JAVA}，自动下载 JDK ${JDTLS_MIN_JAVA} 也失败了。请手动安装 JDK ${JDTLS_MIN_JAVA}+ 后重试。`
+      logger.lsp.error('[LSP Installer] Java runtime unusable for jdtls', {
+        error: errorMsg,
+        version: compat.version,
+        reason: compat.reason,
+      })
+      return {
+        success: false,
+        code: compat.reason === 'not-found' ? 'JAVA_MISSING' : 'JAVA_TOO_OLD',
+        error: errorMsg,
+      }
+    }
+
+    pinnedMilestone = JDTLS_COMPAT_MILESTONE
+    warning = `本机 Java ${compat.version || ''} 低于最新版 jdtls 要求的 JDK ${JDTLS_MIN_JAVA}，已安装兼容版本 ${JDTLS_COMPAT_MILESTONE}。安装 JDK ${JDTLS_MIN_JAVA}+ 后重新安装可升级到最新版。`
+    logger.lsp.warn('[LSP Installer] Falling back to Java-17 compatible jdtls', {
+      milestone: pinnedMilestone,
+      javaVersion: compat.version,
+    })
+  } else {
+    logger.lsp.info('[LSP Installer] Java runtime ready for jdtls', {
+      javaPath: runtime.javaPath,
+      version: runtime.version,
+      source: runtime.source,
+      downloaded: runtime.downloaded,
+    })
+  }
+
+  const binDir = getLspBinDir()
+  const installDir = path.join(binDir, 'jdtls')
+  logger.lsp.info(`[LSP Installer] Installing jdtls to: ${installDir}`)
+
+  try {
+    const archiveUrl = await resolveJdtlsArchiveUrl(pinnedMilestone)
+    if (!archiveUrl) {
+      return { success: false, code: 'INSTALL_FAILED', error: '无法从 download.eclipse.org 解析 jdtls 下载地址，请检查网络后重试' }
+    }
+
+    const archivePath = path.join(binDir, path.basename(archiveUrl))
+    const downloaded = await downloadFile(archiveUrl, archivePath)
+    if (!downloaded) {
+      return { success: false, code: 'INSTALL_FAILED', error: 'jdtls 下载失败，请检查网络后重试' }
+    }
+
+    logger.lsp.info('[LSP Installer] Extracting jdtls...')
+    if (!fs.existsSync(installDir)) {
+      fs.mkdirSync(installDir, { recursive: true })
+    }
+    // tar.gz 与 tar.xz 同为 tar 归档，解压器按平台调用系统 tar，可直接复用
+    const extracted = await extractTarXz(archivePath, installDir)
+
+    try {
+      fs.unlinkSync(archivePath)
+      logger.lsp.debug(`[LSP Installer] Cleaned up archive: ${archivePath}`)
+    } catch (err) {
+      logger.lsp.warn(`[LSP Installer] Failed to delete archive: ${archivePath}`, err)
+    }
+
+    if (!extracted) {
+      return { success: false, code: 'INSTALL_FAILED', error: 'jdtls 归档解压失败' }
+    }
+
+    // 降级安装要留标记，启动时据此决定用哪个 Java
+    try {
+      const markerPath = path.join(installDir, JDTLS_COMPAT_MARKER)
+      if (pinnedMilestone) {
+        fs.writeFileSync(markerPath, pinnedMilestone, 'utf-8')
+      } else if (fs.existsSync(markerPath)) {
+        fs.unlinkSync(markerPath)
+      }
+    } catch (err) {
+      logger.lsp.warn('[LSP Installer] Failed to write jdtls compatibility marker', err)
+    }
+
+    const launcher = getInstalledServerPath('java')
+    if (launcher) {
+      logger.lsp.info(`[LSP Installer] jdtls installed successfully at: ${launcher}`)
+      return { success: true, path: launcher, warning }
+    }
+
+    logger.lsp.error('[LSP Installer] jdtls launcher jar not found after extraction', {
+      installDir,
+      dirContents: fs.existsSync(installDir) ? fs.readdirSync(installDir) : [],
+    })
+    return { success: false, code: 'INSTALL_FAILED', error: '解压完成但未找到 jdtls 启动 jar，安装包可能不完整' }
+  } catch (err) {
+    const error = toAppError(err)
+    logger.lsp.error(`[LSP Installer] jdtls installation failed: ${error.code}`, error)
+    return { success: false, code: 'INSTALL_FAILED', error: `安装过程出错：${error.message}` }
+  }
+}
+
+// ============ 统一安装入口 ============
 export async function installServer(serverId: string): Promise<LspInstallResult> {
   logger.lsp.info(`[LSP Installer] Install request for server: ${serverId}`)
 
@@ -1492,6 +1740,8 @@ export async function installServer(serverId: string): Promise<LspInstallResult>
       return { success: false, error: 'Deno must be installed manually from https://deno.land' }
     case 'php':
       return installIntelephense()
+    case 'java':
+      return installJdtls()
     default:
       logger.lsp.error(`[LSP Installer] Unknown server ID: ${serverId}`)
       return { success: false, error: `Unknown server: ${serverId}` }
