@@ -79,7 +79,11 @@ export const FloatingMenu = memo(function FloatingMenu({ x, y, items, onClose }:
   }, [])
 
   return createPortal(
-    <div ref={menuRef} className="fixed z-[99999] min-w-[220px] p-1.5 bg-surface/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl shadow-black/30 animate-scale-in flex flex-col gap-0.5" style={{ left: pos.x, top: pos.y }}>
+    /*
+     * 底色用 bg-popover（固定 96%）而非 bg-surface/95：
+     * 后者会乘 --panel-alpha，壁纸模式下只剩一成多不透明度，菜单和背后的页面糊在一起。
+     */
+    <div ref={menuRef} className="fixed z-[99999] min-w-[220px] p-1.5 bg-popover backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl shadow-black/30 animate-scale-in flex flex-col gap-0.5" style={{ left: pos.x, top: pos.y }}>
       {items.map((item, idx) => {
         if (item.separator) return <div key={`sep-${idx}`} className="my-1 border-t border-border/50 mx-2" />
         const Icon = item.icon
@@ -110,7 +114,7 @@ export const FloatingMenu = memo(function FloatingMenu({ x, y, items, onClose }:
         const relY = submenuPos.y - pos.y
         return (
           <div
-            className="absolute z-[100000] min-w-[200px] p-1.5 bg-surface/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl shadow-black/30 animate-scale-in flex flex-col gap-0.5"
+            className="absolute z-[100000] min-w-[200px] p-1.5 bg-popover backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl shadow-black/30 animate-scale-in flex flex-col gap-0.5"
             style={{ left: relX, top: relY }}
             onMouseLeave={() => setActiveSubmenu(null)}
           >

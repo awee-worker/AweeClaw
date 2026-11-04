@@ -303,7 +303,8 @@ const DockPanel = memo(function DockPanel() {
       <div className="h-[42px] min-h-[42px] flex items-center justify-between border-b border-border/50 bg-background select-none relative z-20 px-2 py-1.5">
         <div className="flex items-center flex-1 min-w-0 h-full overflow-hidden gap-1.5">
           <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-md cursor-pointer hover:bg-surface-hover text-text-muted transition-colors" onClick={() => setIsCollapsed(!isCollapsed)}>
-            {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+            {/* 箭头指向动作结果：收起状态下点它把面板展开（向上），展开状态下点它把面板收起（向下） */}
+            {isCollapsed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </div>
           <div
             className="flex items-center overflow-x-auto overflow-y-hidden scrollbar-none flex-1 h-full gap-1.5"

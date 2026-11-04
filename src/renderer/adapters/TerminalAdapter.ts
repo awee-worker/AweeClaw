@@ -54,6 +54,14 @@ export interface TerminalInstance {
   createdAt: number;
   /** 是否为 Agent 专属终端 */
   isAgent?: boolean;
+  /**
+   * 实际使用的终端后端（pty / pipe）。
+   *
+   * 写入命令时需要据此决定「回显清除」策略：pty 由行规程回显命令，
+   * 需要用 ANSI 序列抹掉；pipe 的 stdin 是管道、不会回显，再发清除序列
+   * 只会把已有输出删掉并把光标上移，看起来就是一片错位。
+   */
+  backend?: TerminalBackend;
   /** 远程 SSH 连接信息 */
   remote?: { host: string; port?: number; username?: string; password?: string; privateKeyPath?: string; remotePath?: string };
   /** 远程主机地址（用于显示） */
@@ -735,6 +743,7 @@ export class TerminalManagerClass {
       shell: options.shell || "",
       createdAt: Date.now(),
       isAgent: options.isAgent,
+      backend,
       remote: options.remote,
       remoteHost: options.remote?.host,
     };
@@ -1787,41 +1796,58 @@ export class TerminalManagerClass {
       // 这与 VS Code/Cursor Shell Integration 使用 PROMPT_COMMAND 钩子的终态效果相同
       // （用户只看到命令输出，不看到包装代码），只是实现层级不同。
       //
-      // N 的计算：ceil((提示符估算长度 + 完整命令长度) / 终端列数) + 冗余行
       const xtermInst = this.xtermInstances.get(termId)
       // 确保 cols 准确：先 fit 一次，避免终端尺寸变化后 proposeDimensions 返回过期值
       if (xtermInst?.fitAddon) {
         try { xtermInst.fitAddon.fit() } catch { /* 终端未挂载时忽略 */ }
       }
-      const cols = xtermInst?.fitAddon?.proposeDimensions?.()?.cols ?? 80
-      const promptLen = isWindows ? 60 : 35
-      // 每个清除单元的字面长度（PS 使用 $([char]N) 表达式，Unix 使用 octal 转义）
-      // 清除单元 = 上移1行 + 清除整行 + 回车（光标回行首）
-      const clearUnit = isWindows
-        ? '$([char]27)[1A$([char]27)[2K$([char]13)'
-        : '\\033[1A\\033[2K\\r'
-      const clearWrapLen = isWindows ? 22 : 10  // "Write-Host -NoNewline \"\"; " 或 "printf ''; "
-      // 两次迭代逼近（消除循环依赖）
-      const roughLines = Math.ceil((promptLen + mainCommand.length) / cols)
-      const clearOverhead = clearWrapLen + clearUnit.length * roughLines
-      // +2 冗余：多清除 1 行以覆盖 shell 自动换行、光标位置偏差等边界情况
-      // 之前 +1 在某些终端宽度下会少清一行，导致残留回显和排版错乱
-      const echoLines = Math.ceil((promptLen + mainCommand.length + clearOverhead) / cols) + 2
 
-      const clearSeq = clearUnit.repeat(echoLines)
-
-      // 清除回显后，补打一行"伪提示符 + 原始命令"，让终端看起来像用户手动输入
       // Windows PS double-quoted string 转义：` → ``，" → `"，$ → `$
       // Unix double-quoted string 转义：\ → \\，" → \"，$ → \$，` → \`
       const displayCmd = isWindows
         ? command.replace(/`/g, '``').replace(/"/g, '`"').replace(/\$/g, '`$')
         : command.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`')
-
       // 提示符路径：有 cwd 时直接嵌入，否则运行时动态获取当前目录
-      // 伪提示符前的 \r 确保从行首开始输出（clearSeq 已含 \r，此处为双保险）
-      const fakeEchoCmd = isWindows
-        ? `Write-Host -NoNewline "${clearSeq}"; Write-Host "PS ${cwd ?? '$(Get-Location)'}> ${displayCmd}"`
-        : `printf '${clearSeq}'; printf '%s\\n' "${cwd ? cwd.replace(/\\/g, '/') : '$(pwd)'}\\$ ${displayCmd}"`
+      const promptPath = cwd ? cwd.replace(/\\/g, '/') : '$(pwd)'
+
+      // pipe 后端的 stdin 是管道而不是 TTY：内核不做行规程回显，也没有列宽概念。
+      // 此时「清除回显」既没有对象可清，还会把上方的真实输出删掉、把光标上移，
+      // 后续输出从错误位置续写，看起来就是一屏错位。这里只补一行伪提示符，
+      // 不发送任何光标控制序列，输出按行自然追加。
+      const backend = this.state.terminals.find(t => t.id === termId)?.backend ?? 'pty'
+      const needsEchoClear = backend !== 'pipe'
+
+      let fakeEchoCmd: string
+      if (needsEchoClear) {
+        // N 的计算：ceil((提示符估算长度 + 完整命令长度) / 终端列数) + 冗余行
+        const cols = xtermInst?.fitAddon?.proposeDimensions?.()?.cols ?? 80
+        const promptLen = isWindows ? 60 : 35
+        // 每个清除单元的字面长度（PS 使用 $([char]N) 表达式，Unix 使用 octal 转义）
+        // 清除单元 = 上移1行 + 清除整行 + 回车（光标回行首）
+        const clearUnit = isWindows
+          ? '$([char]27)[1A$([char]27)[2K$([char]13)'
+          : '\\033[1A\\033[2K\\r'
+        const clearWrapLen = isWindows ? 22 : 10  // "Write-Host -NoNewline \"\"; " 或 "printf ''; "
+        // 两次迭代逼近（消除循环依赖）
+        const roughLines = Math.ceil((promptLen + mainCommand.length) / cols)
+        const clearOverhead = clearWrapLen + clearUnit.length * roughLines
+        // +2 冗余：多清除 1 行以覆盖 shell 自动换行、光标位置偏差等边界情况
+        // 之前 +1 在某些终端宽度下会少清一行，导致残留回显和排版错乱
+        const echoLines = Math.ceil((promptLen + mainCommand.length + clearOverhead) / cols) + 2
+
+        const clearSeq = clearUnit.repeat(echoLines)
+
+        // 清除回显后，补打一行"伪提示符 + 原始命令"，让终端看起来像用户手动输入
+        // 伪提示符前的 \r 由 clearSeq 末尾提供，确保从行首开始输出
+        fakeEchoCmd = isWindows
+          ? `Write-Host -NoNewline "${clearSeq}"; Write-Host "PS ${cwd ?? '$(Get-Location)'}> ${displayCmd}"`
+          : `printf '${clearSeq}'; printf '%s\\n' "${promptPath}\\$ ${displayCmd}"`
+      } else {
+        // 无回显可清：只打印一行「路径 $ 命令」，与后续输出保持同样的行首对齐
+        fakeEchoCmd = isWindows
+          ? `Write-Host "PS ${cwd ?? '$(Get-Location)'}> ${displayCmd}"`
+          : `printf '%s\\n' "${promptPath}\\$ ${displayCmd}"`
+      }
 
       const wrapped = `${fakeEchoCmd}; ${mainCommand}\r`
 

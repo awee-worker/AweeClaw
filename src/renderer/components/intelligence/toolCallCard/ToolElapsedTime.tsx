@@ -28,7 +28,18 @@ export function ToolElapsedTime({ startTime, endTime, isRunning }: ToolElapsedTi
 
   if (!startTime) return null
 
-  const elapsed = isRunning ? now - startTime : endTime ? endTime - startTime : 0
+  /**
+   * 已结束（有 endTime）就固定显示结束时的耗时。
+   *
+   * 之前一律按 isRunning 走「现在 - 开始时间」：只要流式预览标记没有及时清理，
+   * 卡片会继续走表，显示的时长会比命令实际执行时间更长（长命令尤其明显，
+   * sleep 100 会被显示成两百秒上下）。endTime 才是唯一可信的结束时刻。
+   */
+  const elapsed = endTime
+    ? Math.max(0, endTime - startTime)
+    : isRunning
+      ? Math.max(0, now - startTime)
+      : 0
   const display = formatElapsed(elapsed)
   if (!display) return null
 

@@ -691,10 +691,10 @@ export const VirtualFileTree = memo(function VirtualFileTree({
   }, [flattenedNodes, selectedPaths])
 
   // 把名称直接写入系统剪贴板（右键菜单「复制名称」/重命名编辑态共用）
+  // 复制成功不弹提示：右上角浮层会打断操作节奏；仅在写入失败时提示
   const copyNameToClipboard = useCallback(async (name: string) => {
     try {
       await navigator.clipboard.writeText(name)
-      toast.success(t('file-tree.namecopied', language as Language) || 'Name copied')
     } catch {
       toast.error(t('file-tree.namecopiedfailed', language as Language) || 'Failed to copy name')
     }
