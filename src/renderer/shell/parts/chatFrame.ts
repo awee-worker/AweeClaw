@@ -75,7 +75,12 @@ export function resolveChatFrame(input: ChatFrameInput): ChatFrame {
     }
     return {
       style,
-      className: 'border-l border-border/30 chat-surface-solid shadow-[-8px_0_24px_rgba(0,0,0,0.12)] flex flex-col',
+      /**
+       * no-drag 不能省：抽屉贴着窗口右缘、顶部 44px 正好压在标题栏的拖拽区上，
+       * 不声明的话这一条区域的鼠标事件仍被 -webkit-app-region: drag 吞掉，
+       * 顶栏的返回键与关闭图标看得见却点不动（与 PluginDrawerHost 同一个坑）。
+       */
+      className: 'no-drag border-l border-border/30 chat-surface-solid shadow-[-8px_0_24px_rgba(0,0,0,0.12)] flex flex-col',
       resizable: false,
       needsBackdrop: visible,
       contentKey: CHAT_CONTENT_KEY,

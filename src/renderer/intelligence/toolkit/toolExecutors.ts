@@ -2796,7 +2796,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             : null
         if (pageOpen) {
             const preview = await openBuiltinPreview(
-                pageOpen.url ? { url: pageOpen.url } : { path: pageOpen.filePath },
+                pageOpen.url
+                    ? { url: pageOpen.url }
+                    : { path: pageOpen.filePath, preferSiteTab: true },
             )
             if (preview.success) {
                 logger.agent.info(
@@ -4967,11 +4969,21 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             const preview = await openBuiltinPreview(
                 url
                     ? { url, title, device: device || undefined }
-                    : { path: resolvedPath, title, device: device || undefined },
+                    : { path: resolvedPath, title, device: device || undefined, preferSiteTab: true },
             )
 
             if (!preview.success) {
                 return { success: false, result: '', error: preview.error || 'Failed to open preview' }
+            }
+
+            // 站点浏览器正托管某个系统时，页面开在它的新标签里：预览标签页会被
+            // 内置浏览器整块挡住，用户只能先关掉站点页面才看得到
+            if (preview.openedIn === 'site-browser') {
+                return {
+                    success: true,
+                    result: `已在站点内置浏览器的新标签打开：${preview.url}（标签页「${preview.title || '预览'}」，与站点页面并排，不用退出站点）。要改内容就继续改文件，刷新该标签即可。`,
+                    meta: { path: resolvedPath || undefined, url: preview.url, openedIn: preview.openedIn, device: device || undefined },
+                }
             }
 
             const followUp = isBuiltinBrowserAutomationConnected()

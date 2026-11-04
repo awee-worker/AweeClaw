@@ -1960,6 +1960,18 @@ export interface ElectronAPI {
     }>
   }
 
+  /**
+   * 站点托管后台窗口
+   *
+   * 自动化跑在主进程的隐藏窗口里，这里的订阅把它的页面变化交给内置浏览器，
+   * 使可见页面跟随自动化停在同一地址。
+   */
+  siteBrowser: {
+    onPage: (
+      callback: (event: import('@protocols/siteBrowserProtocol').SiteBrowserPageEvent) => void,
+    ) => () => void
+  }
+
   getClipboardFilePaths: () => Promise<string[]>
   hasClipboardFiles: () => Promise<boolean>
   getClipboardFileAttachments: () => Promise<ClipboardFileAttachment[]>

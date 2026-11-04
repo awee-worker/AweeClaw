@@ -293,7 +293,17 @@ export function createPluginHostApi(opts: {
       if (!url) throw new Error('openInternalBrowser 需要 url')
       // 只切布局、不涉及插件业务数据，直接走 store 即可；
       // 与 sendChatMessage 不同，这里没有需要跨组件协作的异步链路。
-      useStore.getState().openInternalBrowser(url, options.title, undefined, options.partition)
+      // site 一并带过去：内置浏览器据此把「当前在哪个站点」写进对话上下文。
+      const site = options.site
+        ? {
+            id: options.site.id,
+            name: options.site.name,
+            category: options.site.category ?? '',
+            origin: options.site.origin ?? '',
+            entryUrl: options.site.entryUrl ?? url,
+          }
+        : null
+      useStore.getState().openInternalBrowser(url, options.title, undefined, options.partition, site)
     },
 
     reloadInternalBrowser: () => {

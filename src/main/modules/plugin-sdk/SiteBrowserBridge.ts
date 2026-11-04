@@ -27,6 +27,11 @@
 import { BrowserWindow } from 'electron'
 import type { WebContents } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
+import {
+  SITE_BROWSER_PAGE_CHANNEL,
+  type SiteBrowserPageKind,
+} from '@shared/protocols/siteBrowserProtocol'
+import { getMainWindow } from '../../bootstrap/windowManager'
 
 /** 单个站点窗口的登记信息 */
 interface SiteEntry {
@@ -634,6 +639,34 @@ class SiteBrowserBridge {
       if (errorCode === -3) return
       logger.system?.warn('[SiteBrowser] load failed', { siteId, errorCode, errorDescription, url: validatedURL })
     })
+
+    /**
+     * 页面变化推给渲染进程
+     *
+     * 隐藏窗口跑的是自动化，用户看的是内置浏览器的 webview。不推出去的话，
+     * AI 已经在订单统计页取数，用户屏幕上还停在原来的列表页——只能靠「关掉再
+     * 重新进入管理」才看得到，像是自动化根本没生效。
+     *
+     * 三个事件各管一类跳转：did-navigate 覆盖整页加载，did-navigate-in-page
+     * 覆盖 SPA 的 pushState / hash 路由（OA 系统里最常见），title 兜住只换标题
+     * 的同页更新。地址相同的事件由消费方去重，这里不做判断。
+     */
+    const broadcastPage = (kind: SiteBrowserPageKind): void => {
+      const wc = win.webContents
+      if (wc.isDestroyed()) return
+      const host = getMainWindow()
+      if (!host || host.isDestroyed()) return
+      host.webContents.send(SITE_BROWSER_PAGE_CHANNEL, {
+        siteId,
+        url: wc.getURL(),
+        title: wc.getTitle(),
+        kind,
+      })
+    }
+
+    win.webContents.on('did-navigate', () => broadcastPage('navigate'))
+    win.webContents.on('did-navigate-in-page', () => broadcastPage('in-page'))
+    win.webContents.on('page-title-updated', () => broadcastPage('title'))
 
     return { siteId, win, partition, allowedOrigins, loginFlowUntil: 0, createdAt: Date.now() }
   }

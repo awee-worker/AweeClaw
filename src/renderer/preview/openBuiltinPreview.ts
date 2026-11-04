@@ -12,6 +12,7 @@
 
 import type { PreviewSession } from '@shared/protocols/previewProtocol'
 import { api } from '@renderer/adapters/electronBridge'
+import { useStore } from '@store'
 import { previewSessionService } from './previewSessionManager'
 
 const HTTP_URL_PATTERN = /^https?:\/\//i
@@ -29,6 +30,14 @@ export interface OpenBuiltinPreviewInput {
     title?: string
     /** 初始设备模拟档位 id（预设 id / 'desktop' / 'custom'）；缺省为桌面 */
     device?: string
+    /**
+     * 优先开在站点内置浏览器的新标签里
+     *
+     * 内置浏览器正托管着某个系统时，预览标签页落在编辑器里会被它挡住——用户得先
+     * 关掉站点页面才看得到报告。开启后这类页面改开成站点浏览器的新标签，与站点
+     * 页面并排在同一处，谁都不用退出。浏览器没开时照旧走预览标签页。
+     */
+    preferSiteTab?: boolean
 }
 
 export interface OpenBuiltinPreviewResult {
@@ -48,6 +57,13 @@ export interface OpenBuiltinPreviewResult {
      * 调用方据此提示模型先确认页面再操作，而不是直接扑一个空。
      */
     ready?: boolean
+    /**
+     * 页面最后落在哪一处
+     *
+     * preview-tab：编辑器里的预览标签页；site-browser：站点内置浏览器的新标签。
+     * AI 据此给出准确提示，不至于让用户去编辑器里找一个不存在的标签。
+     */
+    openedIn?: PreviewOpenedIn
     error?: string
 }
 
@@ -89,6 +105,24 @@ async function waitForSessionReady(sessionId: string): Promise<boolean> {
 }
 
 /**
+ * 站点内置浏览器正开着时，把页面开成它的新标签
+ *
+ * 内置浏览器占着主内容区，预览标签页落在编辑器里，被它整块挡住——用户只能先关掉
+ * 站点页面才看得到报告。开成站点浏览器的新标签，两者并排在同一处，站点也不用退出。
+ *
+ * 返回 false 表示浏览器没开或没有承载站点，调用方照旧走预览标签页。
+ */
+function openInSiteBrowserTab(url: string, title: string): boolean {
+    const state = useStore.getState()
+    if (!state.internalBrowserUrl || !state.internalBrowserSite) return false
+    state.openInternalBrowserTab(url, title)
+    return true
+}
+
+/** 打开方式：占位说明页面最后落在哪一处，调用方据此给出准确的提示 */
+export type PreviewOpenedIn = 'preview-tab' | 'site-browser'
+
+/**
  * 在内置浏览器打开预览
  *
  * @param input url 与 path 二选一；同时给出时以 url 为准
@@ -106,9 +140,12 @@ export async function openBuiltinPreview(
             }
         }
         const title = input.title || deriveTitle(rawUrl)
+        if (input.preferSiteTab && openInSiteBrowserTab(rawUrl, title)) {
+            return { success: true, url: rawUrl, title, openedIn: 'site-browser' }
+        }
         const session = await activatePreview(rawUrl, title, undefined, input.device)
         const ready = await waitForSessionReady(session.id)
-        return { success: true, url: rawUrl, title, sessionId: session.id, ready }
+        return { success: true, url: rawUrl, title, sessionId: session.id, ready, openedIn: 'preview-tab' }
     }
 
     const rawPath = (input.path || '').trim()
@@ -125,9 +162,12 @@ export async function openBuiltinPreview(
             }
         }
         const title = input.title || deriveTitle(rawPath)
+        if (input.preferSiteTab && openInSiteBrowserTab(resolved.url, title)) {
+            return { success: true, url: resolved.url, title, rootDir: resolved.rootDir, openedIn: 'site-browser' }
+        }
         const session = await activatePreview(resolved.url, title, resolved.rootDir, input.device)
         const ready = await waitForSessionReady(session.id)
-        return { success: true, url: resolved.url, title, sessionId: session.id, rootDir: resolved.rootDir, ready }
+        return { success: true, url: resolved.url, title, sessionId: session.id, rootDir: resolved.rootDir, ready, openedIn: 'preview-tab' }
     } catch (err) {
         return {
             success: false,

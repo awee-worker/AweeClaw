@@ -23,8 +23,9 @@
  */
 
 import { Suspense, lazy, useCallback, useEffect, useRef } from 'react'
-import { X } from 'lucide-react'
+import { ArrowLeft, X } from 'lucide-react'
 import { useStore } from '@store'
+import { t } from '@renderer/i18n'
 import { useShallow } from 'zustand/react/shallow'
 import { useChatResize } from '@hooks'
 import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
@@ -82,6 +83,7 @@ export function ChatPart({
     voiceConversationActive,
     setVoiceConversationActive,
     activeScenarioId,
+    language,
   } = useStore(
     useShallow((s) => ({
       chatWidth: s.chatWidth,
@@ -91,9 +93,9 @@ export function ChatPart({
       voiceConversationActive: s.voiceConversationActive,
       setVoiceConversationActive: s.setVoiceConversationActive,
       activeScenarioId: s.activeScenarioId,
+      language: s.language,
     })),
   )
-
   /**
    * 初值同步：按「场景 + defaultOpen」的变化执行，离开场景时还原
    *
@@ -162,13 +164,28 @@ export function ChatPart({
     minWidth: LAYOUT.CHAT_MIN_WIDTH,
   })
 
-  /** 抽屉 / 弹窗形态的关闭：优先交给排版层，未接管时回落到收起对话 */
-  const handleClose = useCallback(() => {
-    if (onClose) onClose()
-    else setChatVisible(false)
-  }, [onClose, setChatVisible])
-
   const isDetached = presentation === 'drawer' || presentation === 'modal'
+
+  /**
+   * 抽屉 / 弹窗形态的关闭
+   *
+   * 抽屉的可见性由两条状态合成（见 MainContentArea）：chatVisible 决定要不要有
+   * 对话栏，chatAsDrawer 只决定它是浮层还是内排。所以关抽屉必须两条一起收：
+   * 只写 chatVisible，chatAsDrawer 仍为 true，面板会原地留在右侧；只交给
+   * closeChatDrawer，它会按要求把显隐还原成打开前的值，用户先在主界面开着
+   * 对话再去浏览器唤起抽屉时，返回后对话又以内排形态顶回来。两种情况看上去
+   * 都是「点了没反应」。
+   *
+   * 顺序不能反：closeChatDrawer 会写 chatVisible，必须由后面的 setChatVisible(false)
+   * 把它覆盖掉。排版层的 onClose 放在最后，外部接管时的自定义行为（如切回某个页面）
+   * 才不会被前两步的收面板操作打断。
+   */
+  const handleClose = useCallback(() => {
+    const state = useStore.getState()
+    if (state.chatAsDrawer) state.closeChatDrawer()
+    state.setChatVisible(false)
+    if (onClose) onClose()
+  }, [onClose])
 
   return (
     <>
@@ -195,19 +212,49 @@ export function ChatPart({
           />
         )}
 
+        {/* 抽屉顶部栏：左侧返回键关闭抽屉，标题交代这块面板是什么。
+            底色与面板同源（chat-surface-solid），内容区滚动时压在它下面，
+            不会从顶部透出来。右侧留出关闭图标的位置（pr-10），避免标题压到它。 */}
+        {presentation === 'drawer' && shown && (
+          <div className="relative z-10 shrink-0 h-11 flex items-center gap-1.5 pl-1.5 pr-10 border-b border-border/60 chat-surface-solid">
+            <button
+              type="button"
+              onClick={handleClose}
+              title={t('ctxBack', language)}
+              className="w-7 h-7 rounded-md flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-text-primary/[0.06] transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" strokeWidth={1.8} />
+            </button>
+            <span className="text-[13px] font-medium text-text-primary truncate">
+              {t('app.aiassistant', language)}
+            </span>
+          </div>
+        )}
+
+        {/* 右上角关闭：抽屉和弹窗都保留，位置固定在浮层右上角 */}
         {isDetached && shown && (
           <button
             type="button"
             onClick={handleClose}
             title="关闭"
-            className="absolute top-2 right-2 z-10 w-6 h-6 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            className="absolute top-2 right-2 z-20 w-6 h-6 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
           >
             <X className="w-3.5 h-3.5" />
           </button>
         )}
 
-        {/* 内容子树：结构与位置在所有呈现形态下保持一致，切换形态不重建 ChatPanel */}
-        <div key={CHAT_CONTENT_KEY} className="flex-1 min-h-0 flex flex-col">
+        {/*
+         * 内容子树：结构与位置在所有呈现形态下保持一致，切换形态不重建 ChatPanel。
+         *
+         * 定位上下文只给抽屉：ChatPanel 根节点是 absolute inset-0，要贴着有高度的
+         * 祖先铺满。抽屉外框是 flex 容器，内容区 flex-1 拿到高度，加上 relative 才能
+         * 把聊天区限制在顶栏下方；inline 外框是普通块级盒，flex-1 不生效，内容区
+         * 高度由子元素撑开，此时再补 relative 会让它塌成 0，内嵌对话整块消失。
+         */}
+        <div
+          key={CHAT_CONTENT_KEY}
+          className={`flex-1 min-h-0 flex flex-col ${presentation === 'drawer' ? 'relative' : ''}`}
+        >
           <ErrorBoundary>
             <Suspense fallback={<ChatSkeleton />}>
               <ChatPanel />

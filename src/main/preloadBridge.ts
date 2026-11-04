@@ -54,6 +54,7 @@ import { createDesktopApi } from './preload/api/desktop'
 import { createPluginApi } from './preload/api/plugin'
 import { createClipboardApi } from './preload/api/clipboard'
 import { createPreviewApi } from './preload/api/preview'
+import { createSiteBrowserApi } from './preload/api/siteBrowser'
 import { createPerceptionApi } from './preload/api/perception'
 import { createPerceptionFusionApi } from './preload/api/perceptionFusion'
 import { createMonitoringApi } from './preload/api/monitoring'
@@ -117,6 +118,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ...createPluginApi(),
   ...createClipboardApi(),
   preview: createPreviewApi(),
+  // 站点托管后台窗口的页面推送：内置浏览器据此跟随自动化翻页
+  siteBrowser: createSiteBrowserApi(),
   ...createCharacterCardApi(),
   ...createEmotionApi(),
   perception: createPerceptionApi(),

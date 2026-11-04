@@ -61,8 +61,58 @@ export const WORKSPACE_PANEL_ID = 'explorer' as const
 /** 终端布局模式 */
 export type TerminalLayout = 'tabs' | 'split'
 
-/** 专注布局前的面板快照：进入编辑器 / 内置浏览器前记录，退出时据此恢复 */
-export interface ChromeSnapshot {
+/**
+ * 内置浏览器承载的托管站点信息
+ *
+ * 托管类插件（站点托管等）把自己的站点打开到内置浏览器时一并带进来。
+ * 有了它，浏览器才能把「用户此刻在看哪个系统」交给 AI：AI 侧据此选中
+ * 对应站点的工具，不会在多个系统之间来回猜。普通自定义菜单打开网页时为空。
+ */
+export interface InternalBrowserSite {
+  /** 站点 ID，与插件工具里的 site 参数一致 */
+  id: string
+  /** 站点名称，如「客户 CRM」 */
+  name: string
+  /** 站点分类，如 crm / oa */
+  category: string
+  /** 站点入口地址 */
+  origin: string
+  /** 站点入口完整地址（含入口路径） */
+  entryUrl: string
+}
+
+/**
+ * 内置浏览器的一个标签页
+ *
+ * 托管站点页、AI 生成的报告、页面里 target=_blank 打开的链接都落在同一处。
+ * 原先这些页面各自去占主内容区（站点走内置浏览器、报告走预览标签页），
+ * 结果是后开的那一个被前一个挡住，用户得先关掉站点页面才看得到报告。
+ */
+export interface InternalBrowserTab {
+  /** 标签 id；取自增序列，不落盘 */
+  id: string
+  /** 标签地址 */
+  url: string
+  /** 标签标题；未知时由组件按域名兜底 */
+  title: string
+  /**
+   * 是否站点入口标签
+   *
+   * 站点自动化的页面变化只同步到这一个标签：用户可能正开着报告对照，
+   * 不该被后台的翻页强行拉走。
+   */
+  siteBound?: boolean
+}
+
+/** 标签 id 序列：同一毫秒内连开多个标签也不会重号 */
+let internalBrowserTabSeq = 0
+
+function createInternalBrowserTabId(): string {
+  internalBrowserTabSeq += 1
+  return `ibt-${Date.now().toString(36)}-${internalBrowserTabSeq}`
+}
+
+/** 专注布局前的面板快照：进入编辑器 / 内置浏览器前记录，退出时据此恢复 */export interface ChromeSnapshot {
   /** 菜单栏（导航栏）是否展开 */
   navRailExpanded: boolean
   /** 工作空间侧边栏当前面板 */
@@ -656,16 +706,74 @@ export interface LayoutSlice {
    * 递增，由 InternalBrowser 消费。
    */
   internalBrowserReloadToken: number
+  /**
+   * 内置浏览器当前承载的托管站点（null 表示这是普通网页）
+   *
+   * 站点信息会随对话上下文交给 AI，让它围绕这个站点服务。
+   */
+  internalBrowserSite: InternalBrowserSite | null
   /** 当前激活的自定义菜单 ID（导航栏高亮用，null 表示未激活自定义菜单） */
   activeCustomMenuId: string | null
   /** 打开内部浏览器前的聊天窗口显隐（关闭时恢复，避免覆盖面板 / 用户的意图） */
   chatVisibleBeforeInternalBrowser: boolean | null
-  /** 打开内部浏览器；partition 省略时沿用主窗口默认 session */
-  openInternalBrowser: (url: string, title?: string, menuId?: string, partition?: string) => void
+  /**
+   * 打开内部浏览器
+   *
+   * @param site 托管站点信息；普通网页不传，传入后对话上下文会带上该站点
+   */
+  openInternalBrowser: (
+    url: string,
+    title?: string,
+    menuId?: string,
+    partition?: string,
+    site?: InternalBrowserSite | null,
+  ) => void
   /** 刷新内部浏览器当前页面（未打开时是空操作） */
   reloadInternalBrowser: () => void
   /** 关闭内部浏览器 */
   closeInternalBrowser: () => void
+
+  /* ===== 对话抽屉 ===== */
+  /**
+   * 对话面板是否以抽屉形态浮在工作区之上
+   *
+   * 内置浏览器占满左侧工作区时，右侧再挤一栏对话会把页面压得很窄。
+   * 由浏览器的「AI 助手」按需拉出抽屉，用完收起，页面回到整宽——
+   * 同一时刻只有对话面板一个实例，只是外框形态在 inline / drawer 之间切换。
+   */
+  chatAsDrawer: boolean
+  /**
+   * 内置浏览器的标签页集合
+   *
+   * 打开浏览器时由一个站点入口标签起步，之后 AI 生成的报告、页面里的新窗口
+   * 都以新标签追加——它们和站点页是同一处上下文，不该另起一个浏览器。
+   */
+  internalBrowserTabs: InternalBrowserTab[]
+  /** 当前激活的标签页 id（null 表示浏览器未打开） */
+  activeInternalBrowserTabId: string | null
+  /** 在已打开的内置浏览器里新开一个标签页并激活它 */
+  openInternalBrowserTab: (url: string, title?: string) => void
+  /** 切换标签页（id 不存在时忽略） */
+  selectInternalBrowserTab: (tabId: string) => void
+  /** 关闭标签页；只剩一个时不做任何事，关闭浏览器请用 closeInternalBrowser */
+  closeInternalBrowserTab: (tabId: string) => void
+  /**
+   * 更新标签页地址
+   *
+   * 地址栏跳转与站点自动化导航都走这里：地址变化会让 webview 重新导航到新页面。
+   */
+  updateInternalBrowserTabUrl: (tabId: string, url: string, title?: string) => void
+  /**
+   * 拉出对话抽屉前的对话显隐
+   *
+   * 抽屉只是把对话临时拉出来看一眼，收起后要回到打开前的状态。内置浏览器占满工作区时
+   * 对话本来是隐藏的，只把形态退回内排而不还原显隐，右侧就会凭空多出一栏常驻会话。
+   */
+  chatVisibleBeforeDrawer: boolean | null
+  /** 以抽屉形态打开对话面板，并把焦点交给它 */
+  openChatDrawer: () => void
+  /** 收起对话抽屉，恢复到打开前的显隐（浏览器下即对话重新隐藏） */
+  closeChatDrawer: () => void
 
   /* ===== 专注布局（编辑器 / 内置浏览器占位时收起外壳） ===== */
   /**
@@ -733,8 +841,13 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   internalBrowserTitle: '',
   internalBrowserPartition: null,
   internalBrowserReloadToken: 0,
+  internalBrowserSite: null,
   activeCustomMenuId: null,
   chatVisibleBeforeInternalBrowser: null,
+  chatAsDrawer: false,
+  chatVisibleBeforeDrawer: null,
+  internalBrowserTabs: [],
+  activeInternalBrowserTabId: null,
   chromeSnapshotBeforeFocus: null,
 
   /* ----- 工作台自定义初始状态（优先恢复上次保存的配置） ----- */
@@ -1013,21 +1126,40 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
     }),
 
   /* ----- 内部浏览器操作 ----- */
-  openInternalBrowser: (url, title, menuId, partition) =>
-    set((state) => ({
-      internalBrowserUrl: url,
-      internalBrowserTitle: title ?? '',
-      internalBrowserPartition: partition ?? null,
-      activeCustomMenuId: menuId ?? null,
-      // 仅在「由未打开变为打开」时记录打开前的显隐，连续打开其它链接不覆盖首次快照
-      chatVisibleBeforeInternalBrowser: state.internalBrowserUrl
-        ? state.chatVisibleBeforeInternalBrowser
-        : state.chatVisible,
-      // 打开内部浏览器时隐藏聊天窗口，浏览器占据其位置；用户可随时手动恢复显示
-      chatVisible: false,
-      // 新开一段浏览时令牌归零，避免上一次的刷新计数在重新挂载时多触发一次重载
-      internalBrowserReloadToken: state.internalBrowserUrl ? state.internalBrowserReloadToken : 0,
-    })),
+  openInternalBrowser: (url, title, menuId, partition, site) =>
+    set((state) => {
+      /**
+       * 入口标签
+       *
+       * 每次「进入管理 / 打开菜单」都以一个站点入口标签起步：上一次留下的报告、
+       * 帮助页属于上一段浏览，带过来只会让标签条越攒越长。同一个站点重复打开时
+       * 依旧重置——用户点的是「进入管理」，期望看到的是入口页。
+       */
+      const entryTab: InternalBrowserTab = {
+        id: createInternalBrowserTabId(),
+        url,
+        title: title ?? '',
+        siteBound: true,
+      }
+      return {
+        internalBrowserUrl: url,
+        internalBrowserTitle: title ?? '',
+        internalBrowserPartition: partition ?? null,
+        // 只在这次调用带了站点信息时覆盖：不传 site 的自定义菜单打开网页会把旧站点带过去
+        internalBrowserSite: site ?? null,
+        activeCustomMenuId: menuId ?? null,
+        internalBrowserTabs: [entryTab],
+        activeInternalBrowserTabId: entryTab.id,
+        // 仅在「由未打开变为打开」时记录打开前的显隐，连续打开其它链接不覆盖首次快照
+        chatVisibleBeforeInternalBrowser: state.internalBrowserUrl
+          ? state.chatVisibleBeforeInternalBrowser
+          : state.chatVisible,
+        // 打开内部浏览器时隐藏聊天窗口，浏览器占据其位置；用户可随时手动恢复显示
+        chatVisible: false,
+        // 新开一段浏览时令牌归零，避免上一次的刷新计数在重新挂载时多触发一次重载
+        internalBrowserReloadToken: state.internalBrowserUrl ? state.internalBrowserReloadToken : 0,
+      }
+    }),
   reloadInternalBrowser: () =>
     set((state) =>
       // 没打开时不做任何事：令牌空转会让下次打开白白多刷一次页面
@@ -1047,20 +1179,104 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
           internalBrowserUrl: null,
           internalBrowserTitle: '',
           internalBrowserPartition: null,
+          internalBrowserSite: null,
           activeCustomMenuId: null,
+          chatAsDrawer: false,
+          chatVisibleBeforeDrawer: null,
+          // 浏览器没开时也要清空标签：残留标签会在下次打开时短暂占位
+          internalBrowserTabs: [],
+          activeInternalBrowserTabId: null,
         }
       }
       return {
         internalBrowserUrl: null,
         internalBrowserTitle: '',
         internalBrowserPartition: null,
+        internalBrowserSite: null,
         activeCustomMenuId: null,
+        // 浏览器关掉后抽屉形态没有承载对象了，退回内排，避免对话悬空在整屏上
+        chatAsDrawer: false,
+        // 抽屉的显隐快照同样失效：下一位使用者应记录自己的打开前状态
+        chatVisibleBeforeDrawer: null,
+        // 标签属于这一次浏览，关掉浏览器即全部作废
+        internalBrowserTabs: [],
+        activeInternalBrowserTabId: null,
         // 关闭后恢复到打开前的显隐：面板自动隐藏的聊天不会被唤起，用户手动开的聊天仍然保留。
         // 快照缺失时保留当前值，不兜底成 true。
         chatVisible: state.chatVisibleBeforeInternalBrowser ?? state.chatVisible,
         chatVisibleBeforeInternalBrowser: null,
       }
     }),
+
+  /* ----- 内置浏览器标签页 ----- */
+  openInternalBrowserTab: (url, title) =>
+    set((state) => {
+      // 浏览器没开时不凭空造标签：此时没有可挂载的容器，调用方应先 openInternalBrowser
+      if (!state.internalBrowserUrl || !url) return state
+      const tab: InternalBrowserTab = {
+        id: createInternalBrowserTabId(),
+        url,
+        title: title ?? '',
+      }
+      return {
+        internalBrowserTabs: [...state.internalBrowserTabs, tab],
+        activeInternalBrowserTabId: tab.id,
+      }
+    }),
+  selectInternalBrowserTab: (tabId) =>
+    set((state) =>
+      state.internalBrowserTabs.some((tab) => tab.id === tabId)
+        ? { activeInternalBrowserTabId: tabId }
+        : state,
+    ),
+  closeInternalBrowserTab: (tabId) =>
+    set((state) => {
+      // 只剩一个标签时不动：关掉它等于关浏览器，那是 closeInternalBrowser 的语义
+      if (state.internalBrowserTabs.length <= 1) return state
+      const index = state.internalBrowserTabs.findIndex((tab) => tab.id === tabId)
+      if (index === -1) return state
+      const nextTabs = state.internalBrowserTabs.filter((tab) => tab.id !== tabId)
+      if (state.activeInternalBrowserTabId !== tabId) {
+        return { internalBrowserTabs: nextTabs }
+      }
+      // 关掉的是当前标签：落到原位置的邻居上，标签条不会整体跳一下
+      const fallback = nextTabs[Math.min(index, nextTabs.length - 1)]
+      return { internalBrowserTabs: nextTabs, activeInternalBrowserTabId: fallback.id }
+    }),
+  updateInternalBrowserTabUrl: (tabId, url, title) =>
+    set((state) => {
+      const target = state.internalBrowserTabs.find((tab) => tab.id === tabId)
+      if (!target || !url) return state
+      const nextTitle = title || target.title
+      // 地址与标题都没变时返回原 state：站点自动化会连续推同一页的事件，
+      // 重复写会让 webview 白重载一次
+      if (target.url === url && target.title === nextTitle) return state
+      return {
+        internalBrowserTabs: state.internalBrowserTabs.map((tab) =>
+          tab.id === tabId ? { ...tab, url, title: nextTitle } : tab,
+        ),
+      }
+    }),
+
+  /* ----- 对话抽屉操作 ----- */
+  openChatDrawer: () =>
+    set((state) => ({
+      chatAsDrawer: true,
+      chatVisible: true,
+      // 只在「由收起变为拉出」时记录快照：抽屉开着又被触发一次时不能覆盖首次的显隐
+      chatVisibleBeforeDrawer: state.chatAsDrawer
+        ? state.chatVisibleBeforeDrawer
+        : state.chatVisible,
+    })),
+  closeChatDrawer: () =>
+    // 形态退出抽屉，同时把对话显隐退回打开前的状态。
+    // 只改形态的话，内置浏览器里本应隐藏的对话会在右侧重新变成一栏常驻会话。
+    set((state) => ({
+      chatAsDrawer: false,
+      chatVisible: state.chatVisibleBeforeDrawer ?? false,
+      chatVisibleBeforeDrawer: null,
+    })),
+
 
   /* ----- 专注布局操作 ----- */
   enterFocusLayout: (options) =>

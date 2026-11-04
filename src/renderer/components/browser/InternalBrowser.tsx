@@ -16,32 +16,38 @@
  * 因此切走再切回来的页面会重新加载——与「一个内置浏览器只保留一个 guest」的取舍一致。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, Loader2, Plus, RefreshCw, Sparkles, X } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  ExternalLink,
+  Globe,
+  Loader2,
+  MessageSquare,
+  Plus,
+  RefreshCw,
+  X,
+} from 'lucide-react'
 import { useStore } from '@store'
+import { useAgentStore, selectIsStreaming, selectMessages } from '@intelligence/state/IntelligenceStore'
 import { useShallow } from 'zustand/react/shallow'
 import { t, type Language } from '@renderer/i18n'
 import { api } from '@renderer/adapters/electronBridge'
 import type { PreviewSession } from '@shared/protocols/previewProtocol'
 import { useWebviewController } from '@components/workspace-editor/browser/hooks/useWebviewController'
-import { useElementPicker } from '@components/workspace-editor/browser/hooks/useElementPicker'
 import { useDeferredMount } from '@renderer/composables/useDeferredMount'
 import BrowserWebView from '@components/workspace-editor/browser/BrowserWebView'
-import AIEditPanel from '@components/workspace-editor/browser/AIEditPanel'
-import { BROWSER_AI_EDIT_EVENT, buildAIEditPrompt } from '@components/workspace-editor/browser/aiEditPrompt'
 import { sanitizeUrl } from '@components/workspace-editor/browser/hooks/usePreviewSessionSync'
 
 /** 新标签页默认地址 */
 const NEW_TAB_URL = 'https://www.aweeclaw.com'
 
-interface InternalTab {
-  id: string
-  url: string
-  title: string
-}
-
-function createTabId(): string {
-  return `tab-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-}
+/**
+ * 站点页面同步的合并窗口（毫秒）
+ *
+ * 采集翻页时后台窗口会在几秒内连跳多页，逐条跟随会让可见页面反复整页重载。
+ * 收一小段窗口再同步，用户看到的是「AI 走到哪一页」，而不是一路闪屏。
+ */
+const SITE_PAGE_MIRROR_DEBOUNCE_MS = 350
 
 /** 标签标题：页面标题未知时用域名兜底，避免标签条上是一长串地址 */
 function titleFromUrl(url: string): string {
@@ -54,27 +60,47 @@ function titleFromUrl(url: string): string {
 
 
 export default function InternalBrowser() {
-  const { url, title, partition, reloadTokenExternal, closeInternalBrowser, language } = useStore(
+  const {
+    url,
+    partition,
+    siteContext,
+    reloadTokenExternal,
+    closeInternalBrowser,
+    openChatDrawer,
+    closeChatDrawer,
+    chatAsDrawer,
+    language,
+    tabs,
+    activeTabId,
+    appendTab,
+    selectTab,
+    closeTab,
+    updateTabUrl,
+  } = useStore(
     useShallow((s) => ({
       url: s.internalBrowserUrl,
-      title: s.internalBrowserTitle,
       partition: s.internalBrowserPartition,
+      siteContext: s.internalBrowserSite,
       reloadTokenExternal: s.internalBrowserReloadToken,
       closeInternalBrowser: s.closeInternalBrowser,
+      openChatDrawer: s.openChatDrawer,
+      closeChatDrawer: s.closeChatDrawer,
+      chatAsDrawer: s.chatAsDrawer,
       language: s.language,
+      tabs: s.internalBrowserTabs,
+      activeTabId: s.activeInternalBrowserTabId,
+      appendTab: s.openInternalBrowserTab,
+      selectTab: s.selectInternalBrowserTab,
+      closeTab: s.closeInternalBrowserTab,
+      updateTabUrl: s.updateInternalBrowserTabUrl,
     })),
   )
 
-  // 标签集合：自定义菜单打开时只有一个标签，页面弹窗请求会在这里追加
-  const [tabs, setTabs] = useState<InternalTab[]>(() => [
-    {
-      id: createTabId(),
-      url: url ?? '',
-      title: title || titleFromUrl(url ?? ''),
-    },
-  ])
-  const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0]?.id ?? '')
-  /** 刷新令牌：推进后由 controller 消费，触发一次真正的页面重载 */
+  /**
+   * 刷新令牌：推进后由 controller 消费，触发一次真正的页面重载
+   *
+   * 留在组件里而不是 store：它只服务于当前挂载的 webview，浏览器关掉就该归零。
+   */
   const [reloadToken, setReloadToken] = useState(0)
   const [address, setAddress] = useState(url ?? '')
 
@@ -120,22 +146,106 @@ export default function InternalBrowser() {
 
   const controller = useWebviewController(session)
 
-  // AI 修改：元素拾取（切换页面 / 关闭时会自动结束上一次拾取）
-  const { phase: pickPhase, picked, togglePick, clearPick, undoEdits } = useElementPicker(
-    controller.guestId,
-  )
+  /**
+   * 把「用户在哪个站点的哪一页」写进对话上下文
+   *
+   * 不发送消息、不触发 AI 回复，只把事实摆进上下文：用户接着提问时，
+   * AI 已经知道自己在服务哪个系统、当前停在哪一页，不必再反问。
+   * 站点信息走 site-hosting 插件的上下文项，插件工具清单会随之一起注入。
+   */
+  const injectPageContext = useCallback(() => {
+    const pageUrl = activeUrl || url || ''
+    if (!pageUrl) return
+    const pageTitle = activeTab?.title || titleFromUrl(pageUrl)
+    const site = siteContext
 
-  /** 提交修改指令：经 window 事件交给 PluginHostBridge 发送到当前会话 */
-  const handleSubmitEdit = useCallback(
-    (instruction: string) => {
-      if (!picked) return
-      const pageUrl = activeUrl || url || undefined
-      const prompt = buildAIEditPrompt(picked, instruction, pageUrl)
-      window.dispatchEvent(new CustomEvent(BROWSER_AI_EDIT_EVENT, { detail: { text: prompt } }))
-      clearPick()
-    },
-    [picked, clearPick, activeUrl, url],
-  )
+    const lines: string[] = []
+    if (site) {
+      lines.push(
+        `用户正在内置浏览器里使用托管站点「${site.name}」（分类：${site.category || 'other'}，入口：${site.entryUrl}）。`,
+        '站点已在独立登录分区中打开，登录态与站点托管插件的后台窗口共享。',
+      )
+    } else {
+      lines.push('用户正在内置浏览器里查看一个网页。')
+    }
+    lines.push(`当前页面：${pageTitle} — ${pageUrl}`)
+
+    if (site) {
+      lines.push(
+        '',
+        '需要读取或操作这一页时，按下面的顺序来：',
+        `- site_navigate({ site: "${site.id}", url: "${pageUrl}" })：先把站点窗口带到这个地址；`,
+        `- site_snapshot({ site: "${site.id}" })：读取页面结构、可点击元素与可见文本；`,
+        '- site_click / site_type / site_wait_for：点击、填表这类交互自动化；',
+        '- site_learn → recipe_save → crawl_start：列表页批量抓取；dataset_preview / dataset_stats：对结果做统计。',
+        '回答与操作请围绕这个站点，未经用户确认不要切换到其它站点。',
+      )
+    } else {
+      lines.push('需要页面内容时，先自行打开同一地址读取，不要臆测页面上有什么。')
+    }
+
+    const pluginId = site ? 'site-hosting' : 'internal-browser'
+    const displayName = site ? '站点托管' : '内置浏览器'
+    const label = site ? `站点：${site.name} · ${pageTitle}` : `页面：${pageTitle}`
+    useAgentStore
+      .getState()
+      .setPluginStateNote(
+        pluginId,
+        lines.join('\n'),
+        displayName,
+        label,
+        site ? `site:${site.id}` : 'internal-browser:page',
+      )
+  }, [activeUrl, url, activeTab?.title, siteContext])
+
+  /**
+   * 打开站点后立刻注入一次上下文
+   *
+   * 用户点「管理」进到页面往往直接就开口提问，先点 AI 按钮才注入就晚了。
+   * 同一站点同一地址只注入一次，避免每次重渲染都覆盖上下文项。
+   */
+  const injectedKeyRef = useRef('')
+  useEffect(() => {
+    if (!siteContext || !url) return
+    const key = `${siteContext.id}:${url}`
+    if (injectedKeyRef.current === key) return
+    injectedKeyRef.current = key
+    injectPageContext()
+  }, [siteContext, url, injectPageContext])
+
+  /**
+   * AI 助手：把当前页面交给 AI，并以抽屉形式拉出对话面板
+   *
+   * 已经开着就收起，按钮本身充当开关，不会在页面上留下第二层浮层。
+   * 每次从页面唤起都开一项新任务：页面上下文是那一刻的事实，接着旧对话继续聊会把
+   * 两个任务的上下文搅在一起。两种情况不新建——当前会话还是空白（只会多一条空会话）、
+   * 或正在应答（切走线程会打断输出）。
+   */
+  const handleAskAi = useCallback(() => {
+    if (chatAsDrawer) {
+      closeChatDrawer()
+      return
+    }
+
+    const agent = useAgentStore.getState()
+    if (!selectIsStreaming(agent) && selectMessages(agent).length > 0) {
+      agent.createThread()
+    }
+
+    injectPageContext()
+    openChatDrawer()
+  }, [chatAsDrawer, closeChatDrawer, injectPageContext, openChatDrawer])
+
+  /** 工具栏按钮文案：中文界面短标签，英文界面用 Ask AI */
+  const aiLabel = language === 'en' ? 'Ask AI' : 'AI 助手'
+  const aiButtonTitle =
+    language === 'en'
+      ? chatAsDrawer
+        ? 'Close AI assistant'
+        : 'Ask AI about this page — starts a new task: read data, run statistics or automate it'
+      : chatAsDrawer
+        ? '收起 AI 助手'
+        : '用 AI 处理当前页面（每次点击都会新建任务）：读数据、做统计、自动化操作'
 
   /**
    * webview 挂载推迟两帧
@@ -146,39 +256,20 @@ export default function InternalBrowser() {
    */
   const canMount = useDeferredMount()
 
-  /** 已在标签里落地的自定义菜单地址：用于区分「菜单换了地址」和「用户自己导航走了」 */
-  const syncedMenuUrlRef = useRef<string>(url ?? '')
-
-  // 外部 URL 变化（打开另一个自定义菜单）→ 在当前标签上导航过去
-  useEffect(() => {
-    if (!url || syncedMenuUrlRef.current === url) return
-    syncedMenuUrlRef.current = url
-
-    setTabs((prev) =>
-      prev.map((tab) =>
-        tab.id === activeTabId ? { ...tab, url, title: title || titleFromUrl(url) } : tab,
-      ),
-    )
-  }, [url, title, activeTabId])
-
-  // 地址栏跟随当前标签的地址；标签切换与页面内跳转都走这里
+  // 地址栏跟随当前标签的地址；标签切换与标签内跳转都走这里
   useEffect(() => {
     setAddress(activeUrl)
   }, [activeUrl])
 
-  /** 新开标签页并激活 */
-  const openTab = useCallback((targetUrl: string, tabTitle?: string) => {
-    const next = sanitizeUrl(targetUrl)
-    if (!next) return
-
-    const tab: InternalTab = {
-      id: createTabId(),
-      url: next,
-      title: tabTitle || titleFromUrl(next),
-    }
-    setTabs((prev) => [...prev, tab])
-    setActiveTabId(tab.id)
-  }, [])
+  /** 新开标签页并激活：页面里的 target=_blank 与工具栏的「+」共用 */
+  const openTab = useCallback(
+    (targetUrl: string, tabTitle?: string) => {
+      const next = sanitizeUrl(targetUrl)
+      if (!next) return
+      appendTab(next, tabTitle || titleFromUrl(next))
+    },
+    [appendTab],
+  )
 
   /**
    * 页面请求新窗口（target=_blank / window.open）
@@ -198,21 +289,52 @@ export default function InternalBrowser() {
     return () => off?.()
   }, [controller.guestId, openTab])
 
-  const handleCloseTab = useCallback(
-    (tabId: string) => {
-      if (tabs.length <= 1) return
+  /**
+   * 跟随站点后台窗口的页面变化
+   *
+   * AI 的站点自动化跑在主进程的隐藏窗口里，用户看的是这一侧的 webview。不跟随的话，
+   * 对话里说「已打开订单统计页」，屏幕上的页面纹丝不动，只能关掉浏览器重新进入才看到。
+   *
+   * 只更新站点入口标签：报告、帮助页这类新标签是用户自己要对照看的，不该被带着跑。
+   * 连续导航（采集翻页）合并成一次，避免可见页面反复整页重载。
+   */
+  const siteId = siteContext?.id ?? null
+  const mirrorTimerRef = useRef<number | null>(null)
+  const pendingMirrorRef = useRef<{ url: string; title: string } | null>(null)
 
-      const closingIndex = tabs.findIndex((tab) => tab.id === tabId)
-      const next = tabs.filter((tab) => tab.id !== tabId)
-      setTabs(next)
+  useEffect(() => {
+    if (!siteId) return
 
-      if (tabId === activeTabId) {
-        const fallback = next[Math.min(Math.max(closingIndex, 0), next.length - 1)]
-        if (fallback) setActiveTabId(fallback.id)
+    const flush = (): void => {
+      mirrorTimerRef.current = null
+      const pending = pendingMirrorRef.current
+      pendingMirrorRef.current = null
+      if (!pending) return
+
+      const state = useStore.getState()
+      const target =
+        state.internalBrowserTabs.find((tab) => tab.siteBound) ??
+        state.internalBrowserTabs.find((tab) => tab.id === state.activeInternalBrowserTabId)
+      // 地址由 store 去重：同一页被多次推送时不会重复导航
+      if (target) state.updateInternalBrowserTabUrl(target.id, pending.url, pending.title)
+    }
+
+    const off = api.siteBrowser?.onPage?.((event) => {
+      if (event.siteId !== siteId || !event.url) return
+      pendingMirrorRef.current = { url: event.url, title: event.title }
+      if (mirrorTimerRef.current !== null) return
+      mirrorTimerRef.current = window.setTimeout(flush, SITE_PAGE_MIRROR_DEBOUNCE_MS)
+    })
+
+    return () => {
+      off?.()
+      if (mirrorTimerRef.current !== null) {
+        window.clearTimeout(mirrorTimerRef.current)
+        mirrorTimerRef.current = null
       }
-    },
-    [tabs, activeTabId],
-  )
+      pendingMirrorRef.current = null
+    }
+  }, [siteId])
 
   // 地址栏提交导航
   const handleNavigate = useCallback(
@@ -220,11 +342,7 @@ export default function InternalBrowser() {
       const next = sanitizeUrl(raw)
       if (!next) return
       setAddress(next)
-      setTabs((prev) =>
-        prev.map((tab) =>
-          tab.id === activeTabId ? { ...tab, url: next, title: titleFromUrl(next) } : tab,
-        ),
-      )
+      if (activeTab) updateTabUrl(activeTab.id, next, titleFromUrl(next))
     },
     [activeTabId],
   )
@@ -265,7 +383,7 @@ export default function InternalBrowser() {
               }`}
             >
               <button
-                onClick={() => setActiveTabId(tab.id)}
+                onClick={() => selectTab(tab.id)}
                 title={tab.url}
                 className="flex-1 min-w-0 truncate text-[11px] text-left"
               >
@@ -273,7 +391,7 @@ export default function InternalBrowser() {
               </button>
               {tabs.length > 1 && (
                 <button
-                  onClick={() => handleCloseTab(tab.id)}
+                  onClick={() => closeTab(tab.id)}
                   title={t('layout.close', language as Language) || 'Close'}
                   className="w-4 h-4 rounded flex items-center justify-center text-text-muted opacity-0 group-hover:opacity-100 hover:text-text-primary hover:bg-text-primary/[0.08] transition-opacity"
                 >
@@ -349,23 +467,27 @@ export default function InternalBrowser() {
           </div>
         </div>
 
-        {/* AI 修改：点一次进入拾取，再点一次退出
-            只让图标高亮，底色与工具栏其他图标按钮一致，与预览标签页保持同一视觉语言 */}
+        {/*
+          AI 助手
+
+          用途是「拉出对话，并把当前页面交给 AI」：数据统计、批量操作、页面自动化
+          都在对话里说一句就行。抽屉开合由全局状态决定，按钮兼作开关。
+          页面所在的站点与地址已提前写进对话上下文，点开即可直接提问。
+        */}
         <button
-          onClick={togglePick}
-          disabled={controller.guestId === null}
-          title={
-            pickPhase === 'picking'
-              ? t('editor.browser.aiEditPicking', language as Language) || 'Picking an element…'
-              : t('editor.browser.aiEdit', language as Language) || 'AI Edit'
-          }
-          aria-label={t('editor.browser.aiEdit', language as Language) || 'AI Edit'}
-          aria-pressed={pickPhase === 'picking'}
-          className={`group inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400/50 disabled:pointer-events-none disabled:opacity-40 enabled:hover:bg-text-primary/[0.06] ${
-            pickPhase === 'picking' ? 'bg-fuchsia-500/10 ring-1 ring-fuchsia-400/50' : ''
+          onClick={handleAskAi}
+          disabled={!activeUrl}
+          title={aiButtonTitle}
+          aria-label={aiLabel}
+          aria-pressed={chatAsDrawer}
+          className={`group inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:pointer-events-none disabled:opacity-40 ${
+            chatAsDrawer
+              ? 'bg-accent/12 text-accent ring-1 ring-accent/40'
+              : 'text-text-secondary hover:text-text-primary hover:bg-text-primary/[0.06]'
           }`}
         >
-          <Sparkles className="h-3.5 w-3.5 text-fuchsia-500 drop-shadow-[0_0_6px_rgba(217,70,239,0.45)] transition-transform duration-200 group-hover:scale-110" />
+          <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+          <span className="text-[12px] font-medium whitespace-nowrap">{aiLabel}</span>
         </button>
 
         {/* 外部打开 */}
@@ -379,7 +501,6 @@ export default function InternalBrowser() {
       </div>
 
       {/* webview 主体（复用已有内置浏览器的 webview 容器） */}
-      {/* overflow-hidden：AI 修改浮层为绝对定位，拖动时不能撑出额外的滚动区域 */}
       <div className="flex-1 min-h-0 relative overflow-hidden bg-background-editor">
         {/*
           key 由「标签 id + 重建序号」组成：
@@ -391,16 +512,6 @@ export default function InternalBrowser() {
             key={`${activeTab?.id ?? 'default'}-${partition ?? 'main'}-${controller.reloadNonce}`}
             session={session}
             controller={controller}
-          />
-        )}
-
-        {/* AI 修改浮层：跟随选中元素定位，浮在页面之上 */}
-        {picked && (
-          <AIEditPanel
-            picked={picked}
-            onClose={clearPick}
-            onSubmit={handleSubmitEdit}
-            onUndo={() => void undoEdits('all')}
           />
         )}
       </div>

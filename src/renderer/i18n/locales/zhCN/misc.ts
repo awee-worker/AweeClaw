@@ -5,6 +5,8 @@
  */
 
 export const zh = {
+  // Auth
+    'noAccount': '还没有账号？',
   // General keys (used across multiple components)
     'addFile': '添加文件',
   'cancel': '取消',

@@ -127,6 +127,16 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
   const browserInsideDrawer = drawerTarget?.panelId === 'ai-browser'
 
   /**
+   * 对话抽屉
+   *
+   * 内置浏览器占满工作区时，对话可以按需从右侧拉出（浏览器工具栏的「AI 助手」），
+   * 收起后页面回到整宽。形态只换外框，ChatPanel 实例不变。
+   */
+  const chatAsDrawer = useStore(s => s.chatAsDrawer)
+  const closeChatDrawer = useStore(s => s.closeChatDrawer)
+  const chatPresentation = chatAsDrawer ? ('drawer' as const) : ('inline' as const)
+
+  /**
    * 是否由内置浏览器接管左侧工作区
    *
    * AI 浏览器面板自行承载内置浏览器（见 AIBrowserView），其余情况由主内容区接管。
@@ -154,7 +164,14 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
             </PanelSlot>
           )}
         </FullPageSlot>
-        {layoutConfig.showChat && !hideChat && chatVisible && <ChatSection visible mode="secondary" />}
+        {layoutConfig.showChat && !hideChat && (chatVisible || chatAsDrawer) && (
+          <ChatSection
+            visible
+            mode="secondary"
+            presentation={chatPresentation}
+            onClose={closeChatDrawer}
+          />
+        )}
       </>
     )
   }
@@ -203,9 +220,11 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
       )}
       <ChatSection
         key="chat"
-        visible={chatVisible}
+        visible={chatVisible || chatAsDrawer}
         mode="primary"
         hasFile={hasWorkspace}
+        presentation={chatPresentation}
+        onClose={closeChatDrawer}
       />
     </div>
   )
@@ -235,6 +254,11 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
   })))
 
   const isShellStudioActive = activeSidePanel === 'shell'
+
+  // 对话抽屉：与 Primary 分支同一份状态，形态由浏览器工具栏的「AI 助手」切换
+  const chatAsDrawer = useStore(s => s.chatAsDrawer)
+  const closeChatDrawer = useStore(s => s.closeChatDrawer)
+  const chatPresentation = chatAsDrawer ? ('drawer' as const) : ('inline' as const)
 
   // 当前激活的侧边栏面板是否要求隐藏编辑器（含编辑器欢迎页）
   // 适用于纯列表型面板（项目列表/模板列表），避免无文件时编辑器欢迎页占据主区域
@@ -296,7 +320,15 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
           <InternalBrowserSlot />
         </div>
-        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && (
+          <ChatSection
+            key="chat"
+            visible={chatAsDrawer || !shouldHideChat}
+            mode="secondary"
+            presentation={chatPresentation}
+            onClose={closeChatDrawer}
+          />
+        )}
       </>
     )
   }
@@ -317,7 +349,15 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
             </PanelSlot>
           )}
         </FullPageSlot>
-        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && (
+          <ChatSection
+            key="chat"
+            visible={chatAsDrawer || !shouldHideChat}
+            mode="secondary"
+            presentation={chatPresentation}
+            onClose={closeChatDrawer}
+          />
+        )}
       </>
     )
   }
@@ -349,7 +389,15 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     if (shouldHideEditor) {
       return (
         <>
-          {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
+          {layoutConfig.showChat && (
+          <ChatSection
+            key="chat"
+            visible={chatAsDrawer || !shouldHideChat}
+            mode="secondary"
+            presentation={chatPresentation}
+            onClose={closeChatDrawer}
+          />
+        )}
         </>
       )
     }
@@ -365,7 +413,15 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
             <EditorBottomBar />
           </div>
         )}
-        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && (
+          <ChatSection
+            key="chat"
+            visible={chatAsDrawer || !shouldHideChat}
+            mode="secondary"
+            presentation={chatPresentation}
+            onClose={closeChatDrawer}
+          />
+        )}
       </>
     )
   }
@@ -384,7 +440,15 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
             <PanelSlot><Dashboard /></PanelSlot>
           )}
         </FullPageSlot>
-        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && (
+          <ChatSection
+            key="chat"
+            visible={chatAsDrawer || !shouldHideChat}
+            mode="secondary"
+            presentation={chatPresentation}
+            onClose={closeChatDrawer}
+          />
+        )}
       </>
     )
   }
@@ -393,7 +457,15 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     return (
       <>
         <FullPageSlot><PanelSlot><CanvasWorkspace /></PanelSlot></FullPageSlot>
-        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && (
+          <ChatSection
+            key="chat"
+            visible={chatAsDrawer || !shouldHideChat}
+            mode="secondary"
+            presentation={chatPresentation}
+            onClose={closeChatDrawer}
+          />
+        )}
       </>
     )
   }
@@ -412,7 +484,15 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
             <PanelSlot><DataDashboard /></PanelSlot>
           )}
         </FullPageSlot>
-        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && (
+          <ChatSection
+            key="chat"
+            visible={chatAsDrawer || !shouldHideChat}
+            mode="secondary"
+            presentation={chatPresentation}
+            onClose={closeChatDrawer}
+          />
+        )}
       </>
     )
   }
@@ -430,7 +510,15 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
             <PanelSlot><AnalyticsView /></PanelSlot>
           )}
         </FullPageSlot>
-        {layoutConfig.showChat && <ChatSection key="chat" visible={!shouldHideChat} mode="secondary" />}
+        {layoutConfig.showChat && (
+          <ChatSection
+            key="chat"
+            visible={chatAsDrawer || !shouldHideChat}
+            mode="secondary"
+            presentation={chatPresentation}
+            onClose={closeChatDrawer}
+          />
+        )}
       </>
     )
   }

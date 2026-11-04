@@ -574,6 +574,12 @@ function createGroupedAPI() {
         raw.preview.captureElement(guestId, selector),
     },
 
+    // 站点托管后台窗口：页面变化推送（AI 的站点自动化跑在主进程隐藏窗口里）
+    siteBrowser: {
+      onPage: (callback: Parameters<typeof raw.siteBrowser.onPage>[0]) =>
+        raw.siteBrowser.onPage(callback),
+    },
+
     // 剪贴板
     clipboard: {
       getFilePaths: () => raw.getClipboardFilePaths(),

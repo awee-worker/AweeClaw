@@ -136,11 +136,22 @@ export interface PluginHostApi {
    *
    * partition 与插件后台采集窗口保持一致，两边共享登录态；省略时沿用主窗口
    * 默认 session。宿主未提供该方法时（旧版本客户端）插件应做存在性判断。
+   *
+   * site 用来告诉宿主「这是哪个托管站点」：带上之后，用户在浏览器里直接对话时
+   * AI 已经知道自己在服务哪个系统、当前停在哪一页，插件无需再单独写上下文。
    */
   openInternalBrowser?: (options: {
     url: string
     title?: string
     partition?: string
+    /** 托管站点信息；普通网页不传 */
+    site?: {
+      id: string
+      name: string
+      category?: string
+      origin?: string
+      entryUrl?: string
+    }
   }) => void
   /**
    * 刷新内置浏览器的当前页面。

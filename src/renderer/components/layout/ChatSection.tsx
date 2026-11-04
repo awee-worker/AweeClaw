@@ -18,8 +18,31 @@ interface ChatSectionProps {
   mode?: 'primary' | 'secondary'
   /** 是否有文件打开，用于控制宽度行为 */
   hasFile?: boolean
+  /**
+   * 呈现形态
+   *
+   * inline：作为布局中的一栏常驻；drawer：从右侧滑出、盖在工作区之上。
+   * 两种形态共用同一个 ChatPanel 实例，只是外框不同。
+   */
+  presentation?: 'inline' | 'drawer'
+  /** 抽屉形态下的关闭回调：不传则回落到「收起对话」 */
+  onClose?: () => void
 }
 
-export default function ChatSection({ visible, mode = 'secondary', hasFile }: ChatSectionProps) {
-  return <ChatPart presentation="inline" visible={visible} chatMode={mode} hasFile={hasFile} />
+export default function ChatSection({
+  visible,
+  mode = 'secondary',
+  hasFile,
+  presentation = 'inline',
+  onClose,
+}: ChatSectionProps) {
+  return (
+    <ChatPart
+      presentation={presentation}
+      visible={visible}
+      onClose={onClose}
+      chatMode={mode}
+      hasFile={hasFile}
+    />
+  )
 }
