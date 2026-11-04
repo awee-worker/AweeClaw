@@ -342,6 +342,7 @@ export function PluginHostBridge() {
           id: item.id,
           name: item.name,
           providerName: item.providerName,
+          capabilities: item.capabilities ?? [],
         }),
       )
       const detail: PluginModelsDetail = {

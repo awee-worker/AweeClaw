@@ -4,10 +4,14 @@
  * 汇总当前可本地调用的模型：内置服务商中已启用且配置了凭证的，
  * 加上 custom- 前缀的自定义服务商。聊天输入框模型选择器与角色模型
  * 选择器共用这份逻辑，保证两处「可选模型」范围完全一致。
+ *
+ * capabilities 一并带出：插件面板 / 场景要按「视频生成」「图片生成」这类
+ * 能力过滤模型时，只靠模型名猜不准，用户手改过的能力标签才是权威值。
  */
 
 import { BUILTIN_PROVIDERS } from '@shared/configuration/aiProviders'
 import type { ProviderModelConfig } from '@shared/configuration/preferenceSync'
+import { inferCapabilities, type ModelCapability } from '@renderer/types/modelProvider'
 
 /** 扁平化后的模型条目 */
 export interface FlatModel {
@@ -18,6 +22,20 @@ export interface FlatModel {
   isCustom?: boolean
   /** 免费模型：云端模式调用不扣 Token（仅云端模型会标记） */
   isFree?: boolean
+  /** 能力标签：优先取用户配置，未配置时按模型名推断 */
+  capabilities?: ModelCapability[]
+}
+
+/**
+ * 解析单个模型的能力标签
+ * 用户显式配置过就用配置，否则退回按模型名推断，避免列表里只有模型名没有能力
+ */
+function resolveCapabilities(
+  modelId: string,
+  configured: ModelCapability[] | undefined,
+): ModelCapability[] {
+  if (configured && configured.length > 0) return configured
+  return inferCapabilities(modelId)
 }
 
 /**
@@ -54,6 +72,7 @@ export function buildEnabledLocalModels(
         providerId,
         providerName: provider.displayName,
         isCustom: true,
+        capabilities: resolveCapabilities(id, modelConfigs[id]?.capabilities),
       })
     }
   }
@@ -78,6 +97,7 @@ export function buildEnabledLocalModels(
         providerId,
         providerName,
         isCustom: true,
+        capabilities: resolveCapabilities(id, modelConfigs[id]?.capabilities),
       })
     }
   }

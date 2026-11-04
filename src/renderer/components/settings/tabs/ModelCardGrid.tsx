@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Trash, Settings2, X, Eye, Sparkles, Cpu, Image, Wrench, Brain, Code, Mic, RotateCcw, Sliders, Pencil } from 'lucide-react'
+import { Check, Trash, Settings2, X, Eye, Sparkles, Cpu, Image, Wrench, Brain, Code, Mic, Film, RotateCcw, Sliders, Pencil } from 'lucide-react'
 import {
   type ModelCapability,
   type ModelConfig,
@@ -34,12 +34,13 @@ const CAPABILITY_ICONS: Record<string, React.ReactNode> = {
   'tool-calling': <Wrench className="w-2.5 h-2.5" />,
   reasoning: <Brain className="w-2.5 h-2.5" />,
   'image-gen': <Image className="w-2.5 h-2.5" />,
+  'video-gen': <Film className="w-2.5 h-2.5" />,
   code: <Code className="w-2.5 h-2.5" />,
   audio: <Mic className="w-2.5 h-2.5" />,
 }
 
 const ALL_CAPABILITIES: ModelCapability[] = [
-  'llm', 'embedding', 'vision', 'tool-calling', 'reasoning', 'image-gen', 'code', 'audio',
+  'llm', 'embedding', 'vision', 'tool-calling', 'reasoning', 'image-gen', 'video-gen', 'code', 'audio',
 ]
 
 function CapabilityTag({ capability, language }: { capability: ModelCapability; language: Language }) {
@@ -130,7 +131,7 @@ function ModelParamsEditor({
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative bg-surface border border-border/50 rounded-2xl shadow-2xl w-[520px] max-h-[80vh] flex flex-col">
+      <div className="relative bg-popover border border-border/50 rounded-2xl shadow-2xl w-[520px] max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 bg-accent/10 rounded-md text-accent">
@@ -394,7 +395,7 @@ function CapabilityEditorDialog({
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative bg-surface border border-border/50 rounded-2xl shadow-2xl w-[440px] max-h-[70vh] flex flex-col">
+      <div className="relative bg-popover border border-border/50 rounded-2xl shadow-2xl w-[440px] max-h-[70vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 bg-accent/10 rounded-md text-accent">
@@ -449,7 +450,7 @@ function DisplayNameEditorDialog({
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative bg-surface border border-border/50 rounded-2xl shadow-2xl w-[440px] max-h-[70vh] flex flex-col">
+      <div className="relative bg-popover border border-border/50 rounded-2xl shadow-2xl w-[440px] max-h-[70vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 bg-accent/10 rounded-md text-accent">

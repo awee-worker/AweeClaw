@@ -7,6 +7,7 @@ export type ModelCapability =
   | 'tool-calling'
   | 'reasoning'
   | 'image-gen'
+  | 'video-gen'
   | 'code'
   | 'audio'
 
@@ -70,6 +71,7 @@ export const CAPABILITY_META: Record<ModelCapability, { label: { en: string; zh:
   'tool-calling': { label: { en: 'Tools', zh: '工具' }, color: 'text-emerald-400', bgColor: 'bg-emerald-400/10 border-emerald-400/20' },
   reasoning: { label: { en: 'Reasoning', zh: '推理' }, color: 'text-rose-400', bgColor: 'bg-rose-400/10 border-rose-400/20' },
   'image-gen': { label: { en: 'Image Gen', zh: '图片生成' }, color: 'text-pink-400', bgColor: 'bg-pink-400/10 border-pink-400/20' },
+  'video-gen': { label: { en: 'Video Gen', zh: '视频生成' }, color: 'text-indigo-400', bgColor: 'bg-indigo-400/10 border-indigo-400/20' },
   code: { label: { en: 'Code', zh: '代码' }, color: 'text-cyan-400', bgColor: 'bg-cyan-400/10 border-cyan-400/20' },
   audio: { label: { en: 'Audio', zh: '音频' }, color: 'text-orange-400', bgColor: 'bg-orange-400/10 border-orange-400/20' },
 }
@@ -81,9 +83,18 @@ export function inferCapabilities(modelName: string): ModelCapability[] {
   const isEmbedding = /\bembed\b|\bembedding\b/i.test(name)
   const isImageGen = /\bdall\b|\bstable\b|\bdiffus\b|\bsdxl\b|\bimage.gen\b/i.test(name)
   const isAudio = /\btts\b|\bstt\b|\bwhisper\b|\baudio\b|\bspeech\b/i.test(name)
+  // 视频生成：主流服务商的模型命名基本都会带上这几个词根
+  const isVideoGen =
+    /\bseedance\b|\bsora\b|\bkling\b|\bkeling\b|\bveo\b|\bhailuo\b|\bcogvideo\b|\bwanx?2?\.[0-9]-?t2v\b|\bt2v\b|\bi2v\b|\btext-to-video\b|\bvideo-gen\b|\bpika\b|\bvidu\b|\brunway\b|\bminimax-video\b/i.test(
+      name,
+    )
 
   if (isEmbedding) {
     caps.push('embedding')
+    return caps
+  }
+  if (isVideoGen) {
+    caps.push('video-gen')
     return caps
   }
   if (isImageGen) {

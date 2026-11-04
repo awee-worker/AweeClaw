@@ -171,6 +171,13 @@ export interface PluginModelOption {
   id: string
   name: string
   providerName: string
+  /**
+   * 能力标签（llm / image-gen / video-gen / audio ...）
+   *
+   * 插件需要按能力筛模型时（例如视频生成只能选标注了 video-gen 的模型），
+   * 用这个字段判断，不要靠模型名猜 —— 用户可以在服务商设置里手工改标签。
+   */
+  capabilities?: string[]
 }
 
 /** 可用模型清单事件的 detail 载荷 */

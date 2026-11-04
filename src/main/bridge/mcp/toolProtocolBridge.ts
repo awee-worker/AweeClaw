@@ -15,6 +15,7 @@ import { BrowserWindow } from 'electron'
 import { safeIpcHandle } from '../core/ipcGuard'
 import { logger } from '@shared/toolkit/LogEngine'
 import { mcpManager, mcpRegistry } from '../../modules/tool-protocol'
+import { SettingsDb } from '../../modules/settings-db/SettingsDb'
 import type {
   McpToolCallRequest,
   McpResourceReadRequest,
@@ -22,6 +23,111 @@ import type {
   McpServerConfig,
 } from '@shared/protocols/toolProtocolBridge'
 import { BRAND } from '@shared/brand'
+
+/**
+ * 调用方指定的模型凭据请求字段
+ *
+ * 场景与插件都不持有第三方 Key，但视频生成这类任务必须选定「用户在自己服务商
+ * 里配好的某个模型」。调用方只传 providerId + model，凭证由主进程在这里解析后
+ * 注入，渲染进程自始至终看不到 apiKey。
+ */
+export const HOST_MODEL_REF_KEY = '__hostModelRef'
+
+/** 注入给插件读取的字段名 */
+export const HOST_MODEL_KEY = '__hostModel'
+
+/** 注入结果 */
+interface HostModelCredential {
+  providerId: string
+  model: string
+  apiKey: string
+  baseUrl: string
+  protocol?: string
+}
+
+/**
+ * 按调用方指定的 modelRef 解析服务商凭证
+ *
+ * - 未指定 modelRef 时原样返回，不影响任何既有插件调用
+ * - 指定了但该服务商未配置或未启用时，注入一个 available=false 的空凭据，
+ *   由插件给出可读失败原因，而不是让调用方以为「生成成功了但没文件」
+ */
+async function resolveHostModelCredential(
+  rawArgs: Record<string, unknown> | undefined,
+): Promise<{ args: Record<string, unknown>; injected?: HostModelCredential & { available: boolean; reason?: string } }> {
+  const args = rawArgs ?? {}
+  const ref = args[HOST_MODEL_REF_KEY]
+  if (!ref || typeof ref !== 'object') return { args }
+
+  const nextArgs = { ...args }
+  delete nextArgs[HOST_MODEL_REF_KEY]
+
+  const { providerId, model } = ref as { providerId?: unknown; model?: unknown }
+  const providerKey = typeof providerId === 'string' ? providerId.trim() : ''
+  const modelId = typeof model === 'string' ? model.trim() : ''
+  if (!providerKey) {
+    return {
+      args: nextArgs,
+      injected: {
+        providerId: '',
+        model: modelId,
+        apiKey: '',
+        baseUrl: '',
+        available: false,
+        reason: '调用方没有指定服务商（providerId 为空）',
+      },
+    }
+  }
+
+  try {
+    const config = SettingsDb.getInstance().getProviderConfig(providerKey)
+    if (!config) {
+      return {
+        args: nextArgs,
+        injected: {
+          providerId: providerKey,
+          model: modelId,
+          apiKey: '',
+          baseUrl: '',
+          available: false,
+          reason: `服务商「${providerKey}」还没有配置`,
+        },
+      }
+    }
+    const apiKey = typeof config.apiKey === 'string' ? config.apiKey : ''
+    const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl : ''
+    if (!apiKey) {
+      return {
+        args: nextArgs,
+        injected: {
+          providerId: providerKey,
+          model: modelId,
+          apiKey: '',
+          baseUrl,
+          available: false,
+          reason: `服务商「${providerKey}」还没有填写 API 密钥`,
+        },
+      }
+    }
+    return {
+      args: { ...nextArgs, [HOST_MODEL_KEY]: { providerId: providerKey, model: modelId, apiKey, baseUrl, available: true } },
+      injected: { providerId: providerKey, model: modelId, apiKey, baseUrl, available: true },
+    }
+  } catch (err) {
+    logger.mcp.warn('[MCP] 解析模型凭据失败:', err)
+    return {
+      args: nextArgs,
+      injected: {
+        providerId: providerKey,
+        model: modelId,
+        apiKey: '',
+        baseUrl: '',
+        available: false,
+        reason: '读取服务商配置失败',
+      },
+    }
+  }
+}
 
 export function registerMcpHandlers(_getMainWindow: () => BrowserWindow | null): void {
   // 初始化 MCP 管理器
@@ -60,11 +166,14 @@ export function registerMcpHandlers(_getMainWindow: () => BrowserWindow | null):
 
   // 调用工具
   safeIpcHandle('mcp:callTool', async (_, request: McpToolCallRequest) => {
-    const result = await mcpManager.callTool(
-      request.serverId,
-      request.toolName,
-      request.arguments
-    )
+    const { args, injected } = await resolveHostModelCredential(request.arguments)
+    if (injected) {
+      logger.mcp.info(
+        `[MCP] 注入模型凭据 server=${request.serverId} tool=${request.toolName} ` +
+          `provider=${injected.providerId || '-'} model=${injected.model || '-'} available=${injected.available}`,
+      )
+    }
+    const result = await mcpManager.callTool(request.serverId, request.toolName, args)
     return result
   })
 
