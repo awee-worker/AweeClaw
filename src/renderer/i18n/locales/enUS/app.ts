@@ -1074,7 +1074,7 @@ export const en = {
   'menu.saveWorkspaceAs': 'Save Workspace As...',
   'menu.newWindow': 'New Window',
   'menu.saveFile': 'Save File',
-  'menu.refreshFiles': 'Refresh File Explorer',
+  'menu.refreshFiles': 'Refresh Workspace Files',
   'menu.recentWorkspaces': 'Recent Workspaces',
   'menu.noRecentWorkspaces': 'No Recent Workspaces',
   'menu.clearRecentWorkspaces': 'Clear Recent Workspaces',

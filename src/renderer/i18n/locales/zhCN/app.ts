@@ -1083,7 +1083,7 @@ export const zh = {
   'menu.saveWorkspaceAs': '保存工作空间为...',
   'menu.newWindow': '新建窗口',
   'menu.saveFile': '保存文件',
-  'menu.refreshFiles': '刷新文件资源管理器',
+  'menu.refreshFiles': '刷新工作空间文件',
   'menu.recentWorkspaces': '最近打开的工作空间',
   'menu.noRecentWorkspaces': '无最近的工作空间',
   'menu.clearRecentWorkspaces': '清除最近的工作空间',
