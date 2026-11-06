@@ -10,6 +10,7 @@ import {
 } from '@intelligence/state/intelligenceStorage'
 import { agentSessionRepository } from './sessionRepository'
 import { mcpService } from './toolProtocolAdapter'
+import { initializeHarness } from '@intelligence/harness'
 import { gitService } from './gitAdapter'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { getMessageText } from '@intelligence/types/conversationModel'
@@ -414,6 +415,19 @@ export async function initializeWorkspaceServices(
   // 历史会话是进入工作空间后立刻要看的内容，保持等待
   if (shouldRehydrateAgentStore) {
     await restoreWorkspaceAgentStore({ activateLastThread })
+  }
+
+  // AgentHarness 是本进程单例，工具执行管道（错误边界 / 审计 / 限流 / 重试）与
+  // 链路追踪都挂在它上面。此前只在应用启动的恢复流程里初始化，经「新建窗口 →
+  // 选择工作空间」进入的窗口永远不会初始化，工具调用会降级成无中间件的裸执行。
+  // initialize 幂等（已初始化时记一条 warn 后返回），失败不应阻断工作空间切换。
+  const primaryRoot = workspace.roots[0]
+  if (primaryRoot) {
+    try {
+      await initializeHarness(primaryRoot)
+    } catch (err) {
+      logger.system.warn('[WorkspaceLoad] Harness initialization failed:', err)
+    }
   }
 }
 

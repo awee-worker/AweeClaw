@@ -1220,7 +1220,12 @@ async function invokeToolInvocation(
       if (pipelineResult) return pipelineResult
     }
 
-    return toolHandler()
+    // 必须 await：finally 在 return 表达式求值后立即执行，不会等 Promise 兑现。
+    // 若直接 return 一个未 await 的 Promise，下面的终态兜底会在工具刚开始执行时
+    // 就检查状态（此时还是 running），把卡片误判成「执行被中断」而先落成失败态，
+    // 等工具真正返回后又被改回成功 —— 表现为卡片先红后绿。
+    // harness 未初始化的窗口（例如新建窗口选完工作空间后直接开任务）走的正是这条分支。
+    return await toolHandler()
   } finally {
     settleUnfinishedToolCall()
   }
