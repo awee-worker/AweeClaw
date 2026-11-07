@@ -4,11 +4,14 @@
  * 前端本地模式使用（与后端 voice-session.manager.ts 保持一致逻辑）
  */
 
+import { IDENTITY_POLICY } from '@shared/brandIdentity'
+
 /**
  * 过滤掉 AI 回复中不适合朗读的内容
  *
  * 常见的需要过滤的模式：
  * - （声音轻柔得像羽毛）— 中文括号内的舞台指示/动作描述
+
  * - (softly) — 英文括号内的舞台指示
  * - *smiles* — 星号包裹的动作描述
  * - 【旁白】— 方括号内的旁白
@@ -164,6 +167,8 @@ export function buildMiniChatSystemPrompt(options: {
     contextParts.push(`\n## 当前激活的文件\n${activeFile}`);
   }
 
+  contextParts.push('\n' + IDENTITY_POLICY);
+
   return contextParts.join('\n');
 }
 
@@ -220,6 +225,9 @@ export function buildVoiceSystemPrompt(options: {
         '- 不要在回复中使用括号标注动作或语气，这些会被 TTS 朗读出来。',
     );
   }
+
+  // 身份口径固定：语音入口没有其他身份文案，模型被问"你是谁"时极易自报模型名
+  contextParts.push('\n' + IDENTITY_POLICY)
 
   return contextParts.join('\n');
 }

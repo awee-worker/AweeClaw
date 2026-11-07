@@ -3,6 +3,7 @@ import { logger } from '@shared/toolkit/LogEngine'
 import { channelService } from './MessagingService'
 import { SyncService } from '../ai-provider/services/ModelSyncCoordinator'
 import { resolveRuntimeLLMConfig } from '@shared/configuration/modelConfigResolver'
+import { IDENTITY_REMINDER } from '@shared/brandIdentity'
 import { feishuChannelPlugin } from './adapters/feishu'
 import { wechatChannelPlugin } from './adapters/wechat'
 import type { InboundMessage, OutboundMessage, OutboundMedia, OutboundResult, ImProcessingStatus } from '@shared/protocols/channel'
@@ -240,7 +241,9 @@ class ChannelBridge {
 当前时间信息（这是用户系统的真实时间，请以此为准，不要使用你的训练数据中的时间）：
 - 日期: ${currentDate} ${weekday}
 - 时间: ${currentTime}
-- 时区: ${tz}`
+- 时区: ${tz}
+
+${IDENTITY_REMINDER}`
 
     const sendFileTool: ToolDefinition = {
       name: 'send_file_to_channel',

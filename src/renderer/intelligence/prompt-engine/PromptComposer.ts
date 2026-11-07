@@ -44,6 +44,7 @@ import {
   getPromptTemplateById,
   getDefaultPromptTemplate,
 } from './promptLibrary'
+import { IDENTITY_REMINDER } from '@shared/brandIdentity'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
 import { resolveActiveSessionScope } from '@renderer-configuration/scenarioSessionScope'
@@ -1143,8 +1144,8 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildPerceptionContext(ctx.perceptionContext),
     ctx.proceduralSuggestion ?? null,
     buildCustomInstructions(ctx.customInstructions),
+    IDENTITY_REMINDER,
   ]
-
   return sections.filter(Boolean).join('\n\n')
 }
 
@@ -1178,8 +1179,8 @@ export function buildChatPrompt(ctx: PromptContext): string {
     buildPerceptionContext(ctx.perceptionContext),
     ctx.proceduralSuggestion ?? null,
     buildCustomInstructions(ctx.customInstructions),
+    IDENTITY_REMINDER,
   ]
-
   return sections.filter(Boolean).join('\n\n')
 }
 
