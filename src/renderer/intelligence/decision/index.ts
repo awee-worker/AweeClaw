@@ -78,3 +78,26 @@ export {
   resolveVisualAnalysisIntentAsync,
   type IntentResolution,
 } from './intentResolvers'
+
+export {
+  classifyTakeover,
+  parseTakeoverError,
+  formatTakeoverError,
+  TAKEOVER_ERROR_PREFIX,
+  TAKEOVER_REASON_LABEL,
+  type TakeoverDecision,
+  type TakeoverSignal,
+  type PaymentFacts,
+} from './takeoverClassifier'
+
+export {
+  runTakeoverLoop,
+  TakeoverTracker,
+  takeoverTracker,
+  MAX_TAKEOVER_ATTEMPTS,
+  type TakeoverLoopDeps,
+  type TakeoverLoopResult,
+  type TakeoverLoopStatus,
+  type TakeoverRecord,
+  type TakeoverResolution,
+} from './takeoverCoordinator'

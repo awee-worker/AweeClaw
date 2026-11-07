@@ -5,11 +5,12 @@
 import { createElement } from 'react'
 import type { AssistantPart } from '@intelligence/providerTypes'
 import type { PartRenderer, PartRenderContext } from '../types'
-import { isTextPart, isReasoningPart, isSearchPart, isSystemAlertPart, isLintCheckPart, isContextSnapshotPart, isSourcesPart, isFormPart, isTaskPlanPart, isMultiAgentWorkflowPart, isToolCallPart } from '@intelligence/providerTypes'
+import { isTextPart, isReasoningPart, isSearchPart, isSystemAlertPart, isUserSteerPart, isLintCheckPart, isContextSnapshotPart, isSourcesPart, isFormPart, isTaskPlanPart, isMultiAgentWorkflowPart, isToolCallPart } from '@intelligence/providerTypes'
 
 import { TextPartView } from './TextPartView'
 import { ReasoningPartView } from './ReasoningPartView'
 import { SystemAlertPartView } from './SystemAlertPartView'
+import { UserSteerPartView } from './UserSteerPartView'
 import { LintCheckPartView } from './LintCheckPartView'
 import { ContextSnapshotPartView } from './ContextSnapshotPartView'
 import { SourcesPartView } from './SourcesPartView'
@@ -25,6 +26,7 @@ const PART_RENDERER_REGISTRY: Array<{
   { predicate: isTextPart, renderer: TextPartView },
   { predicate: isReasoningPart, renderer: ReasoningPartView },
   { predicate: isSystemAlertPart, renderer: SystemAlertPartView },
+  { predicate: isUserSteerPart, renderer: UserSteerPartView },
   { predicate: isLintCheckPart, renderer: LintCheckPartView },
   { predicate: isContextSnapshotPart, renderer: ContextSnapshotPartView },
   { predicate: isSourcesPart, renderer: SourcesPartView },

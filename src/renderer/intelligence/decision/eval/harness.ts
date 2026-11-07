@@ -24,6 +24,7 @@ import {
   PRUNE_EVAL_SAMPLES,
   TASK_EVAL_SAMPLES,
 } from './dataset'
+import { filterByPartition, type EvalPartition } from './partition'
 import {
   computeCommandRiskMetrics,
   computeIntentMetrics,
@@ -69,12 +70,17 @@ export function measureToolPromptTokens(tools: string[]): number {
   return countTokens(generateToolsPromptDescriptionFiltered([], tools))
 }
 
-/** 运行任务样本评测 */
-export function runTaskEval(): TaskSampleOutcome[] {
+/** 运行任务样本评测
+ *
+ * @param split 只跑某个池；不传则两个池一起跑。调优时只准看 tune 池，
+ *              holdout 保留到发版决策（见 eval/partition）。
+ */
+export function runTaskEval(split?: EvalPartition): TaskSampleOutcome[] {
   const allowedTools = resolveAllEnabledTools()
   const baselineTokens = measureToolPromptTokens(allowedTools)
+  const samples = split ? filterByPartition(TASK_EVAL_SAMPLES, split) : TASK_EVAL_SAMPLES
 
-  return TASK_EVAL_SAMPLES.map((sample) => {
+  return samples.map((sample) => {
     const preselection = preselectTools({ userMessage: sample.message, allowedTools })
     const pruned = preselection.source === 'rule'
 

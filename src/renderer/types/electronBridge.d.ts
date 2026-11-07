@@ -4081,6 +4081,8 @@ export interface ElectronAPI {
         prompt: string
         scenarioId?: string
         needResult?: boolean
+        /** 服务端任务 id（执行期按它回挂 steer / 接管 / 画面帧） */
+        taskId?: string
       }) => void,
     ) => () => void
     onRunScenario: (
@@ -4088,6 +4090,8 @@ export interface ElectronAPI {
         requestId: string
         scenarioId?: string
         prompt?: string
+        /** 服务端任务 id（同 onAiTask.taskId） */
+        taskId?: string
       }) => void,
     ) => () => void
     replyResult: (
@@ -4108,6 +4112,45 @@ export interface ElectronAPI {
     onSceneModeSync: (
       callback: (payload: { mode: string }) => void,
     ) => () => void
+
+    // ===== 任务协作：接管 / 补充说明 / 执行画面 =====
+
+    /**
+     * 订阅主进程推来的任务控制事件
+     *
+     * - kind='steer'：补充说明已入队，等工具批次边界再 consumeSteers
+     * - kind='takeover-resolve'：用户已在移动端处置，执行层应立刻重新核实
+     */
+    onTaskControl: (
+      callback: (payload: {
+        kind: 'steer' | 'takeover-resolve'
+        taskId: string
+        steer?: { steerId: string; text: string; receivedAt: number }
+        resolve?: { outcome: 'resolved' | 'skipped' | 'aborted'; note?: string; receivedAt: number }
+      }) => void,
+    ) => () => void
+
+    /** 上报接管请求（桌面端 → 移动端） */
+    reportTakeover: (
+      taskId: string,
+      request: import('../../shared/protocols/deviceTaskProtocol').TakeoverRequest,
+    ) => Promise<boolean>
+
+    /** 取走待处理的补充说明（工具批次边界调用，取走即回执 adopted） */
+    consumeSteers: (
+      taskId: string,
+    ) => Promise<Array<{ steerId: string; text: string; receivedAt: number }>>
+
+    /** 取走该任务最近的接管处置（兼底：推送早于监听注册时用） */
+    takeTakeoverResolve: (
+      taskId: string,
+    ) => Promise<{ outcome: 'resolved' | 'skipped' | 'aborted'; note?: string; receivedAt: number } | null>
+
+    /** 任务结束：清掉该任务的 steer 队列与残留处置 */
+    clearTaskControl: (taskId: string) => Promise<{ ok: boolean }>
+
+    /** 开关执行画面采集（移动端订阅驱动） */
+    setFrameStream: (taskId: string, action: 'start' | 'stop') => Promise<{ ok: boolean; error?: string }>
   }
 
   /** 外部智能体（Claude Code / Codex / Cursor 子进程桥接） */

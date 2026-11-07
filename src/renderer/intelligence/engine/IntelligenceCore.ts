@@ -33,6 +33,7 @@ import { fileCacheService } from '../runtime/fileCacheManager'
 import { proceduralSkillLearner } from '../runtime/proceduralSkillLearner'
 import { syncProcedureTools } from '../toolkit/procedureTool'
 import { modelRouter, type ModelResolver } from '../runtime/modelRouter'
+import { discardLocalSteers } from '../runtime/localSteer'
 import { approvalService } from './toolOrchestrator'
 import { EventBus } from './EventDispatcher'
 import { agentHarness } from '../harness'
@@ -755,6 +756,16 @@ export class AgentClass {
       threadIdsToAbort.push(...this.runningTasks.keys())
     }
 
+
+    // 停止即作废：用户喊停之后补的那句话，不该在下一轮凭空生效 —— 那已经不是
+    // 插话，而是一条「用户没在同一次运行里说过」的新指令。入队时不写会话气泡，
+    // 因此这里只需清空队列，没有消息需要回收。
+    const discardPendingSteers = (tid: string | null | undefined) => {
+      if (!tid) return
+      discardLocalSteers(tid)
+    }
+    discardPendingSteers(targetThreadId)
+    for (const tid of threadIdsToAbort) discardPendingSteers(tid)
 
     // 先收集各线程的 requestId —— 权威来源是 runningTasks（send() 注册时写入），
     // 其次才是 store 里的 executionMeta / streamState（可能尚未写入或已被清理）。

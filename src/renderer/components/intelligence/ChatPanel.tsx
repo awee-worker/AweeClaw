@@ -73,6 +73,7 @@ import PendingChangesBar from './PendingChangesBar'
 import PendingApprovalBar from './PendingApprovalBar'
 import { MountedTaskBar } from './MountedTaskBar'
 import { ContinuationBar } from './ContinuationBar'
+import { PendingSteerBar } from './chatPanel/components/PendingSteerBar'
 import { PlanStatusBar } from '../plan/PlanStatusBar'
 import { MountedTaskPromptCard } from './chatPanel/components/MountedTaskPromptCard'
 import { HumanApprovalCard } from './HumanApprovalCard'
@@ -569,19 +570,23 @@ export default function ChatPanel() {
    */
   const lastPlanHintAtRef = useRef(0)
   const handleSubmitWithPlanHint = useCallback(() => {
-    const running = useAgentStore
-      .getState()
-      .plans.filter((p) => p.status === 'executing' || p.status === 'pausing' || p.status === 'stopping')
-    const now = Date.now()
-    if (running.length > 0 && now - lastPlanHintAtRef.current > 30000) {
-      lastPlanHintAtRef.current = now
-      const names = running.map((p) => p.name).join('、')
-      toast.info(
-        language === 'zh' ? `计划「${names}」仍在后台执行` : `Plan "${names}" is still running in the background`,
-        language === 'zh'
-          ? '本条消息只发给当前对话，不会插入正在执行的任务'
-          : 'This message goes to the current chat only — it will not interrupt the running plan',
-      )
+    // 运行中提交是「插话」，只影响本轮做法，不构成一条新消息：那条边界提示
+    // 说的是「这条消息只发给当前对话」，套在插话上反而误导，所以跳过。
+    if (!isStreaming) {
+      const running = useAgentStore
+        .getState()
+        .plans.filter((p) => p.status === 'executing' || p.status === 'pausing' || p.status === 'stopping')
+      const now = Date.now()
+      if (running.length > 0 && now - lastPlanHintAtRef.current > 30000) {
+        lastPlanHintAtRef.current = now
+        const names = running.map((p) => p.name).join('、')
+        toast.info(
+          language === 'zh' ? `计划「${names}」仍在后台执行` : `Plan "${names}" is still running in the background`,
+          language === 'zh'
+            ? '本条消息只发给当前对话，不会插入正在执行的任务'
+            : 'This message goes to the current chat only — it will not interrupt the running plan',
+        )
+      }
     }
     messageOps.handleSubmit(input, isStreaming)
   }, [input, isStreaming, messageOps, language])
@@ -1390,6 +1395,8 @@ export default function ChatPanel() {
                 </AnimatePresence>
                 <MountedTaskBar />
                 <ContinuationBar />
+                {/* 待生效插话：位置与条数都取自队列本身，在插话被采纳前替它占位 */}
+                <PendingSteerBar />
 
                 <ChatInputWrapper
                   input={input}

@@ -22,6 +22,10 @@
  */
 
 import { invoke, on, send } from '../ipcHelpers'
+import type {
+  TakeoverRequest,
+  TakeoverOutcome,
+} from '@shared/protocols/deviceTaskProtocol'
 
 /** 设备联动凭据（推送 WS 连接所需的所有信息） */
 export interface DeviceLinkCredentialsPayload {
@@ -83,6 +87,13 @@ export interface DeviceLinkAiTaskEvent {
   scenarioId?: string
   /** 是否需要返回结果 */
   needResult?: boolean
+  /**
+   * 服务端任务 id
+   *
+   * 与移动端持有的是同一个：执行期取补充说明、上报接管、采画面帧都按它归属。
+   * 老版本后端不下发该字段，此时 renderer 侧只能按 requestId 建对照。
+   */
+  taskId?: string
 }
 
 /** 场景运行请求载荷（主进程转发自远程设备） */
@@ -93,6 +104,8 @@ export interface DeviceLinkRunScenarioEvent {
   scenarioId?: string
   /** 提示词 */
   prompt?: string
+  /** 服务端任务 id（同 DeviceLinkAiTaskEvent.taskId） */
+  taskId?: string
 }
 
 /** Renderer 回复主进程的结果 */
@@ -100,6 +113,25 @@ export interface DeviceLinkReplyResult {
   success: boolean
   output?: string
   error?: string
+}
+
+/** 主进程推来的任务控制事件（补充说明 / 接管处置） */
+export interface DeviceLinkTaskControlEvent {
+  kind: 'steer' | 'takeover-resolve'
+  taskId: string
+  steer?: { steerId: string; text: string; receivedAt: number }
+  resolve?: {
+    outcome: Exclude<TakeoverOutcome, 'timeout'>
+    note?: string
+    receivedAt: number
+  }
+}
+
+/** 取走的补充说明（消费后需由主进程回执 adopted，见 consumeSteers） */
+export interface DeviceLinkConsumedSteer {
+  steerId: string
+  text: string
+  receivedAt: number
 }
 
 /**
@@ -186,5 +218,44 @@ export function createDeviceLinkApi() {
      * @returns 取消订阅函数
      */
     onSceneModeSync: on<{ mode: string }>('device-link:scene-mode-sync'),
+
+    // ===== 任务控制：接管 / 补充说明 / 执行画面 =====
+
+    /**
+     * 订阅主进程推来的任务控制事件。
+     *
+     * - kind='steer'：补充说明已入队，不必立刻处理，等工具批次边界调用 consumeSteers
+     * - kind='takeover-resolve'：用户已在移动端处置，执行层应立刻重新核实界面状态
+     */
+    onTaskControl: on<DeviceLinkTaskControlEvent>('device-link:task-control'),
+
+    /** 上报接管请求（桌面端 → 移动端） */
+    reportTakeover: (taskId: string, request: TakeoverRequest) =>
+      invoke<boolean>('device-link:report-takeover')({ taskId, request }),
+
+    /**
+     * 取走待处理的补充说明（工具批次边界调用）
+     *
+     * 取走即视为已注入：主进程会逐条回执 task-steer-adopted。
+     */
+    consumeSteers: (taskId: string) =>
+      invoke<DeviceLinkConsumedSteer[]>('device-link:consume-steers')({ taskId }),
+
+    /** 取走该任务最近的接管处置（兼底：推送早于监听注册时用） */
+    takeTakeoverResolve: (taskId: string) =>
+      invoke<DeviceLinkTaskControlEvent['resolve'] | null>('device-link:take-takeover-resolve')({ taskId }),
+
+    /** 任务结束：清掉该任务的 steer 队列与残留处置 */
+    clearTaskControl: (taskId: string) =>
+      invoke<{ ok: boolean }>('device-link:clear-task-control')({ taskId }),
+
+    /**
+     * 开关执行画面采集
+     *
+     * 移动端点开「实时画面」时 start，关闭或任务结束时 stop。
+     * 截图权限沿用设备联动的截图开关。
+     */
+    setFrameStream: (taskId: string, action: 'start' | 'stop') =>
+      invoke<{ ok: boolean; error?: string }>('device-link:frame-stream')({ taskId, action }),
   }
 }

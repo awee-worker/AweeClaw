@@ -100,7 +100,15 @@ export interface MessageActions {
         targetThreadId?: string
     ) => void
 
-    // 交互式内容操作
+    /**
+     * 把一条已生效的插话就地嵌进助手消息
+     *
+     * 插话必须落在「被采纳的那一刻」：写成独立的用户消息会被追加到消息列表末尾，
+     * 而 AI 后续输出仍往同一条助手消息里追加，视觉上就成了 AI 先说完、才看到补充。
+     * 作为 part 插入后，末尾不再是 text part，后续文本会自然另起一段落在它下方。
+     */
+    addUserSteerPart: (messageId: string, content: string, targetThreadId?: string) => void
+
     setInteractive: (messageId: string, interactive: InteractiveContent, targetThreadId?: string) => void
     addFormPart: (messageId: string, form: FormContent, targetThreadId?: string) => void
     /** 在会话流中内嵌任务规划卡（替代打开编辑器标签页） */
@@ -1397,6 +1405,40 @@ export const createMessageSlice: StateCreator<
                         action: alert.action,
                         actions: alert.actions,
                     } as any
+                    return { ...assistantMsg, parts: [...assistantMsg.parts, newPart] }
+                }
+                return msg
+            })
+
+            return {
+                threadMessageVersions: bumpThreadMessageVersion(state.threadMessageVersions, threadId),
+                threads: { ...state.threads, [threadId]: { ...thread, messages, lastModified: Date.now() } },
+            }
+        })
+    },
+
+    addUserSteerPart: (messageId, content, targetThreadId) => {
+        const threadId = targetThreadId || get().currentThreadId
+        if (!threadId) return
+        const text = (content || '').trim()
+        if (!text) return
+
+        // 先把缓冲区里尚未刷写的流式文本落盘：那是插话之前模型已经说出的话，
+        // 必须排在插话上方，否则会被后插入的 part 挤到插话下面，顺序又反了。
+        streamingBuffer.flushNow()
+
+        set(state => {
+            const thread = state.threads[threadId]
+            if (!thread) return state
+
+            const messages = thread.messages.map(msg => {
+                if (msg.id === messageId && msg.role === 'assistant') {
+                    const assistantMsg = msg as AssistantMessage
+                    const newPart: AssistantPart = {
+                        type: 'user_steer',
+                        content: text,
+                        adoptedAt: Date.now(),
+                    }
                     return { ...assistantMsg, parts: [...assistantMsg.parts, newPart] }
                 }
                 return msg

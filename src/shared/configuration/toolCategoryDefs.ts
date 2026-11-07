@@ -148,6 +148,8 @@ const CORE_TOOLS: string[] = [
   'get_dir_tree',
   'search_files',
   'read_multiple_files',
+  // 证据账本回查（只读内存，不触达文件系统与网络）
+  'read_evidence',
   // 文档提取（PDF/Word/Excel/PPT 等二进制格式）
   'extract_document',
   // 文件编辑

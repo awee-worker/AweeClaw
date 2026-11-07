@@ -1,3 +1,8 @@
+import {
+  snapshotProtected,
+  restoreProtectedInPlace,
+  type RecoverableMessage,
+} from '@intelligence/capabilities/context/contextRecovery'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
 import { useAgentStore, type ThreadBoundStore } from '../state/IntelligenceStore'
@@ -558,7 +563,13 @@ export async function checkAndHandleCompression(
   threadStore.setCompressionStats(newStats)
   threadStore.setCompressionPhase('idle')
 
-  return executeCompressionStrategy(
+  // 压缩前快照受保护消息（用户原话 + 规则类）：压缩后若被误删，按原位置放回。
+  // 这是纯校验兜底，不改变正常压缩路径，可长期开启。
+  const protectedSnapshot = messages
+    ? snapshotProtected(messages as unknown as RecoverableMessage[])
+    : []
+
+  const compressionResult = await executeCompressionStrategy(
     calculatedLevel,
     ratio,
     totalTokens,
@@ -576,4 +587,19 @@ export async function checkAndHandleCompression(
     hasPendingToolCalls,
     messages
   )
+
+  if (messages && protectedSnapshot.length > 0) {
+    const recovery = restoreProtectedInPlace(
+      messages as unknown as RecoverableMessage[],
+      protectedSnapshot,
+    )
+    if (recovery.restored > 0 || recovery.rolledBack) {
+      logger.agent.warn(
+        `[Compression] protected messages recovered=${recovery.restored} ` +
+          `skipped=${recovery.skipped} rolledBack=${recovery.rolledBack}`,
+      )
+    }
+  }
+
+  return compressionResult
 }

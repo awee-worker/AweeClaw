@@ -452,6 +452,8 @@ export async function handleCommand(
     scenarioId?: string
     prompt?: string
     needResult?: boolean
+    /** 服务端任务 id（任务中心下发时带上，执行期按它回挂控制消息） */
+    taskId?: string
   },
 ): Promise<{ requestId: string; success: boolean; output?: string; error?: string; duration?: number }> {
   const requestId = Date.now().toString(36)
@@ -507,6 +509,9 @@ export async function handleCommand(
         return await invokeRenderer(ctx, 'device-link:run-scenario', {
           scenarioId: cmd.scenarioId,
           prompt: cmd.prompt,
+          // 服务端任务 id：renderer 用它登记 requestId → taskId 对照，
+          // 执行期才能取到移动端发来的 steer 与接管处置
+          taskId: cmd.taskId,
         }, 60000)
       }
       case 'ai-task': {
@@ -515,6 +520,7 @@ export async function handleCommand(
           prompt: cmd.prompt,
           scenarioId: cmd.scenarioId,
           needResult: cmd.needResult,
+          taskId: cmd.taskId,
         }, 120000)
       }
       default:

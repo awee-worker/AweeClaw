@@ -61,6 +61,23 @@ export interface SystemAlertPart {
   actions?: SystemAlertAction[]
 }
 
+/**
+ * 执行中插话
+ *
+ * 用户在 AI 跑到一半时补的一句话（不是新一轮发言）。它必须留在「被采纳的那一刻」
+ * 的位置上：气泡若作为独立用户消息追加到会话末尾，AI 后续的输出继续写进同一条
+ * 助手消息，视觉上就变成「AI 说完才看到我的补充」，因果颠倒。
+ *
+ * 因此插话作为助手消息内的一个 part 就地嵌入，后续文本天然落在它下方；
+ * 重建模型上下文时再按顺序还原成 user 消息（见 MessageAdapter）。
+ */
+export interface UserSteerPart {
+  type: 'user_steer'
+  content: string
+  /** 被并入执行的时间戳，仅用于展示与排查 */
+  adoptedAt: number
+}
+
 export interface ContextSnapshotPart {
   id: string
   type: 'context_snapshot'
@@ -127,6 +144,7 @@ export type AssistantPart =
   | SearchPart
   | LintCheckPart
   | SystemAlertPart
+  | UserSteerPart
   | ContextSnapshotPart
   | SourcesPart
   | FormPart
@@ -355,6 +373,10 @@ export function isSystemAlertPart(part: AssistantPart): part is SystemAlertPart 
 
 export function isLintCheckPart(part: AssistantPart): part is LintCheckPart {
   return part.type === 'lint_check'
+}
+
+export function isUserSteerPart(part: AssistantPart): part is UserSteerPart {
+  return part.type === 'user_steer'
 }
 
 export function isContextSnapshotPart(part: AssistantPart): part is ContextSnapshotPart {

@@ -1050,14 +1050,29 @@ const ChatInput = memo(function ChatInput({
                   </HintOverlay>
                 </div>
               ) : isStreaming ? (
-                <HintOverlay content={lt('停止生成', 'Stop generating')}>
-                  <button
-                    onClick={onAbort}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 bg-surface/50 text-text-primary border border-text-primary/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20"
-                  >
-                    <div className="w-2.5 h-2.5 bg-current rounded-[1px] animate-pulse" />
-                  </button>
-                </HintOverlay>
+                /* 运行中：左侧「插话」按需出现，右侧「停止」始终在位。
+                   两者分工明确 —— 插话是「继续说，但按我说的方向」，停止是「现在就打住」，
+                   所以不能共用一格：把停止挤掉，用户想立刻打断时就没有入口了。 */
+                <div className="flex items-center gap-2">
+                  {input.trim().length > 0 && (
+                    <HintOverlay content={lt('插话（下一步生效）', 'Steer (applies next step)')} side="left">
+                      <button
+                        onClick={onSubmit}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 bg-accent text-white border border-accent/30 hover:bg-accent/90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                      >
+                        <ArrowUp className="w-4 h-4" />
+                      </button>
+                    </HintOverlay>
+                  )}
+                  <HintOverlay content={lt('停止生成', 'Stop generating')}>
+                    <button
+                      onClick={onAbort}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 bg-surface/50 text-text-primary border border-text-primary/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
+                    >
+                      <div className="w-2.5 h-2.5 bg-current rounded-[1px] animate-pulse" />
+                    </button>
+                  </HintOverlay>
+                </div>
               ) : voiceInput.state !== 'idle' ? (
                 <div className="relative flex items-center gap-2">
                   {voiceInput.state === 'recording' && voiceInput.stream && (

@@ -45,6 +45,18 @@ import {
   type PluginModelsDetail,
 } from './PluginHostApi'
 import { BROWSER_AI_EDIT_EVENT } from '@components/workspace-editor/browser/aiEditPrompt'
+import { bindTaskId, clearTaskControl } from '@intelligence/runtime/deviceTaskControl'
+import {
+  buildCompletedSummary,
+  buildTaskSummary,
+  firstSentenceOf,
+  type TaskSummary,
+} from '@intelligence/decision/taskOutcome'
+import { toTaskSummaryArtifact } from '@intelligence/decision/taskSummaryArtifact'
+import { proceduralSkillLearner } from '@intelligence/runtime/proceduralSkillLearner'
+import { buildSkillDraft } from '@intelligence/runtime/skillDraftProposer'
+import { buildFlowDraftPayload, toFlowDraftArtifact } from '@intelligence/runtime/flowDraftArtifact'
+import { buildSkillDraftPayload, toSkillDraftArtifact } from '@intelligence/runtime/skillDraftArtifact'
 import { closePluginDrawer } from './pluginDrawerStore'
 import { setPluginNotice } from './pluginNoticeStore'
 
@@ -228,17 +240,80 @@ interface AssistantInteractive {
   selectedIds?: string[]
 }
 
-/** 从任务输出中提取工作空间文件路径，作为产物上报（最多 10 条） */
-function extractArtifactPaths(text: string): Array<{ type: string; title: string; path: string }> {
-  const matches = text.match(/[\w./\\-]+\.\w{1,5}\b/g) || []
+/**
+ * 从任务输出中提取工作空间文件路径，作为产物上报
+ *
+ * 上限压到 7 是为了给通道产物留位置：后端按 artifacts 前 10 条落库，
+ * 终局摘要与两份草稿是尾部追加的，文件产物占满 10 条就会把它们截掉。
+ */
+const MAX_FILE_ARTIFACTS = 7
+
+function extractArtifactPaths(text: string): Array<{ type: string; title: string; path: string }> {  const matches = text.match(/[\w./\\-]+\.\w{1,5}\b/g) || []
   const seen = new Set<string>()
   const out: Array<{ type: string; title: string; path: string }> = []
   for (const m of matches) {
-    if (seen.has(m) || out.length >= 10) continue
+    if (seen.has(m) || out.length >= MAX_FILE_ARTIFACTS) continue
     seen.add(m)
     out.push({ type: 'file', title: m.split(/[\\/]/).pop() || m, path: m })
   }
   return out
+}
+
+/**
+ * 把终局摘要并进产物列表
+ *
+ * 摘要走产物通道下发，后端只需原样透传 artifacts；移动端按固定标题认出来
+ * 渲染成三段式，其余产物照旧展示。序列化失败时退回原列表，不影响任务收尾。
+ */
+function withSummaryArtifact(
+  artifacts: Array<{ type: string; title: string; path: string }>,
+  summary: TaskSummary,
+): Array<Record<string, unknown>> {
+  const list: Array<Record<string, unknown>> = [...artifacts]
+  const packaged = toTaskSummaryArtifact(summary)
+  if (packaged) list.push({ ...packaged })
+  return list
+}
+
+/**
+ * 为本次任务生成草稿产物
+ *
+ * 只在模板已固化（同一意图多次成功后）时生成：一次跑通不代表下次还能跑通，
+ * 过早沉淀会让用户在快捷流列表里攒下一堆跑不通的条目。
+ * 移动端仍有本地兜底（从日志推步骤），所以这里返回空数组不影响「存为快捷流」。
+ *
+ * 快捷流与技能草稿出自同一次匹配，一次 matchTemplate 同时产出两份：
+ * 前者给用户一键复用流程，后者给用户导出 SKILL.md。
+ */
+async function buildDraftArtifactsForTask(taskText: string): Promise<Array<Record<string, unknown>>> {
+  try {
+    const template = await proceduralSkillLearner.matchTemplate(taskText)
+    if (!template) return []
+
+    const skillDraft = buildSkillDraft(template)
+    // 标题取用户自己的说法：模板名是英文 slug，用户认不出来
+    const title = firstSentenceOf(taskText, 40) || skillDraft.name
+
+    const artifacts: Array<Record<string, unknown>> = []
+
+    const flowDraft = toFlowDraftArtifact(
+      buildFlowDraftPayload({
+        title,
+        description: skillDraft.description,
+        template,
+        skillDraft,
+      }),
+    )
+    if (flowDraft) artifacts.push(flowDraft)
+
+    const skillArtifact = toSkillDraftArtifact(buildSkillDraftPayload({ title, skillDraft }))
+    if (skillArtifact) artifacts.push(skillArtifact)
+
+    return artifacts
+  } catch (err) {
+    logger.system.warn('[PluginHostBridge] Draft artifacts skipped:', err)
+    return []
+  }
 }
 
 export function PluginHostBridge() {
@@ -714,31 +789,56 @@ export function PluginHostBridge() {
      * 按 requestId 上报 task-complete / task-error，后端任务中心据此归档。
      */
     const handleDeviceLinkAiTask = async (event: Event) => {
-      const detail = (event as CustomEvent<{ text: string; scenarioId?: string; requestId?: string }>).detail
+      const detail = (event as CustomEvent<{ text: string; scenarioId?: string; requestId?: string; taskId?: string }>).detail
       if (!detail?.text) return
-      const { requestId } = detail
+      const { requestId, taskId } = detail
+      // 登记 id 对照：执行层的补充说明 / 接管 / 画面帧按服务端 taskId 归属，
+      // 而这里手上是 requestId，两者换算不到就等于队列写了没人取
+      if (requestId) bindTaskId(requestId, taskId)
       try {
         await sendMessage(detail.text)
         logger.system.info('[PluginHostBridge] Device-link AI task completed, reporting result')
         if (requestId) {
           const reply = collectLastAssistantReply()
+          // 成功态也带终局摘要：移动端据此展示「做到了什么」，无需从整段回复里猜
+          const taskSummary = buildCompletedSummary(firstSentenceOf(reply))
+          const artifacts: Array<Record<string, unknown>> = withSummaryArtifact(
+            extractArtifactPaths(reply),
+            taskSummary,
+          )
+          // 快捷流 + 技能草稿：模板已固化时一并下发，移动端两种沉淀方式都有据可依
+          const draftArtifacts = await buildDraftArtifactsForTask(detail.text)
+          artifacts.push(...draftArtifacts)
           api.deviceLink.reportEvent('task-complete', {
             requestId,
             success: true,
             result: reply.slice(0, REPORT_OUTPUT_LIMIT),
             summary: reply.slice(0, 120),
-            artifacts: extractArtifactPaths(reply),
+            artifacts,
+            taskSummary,
           })
         }
       } catch (err) {
         logger.system.error('[PluginHostBridge] Device-link AI task failed:', err)
         if (requestId) {
+          const message = err instanceof Error ? err.message : String(err)
+          // 失败必须给出「卡在哪 + 下一步」：只回一句 error 等于让用户在移动端干看着
+          const taskSummary = buildTaskSummary({
+            reached: '任务已下发并开始执行，但未跑完',
+            error: message,
+            canTakeover: true,
+          })
           api.deviceLink.reportEvent('task-error', {
             requestId,
             success: false,
-            error: err instanceof Error ? err.message : String(err),
+            error: message,
+            artifacts: withSummaryArtifact([], taskSummary),
+            taskSummary,
           })
         }
+      } finally {
+        // 任务收尾：停掉画面采集、清掉该任务的队列与残留处置（内部按对照表换算 id）
+        if (requestId) void clearTaskControl(requestId)
       }
     }
 

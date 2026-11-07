@@ -368,3 +368,59 @@ export function toContractAuditEntry(
     violationCount: outcome.violations.length,
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* 授权模式与不可逆操作（与移动端同一份，两侧逐字一致）                  */
+/* ------------------------------------------------------------------ */
+
+/** 桌面端授权模式 */
+export type DesktopAuthorizationMode = 'every-step' | 'dangerous-only' | 'never'
+
+/**
+ * 不可逆操作：删了就回不来、发出去就收不回
+ *
+ * 与 aweeclaw-app/src/services/riskAlignment.ts 的 IRREVERSIBLE_ACTIONS 逐字一致。
+ * 增删必须两边同时改 —— 两侧各自维护必然漂移，而漂移的后果是
+ * 「一侧认为该拦、另一侧直接放行」。
+ */
+export const IRREVERSIBLE_ACTIONS = [
+  'delete_file',
+  'delete_file_or_folder',
+  'run_command:rm',
+  'run_command:git push --force',
+  'send_mail',
+  'payment',
+  'transfer',
+  'publish',
+  'uninstall',
+] as const
+
+/** 该动作是否不可逆（允许后缀，如 `run_command:rm -rf build`） */
+export function isIrreversibleAction(action?: string): boolean {
+  if (!action) return false
+  const raw = action.trim()
+  return IRREVERSIBLE_ACTIONS.some((rule) => {
+    if (raw === rule) return true
+    if (!raw.startsWith(rule)) return false
+    // 规则后面必须跟分隔符，避免 `send_mailer` 被误判成 `send_mail`
+    const next = raw[rule.length]
+    return next === ':' || next === ' ' || next === '\t'
+  })
+}
+
+/**
+ * 是否需要用户确认
+ *
+ * 移动端与桌面端共用这套判定（移动端另有一份等价实现，见 riskAlignment）。
+ * 不可逆操作在任何模式下都确认：这是硬拦，不是体感问题。
+ */
+export function needsConfirmation(
+  mode: DesktopAuthorizationMode,
+  risk: 'low' | 'medium' | 'high',
+  irreversible = false,
+): boolean {
+  if (irreversible) return true
+  if (mode === 'never') return false
+  if (mode === 'dangerous-only') return risk === 'high'
+  return risk === 'high' || risk === 'medium'
+}

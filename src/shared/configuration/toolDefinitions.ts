@@ -118,6 +118,53 @@ export const TOOL_CONFIGS: Record<string, ToolConfig> = {
         },
     },
 
+    read_evidence: {
+        name: 'read_evidence',
+        displayName: 'Read Evidence',
+        description: 'Read back a numbered item from this task\'s evidence ledger. Pure in-memory read — never touches the file system or network.',
+        detailedDescription: `Evidence ledger lookup.
+- Long content returned by read tools is recorded once under an id (ev_1, ev_2, ...) so the same material is not carried through the context twice.
+- Use this tool with that id when you need the details again.
+- Returns one of: the stored content, "expired — re-read the source", or "missing — wrong id".`,
+        criticalRules: [
+            'Use this tool only with ids that appeared in an earlier tool result — never guess an id',
+            'An expired evidence item cannot be recovered here: re-read the original source instead',
+            'This tool has no side effects: it does not read files, run commands, or fetch URLs',
+        ],
+        category: 'read',
+        approvalType: 'none',
+        parallel: true,
+        concurrencyMode: 'parallel-safe',
+        resourceScope: [],
+        resultSemantics: 'file-read',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'schema',
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            evidence_id: {
+                type: 'string',
+                description: 'Evidence id from a previous tool result, e.g. "ev_3"',
+                required: true,
+            },
+            offset: {
+                type: 'number',
+                description: 'Character offset to start from (default: 0). Use it to page through long evidence.',
+                default: 0,
+            },
+            max_chars: {
+                type: 'number',
+                description: 'Maximum characters to return (default: 8000, max: 20000)',
+                default: 8000,
+            },
+        },
+        customSchema: z.object({
+            evidence_id: z.string().min(1, 'evidence_id is required'),
+            offset: z.number().int().min(0).optional(),
+            max_chars: z.number().int().min(1).max(20000).optional(),
+        }).passthrough(),
+    },
+
     list_directory: {
         name: 'list_directory',
         displayName: 'List Directory',

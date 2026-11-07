@@ -754,7 +754,7 @@ document.addEventListener('visibilitychange', () => {
  * 完成后通过 api.deviceLink.replyResult 回复主进程。
  */
 api.deviceLink.onAiTask((payload) => {
-  const { requestId, prompt, needResult } = payload
+  const { requestId, prompt, needResult, taskId } = payload
   logger.system.info(`[DeviceLink] AI task received: requestId=${requestId} prompt=${prompt.slice(0, 60)}...`)
 
   if (!prompt) {
@@ -764,8 +764,9 @@ api.deviceLink.onAiTask((payload) => {
 
   // 通过 window event 派发给 PluginHostBridge（复用插件发送消息的机制）
   // requestId 一并透传：任务真正跑完后由 bridge 补报 task-complete（含产物）
+  // taskId 是服务端任务 id：执行期取补充说明、上报接管、采画面帧都按它归属
   const event = new CustomEvent('aweeclaw:device-link:ai-task', {
-    detail: { text: prompt, requestId },
+    detail: { text: prompt, requestId, taskId },
   })
   window.dispatchEvent(event)
 
@@ -788,12 +789,12 @@ api.deviceLink.onAiTask((payload) => {
  * 收到远程场景运行请求后，同样通过 window event 派发。
  */
 api.deviceLink.onRunScenario((payload) => {
-  const { requestId, scenarioId, prompt } = payload
+  const { requestId, scenarioId, prompt, taskId } = payload
   logger.system.info(`[DeviceLink] Run scenario: requestId=${requestId} scenario=${scenarioId}`)
 
   if (prompt) {
     const event = new CustomEvent('aweeclaw:device-link:ai-task', {
-      detail: { text: prompt, scenarioId, requestId },
+      detail: { text: prompt, scenarioId, requestId, taskId },
     })
     window.dispatchEvent(event)
   }

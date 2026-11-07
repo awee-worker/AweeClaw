@@ -282,6 +282,10 @@ function extractAssistantSummary(message: AssistantMessage): string {
           return part.content
         case 'system_alert':
           return [part.title, part.message, part.suggestion].filter(Boolean).join(' - ')
+        case 'user_steer':
+          // 插话是用户在执行中追加的要求，摘要里必须保留，否则压缩后模型会
+          // 忘记自己曾被要求改做法
+          return `Steering: ${part.content}`
         default:
           return ''
       }

@@ -141,6 +141,22 @@ export class AdaptiveTokenBudget {
   private learnedGrowthRate = 1.05 // 每轮 token 增长率
   private learnedComplexityFactor = 1.0 // 复杂度因子
 
+  /**
+   * 真实用量锚点
+   *
+   * 全量估算的误差是系统性的（中文、代码、JSON 各偏各的），会导致「该压不压」
+   * 或「不该压压了」。这里记下服务商上报的那次 usage，之后只估算增量。
+   *
+   * 无锚点时（首轮、换模型、刚压缩过）退回全量估算。
+   */
+  private usageAnchor: {
+    /** 服务商上报的输入 token（已含当时的系统提示词与工具定义） */
+    inputTokens: number
+    /** 该轮的固定开销（工具 schema + 系统提示词），用于算增量 */
+    overheadEstimate: number
+    at: number
+  } | null = null
+
   constructor(config: AdaptiveBudgetConfig, _modeDescriptor: ModeDescriptor) {
     this.config = { ...DEFAULT_ADAPTIVE_CONFIG, ...config } as AdaptiveBudgetConfig
     this.modelChars = MODEL_CHARACTERISTICS[config.modelName] || MODEL_CHARACTERISTICS.default
@@ -158,8 +174,20 @@ export class AdaptiveTokenBudget {
     inputTokens: number,
     outputTokens: number,
     compressionLevel: CompressionLevel,
-    taskComplexity = 5
+    taskComplexity = 5,
+    /** 本轮思考 token：不计入上下文增长（下一轮不会再发出去） */
+    reasoningTokens = 0,
+    /** 本轮固定开销（工具 schema + 系统提示词）估算；缺省用 0 */
+    overheadEstimate = 0,
   ): void {
+    // 只在拿到真实 usage 时锚定：inputTokens <= 0 说明是估算值，锚了反而更不准
+    if (inputTokens > 0) {
+      this.usageAnchor = { inputTokens, overheadEstimate, at: Date.now() }
+    }
+    // 思考 token 不属于上下文增长：下一轮发出去的只有 outputTokens - reasoningTokens
+    void outputTokens
+    void reasoningTokens
+
     const record: UsageRecord = {
       timestamp: Date.now(),
       inputTokens,
@@ -185,6 +213,32 @@ export class AdaptiveTokenBudget {
       `learned ratio: ${this.learnedOutputRatio.toFixed(2)}, ` +
       `growth: ${this.learnedGrowthRate.toFixed(3)}`
     )
+  }
+
+  /**
+   * 以真实用量为锚点估算下一轮输入
+   *
+   * @param estimatedDeltaTokens 锚点之后新增消息的估算 token
+   * @param overheadDeltaTokens  固定开销的变化量（工具展开会带来变化）
+   * @returns 估算值；无锚点时返回 null，调用方应退回全量估算
+   */
+  estimateFromAnchor(
+    estimatedDeltaTokens: number,
+    overheadDeltaTokens = 0,
+  ): number | null {
+    if (!this.usageAnchor) return null
+    const estimated = this.usageAnchor.inputTokens + estimatedDeltaTokens + overheadDeltaTokens
+    return Math.max(0, Math.round(estimated))
+  }
+
+  /** 主动清锚（换模型、刚压缩过等场景） */
+  clearAnchor(): void {
+    this.usageAnchor = null
+  }
+
+  /** 当前锚点（诊断用） */
+  getAnchor(): { inputTokens: number; overheadEstimate: number; at: number } | null {
+    return this.usageAnchor ? { ...this.usageAnchor } : null
   }
 
   /**

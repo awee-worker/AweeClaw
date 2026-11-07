@@ -43,6 +43,8 @@ import {
   type DeviceLinkPreferences,
 } from './DeviceLinkHandlers'
 import { deviceLinkEventBridge } from './DeviceLinkEventBridge'
+import { taskControlHub, type QueuedSteer, type IncomingTakeoverResolve } from './TaskControlHub'
+import type { TakeoverRequest, TaskFrame } from '@shared/protocols/deviceTaskProtocol'
 import type Store from 'electron-store'
 
 const HEARTBEAT_INTERVAL_MS = 15000
@@ -82,6 +84,26 @@ class DeviceLinkClient {
     this.resolveWorkspaceRoot = opts.resolveWorkspaceRoot
     this.deviceId = getOrCreateDeviceId(opts.configStore)
     logger.deviceLink.info(`[Client] Device ID: ${this.deviceId}`)
+    // 移动端发来的补充说明与接管处置都经 hub 中转：执行层在工具边界取走 steer，
+    // 接管处置则立刻推给 renderer（它正卡在等待上）
+    taskControlHub.setSink({
+      onSteer: (taskId, steer) => this.forwardTaskControl('steer', { taskId, steer }),
+      onTakeoverResolve: (taskId, resolve) =>
+        this.forwardTaskControl('takeover-resolve', { taskId, resolve }),
+    })
+  }
+
+  /** 执行画面采集开关的回调：由 ipc 层注入，避免与本模块循环依赖 */
+  private frameStreamSink: ((taskId: string, action: 'start' | 'stop') => void) | null = null
+
+  /**
+   * 注入执行画面采集开关
+   *
+   * TaskFrameStreamer 反过来依赖本模块（上报帧要拿 client），直接在此 import
+   * 会形成循环。改为由 ipc 层初始化时注入一个回调，方向保持单向。
+   */
+  setFrameStreamSink(sink: ((taskId: string, action: 'start' | 'stop') => void) | null): void {
+    this.frameStreamSink = sink
   }
 
   // ===========================================================================
@@ -327,11 +349,39 @@ class DeviceLinkClient {
       return
     }
 
+    // 执行中补充说明：先入队，等工具边界再取
+    if (msg?.type === 'task.steer') {
+      this.handleTaskSteer(msg)
+      return
+    }
+
+    // 执行画面采集开关：移动端打开/关闭任务详情时下发。
+    // 只在有人看时才采集，关闭后立刻停，避免无观看者时空转截图。
+    if (msg?.type === 'frame-stream') {
+      const taskId = String(msg?.taskId ?? '')
+      const action = msg?.action === 'stop' ? 'stop' : 'start'
+      if (taskId && this.frameStreamSink) {
+        try {
+          this.frameStreamSink(taskId, action)
+        } catch (err) {
+          logger.deviceLink.warn(`[Client] Frame stream ${action} failed: ${(err as Error).message}`)
+        }
+      }
+      return
+    }
+
+    // 接管处置：用户已在移动端处理完（或跳过 / 放弃）
+    if (msg?.type === 'task.takeover.resolve') {
+      this.handleTakeoverResolve(msg)
+      return
+    }
+
     // RPC 请求：必须带 rpcId 和 type
     if (msg?.rpcId && msg?.type) {
       await this.handleRpc(msg)
       return
     }
+
 
     // 任务接续下行（后端推送会话上下文到目标设备）
     if (msg?.type === 'task.transfer.deliver') {
@@ -346,6 +396,7 @@ class DeviceLinkClient {
         logger.deviceLink.info(`[Client] Received scene mode sync from mobile: ${mode}`)
         const win = this.getMainWindow()
         if (win && !win.isDestroyed()) {
+
           win.webContents.send('device-link:scene-mode-sync', { mode })
         }
       }
@@ -446,6 +497,87 @@ class DeviceLinkClient {
     }
   }
 
+  // ===========================================================================
+  // 任务控制（steer / 接管处置）
+  // ===========================================================================
+
+  /**
+   * 补充说明入队
+   *
+   * 不做任何执行动作：队列由执行层在工具批次边界取走，
+   * 取走时才回执 adopted（见 consumeSteers）。
+   */
+  private handleTaskSteer(msg: any): void {
+    const taskId = String(msg?.taskId ?? '')
+    const steerId = String(msg?.steerId ?? '')
+    const text = String(msg?.text ?? '')
+    const result = taskControlHub.enqueueSteer(taskId, steerId, text)
+    if (!result.accepted) {
+      logger.deviceLink.warn(
+        `[Client] Steer rejected task=${taskId} steerId=${steerId} reason=${result.reason}`,
+      )
+    }
+  }
+
+  /** 接管处置：直接交给执行层，由它重新核实界面状态 */
+  private handleTakeoverResolve(msg: any): void {
+    const taskId = String(msg?.taskId ?? '')
+    const outcome = msg?.outcome
+    if (!taskId) return
+    if (outcome !== 'resolved' && outcome !== 'skipped' && outcome !== 'aborted') {
+      logger.deviceLink.warn(`[Client] Unknown takeover outcome: ${String(outcome)}`)
+      return
+    }
+    taskControlHub.pushTakeoverResolve(taskId, outcome, msg?.note ? String(msg.note) : undefined)
+  }
+
+  /** 把任务控制事件推给 renderer（执行层在这里处理） */
+  private forwardTaskControl(
+    kind: 'steer' | 'takeover-resolve',
+    payload: { taskId: string; steer?: QueuedSteer; resolve?: IncomingTakeoverResolve },
+  ): void {
+    const win = this.getMainWindow()
+    if (!win || win.isDestroyed()) {
+      logger.deviceLink.debug(`[Client] No window for task control ${kind}, kept in queue`)
+      return
+    }
+    win.webContents.send('device-link:task-control', { kind, ...payload })
+  }
+
+  /**
+   * 取走该任务待处理的补充说明（工具批次边界调用）
+   *
+   * 取走即视为已注入：逐条回执 adopted，移动端据此把状态从 pending 改为 adopted。
+   */
+  consumeSteers(taskId: string): QueuedSteer[] {
+    const steers = taskControlHub.drainSteers(taskId)
+    for (const steer of steers) {
+      this.reportSteerAdopted(taskId, steer.steerId)
+    }
+    return steers
+  }
+
+  /** 任务结束：清掉该任务的队列与残留状态 */
+  clearTaskControl(taskId: string): void {
+    taskControlHub.clearTask(taskId)
+  }
+
+  /** 上报接管请求（桌面端 → 移动端） */
+  reportTaskTakeover(taskId: string, request: TakeoverRequest): void {
+    this.reportEvent('task-takeover', { taskId, request })
+  }
+
+  /** 回执：补充说明已被取走并注入 */
+  reportSteerAdopted(taskId: string, steerId: string): void {
+    this.reportEvent('task-steer-adopted', { taskId, steerId, at: Date.now() })
+  }
+
+  /** 上报执行画面帧（只给用户看，不进模型上下文） */
+  reportTaskFrame(frame: TaskFrame): void {
+    this.reportEvent('task-frame', frame as unknown as Record<string, unknown>)
+  }
+
+
   private buildHandlerContext(): DeviceHandlerContext {
     return {
       resolveWorkspaceRoot: this.resolveWorkspaceRoot,
@@ -488,6 +620,11 @@ class DeviceLinkClient {
       return
     }
     this.updatePreferences({ [preferenceKeyForScope(scope)]: true })
+  }
+
+  /** 当前是否允许远程截图（执行画面采集沿用该开关） */
+  isScreenshotAllowed(): boolean {
+    return this.loadPreferences().allowScreenshot === true
   }
 
   /** 更新偏好（设置界面调用） */

@@ -166,6 +166,8 @@ export interface ThreadBoundStore {
             actions?: Array<{ label: string; actionType: 'continue' | 'retry' | 'dismiss' | 'open-settings' | 'switch-model' | 'upgrade' }>
         }
     ) => void
+    /** 把一条已生效的插话就地嵌进助手消息（呈现为「此刻」的用户补充） */
+    addUserSteerPart: (messageId: string, content: string) => void
 
     // 交互式内容操作
     setInteractive: (messageId: string, interactive: import('../providerTypes').InteractiveContent) => void
@@ -504,6 +506,8 @@ export const useAgentStore = create<AgentStore>()(
                     messageSlice.updateLintCheckPart(messageId, updates, threadId),
                 addSystemAlertPart: (messageId, alert) =>
                     messageSlice.addSystemAlertPart(messageId, alert, threadId),
+                addUserSteerPart: (messageId, content) =>
+                    messageSlice.addUserSteerPart(messageId, content, threadId),
 
                 // 交互式内容操作
                 setInteractive: (messageId, interactive) =>

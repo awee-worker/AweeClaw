@@ -23,6 +23,9 @@ import {
   getDeviceLinkClient,
 } from './DeviceLinkClient'
 import { deviceLinkEventBridge } from './DeviceLinkEventBridge'
+import { taskControlHub } from './TaskControlHub'
+import { taskFrameStreamer } from './TaskFrameStreamer'
+import type { TakeoverRequest } from '@shared/protocols/deviceTaskProtocol'
 import type Store from 'electron-store'
 
 /**
@@ -100,6 +103,16 @@ export function initDeviceLinkModule(opts: {
 }
 
 function registerIpcHandlers(client: ReturnType<typeof initDeviceLinkClient>): void {
+  // 执行画面采集开关：由后端在移动端开始/停止观看时下发到主进程。
+  // 这里注入回调，让 DeviceLinkClient 不必反向 import TaskFrameStreamer（会循环依赖）。
+  client.setFrameStreamSink((taskId, action) => {
+    if (action === 'start') {
+      taskFrameStreamer.start(taskId, client.isScreenshotAllowed())
+    } else {
+      taskFrameStreamer.stop(taskId)
+    }
+  })
+
   // ── 凭据管理 ──────────────────────────────────────────────
   ipcMain.handle('device-link:set-credentials', async (_event, payload: DeviceLinkCredentials) => {
     if (!payload?.accessToken || !payload?.serverUrl) {
@@ -188,12 +201,68 @@ function registerIpcHandlers(client: ReturnType<typeof initDeviceLinkClient>): v
       }
     },
   )
+
+  // ── 任务控制：接管上报 / 补充说明消费 / 处置取走 ──────────────
+
+  // 执行层判定需要接管时上报（桌面端 → 移动端）
+  ipcMain.handle(
+    'device-link:report-takeover',
+    async (_event, payload: { taskId?: string; request?: TakeoverRequest }): Promise<boolean> => {
+      const linkClient = getDeviceLinkClient()
+      const taskId = payload?.taskId
+      if (!linkClient || !taskId || !payload?.request) return false
+      linkClient.reportTaskTakeover(taskId, payload.request)
+      return true
+    },
+  )
+
+  // 工具批次边界：取走待处理的补充说明（取走即回执 adopted）
+  ipcMain.handle(
+    'device-link:consume-steers',
+    async (_event, payload: { taskId?: string }) => {
+      const linkClient = getDeviceLinkClient()
+      if (!linkClient || !payload?.taskId) return []
+      return linkClient.consumeSteers(payload.taskId)
+    },
+  )
+
+  // 取走该任务最近的接管处置（防止推送早于监听注册）
+  ipcMain.handle('device-link:take-takeover-resolve', async (_event, payload: { taskId?: string }) => {
+    if (!payload?.taskId) return null
+    return taskControlHub.takeTakeoverResolve(payload.taskId)
+  })
+
+  // 任务结束：清掉该任务的队列与残留状态
+  ipcMain.handle('device-link:clear-task-control', async (_event, payload: { taskId?: string }) => {
+    const linkClient = getDeviceLinkClient()
+    if (!linkClient || !payload?.taskId) return { ok: false }
+    linkClient.clearTaskControl(payload.taskId)
+    // 任务结束就停流：帧只对运行中的任务有意义，继续采只会白耗 CPU 与带宽
+    taskFrameStreamer.stop(payload.taskId)
+    return { ok: true }
+  })
+
+  // ── 执行画面采集 ──────────────────────────────────────────
+  // 采集开关由移动端订阅驱动；截图权限沿用设备联动截图开关
+  ipcMain.handle(
+    'device-link:frame-stream',
+    async (_event, payload: { taskId?: string; action?: 'start' | 'stop' }) => {
+      const taskId = payload?.taskId
+      if (!taskId) return { ok: false, error: 'missing_task_id' }
+      if (payload?.action === 'stop') {
+        return { ok: taskFrameStreamer.stop(taskId) }
+      }
+      return taskFrameStreamer.start(taskId, client.isScreenshotAllowed())
+    },
+  )
 }
 
 /**
  * 关闭设备联动模块（应用退出时调用）
  */
 export function shutdownDeviceLinkModule(): void {
+  taskFrameStreamer.stopAll()
+  taskControlHub.clearAll()
   deviceLinkEventBridge.detach()
   shutdownDeviceLinkClient()
   isInitialized = false

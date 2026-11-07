@@ -56,6 +56,14 @@ export interface TaskEvalSample {
   /** 样本类别，用于分组统计 */
   group: string
   /**
+   * 评测池
+   *
+   * tune：可用于调提示词 / 工具描述 / 预选规则；
+   * holdout：保留池，只在发版决策时看，不得用于调优。
+   * 未标注时由 dataset 按 group 分层自动分配。
+   */
+  partition?: 'tune' | 'holdout'
+  /**
    * 已知缺陷说明
    *
    * 带有该字段的样本不计入断言分母，仅在报告中单独列出。

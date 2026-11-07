@@ -21,6 +21,27 @@ import {
 import { estimateMessagesTokens } from '../capabilities/context/ContextCompressor'
 import { lintService } from '../runtime/codeAnalysisService'
 import {
+  drainSteers,
+  buildSteerInstruction,
+  resolveTaskId,
+  createTakeoverSession,
+} from '../runtime/deviceTaskControl'
+import { drainLocalSteers, discardLocalSteers } from '../runtime/localSteer'
+import { redactArgs } from '@shared/toolkit/redact'
+import { checkAnswerGrounding } from '../verify/answerGrounding'
+import {
+  buildSelfCheckPrompt,
+  selfCheckRound,
+  DEFAULT_TASK_STEP_BUDGET,
+  type SelfCheckStage,
+} from '../decision/taskOutcome'
+import {
+  parseTakeoverError,
+  TAKEOVER_ERROR_PREFIX,
+  TAKEOVER_REASON_LABEL,
+} from '../decision/takeoverClassifier'
+import { createToolExpansionState } from './toolExpansion'
+import {
   collectExecutionSignals,
   resolveExecutionRole,
   buildExecutionRoleSwitchMessage,
@@ -629,9 +650,27 @@ export async function executeAgentCycle(
   })
 
   const agentTools = toolManager.getAllToolDefinitions()
+  // 工具分层懒展开：未展开的组只发入口工具（见 toolExpansion）。
+  // 状态按「一次执行」为粒度，任务结束即丢弃。
+  const toolExpansion = createToolExpansionState(agentTools.map((t) => t.name))
   const loopDetector = new LoopDetector()
   let iteration = 0
   let shouldContinue = true
+  /**
+   * 任务步数预算
+   *
+   * 与 MAX_LOOP_ITERATIONS（200，纯安全兜底）不是一回事：那是「防止无界循环」的
+   * 硬阀，这里是「这个任务大概给多少轮合适」。在预算的 50%、75% 各做一次自查，
+   * 用尽时收窄工具只留「说明」—— 用户等 30 步换来一个失败，远差于第 8 步就
+   * 被告知「这里要登录，我做不了」。
+   */
+  const stepBudget = context.stepBudget ?? DEFAULT_TASK_STEP_BUDGET
+  const halfCheckRound = selfCheckRound(stepBudget, 'half')
+  const threeQuarterCheckRound = selfCheckRound(stepBudget, 'threeQuarter')
+  /** 预算用尽的轮次：这一轮不发工具，只要求文字收尾 */
+  const finalRound = stepBudget
+  let halfCheckDone = false
+  let threeQuarterCheckDone = false
   /**
    * 计划阶段纠偏是否已用掉。
    *
@@ -652,6 +691,24 @@ export async function executeAgentCycle(
   const MAX_EXECUTION_ROLE_SWITCHES = 4
   let roleSwitchRounds = 0
   threadStore.setStreamState({ waitPhase: 'waiting_model' })
+
+  /**
+   * 插话生效：把它按「此刻」嵌进助手消息
+   *
+   * 不写成独立的用户消息：那会被追加到消息列表末尾，而 AI 的后续输出继续写进同
+   * 一条助手消息，视觉上就成了 AI 先说完、才看到用户的补充，因果颠倒。作为 part
+   * 插在当前位置后，后续文本自然另起一段落在它下方。
+   *
+   * 也不再额外弹一条「已采纳」提示：卡片本身就出现在插话该出现的地方，那就是
+   * 最直接的证据，再加一条系统提示只是噪音。
+   */
+  const recordAdoptedSteers = (texts: string[]) => {
+    for (const text of texts) {
+      if (!text) continue
+      threadStore.addUserSteerPart(assistantId, text)
+    }
+  }
+
 
   const concludeWithThresholdIntervention = async (
     title: string,
@@ -816,6 +873,35 @@ export async function executeAgentCycle(
 
     threadStore.setStreamState({ waitPhase: 'waiting_model', iterationIndex: iteration })
 
+    // 中途自查：预算过半 / 四分之三时各提醒一次，让模型有机会主动承认「走不通」，
+    // 而不是把步数磕到上限才吐一个错误。提醒直接拼在本次请求里，不多花一轮。
+    let selfCheckStage: SelfCheckStage | null = null
+    if (!halfCheckDone && halfCheckRound !== null && iteration === halfCheckRound) {
+      selfCheckStage = 'half'
+      halfCheckDone = true
+    } else if (
+      !threeQuarterCheckDone &&
+      threeQuarterCheckRound !== null &&
+      iteration === threeQuarterCheckRound
+    ) {
+      selfCheckStage = 'threeQuarter'
+      threeQuarterCheckDone = true
+    }
+    if (selfCheckStage) {
+      const { language } = useStore.getState()
+      logger.agent.info(`[Loop] Step self-check injected: ${selfCheckStage} (budget=${stepBudget}, iteration=${iteration})`)
+      llmMessages.push({ role: 'user', content: buildSelfCheckPrompt(language, selfCheckStage) })
+    }
+
+    // 最后一轮：预算用尽就只给收尾通道 —— 不再发任何工具，要求文字写清做完了什么、
+    // 卡在哪、下一步怎么做。继续发工具只会让用户在无望的尝试上多看几屏日志。
+    const isFinalRound = iteration >= finalRound
+    if (isFinalRound) {
+      const { language } = useStore.getState()
+      logger.agent.warn(`[Loop] Final budget round reached (budget=${stepBudget}), tools withheld`)
+      llmMessages.push({ role: 'user', content: buildSelfCheckPrompt(language, 'final') })
+    }
+
     // 每轮都是「执行」阶段：解析结果首轮确定后复用，循环内不再变动
     const result = await invokeModelCallWithRetry(
       resolvePhaseConfig('act'),
@@ -824,8 +910,15 @@ export async function executeAgentCycle(
       threadStore,
       context.abortSignal,
       requestId,
-      agentTools
+      isFinalRound ? [] : (toolExpansion.filter(agentTools) as typeof agentTools),
+      isFinalRound ? { allowToolCalls: false } : undefined,
     )
+
+    // 最后一轮就算模型仍报工具调用，也不执行：降级成文字收尾，避免预算形同虚设
+    if (isFinalRound && (result.toolCalls?.length ?? 0) > 0) {
+      logger.agent.warn('[Loop] Final round returned tool calls; discarding them and finishing with text')
+      result.toolCalls = []
+    }
 
     if (context.abortSignal?.aborted) {
       concludeAsAborted()
@@ -1212,6 +1305,19 @@ export async function executeAgentCycle(
     }
 
     if (!result.toolCalls || result.toolCalls.length === 0) {
+      // 收尾接缝：模型打算以纯文本收尾，但用户可能刚插了话（本地会话或移动端）。
+      // 先取空队列：有内容就不收尾，把话作为一条 user 消息推进去继续跑。
+      // 这里不消耗 autoResume 额度 —— 用户主动说的话不该被限次。
+      const closingSteers = await pullPendingSteers(requestId, threadId)
+      if (closingSteers.length > 0) {
+        logger.agent.info(`[Loop] Closing seam: injecting ${closingSteers.length} steer(s), continue instead of finishing`)
+        const steerLanguage = useStore.getState().language === 'en' ? 'en' : 'zh'
+        llmMessages.push({ role: 'user', content: buildSteerInstruction(closingSteers, steerLanguage) })
+        recordAdoptedSteers(closingSteers)
+        shouldContinue = true
+        continue
+      }
+
       // 计划阶段纠偏：本轮要求先建计划，模型却打算用纯文本收尾。
       // 这是「工具已收窄但模型不服从」的唯一出口 —— 不收尾，明确要求它调用
       // create_task_plan（只纠偏一次，见 planStageNudged）。
@@ -1352,6 +1458,46 @@ export async function executeAgentCycle(
         scheduleAutoResume(threadId, 'output-limit')
         break
       }
+
+      // 事实核对（B7）：回答里出现的路径、日期、URL、带小数数字，必须能在本任务
+      // 读到的材料里找到原文。核对不上只标记「未确认」，照常交付 —— 拦死会让用户
+      // 觉得 AI 又在啰嗦，最终所有人都去把这项关掉。
+      if (result.content && result.content.trim()) {
+        void (() => {
+          try {
+            const toolTexts = llmMessages
+              .filter((m) => m.role === 'tool')
+              .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')))
+              .filter(Boolean)
+            const hadToolCalls = llmMessages.some(
+              (m) => m.role === 'assistant' && ((m as AssistantMessage).toolCalls?.length ?? 0) > 0,
+            )
+            const grounding = checkAnswerGrounding({
+              answer: result.content as string,
+              toolTexts,
+              hadToolCalls,
+            })
+            if (grounding.checked && grounding.gaps.length > 0) {
+              const { language } = useStore.getState()
+              logger.agent.warn('[Loop] Answer grounding gaps found', { gaps: grounding.gaps.slice(0, 5) })
+              threadStore.addSystemAlertPart(assistantId, {
+                alertType: 'warning',
+                title: getLocalizedText(language, '部分内容未确认', 'Some details are unconfirmed'),
+                message: getLocalizedText(
+                  language,
+                  `以下内容未在本次读取的材料中找到依据：${grounding.gaps.slice(0, 5).join('、')}`,
+                  `These details could not be traced back to the material read in this task: ${grounding.gaps.slice(0, 5).join(', ')}`,
+                ),
+                compact: true,
+              })
+            }
+          } catch (groundingErr) {
+            // 核对失败不影响交付
+            logger.agent.warn('[Loop] Answer grounding failed:', groundingErr)
+          }
+        })()
+      }
+
 
       resetAutoResumeCounter(threadId)
       // 任务收尾（有可见输出）→ 新一轮任务的自由模式轮次预算重新计数
@@ -1495,6 +1641,10 @@ export async function executeAgentCycle(
       break
     }
 
+    // 本轮调用过的工具 → 展开所属组：下一轮构建工具列表时该组换回全量。
+    // 传原始调用名（不是过滤后的列表），入口工具的调用同样会解锁整组。
+    toolExpansion.noteCalls(result.toolCalls.map((tc) => tc.name))
+
     const waitingResult = toolResults.find(r => r.result.meta?.waitingForUser)
     if (waitingResult) {
       const interactive = waitingResult.result.meta?.interactive as InteractiveContent | undefined
@@ -1543,7 +1693,8 @@ export async function executeAgentCycle(
       }, success)
       recordToolCall(threadId, {
         name: toolCall.name,
-        arguments: toolCall.arguments,
+        // 轨迹会落库并可能被导出，参数先脱敏；界面与模型仍用原始参数
+        arguments: redactArgs(toolCall.name, toolCall.arguments) as Record<string, unknown> | undefined,
         isError: !success,
       })
 
@@ -1612,6 +1763,85 @@ export async function executeAgentCycle(
           linesRemoved: (meta.linesRemoved as number) || 0,
         }, threadId)
       }
+    }
+
+    // 接管：工具返回 `TAKEOVER:<reason>` 时，「等人处理」是正常结局而非失败。
+    // 用户处理完再续跑；无人值守来源不阻塞，直接收尾并写明需要人工做什么。
+    const takeoverCode = toolResults
+      .map((r) => {
+        const content = typeof r.result.content === 'string' ? r.result.content : ''
+        // 业务码可能被包在 `Error: ` 前缀里，从出现位置截取到结尾再解析
+        const idx = content.indexOf(TAKEOVER_ERROR_PREFIX)
+        return idx >= 0 ? content.slice(idx).trim() : ''
+      })
+      .find((content) => parseTakeoverError(content) !== null)
+    if (takeoverCode && !context.abortSignal?.aborted) {
+      const { language } = useStore.getState()
+      // 有 id 对照表映射说明这次运行来自移动端下发 → 按 reachable 处理（5 分钟等待）；
+      // 本地 UI 下发的任务按 present（10 分钟），用户就在电脑前
+      const fromRemote = resolveTaskId(requestId) !== requestId
+      const session = createTakeoverSession(requestId, async () => true)
+      const takeoverResult = await session.run({
+        errorCode: takeoverCode,
+        origin: fromRemote ? 'channel' : 'ui',
+      })
+
+      if (takeoverResult.status === 'continued') {
+        logger.agent.info('[Loop] Takeover resolved by user, continuing', {
+          reason: takeoverResult.reason,
+          attempts: takeoverResult.attempts,
+        })
+        llmMessages.push({
+          role: 'user',
+          content: getLocalizedText(
+            language,
+            '用户已在桌面端处理完拦截，请继续执行后续步骤。',
+            'The user has resolved the blocker on the desktop. Continue with the remaining steps.',
+          ),
+        })
+        continue
+      }
+
+      const reasonLabel = takeoverResult.reason
+        ? TAKEOVER_REASON_LABEL[takeoverResult.reason]
+        : getLocalizedText(language, '需要人工处理', 'Needs manual handling')
+      const detail = takeoverResult.note || ''
+      logger.agent.warn('[Loop] Takeover ended without continuing', {
+        status: takeoverResult.status,
+        reason: takeoverResult.reason,
+        attempts: takeoverResult.attempts,
+      })
+
+      threadStore.finalizeAssistant(assistantId)
+      threadStore.setStreamPhase('idle')
+      threadStore.setStreamState({ streamDetail: undefined })
+      threadStore.updateExecutionMeta({ loopState: 'completed' })
+      threadStore.addSystemAlertPart(assistantId, {
+        alertType: 'warning',
+        title: getLocalizedText(language, '任务暂停，需要你处理', 'Task paused, needs your action'),
+        message: getLocalizedText(
+          language,
+          `未能自动完成：${reasonLabel}。${detail}`,
+          `Could not finish automatically: ${reasonLabel}. ${detail}`,
+        ),
+        suggestion: getLocalizedText(
+          language,
+          '处理完成后可在移动端或客户端点击继续。',
+          'After handling it, tap Continue on mobile or in the desktop app.',
+        ),
+      })
+      EventBus.emit({ type: 'loop:end', reason: 'takeover', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+      break
+    }
+
+    // 工具批次边界：把用户在执行中补的话取出来注入，下一轮模型据此调整做法。
+    // 与「收尾接缝」互补：这里管「正跑着」，那里管「要收尾了」。
+    const batchSteers = await pullPendingSteers(requestId, threadId)
+    if (batchSteers.length > 0) {
+      logger.agent.info(`[Loop] Injecting ${batchSteers.length} steer(s) at tool batch boundary`)
+      const steerLanguage = useStore.getState().language === 'en' ? 'en' : 'zh'
+      llmMessages.push({ role: 'user', content: buildSteerInstruction(batchSteers, steerLanguage) })
+      recordAdoptedSteers(batchSteers)
     }
 
     // lint 自动修复：检测结果只回灌给模型，不在会话界面渲染检查卡片。
@@ -1701,6 +1931,20 @@ export async function executeAgentCycle(
     threadStore.setStreamState({ streamDetail: undefined })
   }
 
+  // 主循环收尾：把没赶上注入的插话作废
+  //
+  // 队列只在「工具批次边界」与「收尾接缝」两处被取走。走到这里的路径（等待用户、
+  // 工具主动结束、接管超时等）都是直接 break，队列里的内容既没进过模型上下文，
+  // 又不会随本轮作废 —— 下一次用户发消息时它会被当成一条孤立的 user 消息注入，
+  // 那就是跨轮串话。入队时没有写过会话气泡，这里只需清空队列。
+  {
+    const discardedSteers = discardLocalSteers(threadId)
+    if (discardedSteers > 0) {
+      logger.agent.info(`[Loop] Discarding ${discardedSteers} unadopted steer(s) at loop exit`)
+    }
+  }
+
+
   // 主循环收尾统一清理残留的流式预览。
   //
   // 预览条目只在「模型声明调用 → 工具开始执行」这一小段窗口内有效：正常路径由编排层
@@ -1749,6 +1993,36 @@ export async function executeAgentCycle(
 
   if (loopSpan) {
     agentHarness.observability.endSpan(loopSpan)
+  }
+}
+
+/**
+ * 取走执行中补的说明（两个来源合并）
+ *
+ * 来源一：本地会话的插话，按 threadId 存在 renderer 内存里（localSteer）。
+ * 来源二：移动端远程下发任务的补充说明，按服务端 taskId 经主进程队列取回。
+ *
+ * 两者可以同时存在：同一个线程既可能被用户在客户端里插话，也可能是移动端发起
+ * 的任务在跑。先取本地（同步、无 IO），再取远端，远端不可达不影响本地插话生效。
+ *
+ * 远端一侧的换算说明：移动端与后端都按服务端 taskId 归属，而执行层手上只有本次
+ * 下发的 requestId，因此按对照表换算，换算不到就原样使用（旧后端没有 taskId 时，
+ * 队列本就不会有内容，返回空是正确结果）。通道不可用（Web 预览、未登录设备联动）
+ * 时同样只返回本地部分，不抛错 —— 这条链路是旁路，不能因为远端不可达而影响本地执行。
+ */
+async function pullPendingSteers(
+  requestId: string | undefined,
+  threadId: string | undefined,
+): Promise<string[]> {
+  const local = threadId ? drainLocalSteers(threadId) : []
+  if (!requestId) return local
+  try {
+    const taskId = resolveTaskId(requestId)
+    if (!taskId) return local
+    const remote = await drainSteers(taskId)
+    return [...local, ...remote]
+  } catch {
+    return local
   }
 }
 

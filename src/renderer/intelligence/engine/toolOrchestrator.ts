@@ -16,12 +16,14 @@ import { toolManager } from '../toolkit/providers'
 import { notifyWorkspaceTreeChange } from '../toolkit/workspaceTreeNotifier'
 import { getToolApprovalType, isFileEditTool, isWriteTool, needsFileSnapshot } from '@configuration/toolDefinitions'
 import { pathStartsWith, joinPath, normalizePath } from '@shared/toolkit/pathHelper'
+import { redactResult, redactArgs } from '@shared/toolkit/redact'
 import { buildToolPathPolicy } from '../toolkit/toolPathPolicy'
 import { getTrustedAppDataRoots } from '../toolkit/trustedPathRegistry'
 import { buildApprovalEntry, recordApproval } from '@intelligence/decision/approvalLedger'
 import { recordApproval as recordSessionApproval } from '@intelligence/decision/eval/sessionTrajectory'
 import { decideApprovalGateByMode, isIrreversibleTool, shouldEscalateForUntrusted } from '@intelligence/decision/approvalEscalation'
 import type { ApprovalGate } from '@intelligence/decision/approvalEscalation'
+import { classifyTakeover, formatTakeoverError } from '@intelligence/decision/takeoverClassifier'
 import { collectUntrustedSignal, rememberUntrustedSignal } from '../runtime/untrustedContextTracker'
 import type { UntrustedContextSignal, UntrustedSourceSummary } from '@intelligence/types/trustTypes'
 import { dispatchCompanionState } from '@/renderer/components/vrm-companion/companionStateDispatcher'
@@ -873,7 +875,9 @@ async function invokeToolInvocation(
     threadId: context.threadId ?? undefined,
     type: 'request',
     toolName: toolCall.name,
-    data: toolCall.arguments,
+    // 参数进运行记录前统一脱敏：命令、写文件内容、含密钥字段都在这里止步。
+    // 真正发给模型的参数走 toolManager.execute，不经过这里，保持原样。
+    data: redactArgs(toolCall.name, toolCall.arguments),
   })
 
   // MCP 生成类工具的产出标识需要在执行前确定（见 snapshotExistingProducedPaths）
@@ -920,8 +924,22 @@ async function invokeToolInvocation(
       // 界面与应用内事件都应显示「已执行」，避免把正常执行误报为失败。
       const callFailed = result.callFailed ?? !result.success
 
+      // 接管转码：工具失败文本若命中登录 / 验证码 / 风控 / 付款，改写成业务码
+      // `TAKEOVER:<reason>`，主循环据此走接管流程，而不是把这次运行判成失败。
+      // 判定规则只在 takeoverClassifier 一处维护，各工具不必自己拼原因字符串。
+      let failureError = result.error
+      if (callFailed && result.error) {
+        const takeover = classifyTakeover({ errorCode: result.error, text: result.error })
+        if (takeover.needed && takeover.reason) {
+          failureError = formatTakeoverError(takeover.reason)
+          logger.agent.info(
+            `[Tools] ${toolCall.name} blocked by ${takeover.reason}, converted to takeover code`,
+          )
+        }
+      }
+
       const rawContent = callFailed
-        ? `Error: ${result.error || 'Unknown error'}`
+        ? `Error: ${failureError || 'Unknown error'}`
         : (result.result !== undefined && result.result !== null ? result.result : 'Success')
 
       const config = getAgentConfig()
@@ -962,10 +980,12 @@ async function invokeToolInvocation(
         threadId: context.threadId ?? undefined,
         type: 'response',
         toolName: toolCall.name,
-        data: content,
+        // 运行记录会导出/回放/打包反馈，落库前统一脱敏；
+        // 发给模型的 content 不经过这里，保持原样
+        data: redactResult(toolCall.name, content),
         duration,
         success: !callFailed,
-        error: callFailed ? result.error : undefined,
+        error: callFailed ? redactResult(toolCall.name, result.error) : undefined,
       })
 
       const meta = result.meta || {}
@@ -1104,10 +1124,10 @@ async function invokeToolInvocation(
         threadId: context.threadId ?? undefined,
         type: 'response',
         toolName: toolCall.name,
-        data: errorMsg,
+        data: redactResult(toolCall.name, errorMsg),
         duration,
         success: false,
-        error: errorMsg,
+        error: redactResult(toolCall.name, errorMsg),
       })
 
       const previewPath = resolveStreamingEditFilePath(toolCall.arguments?.path, workspacePath)
@@ -1166,7 +1186,7 @@ async function invokeToolInvocation(
       threadId: context.threadId ?? undefined,
       type: 'response',
       toolName: toolCall.name,
-      data: fallback,
+      data: redactResult(toolCall.name, fallback),
       success: false,
       error: 'Tool execution finished without a terminal state',
     })

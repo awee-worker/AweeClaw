@@ -10,6 +10,10 @@ import { globalDecide as globalConfirm } from '@components/foundation/DecisionOv
 import { useToast } from '@components/foundation/NotificationProvider'
 import { clearPluginNotice } from '@renderer/plugins/pluginNoticeStore'
 import { slashCommandService } from '@services/slashCommandAdapter'
+import { useAgentStore } from '@intelligence/state/IntelligenceStore'
+import { useStore } from '@store'
+import { enqueueLocalSteer } from '@intelligence/runtime/localSteer'
+import { STEER_MAX_LENGTH } from '@shared/protocols/deviceTaskProtocol'
 import {
   isUserMessage,
   getMessageText,
@@ -75,10 +79,78 @@ export function useMessageOperations({
   const messagesRef = useRef<ChatMessageType[]>(messages)
   messagesRef.current = messages
 
+  /**
+   * toast 的 ref 桥
+   *
+   * Provider 每次渲染都会新建 context value（字面量对象），toast 因此不是稳定引用。
+   * 把它放进 handleSubmit 的依赖数组，会让这个回调随每次渲染重建，一路打穿上层的
+   * memo —— 与 messages 当初踩的是同一个坑。
+   */
+  const toastRef = useRef(toast)
+  toastRef.current = toast
+
   /** 提交消息 */
   const handleSubmit = useCallback(
     async (input: string, isStreaming: boolean) => {
-      if ((!input.trim() && attachmentManager.images.length === 0) || isStreaming) return
+      const text = input.trim()
+      const hasAttachments = attachmentManager.images.length > 0
+
+      /**
+       * 运行中提交 = 插话（不是新一轮）
+       *
+       * 这里不能直接把消息发出去：执行锁会以「Thread already running」挡下它，
+       * 用户看到的是点了没反应。改为排进本地队列，由循环在下一个工具批次边界
+       * 取走并注入；收尾接缝还有第二次机会，所以「刚说完模型就打算结束」也不会丢。
+       *
+       * 附件与斜杠命令不在此展开：它们改变的是新一轮请求的形态（要重新组装内容、
+       * 可能要切模式），不是一句补充说明。运行中提交只认纯文本。
+       */
+      if (isStreaming) {
+        if (!text) return
+        const threadId = useAgentStore.getState().currentThreadId
+        if (!threadId) return
+
+        /**
+         * 团队协作（多 Agent）运行中不吃插话
+         *
+         * 那条路径由编排器把子任务派给各自 Agent，不经过主循环的工具批次边界，
+         * 队列里有内容也没有任何取走点 —— 入队只会让用户以为话已经送到了。
+         * 这里直接说明边界，比事后让人对着一段毫无反应的输出猜测要好。
+         */
+        const teamSession = useStore.getState().activeWorkspaceSession
+        const teamRunning = teamSession?.threadId === threadId && (
+          teamSession.status === 'planning'
+          || teamSession.status === 'plan_review'
+          || teamSession.status === 'discussing'
+          || teamSession.status === 'executing'
+        )
+        if (teamRunning) {
+          toastRef.current.warning(t('chat.steer.teamUnsupported', language))
+          return
+        }
+
+        const result = enqueueLocalSteer(threadId, text)
+        if (!result.accepted) {
+          if (result.reason === 'too_long') {
+            toastRef.current.warning(t('chat.steer.tooLong', language, { max: STEER_MAX_LENGTH }))
+          } else if (result.reason === 'full') {
+            toastRef.current.warning(t('chat.steer.full', language))
+          }
+          // duplicate / empty：连点或空内容，静默即可，弹提示只会干扰
+          return
+        }
+
+        // 不在这里写会话气泡、也不弹「已排上」的提示：插话真正该出现的位置是
+        // 「被采纳的那一刻」。早一步作为用户消息落到列表末尾，就会排在 AI 后续输出
+        // 上方，读起来像 AI 先说完、才看到补充。等待期的状态交给输入区上方的待生效条，
+        // 生效时执行层会把内容就地嵌进助手消息（user_steer part）。
+        setInput('')
+        attachmentManager.clearImages()
+        scrollToBottom('smooth')
+        return
+      }
+
+      if ((!text && !hasAttachments)) return
 
       let userMessage: string | any[] = input.trim()
 

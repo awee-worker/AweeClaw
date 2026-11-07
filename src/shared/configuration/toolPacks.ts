@@ -71,6 +71,8 @@ const CODE_TOOL_PACK: ToolPack = {
     'read_file',
     'list_directory',
     'search_files',
+    // 证据账本回查（长内容按编号取回，只读内存）
+    'read_evidence',
     // 文件编辑
     'edit_file',
     'write_file',

@@ -3,7 +3,7 @@
  * 将内部消息格式转换为 LLM API 格式
  */
 
-import { ChatMessage, isUserMessage, isAssistantMessage, isToolResultMessage, ToolResultMessage, ToolResultImage } from '@intelligence/providerTypes'
+import { ChatMessage, isUserMessage, isAssistantMessage, isToolResultMessage, isUserSteerPart, ToolResultMessage, ToolResultImage } from '@intelligence/providerTypes'
 import { UNTRUSTED_CONTENT_TAG, type ToolOrigin } from '@intelligence/types/trustTypes'
 import { logger } from '@shared/toolkit/LogEngine'
 import type { LLMMessage } from '@intelligence/providerTypes'
@@ -208,6 +208,15 @@ export function buildLLMApiMessages(
           }
           if (msg.reasoning) assistantMsg.reasoning_content = msg.reasoning
           result.push(assistantMsg)
+        }
+      }
+
+      // 插话是「助手消息内部」的一段用户补充：重建上下文时必须还原成 user 消息，
+      // 否则模型在下一轮看不到自己曾被要求改做法。位置放在本消息的工具结果之后 ——
+      // 那里正是它被采纳的时刻，也不会把 assistant.tool_calls 与它的 tool 结果拆开。
+      for (const part of msg.parts || []) {
+        if (isUserSteerPart(part) && part.content) {
+          result.push({ role: 'user', content: part.content })
         }
       }
     }

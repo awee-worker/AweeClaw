@@ -44,6 +44,13 @@ export interface ExecutionContext {
   activeRoleId?: string | null
   /** 本轮是否允许执行期切换专家（用户显式锁定时为 false） */
   executionRoleSwitchAllowed?: boolean
+  /**
+   * 任务步数预算（工具调用轮次）
+   *
+   * 用于中途自查（50% / 75%）与最后一轮收窄工具。不传时用默认值 60；
+   * 与 MAX_LOOP_ITERATIONS（200，纯安全兜底）职责不同。
+   */
+  stepBudget?: number
 }
 
 // ===== 工具执行上下文（重新导出 shared 定义） =====
@@ -94,11 +101,24 @@ export type { CompressionLevel } from '../capabilities/context/compressionUtils'
 export interface AgentToolExecutionResult {
   toolCall: ToolCall
   result: {
+    /** 给模型的通道：进上下文的内容 */
     content: string
     meta?: Record<string, unknown>
     richContent?: import('@protocols').ToolRichContent[]
     /** 工具调用是否失败（区别于业务结果失败）；未设置时由 content 前缀推断 */
     callFailed?: boolean
+    /**
+     * 只进运行记录的通道：截屏帧、内部编号映射等
+     *
+     * 打包进模型消息前必须剔除（否则帧会进上下文，token 直接爆）。
+     */
+    record?: Record<string, unknown>
+    /** 给守卫的通道：动作前后界面是否变化；无法核实时为 null */
+    changed?: boolean | null
+    /** 界面元素全量列表；发给模型时只发与上次的差异 */
+    screenElements?: unknown[]
+    /** 结构化终止语义（B3）；未迁移的工具仍靠 callFailed + 业务码 */
+    outcome?: import('@shared/protocols/toolOutcomeProtocol').ToolOutcome
   }
 }
 

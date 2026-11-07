@@ -12,7 +12,7 @@
  */
 
 import type { CommandRiskEvalSample, InjectionDefenseSample, PruneEvalSample, TaskEvalSample } from './types'
-
+import { assignPartitions } from './partition'
 // ============================================================
 // 开发类任务（应全量保留）
 // ============================================================
@@ -291,8 +291,8 @@ const MIXED_INTENT: TaskEvalSample[] = [
   { id: 'mix-007', message: '写个脚本把这份 csv 里的重复行去掉', group: 'mixed-dev', expectedPruned: false, expectedIntents: ['development'], requiredTools: ['write_file', 'run_command'] },
 ]
 
-/** 全部任务样本（200 条） */
-export const TASK_EVAL_SAMPLES: TaskEvalSample[] = [
+/** 全部任务样本（200 条）——分池在导出时按 group 分层确定，避免新增题忘了标注 */
+export const TASK_EVAL_SAMPLES: TaskEvalSample[] = assignPartitions([
   ...DEV_CODE,
   ...DEV_ENGINEERING,
   ...WEB_RESEARCH,
@@ -304,8 +304,7 @@ export const TASK_EVAL_SAMPLES: TaskEvalSample[] = [
   ...VISUAL_ANALYSIS,
   ...EDGE_CASES,
   ...MIXED_INTENT,
-]
-
+])
 // ============================================================
 // 上下文裁剪样本（6.3）
 // ============================================================

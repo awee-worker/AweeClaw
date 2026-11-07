@@ -31,6 +31,13 @@ import { smartReplace, normalizeLineEndings, checkLineReplaceWarnings } from '@u
 import { resolveAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { BRAND } from '@shared/brand'
 import { fileCacheService } from '../runtime/fileCacheManager'
+import { evidenceLedger, EVIDENCE_MAX_CHARS } from '../runtime/evidenceLedger'
+
+/**
+ * read_file 输出超过该长度才登记证据账本。
+ * 短内容模型一次就读完了，多一层编号只会增加来回调用。
+ */
+const EVIDENCE_INDEX_MIN_CHARS = 12 * 1024
 import { getReadStrategy, buildReadTruncationMessage, buildReadWindowTruncationMessage } from './fileReadPolicies'
 import { lintService } from '../runtime/codeAnalysisService'
 import { memoryService } from '../runtime/recallService'
@@ -1583,6 +1590,67 @@ async function resolveExistingFileFallback(
 }
 
 const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: ToolExecutionContext) => Promise<ToolExecutionResult>> = {
+    /**
+     * 证据账本回查
+     *
+     * 长内容读一次就够了：读取类工具把它记进账本并回一个编号，模型需要细节时
+     * 按编号取回，不必让同一份原文在上下文里出现两次。
+     * 本执行器只读账本内存，不碰文件系统、不发起网络请求。
+     */
+    async read_evidence(args) {
+        const id = String(args.evidence_id ?? '').trim()
+        if (!id) {
+            return { success: false, result: '', error: 'evidence_id is required (e.g. "ev_3")' }
+        }
+
+        const offset = Math.max(0, Math.floor(Number(args.offset) || 0))
+        const maxChars = Math.min(
+            20000,
+            Math.max(1, Math.floor(Number(args.max_chars) || EVIDENCE_MAX_CHARS))
+        )
+
+        const resolution = evidenceLedger.resolve(id)
+
+        // 过期与不存在必须说清楚：静默返回空会让模型以为自己读到了空内容
+        if (resolution.status === 'missing') {
+            return {
+                success: false,
+                result: '',
+                error: `Evidence "${id}" does not exist in this task's ledger. Use ids that appeared in an earlier tool result, or re-read the source.`,
+            }
+        }
+        if (resolution.status === 'expired') {
+            return {
+                success: true,
+                result: `[Evidence ${id} has expired]\nIt was trimmed from the ledger to save context; only the summary remains: ${resolution.summary}\nRe-read the original source if you need the details.`,
+                meta: { evidenceId: id, expired: true },
+            }
+        }
+
+        const full = resolution.content
+        const total = full.length
+        const slice = full.slice(offset, offset + maxChars)
+        const nextOffset = offset + slice.length
+        const hasMore = nextOffset < total
+
+        const header = hasMore
+            ? `[Evidence ${id} — chars ${offset}-${nextOffset} of ${total}${hasMore ? `, continue with offset=${nextOffset}` : ''}]`
+            : `[Evidence ${id} — ${total} chars]`
+
+        return {
+            success: true,
+            result: `${header}\n${slice}`,
+            meta: {
+                evidenceId: id,
+                offset,
+                returned: slice.length,
+                total,
+                hasMore,
+                ...(hasMore ? { nextOffset } : {}),
+            },
+        }
+    },
+
     async read_file(args, ctx) {
         const BINARY_EXT_SET = new Set([
             'xlsx', 'xls', 'xlsm', 'xlsb',
@@ -1795,12 +1863,32 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             ? `\n[Note: "${autoCorrectedFrom}" was not found; read the resolved path "${resolvedReadPath}" instead.]`
             : ''
 
+        // 大段内容同时登记进证据账本：模型后续要回看细节时按编号取回，
+        // 不必让同一份原文在上下文里再出现一次。小内容不登记，避免账本被琐碎条目灌满。
+        const payload = displayContent + finalGraphContent + correctionNote
+        let evidenceNote = ''
+        let evidenceId: string | undefined
+        if (payload.length > EVIDENCE_INDEX_MIN_CHARS) {
+            try {
+                const ref = evidenceLedger.record({
+                    content: payload,
+                    source: 'read_file',
+                    summary: `${resolvedReadPath}（${countLinesFast(content)} 行）`,
+                })
+                evidenceId = ref.evidenceId
+                evidenceNote = `\n\n[已登记为证据 ${ref.evidenceId}${ref.truncated ? '（前 8KB）' : ''}：需要回看细节时用 read_evidence(evidence_id="${ref.evidenceId}") 分页取回，不要重复读取同一文件。]`
+            } catch (e) {
+                logger.tool.warn('[read_file] evidence ledger record failed:', e)
+            }
+        }
+
         return {
             success: true,
-            result: displayContent + finalGraphContent + correctionNote,
+            result: payload + evidenceNote,
             meta: {
                 filePath: resolvedReadPath,
                 ...(autoCorrectedFrom ? { autoCorrectedFrom } : {}),
+                ...(evidenceId ? { evidenceId } : {}),
             },
         }
     },
