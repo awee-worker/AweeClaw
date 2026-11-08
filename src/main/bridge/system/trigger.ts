@@ -92,6 +92,30 @@ function fail(code: string, error: string) {
 const dispatchedForExecute = new Set<string>()
 
 /**
+ * 任务变更广播缓冲
+ *
+ * 任务执行期间会连续产生多次 'updated'（进度、trace 追加、产物挂载），
+ * 每次都直接 send 会让渲染层拿到整条任务并重渲染列表。
+ * 按任务 id 合并，一个窗口内只发该任务的最终状态。
+ */
+const LEDGER_BROADCAST_DELAY_MS = 100
+const pendingLedgerBroadcasts = new Map<string, LedgerTask>()
+let ledgerBroadcastTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleLedgerBroadcast(task: LedgerTask): void {
+  pendingLedgerBroadcasts.set(task.id, task)
+  if (ledgerBroadcastTimer) return
+  ledgerBroadcastTimer = setTimeout(() => {
+    ledgerBroadcastTimer = null
+    const batch = Array.from(pendingLedgerBroadcasts.values())
+    pendingLedgerBroadcasts.clear()
+    for (const item of batch) {
+      broadcast('ledger:task-updated', item)
+    }
+  }, LEDGER_BROADCAST_DELAY_MS)
+}
+
+/**
  * 按开关决定是否把任务下发到渲染层执行器
  *
  * 只在 autoExecuteTask 开启时下发。关闭时任务安静地停在 queued，
@@ -249,8 +273,9 @@ export function registerTriggerEventListeners(): void {
   })
 
   taskLedger.on('updated', (task) => {
-    broadcast('ledger:task-updated', task)
+    scheduleLedgerBroadcast(task)
     // 同一份状态变更顺带判断要不要下发执行，避免再挂一个监听器
+    // 下发判定不能延迟：任务离开 queued 时必须及时回收去重标记
     maybeDispatchExecute(task)
   })
 
@@ -258,7 +283,7 @@ export function registerTriggerEventListeners(): void {
   // 必须同时广播：新建只发 'created'，不会走上面的 'updated'，
   // 漏了这条渲染层就永远看不到刚建出来的任务。
   taskLedger.on('created', (task) => {
-    broadcast('ledger:task-updated', task)
+    scheduleLedgerBroadcast(task)
     maybeDispatchExecute(task)
   })
 }

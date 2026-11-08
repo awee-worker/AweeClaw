@@ -40,6 +40,10 @@ interface WatcherEntry {
   subscription: watcher.AsyncSubscription
   buffer: FileChangeBuffer
   root: string
+  /** 当前生效的回调；订阅闭包与复用路径共享这个可变引用 */
+  callbackRef: { current: FileChangeForwarder }
+  /** 配置指纹，只有根目录或配置变化时才需要重建订阅 */
+  configKey: string
 }
 
 const DEFAULT_CONFIG: FileWatcherConfig = {
@@ -169,9 +173,26 @@ export async function setupFileWatcher(
 ): Promise<void> {
   if (!watcherId || !workspaceRoot) return
 
+  const mergedConfig = { ...DEFAULT_CONFIG, ...config }
+
+  // 同一窗口重复调用（file:watch start、工作区状态刷新）时，@parcel/watcher
+  // 每次 unsubscribe + subscribe 都会重新遍历整棵目录树，大仓库下是明显的 CPU 尖峰。
+  // 根目录与关键配置都没变时只替换回调，复用已有订阅。
+  const configKey = JSON.stringify({
+    ignored: mergedConfig.ignored.map((p) => String(p)),
+    bufferTimeMs: mergedConfig.bufferTimeMs,
+    maxBufferSize: mergedConfig.maxBufferSize,
+    maxWaitTimeMs: mergedConfig.maxWaitTimeMs,
+  })
+  const existing = watcherEntries.get(watcherId)
+  if (existing && existing.root === workspaceRoot && existing.configKey === configKey) {
+    existing.callbackRef.current = callback
+    logger.security.info('[Watcher] Reuse existing watcher, callback updated. id:', watcherId)
+    return
+  }
+
   await cleanupFileWatcher(watcherId)
 
-  const mergedConfig = { ...DEFAULT_CONFIG, ...config }
   const shouldIgnore = createIgnoreMatcher(mergedConfig.ignored)
   const indexService = getIndexService(workspaceRoot)
   const fileChangeBuffer = createFileChangeHandler(indexService, {
@@ -188,6 +209,8 @@ export async function setupFileWatcher(
     backend: getBackend(),
   }
 
+  // 订阅回调里要读“当前”回调，因此用可变引用，复用监听器时替换它即可
+  const callbackRef: { current: FileChangeForwarder } = { current: callback }
   const subscription = await watcher.subscribe(workspaceRoot, (err, events) => {
     if (err) {
       logger.security.error('[Watcher] Error:', err)
@@ -200,7 +223,7 @@ export async function setupFileWatcher(
       if (shouldIgnore(event.path)) continue
 
       const eventType = event.type === 'create' ? 'create' : event.type === 'delete' ? 'delete' : 'update'
-      callback({ event: eventType, path: event.path })
+      callbackRef.current({ event: eventType, path: event.path })
       // 同步派发给主进程内的全局订阅者（设备联动等），失败不阻塞主流程
       try {
         fileChangeForwarder?.({ event: eventType, path: event.path })
@@ -228,10 +251,13 @@ export async function setupFileWatcher(
     subscription,
     buffer: fileChangeBuffer,
     root: workspaceRoot,
+    callbackRef,
+    configKey,
   })
 
   logger.security.info('[Watcher] File watcher started for:', workspaceRoot, 'id:', watcherId)
 }
+
 
 export async function cleanupFileWatcher(watcherId?: string): Promise<void> {
   const entries = watcherId

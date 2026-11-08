@@ -796,11 +796,28 @@ const WATCHDOG_GUARDED_TOOLS = new Set<string>([
   'inspect_preview',
 ])
 
+/**
+ * run_command 的硬上限看门狗（35 分钟）
+ *
+ * run_command 自带分层超时，但有一条没有兜底的路径：调用方显式传 timeout=0
+ * （工具文档声明 0 = 不设超时）时，终端层不会再挂任何总时长定时器。
+ * 终端层现在用「停滞检测」兜底，但那条链路一旦异常（终端未就绪、IPC 丢包），
+ * 工具的 Promise 就永不 settle，卡片永久停在「执行中」，主循环也跟着卡住。
+ *
+ * 取值高于最大显式超时（30 分钟）：正常命令不可能跑到 35 分钟，
+ * 真跑到也说明已经失去意义，收敛成超时远好过让用户盯着死卡片。
+ */
+const RUN_COMMAND_HARD_CEILING_MS = 35 * 60 * 1000
+
 function withToolWatchdog<T>(toolName: string, promise: Promise<T>): Promise<T> {
-  if (!WATCHDOG_GUARDED_TOOLS.has(toolName)) return promise
+  // run_command 走独立的硬上限：它自带分层超时，套用 2 分钟档会误杀安装/构建命令
+  const isRunCommand = toolName === 'run_command'
+  if (!isRunCommand && !WATCHDOG_GUARDED_TOOLS.has(toolName)) return promise
 
   const configured = getAgentConfig().toolTimeoutMs || 0
-  const timeoutMs = Math.max(configured, TOOL_WATCHDOG_MIN_MS)
+  const timeoutMs = isRunCommand
+    ? RUN_COMMAND_HARD_CEILING_MS
+    : Math.max(configured, TOOL_WATCHDOG_MIN_MS)
 
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -822,6 +839,7 @@ function withToolWatchdog<T>(toolName: string, promise: Promise<T>): Promise<T> 
     )
   })
 }
+
 
 /**
  * 执行单个工具

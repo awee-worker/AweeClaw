@@ -75,6 +75,26 @@ function normalizeSubject(subject: string): string {
   return subject.replace(/\\/g, '/')
 }
 
+/**
+ * 编译结果缓存
+ *
+ * 文件变更热路径上，同一批规则会对每个事件重复做 glob → 正则编译，
+ * 事件洪峰时这部分是纯 CPU 浪费。按模式串缓存编译结果。
+ */
+const GLOB_CACHE_MAX = 500
+const globRegExpCache = new Map<string, RegExp>()
+
+function globToRegExpCached(pattern: string): RegExp {
+  const cached = globRegExpCache.get(pattern)
+  if (cached) return cached
+  const compiled = globToRegExp(pattern)
+  if (globRegExpCache.size >= GLOB_CACHE_MAX) {
+    globRegExpCache.clear()
+  }
+  globRegExpCache.set(pattern, compiled)
+  return compiled
+}
+
 /** subject 是否命中任一模式（模式本身也按 `/` 归一） */
 export function matchesAnyPattern(subject: string, patterns: string[]): boolean {
   if (patterns.length === 0) return false
@@ -90,7 +110,7 @@ export function matchesAnyPattern(subject: string, patterns: string[]): boolean 
       continue
     }
     try {
-      if (globToRegExp(normalizedPattern).test(normalized)) return true
+      if (globToRegExpCached(normalizedPattern).test(normalized)) return true
     } catch {
       // 非法模式忽略，不影响其他模式
     }
@@ -393,6 +413,8 @@ export class TriggerRegistry extends EventEmitter {
 
   private markCooldown(dedupKey: string): void {
     this.cooldowns[dedupKey] = Date.now()
+    // 写穿存储：进程异常退出后重启不应重复告警同一事件。
+    // ModuleDataStore 自带防抖 + 最大等待，单次命中的代价只是一次内存写入。
     this.persistCooldowns()
   }
 

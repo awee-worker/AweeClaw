@@ -81,6 +81,21 @@ export class CodebaseIndexService {
   private lastProgressEmit = 0
   private readonly PROGRESS_THROTTLE_MS = 100
 
+  /**
+   * 结构化索引增量刷新的合并窗口
+   *
+   * 文件监听会在短时间内送来多批变更（AI 写文件、批量生成产物）。
+   * 每批都跑 bm25Index.build()（全量重算 IDF）+ saveStructuralIndex()（全量落盘）
+   * 会把主进程 CPU 打满，因此合并到一个窗口内只刷一次。
+   */
+  private structuralFlushTimer: ReturnType<typeof setTimeout> | null = null
+  private structuralFlushFirstAt: number | null = null
+  private structuralDirty = false
+  /** 增量更新串行链：防止两批事件同时在改索引，导致重复建索引与状态错乱 */
+  private structuralUpdateChain: Promise<void> = Promise.resolve()
+  private static readonly STRUCTURAL_FLUSH_DEBOUNCE_MS = 800
+  private static readonly STRUCTURAL_FLUSH_MAX_WAIT_MS = 5000
+
   constructor(workspacePath: string, config?: Partial<IndexConfig>) {
     this.workspacePath = workspacePath
     this.config = { ...DEFAULT_INDEX_CONFIG, ...config }
@@ -384,6 +399,17 @@ export class CodebaseIndexService {
   async updateFiles(filePaths: string[]): Promise<void> {
     if (filePaths.length === 0) return
 
+    // 串行化：上一批还没处理完时，新一批排队等它，避免并发改同一份索引
+    this.structuralUpdateChain = this.structuralUpdateChain
+      .then(() => this.applyFileUpdates(filePaths))
+      .catch((err) => {
+        logger.index.warn('[IndexService] Incremental update failed:', err)
+      })
+    return this.structuralUpdateChain
+  }
+
+  /** 单批文件更新的实际处理（由 updateFiles 串行调度） */
+  private async applyFileUpdates(filePaths: string[]): Promise<void> {
     logger.index.info(`[IndexService] Updating ${filePaths.length} files...`)
 
     // 结构化模式：增量更新
@@ -445,10 +471,8 @@ export class CodebaseIndexService {
       }
 
       if (updated > 0) {
-        // 重建 BM25 索引（必须调用以更新 IDF）
-        this.bm25Index.build()
-        // 保存到缓存
-        await this.saveStructuralIndex()
+        // 增量写入只动内存索引，build（重算 IDF）与落盘合并到窗口内统一执行
+        this.scheduleStructuralFlush()
         logger.index.info(`[IndexService] Updated ${updated} files in structural index`)
       }
       return
@@ -465,6 +489,53 @@ export class CodebaseIndexService {
     }
   }
 
+  /**
+   * 安排一次结构化索引刷新
+   *
+   * 防抖 800ms，但首次变脏后最多等 5s 必须执行一次，
+   * 避免持续写入时刷新被无限推迟。
+   */
+  private scheduleStructuralFlush(): void {
+    this.structuralDirty = true
+    if (this.structuralFlushFirstAt === null) {
+      this.structuralFlushFirstAt = Date.now()
+    }
+    if (this.structuralFlushTimer) {
+      clearTimeout(this.structuralFlushTimer)
+    }
+    const elapsed = Date.now() - this.structuralFlushFirstAt
+    const delay = Math.max(
+      0,
+      Math.min(
+        CodebaseIndexService.STRUCTURAL_FLUSH_DEBOUNCE_MS,
+        CodebaseIndexService.STRUCTURAL_FLUSH_MAX_WAIT_MS - elapsed,
+      ),
+    )
+    this.structuralFlushTimer = setTimeout(() => {
+      void this.flushStructuralIndex()
+    }, delay)
+  }
+
+  /** 执行合并后的 build + 落盘 */
+  private async flushStructuralIndex(): Promise<void> {
+    if (this.structuralFlushTimer) {
+      clearTimeout(this.structuralFlushTimer)
+      this.structuralFlushTimer = null
+    }
+    this.structuralFlushFirstAt = null
+    if (!this.structuralDirty) return
+
+    this.structuralDirty = false
+    try {
+      // 重建 BM25 索引（必须调用以更新 IDF）
+      this.bm25Index.build()
+      await this.saveStructuralIndex()
+      logger.index.info('[IndexService] Structural index flushed (batched)')
+    } catch (e) {
+      logger.index.warn('[IndexService] Failed to flush structural index:', e)
+    }
+  }
+
   /** 从结构化索引中删除文件 */
   private async deleteFileFromStructuralIndex(filePath: string): Promise<void> {
     const relativePath = path.relative(this.workspacePath, filePath)
@@ -477,14 +548,15 @@ export class CodebaseIndexService {
   }
 
   /** 删除文件索引 */
+  /** 删除文件索引 */
   async deleteFileIndex(filePath: string): Promise<void> {
     const relativePath = path.relative(this.workspacePath, filePath)
 
     // 结构化模式：从索引中删除
     if (this.config.mode === 'structural') {
       await this.deleteFileFromStructuralIndex(filePath)
-      this.bm25Index.build()
-      await this.saveStructuralIndex()
+      // 与增量更新共用合并窗口，避免每次删除都全量重建索引
+      this.scheduleStructuralFlush()
       logger.index.info(`[IndexService] Deleted structural index for: ${relativePath} `)
       return
     }
@@ -513,6 +585,15 @@ export class CodebaseIndexService {
   }
 
   destroy(): void {
+    // 释放待执行的索引刷新：先落一次盘，再清定时器，避免销毁后仍持有闭包
+    if (this.structuralFlushTimer) {
+      clearTimeout(this.structuralFlushTimer)
+      this.structuralFlushTimer = null
+    }
+    if (this.structuralDirty) {
+      this.structuralDirty = false
+      void this.saveStructuralIndex().catch(() => {})
+    }
     this.worker?.terminate()
     this.worker = null
   }

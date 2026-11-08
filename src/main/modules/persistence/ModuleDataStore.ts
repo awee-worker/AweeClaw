@@ -65,6 +65,8 @@ export const STORE_KEYS = {
 
 const DATA_DIR_NAME = 'module-data'
 const SAVE_DEBOUNCE_MS = 2000
+/** 首次变脏后最长等待：持续写入时不能无限推迟落盘，否则进程异常退出会丢数据 */
+const SAVE_MAX_WAIT_MS = 10000
 
 class ModuleDataStore {
   private dataDir: string
@@ -73,6 +75,8 @@ class ModuleDataStore {
   /** 防抖写入定时器 */
   private dirtyKeys = new Set<string>()
   private saveTimer: ReturnType<typeof setTimeout> | null = null
+  /** 本轮脏数据首次出现的时间，用于计算最大等待上限 */
+  private firstDirtyAt: number | null = null
 
   constructor() {
     const userDataPath = app.getPath('userData')
@@ -168,6 +172,9 @@ class ModuleDataStore {
 
   private markDirty(key: string): void {
     this.dirtyKeys.add(key)
+    if (this.firstDirtyAt === null) {
+      this.firstDirtyAt = Date.now()
+    }
     this.scheduleSave()
   }
 
@@ -175,7 +182,10 @@ class ModuleDataStore {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer)
     }
-    this.saveTimer = setTimeout(() => this.saveNow(), SAVE_DEBOUNCE_MS)
+    // 滚动防抖：有新写入就重新计时，但不允许超过首次变脏后的最大等待上限
+    const elapsed = this.firstDirtyAt === null ? 0 : Date.now() - this.firstDirtyAt
+    const delay = Math.max(0, Math.min(SAVE_DEBOUNCE_MS, SAVE_MAX_WAIT_MS - elapsed))
+    this.saveTimer = setTimeout(() => this.saveNow(), delay)
   }
 
   private saveNow(): void {
@@ -184,7 +194,10 @@ class ModuleDataStore {
       this.saveTimer = null
     }
 
-    if (this.dirtyKeys.size === 0) return
+    if (this.dirtyKeys.size === 0) {
+      this.firstDirtyAt = null
+      return
+    }
 
     // 确保数据目录存在
     if (!fs.existsSync(this.dataDir)) {
@@ -197,7 +210,8 @@ class ModuleDataStore {
 
       try {
         const filePath = this.getFilePath(key)
-        fs.writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf-8')
+        // 运行时数据不需要缩进：紧凑序列化体积更小，同步写盘耗时更短
+        fs.writeFileSync(filePath, JSON.stringify(value), 'utf-8')
       } catch (err) {
         logger.system.error(`[ModuleDataStore] Failed to save ${key}: ${err}`)
       }
@@ -205,6 +219,7 @@ class ModuleDataStore {
 
     const count = this.dirtyKeys.size
     this.dirtyKeys.clear()
+    this.firstDirtyAt = null
     logger.system.debug(`[ModuleDataStore] Saved ${count} entries to disk`)
   }
 }

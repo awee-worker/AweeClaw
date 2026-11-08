@@ -91,6 +91,8 @@ export type TerminalCommandTerminationReason =
   | 'terminal_exit'
   | 'terminal_error'
   | 'timeout'
+  /** 连续无任何输出超过停滞阈值：判定为疑似卡住（网络挂起 / 等待 stdin / 死锁） */
+  | 'stalled'
   | 'user_closed_terminal'
   | 'cleanup'
   | 'detached'
@@ -204,6 +206,22 @@ function getOutputBufferConfig() {
 
 const MAX_COMMAND_OUTPUT_CHARS = 120_000
 const MAX_RAW_SENTINEL_BUFFER_CHARS = 24_000
+
+/**
+ * 命令「无输出停滞」判定阈值（ms）
+ *
+ * 一条命令连续这么久没有产生任何新输出，基本可以判定它不是在计算，而是卡住了：
+ * 等待 stdin、网络请求无超时、子进程死锁、或在读一个永远不返回的管道。
+ *
+ * 为什么需要它：上层 `run_command` 允许 `timeout: 0`（不设总时长上限），
+ * 而本方法只在 `timeoutMs > 0` 时才会挂超时定时器。缺了停滞检测，
+ * 一条卡死的命令会让 Promise 永不 settle，卡片永久停在「执行中」——
+ * 用户看到的就是「十分钟了还在跑」。
+ *
+ * 取值 180s：npm install 下载阶段、大文件解压等场景可能安静一分多钟，
+ * 再短会误杀正常命令；再长则失去「及时止损」的意义。
+ */
+const STALL_TIMEOUT_MS = 180_000
 
 /**
  * 命令执行期间 UI 侧输出刷新间隔
@@ -1588,6 +1606,20 @@ export class TerminalManagerClass {
         }
       }
 
+      /**
+       * 停滞检测定时器（无输出即视为卡住）
+       *
+       * 只声明与清理放在这里，重新计时的动作（armStallTimer）定义在
+       * abortHungCommand 之后，因为它要复用同一套终止处置。
+       */
+      let stallTimer: ReturnType<typeof setTimeout> | null = null
+      const clearStallTimer = () => {
+        if (stallTimer) {
+          clearTimeout(stallTimer)
+          stallTimer = null
+        }
+      }
+
       /** UI 侧刷新定时器：把逐块刷新合并为按节拍刷新 */
       let uiFlushTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -1621,6 +1653,7 @@ export class TerminalManagerClass {
         unsubRaw()
         if (timer) clearTimeout(timer)
         clearIdleTimer()
+        clearStallTimer()
         clearUiFlush()
         this.activeExecutions.delete(termId)
 
@@ -1770,71 +1803,90 @@ export class TerminalManagerClass {
         }, 1200)
       }
 
-      // timeoutMs = 0 表示不限制超时（AI 执行命令时取消超时限制）
-      // 仅在显式指定正数超时的情况下才设置定时器
+      /**
+       * 终止「已卡住」的命令：先确认不是刚好跑完，再 Ctrl+C → 结算 → 宽限期后关终端回收进程树
+       *
+       * 超时与停滞两条判定共用这段处置，唯一区别是结算原因与提示文案。
+       * 「结算」与「回收进程」必须绑在一起，否则会在后台留下继续吃 CPU 的孤儿进程。
+       */
+      const abortHungCommand = (reason: 'timeout' | 'stalled') => {
+        // 超时/停滞与「命令刚好跑完」经常同时发生：先看 END sentinel 是否已到齐，
+        // 到了就按真实退出码结算，不算超时，避免上层重跑同一条命令导致耗时翻倍。
+        if (trySettleFromSentinel()) return
+        // 提示符已回到终端，说明命令跑完了，只是 sentinel 没收全
+        if (isFinishedByPrompt()) {
+          settle('sentinel_missing_prompt', {
+            finalStatus: 'interrupted',
+            output: getVisibleOutput(),
+            partialOutput: getVisibleOutput(),
+            sentinelMatched: false,
+          })
+          return
+        }
+
+        // pipe 后端的 Ctrl+C 语义是「杀掉整棵进程组」，会连带杀掉承载会话的 shell，
+        // 此后写进这台终端的命令全部落在死 shell 上，只能靠超时收场。因此只对 pty 发送。
+        const backendKind = this.state.terminals.find(t => t.id === termId)?.backend
+        if (backendKind !== 'pipe') {
+          try {
+            this.writeToTerminal(termId, '\x03')
+          } catch {
+            // 终端可能已关闭，忽略
+          }
+        }
+
+        const visible = getVisibleOutput()
+        settle(reason, {
+          finalStatus: 'timed_out',
+          timedOut: true,
+          // 停滞提示必须自己带出来：上层只看到 timedOut，无法区分「跑太久」与「卡死」
+          output: reason === 'stalled'
+            ? `${visible}${visible ? '\n\n' : ''}[已连续 ${Math.round(STALL_TIMEOUT_MS / 1000)} 秒没有任何输出，判定为卡住并已终止]`
+            : visible,
+          partialOutput: visible,
+        })
+
+        // SIGINT 可能被 python/node 等进程忽略（C 扩展、守护线程、无超时的网络脚本），
+        // 宽限期后强制关闭终端，由主进程回收整棵进程树。
+        // 关闭前确认终端上仍是刚刚那条命令，避免误杀紧接着下发的下一条。
+        const hungSessionId = commandSessionId
+        setTimeout(() => {
+          const active = this.activeExecutions.get(termId)
+          if (active && active.commandSessionId !== hungSessionId) return
+          const target = this.state.terminals.find(t => t.id === termId)
+          if (target?.isAgent) {
+            this.closeTerminal(termId)
+          }
+        }, 1500)
+      }
+
+      /**
+       * 停滞检测重新计时
+       *
+       * 每收到一批新输出就顺延；连续 STALL_TIMEOUT_MS 没有任何输出即判定卡住。
+       * 这是 timeoutMs = 0（不设总时长上限）时唯一的安全网 —— 缺了它，
+       * 挂死的命令会让 Promise 永不 settle，卡片永久停在「执行中」。
+       */
+      const armStallTimer = () => {
+        clearStallTimer()
+        if (settled) return
+        stallTimer = setTimeout(() => {
+          stallTimer = null
+          if (settled) return
+          abortHungCommand('stalled')
+        }, STALL_TIMEOUT_MS)
+      }
+
+      // timeoutMs = 0 表示不设总时长上限，此时完全依赖上面的停滞检测兜底
       const timer = timeoutMs > 0
-        ? setTimeout(() => {
-            // 超时与「命令刚好跑完」经常落在同一时刻（显式 timeout 恰好等于命令自然时长时尤其常见）。
-            // 先确认 END sentinel 是否已经到齐：到了就按真实退出码结算，不算超时。
-            // 否则会凭空多出一条「超时失败」，上层重跑同一条命令，耗时直接翻倍。
-            if (trySettleFromSentinel()) return
-            // 同理，命令执行完之后提示符已经回到终端，说明它跑完了，只是 sentinel 没收全
-            if (isFinishedByPrompt()) {
-              settle('sentinel_missing_prompt', {
-                finalStatus: 'interrupted',
-                output: getVisibleOutput(),
-                partialOutput: getVisibleOutput(),
-                sentinelMatched: false,
-              })
-              return
-            }
-
-            // 超时兜底：向终端发送 Ctrl+C 中断可能挂起的进程（如无超时的 fetch/网络脚本），
-            // 确保挂起的进程被终止、shell 回到可接受新命令的状态。
-            // 否则超时后终端被残留进程占用，下一次 run_command 复用终端会连锁超时。
-            //
-            // pipe 后端例外：它的 Ctrl+C 语义是「杀掉整棵进程组」，会连带把承载会话的
-            // shell 一起杀掉。此后写进这台终端的命令全部落在一个已死的 shell 上，
-            // 只能靠超时收场，表现为一条条「超时 + 重跑」。这类终端交给下面 1500ms
-            // 后的 closeTerminal 由主进程回收进程树并重建。
-            const backendKind = this.state.terminals.find(t => t.id === termId)?.backend
-            if (backendKind !== 'pipe') {
-              try {
-                this.writeToTerminal(termId, '\x03')
-              } catch {
-                // 终端可能已关闭，忽略
-              }
-            }
-            settle('timeout', {
-              finalStatus: 'timed_out',
-              timedOut: true,
-              partialOutput: getVisibleOutput(),
-              output: getVisibleOutput(),
-            })
-
-            // SIGINT 可能被 python/node 等进程忽略（C 扩展、守护线程、无超时的网络脚本），
-            // 仅靠 Ctrl+C 会让命令进程继续占用 CPU。宽限期后强制关闭终端，
-            // 由主进程终止整棵进程树（含忽略信号残留的子进程）。
-            //
-            // 关闭前必须确认这台终端上仍是「刚刚超时的那一条命令」：settle 已经把
-            // activeExecutions 清干净并 resolve，调用方（例如能力探测、串行批处理）
-            // 往往紧接着复用同一台终端下发下一条。若不看归属就关，那条新命令会被
-            // 这次关闭当成「终端被用户关闭」结算成 cancelled 且没有输出，调用方只
-            // 看到一条「超时」和一条「取消」交替出现，完全看不出是同一台终端在互相踩。
-            const timedOutSessionId = commandSessionId
-            setTimeout(() => {
-              const active = this.activeExecutions.get(termId)
-              // 已有新命令在跑，说明终端没被超时的残留进程占死，不关闭
-              if (active && active.commandSessionId !== timedOutSessionId) return
-              const target = this.state.terminals.find(t => t.id === termId)
-              if (target?.isAgent) {
-                this.closeTerminal(termId)
-              }
-            }, 1500)
-          }, timeoutMs)
+        ? setTimeout(() => abortHungCommand('timeout'), timeoutMs)
         : null
 
       const START_MARKER = `${OSC}${START_PAYLOAD}${BEL}`
+
+      // 命令即将写入，停滞计时从现在开始：即使连 START 都没等到（进程根本没起来），
+      // 也会在 STALL_TIMEOUT_MS 后收敛成「卡住」，而不是永久停在执行中。
+      armStallTimer()
 
       const unsubRaw = this.onRawData((event) => {
         if (event.id !== termId || settled) return
@@ -1887,6 +1939,8 @@ export class TerminalManagerClass {
 
         // 逐块只登记一次待刷新，实际处理与推送由节拍器合并执行
         scheduleUiFlush()
+        // 有输出就说明进程还活着：重置停滞计时
+        armStallTimer()
 
         // 记录「START 之后的数据让末尾成为提示符」那批数据的到达时刻。
         // 兜底判定必须用到达时刻而不是检查时刻，否则命令开始前残留的提示符
