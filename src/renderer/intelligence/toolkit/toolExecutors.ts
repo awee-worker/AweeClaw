@@ -74,7 +74,7 @@ import { skillService, type SkillItem } from '../runtime/skillRepository'
 import type { Language } from '@renderer/i18n'
 import type { ReplaceErrorCode } from '@utils/smartReplace'
 import { resolveAgentLanguage, pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
-import { guardWriteFile, buildLineEditsFromDiff, applyLineEdits } from './fileWritePolicy'
+import { guardWriteFile, buildLineEditsFromDiff, applyLineEdits, resolvePathKind, type PathKind } from './fileWritePolicy'
 import { openBuiltinPreview } from '@renderer/preview/openBuiltinPreview'
 import { previewSessionService } from '@renderer/preview/previewSessionManager'
 import type {
@@ -464,37 +464,101 @@ function detectLineContentMismatch(
     )
 }
 
+/** 父路径链最多向上探测的层级，避免超长路径带来成串 IPC */
+const MAX_PARENT_PROBE_DEPTH = 8
+
+/**
+ * 判定一个路径本身的类型：文件 / 目录 / 不存在。
+ *
+ * 判定规则见 resolvePathKind；这里只负责取「目标所在目录的条目列表」。
+ * 取不到（父目录不存在、被安全策略拦截等）一律按 missing 处理，不拦截，
+ * 把真实结论留给写入路径。
+ */
+async function probePathKind(targetPath: string): Promise<PathKind> {
+    const dir = getDirname(targetPath)
+    const name = getFileName(targetPath)
+    if (!dir || !name) return 'missing'
+
+    return resolvePathKind(name, await api.file.readDir(dir))
+}
+
+/**
+ * 检查写入目标的父路径链：链上任何一级被普通文件占用，写入必然失败。
+ *
+ * 只查父路径，不查目标自身——目标已存在是 write_file 的合法场景（整文件重写）。
+ * 早期实现把目标本身也纳入判定，导致「覆盖已存在文件」被误报成 Path conflict，
+ * 模型据此以为路径写错，反复换路径重试。
+ */
 async function checkParentPathNotFile(filePath: string): Promise<string | null> {
-    const parentDir = getDirname(filePath)
-    if (!parentDir || parentDir === filePath) return null
+    let current = getDirname(filePath)
 
-    try {
-        const entries = await api.file.readDir(parentDir)
-        const targetName = filePath.split(/[/\\]/).pop()!
-        const entry = entries?.find(e => e.name === targetName || e.path === filePath)
-        if (entry && !entry.isDirectory) {
-            return `Path conflict: "${targetName}" already exists as a file (not a directory) in "${parentDir}". You cannot create files inside a file. To fix this: 1) Delete the existing file "${filePath}" first, then recreate it as a directory using create_file_or_folder with a trailing "/"; or 2) Use a different path.`
-        }
-    } catch {
-    }
+    for (let depth = 0; depth < MAX_PARENT_PROBE_DEPTH; depth++) {
+        if (!current || current === filePath) return null
+        // 到达根目录 / 盘符后没有更上一层可查
+        if (current === '/' || current === '\\' || /^[a-zA-Z]:[\\/]?$/.test(current)) return null
 
-    const pathParts = filePath.split(/[/\\]/)
-    for (let i = 1; i < pathParts.length - 1; i++) {
-        const checkPath = pathParts.slice(0, i + 1).join('/')
-        try {
-            const exists = await api.file.exists(checkPath)
-            if (exists) {
-                const readResult = await api.file.read(checkPath)
-                if (readResult !== null && readResult !== undefined) {
-                    return `Path conflict: "${checkPath}" is a file, not a directory. You are trying to write to "${filePath}" but "${checkPath}" is a regular file. To fix this: 1) Delete "${checkPath}" first; 2) Create it as a directory using create_file_or_folder with path "${checkPath}/"; 3) Then write files inside it.`
-                }
-            }
-        } catch {
+        const kind = await probePathKind(current)
+        if (kind === 'file') {
+            return (
+                `Path conflict: "${current}" is a regular file, not a directory, so nothing can be written under it. ` +
+                `Target: "${filePath}". To fix this: use a different path, or delete "${current}" and recreate it ` +
+                `as a directory with create_file_or_folder.`
+            )
         }
+        // 该级是目录，说明它的所有祖先也都是目录，无需继续向上
+        if (kind === 'directory') return null
+
+        // 该级不存在或无法判定：继续向上，可能是更上层的某一级被文件占用
+        const parent = getDirname(current)
+        if (!parent || parent === current) return null
+        current = parent
     }
 
     return null
 }
+
+/**
+ * 写入目标是目录时的引导。
+ *
+ * write_file 与 create_file_or_folder 的文件分支只写文件，目标是目录时落盘会以
+ * EISDIR 失败、回落到「未知错误」。这里提前给出可操作指引。
+ */
+async function checkTargetNotDirectory(targetPath: string): Promise<string | null> {
+    const kind = await probePathKind(targetPath)
+    if (kind !== 'directory') return null
+
+    return (
+        `Path conflict: "${targetPath}" is a directory, not a file. This tool only writes files. ` +
+        `To write a file inside it, append a file name to the path (e.g. "${targetPath}/name.ext"); ` +
+        `to inspect its contents, use list_directory.`
+    )
+}
+
+/**
+ * 建目录时的目标检查：同名路径已经是普通文件时不能建成目录。
+ */
+async function checkTargetNotFileForDirectory(targetPath: string): Promise<string | null> {
+    const kind = await probePathKind(targetPath)
+    if (kind !== 'file') return null
+
+    return (
+        `Path conflict: "${targetPath}" already exists as a regular file, so it cannot be created as a directory. ` +
+        `Choose a different name, or delete the file first if it is no longer needed.`
+    )
+}
+
+/**
+ * 写文件类工具的统一前置检查：父路径链不含文件，且目标自身不是目录。
+ *
+ * 目标已存在且是文件属于正常场景（新建覆盖 / 整文件重写），不在这里拦截；
+ * 是否该改用 edit_file 由 fileWritePolicy 的意图分析决定。
+ */
+async function checkFileWriteTarget(targetPath: string): Promise<string | null> {
+    const parentConflict = await checkParentPathNotFile(targetPath)
+    if (parentConflict) return parentConflict
+    return checkTargetNotDirectory(targetPath)
+}
+
 
 async function checkWriteFailureReason(filePath: string): Promise<string> {
     const parentConflict = await checkParentPathNotFile(filePath)
@@ -2565,12 +2629,15 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 发送文件正在编写事件，触发自动打开预览
         EventBus.emit({ type: 'file:writing', filePath: path, workspacePath: ctx.workspacePath || '' })
 
-        const parentConflict = await checkParentPathNotFile(path)
-        if (parentConflict) {
+        // 只拦「父路径链被文件占用」与「目标自己是目录」。
+        // 目标已存在且是文件不拦：那是整文件重写的正常场景，是否该改用
+        // edit_file 由下面的 guardWriteFile 意图分析决定。
+        const writeTargetConflict = await checkFileWriteTarget(path)
+        if (writeTargetConflict) {
             return {
                 success: false,
                 result: '',
-                error: parentConflict,
+                error: writeTargetConflict,
             }
         }
 
@@ -2679,6 +2746,11 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             if (parentConflict) {
                 return { success: false, result: '', error: parentConflict }
             }
+            // 同名路径已经是普通文件时不能建成目录，直接给出换名指引
+            const targetConflict = await checkTargetNotFileForDirectory(path)
+            if (targetConflict) {
+                return { success: false, result: '', error: targetConflict }
+            }
             const success = await api.file.mkdir(path)
             if (success) {
                 notifyWorkspaceTreeChange({
@@ -2701,9 +2773,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
         }
 
-        const parentConflict = await checkParentPathNotFile(path)
-        if (parentConflict) {
-            return { success: false, result: '', error: parentConflict }
+        const writeTargetConflict = await checkFileWriteTarget(path)
+        if (writeTargetConflict) {
+            return { success: false, result: '', error: writeTargetConflict }
         }
 
         const originalContent = await api.file.read(path) ?? null

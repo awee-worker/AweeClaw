@@ -304,6 +304,42 @@ export function applyLineEdits(
 }
 
 /**
+ * 一个路径在磁盘上的实际类型。
+ *
+ * 'missing' 同时覆盖「不存在」和「父目录读不到 / 无法判定」：两者在写入前置检查里
+ * 的处理一致——不拦截，把真实结论留给写入路径自己报错。
+ */
+export type PathKind = 'file' | 'directory' | 'missing'
+
+/** 目录条目的最小结构，与 file:readDir 返回的条目对齐 */
+export interface DirEntryLike {
+  name: string
+  isDirectory: boolean
+}
+
+/**
+ * 由父目录的条目判定目标路径的类型。
+ *
+ * 这是唯一可靠的判定方式：Dirent.isDirectory 直接来自文件系统，而
+ * api.file.read() 无法区分「目录」与「空文件」（前者读失败返回 null，后者返回空串），
+ * api.file.exists() 则完全不区分文件与目录。
+ *
+ * 早期实现用 read() 的返回值反推目标类型，把「目标文件已存在」误判成
+ * 「路径冲突」，导致 write_file 覆盖任何已有文件都会失败。
+ */
+export function resolvePathKind(
+  targetName: string,
+  entries: DirEntryLike[] | null | undefined,
+): PathKind {
+  if (!targetName || !entries || entries.length === 0) return 'missing'
+
+  const entry = entries.find(item => item.name === targetName)
+  if (!entry) return 'missing'
+
+  return entry.isDirectory ? 'directory' : 'file'
+}
+
+/**
  * write_file 执行前的统一守卫。
  *
  * 核心规则：

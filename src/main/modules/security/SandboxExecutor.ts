@@ -14,6 +14,7 @@ import { EventEmitter } from 'events'
 import * as childProcess from 'child_process'
 import * as path from 'path'
 import { isDangerousCommand, matchDangerousCommand } from '@shared/configuration/dangerousCommands'
+import { collectCommandNames, extractSubstitutions } from '@shared/configuration/shellCommand'
 
 // ============================================
 // 沙箱配置
@@ -75,8 +76,12 @@ export const DEFAULT_SANDBOX_CONFIG: SandboxConfig = {
     'ssh', 'scp', 'sftp', 'telnet',
   ],
   deniedArgPatterns: [
-    // 命令替换注入风险（经典 shell 注入向量，必须禁止）
-    '`', '$(',
+    // NOTE: 命令替换（$(...) / 反引号）已从子串黑名单移除。
+    // 子串匹配会把 `r=$(lsof -iTCP:8080)`、`echo "$(date)"` 这类日常写法整条拒掉，
+    // 而 deny 的理由只有一句 "contains denied pattern: $("，模型会误判成权限问题。
+    // 真正的风险从来不是替换语法本身，而是替换体内部执行了被禁止的命令
+    // （例如 `$(rm -rf ~)`：命令名检查只取首个词，黑名单抓不到替换体里的 rm）。
+    // 现由 validateCommandSegments() 解析替换体并逐个校验内部命令名与危险模式。
     // 跳过确认的参数（可能让 AI 未经用户审批执行破坏性操作）
     // 使用正则匹配独立参数，避免误判文件名（如 --yes-please 不会被匹配）
     '--no-confirm', '--yes',
@@ -168,11 +173,14 @@ class SandboxExecutor extends EventEmitter {
   /**
    * 验证命令是否允许执行
    *
-   * 策略（三层校验，与 terminalSandbox.ts 保持一致）：
-   * 1. 黑名单（deniedCommands）：命中即拒绝 — rm/sudo/dd 等破坏性/提权命令
+   * 策略（四层校验，与 terminalSandbox.ts 保持一致）：
+   * 1. 首命令黑名单（deniedCommands）：命中即拒绝 — rm/sudo/dd 等破坏性/提权命令
    * 2. 危险命令模式（isDangerousCommand）：命中即拒绝 — curl|sh、rm -rf / 等
    *    复用 @shared/configuration/dangerousCommands 的模式定义，确保两层共用同一份规则
-   * 3. 危险参数模式（deniedArgPatterns）：命令替换注入、跳过确认参数
+   * 3. 分段校验（validateCommandSegments）：按 `;` `&&` `||` `|` 拆段、并递归进入
+   *    `$(...)` / 反引号替换体，逐个校验内部命令名与内部危险模式。
+   *    只查首个词会漏掉 `echo ok; rm -rf x` 与 `r=$(rm -rf ~)`，这一步把口子堵上。
+   * 4. 危险参数模式（deniedArgPatterns）：跳过确认参数等
    *
    * 白名单（allowedCommands）字段保留用于配置兼容性，但不参与实际校验。
    */
@@ -188,7 +196,7 @@ class SandboxExecutor extends EventEmitter {
 
     // 1. 检查黑名单：命中即拒绝
     if (config.deniedCommands.includes(cmdName)) {
-      return { allowed: false, reason: `Command is denied: ${cmdName}` }
+      return { allowed: false, reason: `命令「${cmdName}」在禁止列表中，禁止执行。` }
     }
 
     // 2. 检查危险命令模式（curl|sh、rm -rf /、wget -O 等）
@@ -198,7 +206,13 @@ class SandboxExecutor extends EventEmitter {
       return { allowed: false, reason: `检测到危险命令模式: ${matchedPattern}` }
     }
 
-    // 3. 检查危险参数模式
+    // 3. 分段校验：复合命令的每一段、以及命令替换内部出现的命令
+    const segmentCheck = this.validateCommandSegments(command, config)
+    if (!segmentCheck.allowed) {
+      return segmentCheck
+    }
+
+    // 4. 检查危险参数模式
     for (const pattern of config.deniedArgPatterns) {
       // 参数模式（以 - 开头，如 -y, --yes, --no-confirm）：
       // 必须作为独立参数出现（前面是空格/命令开头，后面是空格/行尾）
@@ -207,7 +221,10 @@ class SandboxExecutor extends EventEmitter {
         const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         const argRegex = new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`)
         if (argRegex.test(command)) {
-          return { allowed: false, reason: `Command contains denied pattern: ${pattern}` }
+          return {
+            allowed: false,
+            reason: `命令包含被禁止的参数「${pattern}」（跳过确认类参数）。请去掉该参数后重试。`,
+          }
         }
       } else {
         // shell 元字符、路径等：保持子串匹配
@@ -219,6 +236,7 @@ class SandboxExecutor extends EventEmitter {
 
     return { allowed: true, sanitized: command }
   }
+
 
   // ============================================
   // 沙箱执行
@@ -383,6 +401,51 @@ class SandboxExecutor extends EventEmitter {
     const cmdPart = firstSpace >= 0 ? trimmed.slice(0, firstSpace) : trimmed
     return path.basename(cmdPart)
   }
+
+  /**
+   * 分段校验复合命令与命令替换
+   *
+   * 黑名单只查「首个词」，以下两种写法会绕过去：
+   *   - `echo ok; rm -rf ~/data`      —— 第二段才是危险命令
+   *   - `r=$(rm -rf ~)`               —— 危险命令藏在替换体里
+   * 因此这里把命令拆成可执行段（`;` `&&` `||` `|` 换行）并进入替换体，
+   * 逐个命令名过黑名单，替换体整体再跑一次危险模式检测。
+   *
+   * 拆段与替换体提取由 @shared/configuration/shellCommand 提供，
+   * 与 terminalSandbox 执行前校验共用同一份解析，避免两处规则分裂。
+   */
+  private validateCommandSegments(
+    command: string,
+    config: SandboxConfig,
+  ): SandboxValidationResult {
+    // 1. 各执行段与替换体内的命令名过黑名单
+    for (const name of collectCommandNames(command)) {
+      if (config.deniedCommands.includes(name)) {
+        return {
+          allowed: false,
+          reason:
+            `命令中包含被禁止的命令「${name}」。这不是权限问题，也不是路径问题：` +
+            `该命令在安全策略中被禁用，请改写命令（去掉该调用或换用受支持的命令）后重试。`,
+        }
+      }
+    }
+
+    // 2. 替换体内部同样要过危险模式（curl|sh、rm -rf / 等）
+    for (const inner of extractSubstitutions(command)) {
+      if (isDangerousCommand(inner)) {
+        return {
+          allowed: false,
+          reason:
+            `命令替换 $(...) 内检测到危险命令模式: ${matchDangerousCommand(inner)}。` +
+            `请改写命令，避免在替换体里执行该操作。`,
+        }
+      }
+    }
+
+    return { allowed: true }
+  }
+
+
 }
 
 /** 全局沙箱执行器实例 */

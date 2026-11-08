@@ -31,6 +31,7 @@ import {
   PROTECTED_APP_DIR_NAME,
 } from '@shared/appConstants'
 import { DANGEROUS_COMMAND_PATTERNS } from '@shared/configuration/dangerousCommands'
+import { collectCommandNames, extractSubstitutions } from '@shared/configuration/shellCommand'
 import { hardKillProcessTree } from '../process/processTree'
 import { safeIpcHandle } from '../bridge/core/ipcGuard'
 import { normalizePipeTerminalInput } from './terminalInputFilter'
@@ -177,6 +178,33 @@ const GIT_ARG_INJECTION_CHARS = /[;&|`$]/
 function containsShellInjection(arg: string): boolean {
   return SHELL_INJECTION_CHARS.test(arg)
 }
+
+/**
+ * 检查命令中是否出现被禁止的命令（含复合命令的后续段与命令替换体内部）
+ *
+ * 历史做法是对整条命令做字符黑名单（`;` `|` `$(` `{}` `<>` 一律拒绝），
+ * 结果把 for 循环、管道、命令替换这类脚本常态写法整条拒掉，AI 只能放弃执行。
+ * 真正需要拦的是「被执行到的禁止命令」，因此改为按段拆解后逐个命令名比对。
+ *
+ * @returns 命中说明，未命中返回 null
+ */
+function detectForbiddenSegment(command: string): string | null {
+  for (const name of collectCommandNames(command)) {
+    if (BLACKLIST.has(name.toLowerCase())) {
+      return `命令中包含被禁止的命令「${name}」，禁止执行。请改写命令后重试。`
+    }
+  }
+
+  for (const inner of extractSubstitutions(command)) {
+    const hit = DANGEROUS_COMMAND_PATTERNS.find((pattern) => pattern.test(inner))
+    if (hit) {
+      return `命令替换内检测到危险模式: ${hit.source}`
+    }
+  }
+
+  return null
+}
+
 
 /**
  * 检测 git 参数是否包含注入字符（比通用检测更宽松，允许 {} <> () 用于 git ref）
@@ -1543,15 +1571,20 @@ export function registerSecureTerminalHandlers(
       }
     }
 
-    // 安全检查：检测 shell 注入
-    if (containsShellInjection(command)) {
-      const reason = `命令包含危险字符: "${command}"`
+    // 安全检查：复合命令的后续段与命令替换体内是否出现被禁止的命令
+    //
+    // 这里曾经是对整条命令做字符黑名单（`;` `|` `$(` `{}` `<>` 一律拒绝），
+    // 把 for 循环、管道、命令替换这类脚本常态写法整条拒掉 —— 与沙箱层那次
+    // 误拦同源。命令文本本身要交给 shell 解析，按段拆解后比对命令名才有意义。
+    const forbiddenSegment = detectForbiddenSegment(command)
+    if (forbiddenSegment) {
       securityManager.logOperation(OperationType.SHELL_EXECUTE, command, false, {
-        reason,
+        reason: forbiddenSegment,
         source: 'executeBackground',
       })
-      return { success: false, output: '', exitCode: 1, error: reason }
+      return { success: false, output: '', exitCode: 1, error: forbiddenSegment }
     }
+
 
     return new Promise((resolve) => {
       const isWindows = process.platform === 'win32'

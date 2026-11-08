@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { analyzeWriteIntent, guardWriteFile, buildLineEditsFromDiff, applyLineEdits } from '../fileWritePolicy'
+import {
+  analyzeWriteIntent,
+  guardWriteFile,
+  buildLineEditsFromDiff,
+  applyLineEdits,
+  resolvePathKind,
+} from '../fileWritePolicy'
 
 /** 构造一份 80 行的样本文件，用于模拟“已有文件”的局部修改与整写覆盖 */
 const BASE_LINES = Array.from({ length: 80 }, (_, i) => `const value${i} = ${i}`)
@@ -53,6 +59,47 @@ describe('analyzeWriteIntent', () => {
   it('大部分内容被替换判定为整文件重写', () => {
     const next = BASE_LINES.map((_, i) => `const rewritten${i} = ${i * 2}`).join('\n')
     expect(analyzeWriteIntent(BASE, next).intent).toBe('full-rewrite')
+  })
+})
+
+describe('resolvePathKind', () => {
+  // 回归重点：写入前置检查曾用 api.file.read() 的返回值反推目标类型，
+  // 把「目标已存在且是文件」判成「路径冲突」，导致 write_file 覆盖任何
+  // 已有文件都直接失败，模型收到 "Path conflict" 后误以为路径写错。
+  it('目标已存在且是普通文件时判定为 file', () => {
+    const entries = [
+      { name: 'existing.ts', isDirectory: false },
+      { name: 'sibling', isDirectory: true },
+    ]
+    expect(resolvePathKind('existing.ts', entries)).toBe('file')
+  })
+
+  it('目标已存在且是目录时判定为 directory', () => {
+    const entries = [{ name: 'src', isDirectory: true }]
+    expect(resolvePathKind('src', entries)).toBe('directory')
+  })
+
+  it('同目录下没有该条目时判定为 missing', () => {
+    const entries = [{ name: 'other.ts', isDirectory: false }]
+    expect(resolvePathKind('target.ts', entries)).toBe('missing')
+  })
+
+  it('条目列表为空（目录为空或读取失败）时判定为 missing', () => {
+    expect(resolvePathKind('target.ts', [])).toBe('missing')
+  })
+
+  it('条目列表缺失时判定为 missing，不拦截写入', () => {
+    expect(resolvePathKind('target.ts', null)).toBe('missing')
+    expect(resolvePathKind('target.ts', undefined)).toBe('missing')
+  })
+
+  it('目标名为空时判定为 missing', () => {
+    expect(resolvePathKind('', [{ name: '', isDirectory: true }])).toBe('missing')
+  })
+
+  it('只按完整文件名匹配，不做相似匹配', () => {
+    const entries = [{ name: 'Existing.ts', isDirectory: false }]
+    expect(resolvePathKind('existing.ts', entries)).toBe('missing')
   })
 })
 
