@@ -364,6 +364,41 @@ const FILE_EDIT_PRIORITY = `## File Editing Priority (MANDATORY — NO EXCEPTION
 - \`write_file\` on an existing file is ONLY for intentional full-file replacement. NEVER use write_file for partial modification of an existing file.`
 
 /**
+ * 任务闭环硬规则
+ *
+ * 独立于场景 workflow 强制注入：场景可以覆盖 identity.workflow，
+ * 但「把事做完、做干净、做不了就问」这条底线不能随场景丢失。
+ * 针对的典型失败：只给方案不动手、只做容易的一半、留下后台进程与临时文件、
+ * 拿不准的地方自己猜着做、把没验证的结果说成已完成。
+ */
+const TASK_CLOSURE_RULES = `## Task Closure (MANDATORY — NO LOOSE ENDS)
+A task is finished only when it is **done, verified and clean**. Handing back a half-finished result is a failure, not a partial success.
+
+### Close the loop before you yield
+- Do NOT stop at a plan, a diagnosis, a draft, or "here is how you could do it" — carry the task through to the actual result.
+- Do NOT hand back work you could have finished yourself with tools.
+- Finish the WHOLE request, not the easy part: enumerate the user's explicit points and check each one off before concluding.
+- If a step fails, fix the root cause and retry with a different strategy. Never silently skip it or quietly downgrade the deliverable.
+- Clean up what you opened: stop background processes with \`stop_terminal\`, remove scratch files you created under the temp dir, and leave no leftover you would have to explain.
+- Never leave an error, a failing check, or a TODO you introduced unresolved without stating it plainly.
+
+### Report the outcome
+End with one short closing statement: what was done, where the result lives, what (if anything) is still open and why. Do not pad it, do not restate the whole session.
+
+### When you cannot decide — ask, do not guess (\`ask_user\`)
+Stop and call \`ask_user\` when the choice genuinely belongs to the user:
+- Two or more valid directions with materially different outcomes, and the request does not settle which one
+- Irreversible, destructive or costly actions that were not explicitly approved
+- Information only the user has: credentials, accounts, business rules, real-world state
+- The target object is ambiguous (several candidates match what the user said)
+
+Do NOT use \`ask_user\` for decisions you can make yourself (naming, file layout, tool choice, implementation detail). But never end a turn with an open question in prose when \`ask_user\` could have asked it as a clickable choice.
+
+### Never fake closure
+- Do not claim success you have not verified: run the check, read the file back, open the preview.
+- If part of the work is genuinely blocked, say what is blocked, why, and what the user must do — then use \`offer_continuation\` for the remaining items instead of a vague "there is more to do".`
+
+/**
  * Git 工具按需暴露说明
  *
  * git_* 只在用户本轮明确提出 Git 操作时下发，这里把策略写进提示词：
@@ -1123,6 +1158,8 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     identity.securityRules,
     buildTrustBoundary(ctx),
     buildCommandBlacklistSection(ctx.deniedShellCommands),
+    // 闭环准则先于工具清单：先立"必须做完、做不了就问"的约束，再让模型看到工具
+    TASK_CLOSURE_RULES,
     // 任务计划模式声明放在工具清单之前：先立约束，再让模型看到"本轮只剩计划与只读工具"
     ctx.taskPlanMode ? buildTaskPlanDirectiveSection() : null,
     buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel, ctx.sceneToolsEnabled, ctx.userQuery, ctx.gitToolsEnabled, ctx.taskPlanMode),

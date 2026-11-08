@@ -1315,10 +1315,12 @@ TIPS:
             'ask_user question="Proceed with deployment?" options=[{id:"yes",label:"Yes"},{id:"no",label:"No"}] allow_other=false',
         ],
         criticalRules: [
+            'MUST use when the choice genuinely belongs to the user: two or more valid directions with materially different outcomes, an irreversible/destructive/costly action that was not approved, information only the user has (credentials, accounts, business rules), or an ambiguous target object',
             'Use to gather requirements, preferences, or confirmations',
             'Keep options concise and clear',
             'Provide descriptions for complex options',
             'Do NOT add your own "Other"/"custom" option — the UI appends one; pass allow_other=false only when the options are truly exhaustive (e.g. a yes/no confirmation)',
+            'Never end a turn with an open question in prose when ask_user could have asked it as a clickable choice — and never guess on a user-owned decision just to keep going',
         ],
         category: 'interaction',
         approvalType: 'none',
