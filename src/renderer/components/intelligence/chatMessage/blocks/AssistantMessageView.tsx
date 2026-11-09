@@ -496,15 +496,6 @@ const AssistantMessageBody = React.memo(function AssistantMessageBody({
           >
             <SceneRoleIcon className="w-3 h-3" />
             <span className="font-medium">{sceneRole.nameZh}</span>
-            {sceneRole.reason && (
-              <span className="text-text-muted/70">
-                {sceneRole.reason === 'explicit'
-                  ? (language === 'zh' ? '你指定' : 'selected')
-                  : sceneRole.reason === 'semantic'
-                    ? (language === 'zh' ? 'AI 选择' : 'AI picked')
-                    : (language === 'zh' ? '自动匹配' : 'auto-matched')}
-              </span>
-            )}
             {messageIsStreaming && (
               <span className="w-1 h-1 rounded-full bg-accent animate-pulse" />
             )}

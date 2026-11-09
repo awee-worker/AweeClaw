@@ -1488,7 +1488,7 @@ export async function buildAgentSystemPrompt(
       description: skill.description,
     })),
     // 命中的场景角色（未命中为 null），供会话层做角色徽章展示。
-    // reason 一并带出：界面需要区分「用户指定」与「自动匹配」两种来源。
+    // reason 仅保留用于排查与日志；徽章只显示角色名称，不再展示来源字样。
     matchedRole: roleMatch?.role
       ? {
           id: roleMatch.role.id,
