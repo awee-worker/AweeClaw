@@ -24,6 +24,7 @@ import {
   PlayCircle,
   Monitor,
   Camera,
+  ChevronDown,
   type LucideIcon,
 } from 'lucide-react'
 import { api } from '@renderer/adapters/electronBridge'
@@ -38,6 +39,8 @@ interface PermissionResult {
   type: PermissionType
   status: PermissionStatus
   needsGuide: boolean
+  /** 系统设置中该权限条目的名称 key，由主进程按系统版本给出 */
+  panelTitleKey: string
   checkedAt: number
   platform: NodeJS.Platform
 }
@@ -83,6 +86,10 @@ interface PermissionCardProps {
 
 function PermissionCard({ result, onOpenPreferences, onRequestAgain }: PermissionCardProps) {
   const { t } = useI18n()
+  /** 系统设置里该条目的真实名称，随系统版本不同 */
+  const panelName = t(result.panelTitleKey)
+  /** 排障说明默认收起：多数用户按三步就能解决，展开是给已经勾选过的人 */
+  const [troubleshootOpen, setTroubleshootOpen] = useState(false)
   const PermIcon = PERMISSION_ICONS[result.type]
   const StatusIcon = STATUS_ICONS[result.status]
   const statusKey = result.status === 'not-determined' ? 'notDetermined' : result.status
@@ -111,9 +118,45 @@ function PermissionCard({ result, onOpenPreferences, onRequestAgain }: Permissio
       </div>
 
       {result.needsGuide && (
-        <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-400/5 border border-amber-400/20 rounded-lg px-3 py-2">
-          <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-          <span>{t('desktop.permission.hint')}</span>
+        <div className="space-y-2 text-xs text-amber-400 bg-amber-400/5 border border-amber-400/20 rounded-lg px-3 py-2.5">
+          <div className="flex items-start gap-2">
+            <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>{t('desktop.permission.hint')}</span>
+          </div>
+
+          {/* 分步而不是一句话：凭一句话去面板里找「辅助功能」在 macOS 26 之后已经不成立，
+              必须说清先让系统登记、再勾选、最后重启，缺一步都不生效 */}
+          <ol className="space-y-1 pl-5 list-decimal text-amber-400/90">
+            <li>{t('desktop.permission.steps.one')}</li>
+            <li>{t('desktop.permission.steps.two', { panel: panelName })}</li>
+            <li>{t('desktop.permission.steps.three')}</li>
+          </ol>
+
+          {/* 应用更新后旧授权记录与新签名对不上，勾选无效，必须删除重加。
+              这是用户自己想不到的一步，藏起来等于没写，所以放在可展开的位置 */}
+          <div className="pt-0.5">
+            <button
+              type="button"
+              onClick={() => setTroubleshootOpen((v) => !v)}
+              aria-expanded={troubleshootOpen}
+              className="flex items-center gap-1 text-xs font-medium text-amber-400/80 hover:text-amber-400 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-400/50 rounded"
+            >
+              <ChevronDown
+                className={`w-3 h-3 transition-transform ${troubleshootOpen ? 'rotate-180' : ''}`}
+              />
+              {t('desktop.permission.troubleshoot.toggle')}
+            </button>
+
+            {troubleshootOpen && (
+              <div className="mt-1.5 space-y-1.5 rounded-md bg-amber-400/[0.06] border border-amber-400/20 px-2.5 py-2 text-amber-400/85">
+                <p>{t('desktop.permission.troubleshoot.cause')}</p>
+                <p>{t('desktop.permission.troubleshoot.fix', { panel: panelName })}</p>
+                <p className="text-amber-400/70">
+                  {t('desktop.permission.troubleshoot.note')}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

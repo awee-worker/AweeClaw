@@ -77,7 +77,10 @@ export class IncrementalTextCleaner {
    */
   update(raw: string, options: IncrementalCleanOptions): string {
     const mode = modeKey(options)
-    const source = options.streaming ? stripToolCallLeaks(raw) : raw
+    // 流式与非流式都必须清洗。流式期间过滤的是分片残片，落库的正文仍是原文；
+    // 若最终渲染跳过清洗，任何漏过一次的残片（如末尾的 `<T`）都会永久留在
+    // 历史消息里，重新打开会话也退不掉。
+    const source = stripToolCallLeaks(raw)
 
     if (mode !== this.mode || !source.startsWith(this.lastSource)) {
       this.reset()

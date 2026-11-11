@@ -47,6 +47,7 @@ import { useStore } from '@store'
 import { composerService } from '../runtime/composerEngine'
 import { agentStorePlanBridge, agentStoreTodoBridge } from '../state/intelligenceBridge'
 import { useAgentStore } from '../state/IntelligenceStore'
+import { filterCompletedContinuationItems } from '@intelligence/utils/continuationItems'
 import { buildFileChangeDescriptor } from '@intelligence/utils/fileMutationHelper'
 import { EventBus } from '../engine/EventDispatcher'
 import {
@@ -4533,7 +4534,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
     // 收尾续做入口：本轮结束了但还有未完成的事项时，把清单结构化地交给用户
     // 一键续做。这里只负责产出交互卡片，点击后的续接由前端按清单派发。
-    async offer_continuation(args, _ctx) {
+    async offer_continuation(args, ctx) {
         const summary = typeof args.summary === 'string' ? args.summary.trim() : ''
         const rawRemaining = args.remaining as unknown
 
@@ -4541,17 +4542,35 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             return { success: false, result: '', error: 'remaining must be an array of task descriptions' }
         }
 
-        const remaining = rawRemaining
+        const declared = rawRemaining
             .map(item => String(item ?? '').trim())
             .filter(Boolean)
 
-        if (remaining.length === 0) {
+        if (declared.length === 0) {
             return { success: false, result: '', error: 'remaining must contain at least one non-empty task' }
         }
 
+        // 模型经常把整份待办清单原样塞进来，已完成的条目会在卡片上重新变成「待续做」
+        // 并被再执行一遍。待办状态是客观事实，以它为准剔除已完成项，不依赖模型自觉。
+        const todos = useAgentStore.getState().getTodos(ctx.threadId ?? undefined) || []
+        const remaining = filterCompletedContinuationItems(declared, todos)
+
+        if (remaining.length === 0) {
+            // 全部已完成：不生成卡片，否则等于凭空造出一个没有内容的续做入口
+            return {
+                success: true,
+                result: 'All items listed in remaining are already completed, so no continuation card was created.',
+            }
+        }
+
+        const droppedCount = declared.length - remaining.length
+        const droppedNote = droppedCount > 0
+            ? ` (${droppedCount}已完成的条目已从清单中剔除)`
+            : ''
+
         return {
             success: true,
-            result: `Offered the user a continuation card with ${remaining.length} remaining task(s). Waiting for the user to continue.`,
+            result: `Offered the user a continuation card with ${remaining.length} remaining task(s).${droppedNote} Waiting for the user to continue.`,
             meta: {
                 waitingForUser: true,
                 interactive: {

@@ -16,7 +16,7 @@
  * - run-command 默认拒绝，需用户在 settings 中开启 deviceLink.allowRemoteCommand
  * - 所有操作记录到 audit 日志
  */
-import { clipboard, dialog, ipcMain, type BrowserWindow } from 'electron'
+import { app, clipboard, dialog, ipcMain, nativeImage, type BrowserWindow } from 'electron'
 import * as fs from 'fs/promises'
 import * as fsSync from 'fs'
 import * as path from 'path'
@@ -42,6 +42,13 @@ export interface DeviceLinkPreferences {
   allowScreenshot?: boolean
   /** 允许远程休眠/唤醒 */
   allowPowerControl?: boolean
+  /**
+   * 允许远程鼠标键盘注入（远程控制）
+   *
+   * 默认关闭。开启后等于把整台机器的操作权交给已登录的移动端，
+   * 因此权限中心把它单列一个范围，不与「远程执行命令」合并。
+   */
+  allowRemoteInput?: boolean
 }
 
 export interface DeviceHandlerContext {
@@ -587,6 +594,383 @@ export async function handlePowerControl(
 }
 
 // ============================================================================
+// 远程输入注入（远程控制）
+// ============================================================================
+
+/**
+ * 输入注入的统一准入检查
+ *
+ * 与截图、剪贴板不同，输入注入等于把整台机器的操作权交出去，因此要求：
+ * - 用户已显式开启 allowRemoteInput（默认关闭，需在权限中心单独授权）
+ * - 每次操作前都查一次急停开关，用户按下急停后立即失效
+ *
+ * 这里不依赖 DesktopControlManager 的 ASK 确认：人在远程时 PC 前的确认框
+ * 无人会点，靠弹窗反而会把操作全部拖到超时。安全边界放在开关与急停上。
+ */
+function assertRemoteInputAllowed(ctx: DeviceHandlerContext): void {
+  if (!ctx.preferences().allowRemoteInput) throw new Error('forbidden_by_policy')
+  getDesktopControlManager().emergencyStop.check()
+}
+
+/** 坐标合法性校验：否定值、NaN、Infinity 一律拒绝，避免把异常值喂进注入层 */
+function assertPoint(x: unknown, y: unknown): { x: number; y: number } {
+  const px = Number(x)
+  const py = Number(y)
+  if (!Number.isFinite(px) || !Number.isFinite(py) || px < 0 || py < 0) {
+    throw new Error('invalid_coordinates')
+  }
+  return { x: Math.round(px), y: Math.round(py) }
+}
+
+/** 归一化鼠标按键，非法值退回左键 */
+function normalizeButton(raw: unknown): 'left' | 'right' | 'middle' {
+  return ['left', 'right', 'middle'].includes(String(raw))
+    ? (String(raw) as 'left' | 'right' | 'middle')
+    : 'left'
+}
+
+/**
+ * 输入注入结果校验
+ *
+ * 平台层（尤其 macOS 的 cliclick / CoreGraphics 通道）执行失败时只返回
+ * success:false 而不抛错。若这里直接忽略，调用方拿到的永远是 applied:true，
+ * 移动端就表现为「点了没反应」且没有任何错误可查。
+ *
+ * 点按、滚轮、按键这类低频且意图明确的操作用抛错透出失败；
+ * 鼠标移动属于持续动作，失败由下一次移动自然覆盖，不抛错以免刷屏。
+ */
+function assertApplied(
+  result: { success?: boolean; error?: string } | null | undefined,
+  action: string,
+): void {
+  if (!result || result.success) return
+  throw new Error(`${action}_failed${result.error ? `: ${result.error}` : ''}`)
+}
+
+// ---------------------------------------------------------------------------
+// 鼠标输入串行化
+// ---------------------------------------------------------------------------
+
+/**
+ * 鼠标输入串行队列
+ *
+ * 每条 RPC 都是独立异步处理的，两条移动请求会同时进入注入层。平台层每次要
+ * spawn 一个系统进程，完成顺序与发出顺序无关——迟到的旧移动会把指针拖回旧
+ * 位置，用户表现就是「滑到位了，点下去却点偏」。
+ *
+ * 这里把鼠标操作串成一条链：移动在链上合并（只执行最新位置），点击与拖拽
+ * 按到达顺序排队，因此「点击一定发生在它之前所有移动之后」。
+ */
+let mouseChain: Promise<void> = Promise.resolve()
+/** 已排队但尚未执行的移动目标；同一时刻只保留最新一个 */
+let pendingMove: { x: number; y: number } | null = null
+/** 移动执行器；非空表示链上已有一段移动任务在跑 */
+let moveRunner: Promise<void> | null = null
+
+/** 把一个任务追加到鼠标链尾部；前一个任务失败不影响后续执行 */
+function serializeMouse<T>(task: () => Promise<T>): Promise<T> {
+  const run = mouseChain.then(task, task)
+  mouseChain = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
+}
+
+/** 执行一次真实移动；失败静默，下一次移动会带新位置覆盖 */
+async function applyMove(x: number, y: number): Promise<void> {
+  try {
+    await getDesktopControlManager().mouseMove({ x, y })
+  } catch {
+    // 移动失败静默：它是持续动作，下一次移动会带新位置覆盖
+  }
+}
+
+/**
+ * 请求移动：合并高频位移
+ *
+ * 链上已有移动任务时只更新目标点，任务在循环里取最新位置执行。
+ * 手指滑 20 帧，桌面端只会真正落到链上能跟上的次数，不会排成一队。
+ */
+function requestMove(x: number, y: number): Promise<void> {
+  pendingMove = { x, y }
+  if (!moveRunner) {
+    moveRunner = serializeMouse(async () => {
+      while (pendingMove) {
+        const target = pendingMove
+        pendingMove = null
+        await applyMove(target.x, target.y)
+      }
+    }).then(() => {
+      moveRunner = null
+      // 循环退出到置空之间可能又进来一个位置，补一次，避免丢末尾那一帧
+      const leftover = pendingMove
+      if (leftover) void requestMove(leftover.x, leftover.y)
+    })
+  }
+  return moveRunner
+}
+
+/** 等待已排队的移动全部落地 */
+async function settleMoves(): Promise<void> {
+  while (moveRunner) await moveRunner
+}
+
+/** input.click.req → 鼠标点击 */
+export async function handleInputClick(
+  ctx: DeviceHandlerContext,
+  payload: { x?: unknown; y?: unknown; button?: unknown; clickType?: unknown },
+): Promise<{ applied: boolean }> {
+  assertRemoteInputAllowed(ctx)
+  const { x, y } = assertPoint(payload.x, payload.y)
+  const clickType = String(payload.clickType) === 'double' ? 'double' : 'single'
+  const button = normalizeButton(payload.button)
+  // 先让已排队的移动落地再点击：否则点击可能先于最后一帧移动执行，
+  // 桌面端指针还停在旧位置，用户看到的就是「点偏了」。
+  await settleMoves()
+  const result = await serializeMouse(() =>
+    getDesktopControlManager().mouseClick({ x, y, button, clickType }),
+  )
+  assertApplied(result, 'mouse_click')
+  return { applied: true }
+}
+
+/** input.move.req → 鼠标移动 */
+export async function handleInputMove(
+  ctx: DeviceHandlerContext,
+  payload: { x?: unknown; y?: unknown },
+): Promise<{ applied: boolean }> {
+  assertRemoteInputAllowed(ctx)
+  const { x, y } = assertPoint(payload.x, payload.y)
+  // 不等执行结果：等一次就退回串行 RPC，帧率会被单次注入耗时锁死。
+  // 移动是持续动作，合并后只执行最新位置，个别帧失败会被下一帧覆盖。
+  void requestMove(x, y)
+  return { applied: true }
+}
+
+/** input.scroll.req → 鼠标滚轮 */
+export async function handleInputScroll(
+  ctx: DeviceHandlerContext,
+  payload: { x?: unknown; y?: unknown; amount?: unknown },
+): Promise<{ applied: boolean }> {
+  assertRemoteInputAllowed(ctx)
+  const { x, y } = assertPoint(payload.x, payload.y)
+  const amount = Number(payload.amount)
+  if (!Number.isFinite(amount) || amount === 0) throw new Error('invalid_scroll_amount')
+  // 滚动依赖光标所在位置，必须等排队中的移动落地，否则会在旧位置滚
+  await settleMoves()
+  const result = await serializeMouse(() =>
+    getDesktopControlManager().mouseScroll({ x, y, amount: Math.round(amount) }),
+  )
+  assertApplied(result, 'mouse_scroll')
+  return { applied: true }
+}
+
+/** input.drag.req → 鼠标拖拽 */
+export async function handleInputDrag(
+  ctx: DeviceHandlerContext,
+  payload: {
+    fromX?: unknown
+    fromY?: unknown
+    toX?: unknown
+    toY?: unknown
+    button?: unknown
+    duration?: unknown
+  },
+): Promise<{ applied: boolean }> {
+  assertRemoteInputAllowed(ctx)
+  const from = assertPoint(payload.fromX, payload.fromY)
+  const to = assertPoint(payload.toX, payload.toY)
+  const duration = Number(payload.duration)
+  // 拖拽每段都要执行，不能合并（合并会丢掉轨迹），但必须与前后的移动、点击同序
+  const result = await serializeMouse(() =>
+    getDesktopControlManager().mouseDrag({
+      fromX: from.x,
+      fromY: from.y,
+      toX: to.x,
+      toY: to.y,
+      button: normalizeButton(payload.button),
+      duration: Number.isFinite(duration) && duration > 0 ? Math.min(duration, 5000) : undefined,
+    }),
+  )
+  assertApplied(result, 'mouse_drag')
+  return { applied: true }
+}
+
+/** input.type.req → 键入文本 */
+export async function handleInputType(
+  ctx: DeviceHandlerContext,
+  payload: { text?: unknown; delayMs?: unknown },
+): Promise<{ applied: boolean; length: number }> {
+  assertRemoteInputAllowed(ctx)
+  const text = String(payload.text ?? '')
+  if (!text) throw new Error('empty_text')
+  // 单次上限：防止一条消息灌进超长文本把注入层卡住
+  if (text.length > 2000) throw new Error('text_too_long')
+  const delay = Number(payload.delayMs)
+  const result = await getDesktopControlManager().typeText(
+    text,
+    Number.isFinite(delay) && delay >= 0 ? Math.min(delay, 100) : undefined,
+  )
+  assertApplied(result, 'type_text')
+  return { applied: true, length: text.length }
+}
+
+/** input.key.req → 单键或组合键 */
+export async function handleInputKey(
+  ctx: DeviceHandlerContext,
+  payload: { key?: unknown; keys?: unknown },
+): Promise<{ applied: boolean }> {
+  assertRemoteInputAllowed(ctx)
+  const keys = Array.isArray(payload.keys) ? payload.keys.map((k) => String(k)).filter(Boolean) : []
+  const single = typeof payload.key === 'string' ? payload.key : ''
+  let result: { success?: boolean; error?: string } | undefined
+  if (keys.length > 1) {
+    result = await getDesktopControlManager().keyCombo(keys)
+  } else if (keys.length === 1) {
+    result = await getDesktopControlManager().pressKey(keys[0])
+  } else if (single) {
+    result = await getDesktopControlManager().pressKey(single)
+  } else {
+    throw new Error('empty_key')
+  }
+  assertApplied(result, 'input_key')
+  return { applied: true }
+}
+
+/**
+ * input.emergency-stop.req → 远程急停 / 解除急停 / 读取急停状态
+ *
+ * 与其它输入操作的准入差异（刻意为之）：
+ * - trigger 不做 allowRemoteInput 检查。急停是"刹车"，不是"油门"：
+ *   一旦发现远程操作不受控，移动端必须能立即断开，哪怕权限已被撤销。
+ * - reset 也不做 allowRemoteInput 检查，但要求急停确实处于触发态才有意义
+ *   （未触发时 reset 是幂等的空操作）。谁解除、何时解除由审计与事件上报留痕。
+ * - state 只读，供移动端进入控制页时同步按钮状态，避免重复触发或误解除。
+ */
+export async function handleInputEmergencyStop(
+  _ctx: DeviceHandlerContext,
+  payload: { action?: unknown; reason?: unknown } = {},
+): Promise<{
+  applied: boolean
+  stopped: boolean
+  triggeredAt: number | null
+  source: string | null
+  reason: string | null
+  triggerCount: number
+}> {
+  const controller = getDesktopControlManager().emergencyStop
+  const action = String(payload.action ?? 'trigger')
+
+  switch (action) {
+    case 'trigger': {
+      const reason = typeof payload.reason === 'string' && payload.reason
+        ? payload.reason.slice(0, 200)
+        : 'remote_control_requested'
+      controller.trigger({ source: 'remote', reason })
+      const state = controller.getState()
+      return {
+        applied: true,
+        stopped: state.stopped,
+        triggeredAt: state.triggeredAt ?? null,
+        source: state.source ?? null,
+        reason: state.reason ?? null,
+        triggerCount: state.triggerCount,
+      }
+    }
+    case 'reset': {
+      const before = controller.isStopped()
+      controller.reset()
+      const state = controller.getState()
+      return {
+        applied: before,
+        stopped: state.stopped,
+        triggeredAt: state.triggeredAt ?? null,
+        source: state.source ?? null,
+        reason: state.reason ?? null,
+        triggerCount: state.triggerCount,
+      }
+    }
+    case 'state': {
+      const state = controller.getState()
+      return {
+        applied: false,
+        stopped: state.stopped,
+        triggeredAt: state.triggeredAt ?? null,
+        source: state.source ?? null,
+        reason: state.reason ?? null,
+        triggerCount: state.triggerCount,
+      }
+    }
+    default:
+      throw new Error('unknown_emergency_stop_action')
+  }
+}
+
+// ============================================================================
+// 控制画面拉帧（远程控制）
+// ============================================================================
+
+/**
+ * screen.frame.req → 按需拉取一帧画面
+ *
+ * 与 screenshot.req 的分工：
+ * - screenshot.req 是"看一眼"，输出原始截图，用于单次查看
+ * - screen.frame.req 是"连续看"，按调用方给的宽度与质量压缩，服务远程控制的高频拉流
+ *
+ * 返回值必须同时给出两套尺寸：
+ * - imageWidth / imageHeight 是这一帧图片的像素尺寸（移动端据此把触摸点换算成图上位置）
+ * - screenWidth / screenHeight 是桌面逻辑坐标尺寸（clicks 注入使用的坐标系）
+ * 两者只有在缩放比一致时才等价，所以分开传，由移动端各自换算，不做隐式假设。
+ */
+export async function handleScreenFrame(
+  ctx: DeviceHandlerContext,
+  payload: { maxWidth?: unknown; quality?: unknown } = {},
+): Promise<{
+  url: string
+  imageWidth: number
+  imageHeight: number
+  screenWidth: number
+  screenHeight: number
+  takenAt: number
+}> {
+  if (!ctx.preferences().allowScreenshot) throw new Error('forbidden_by_policy')
+
+  const maxWidthRaw = Number(payload.maxWidth)
+  const qualityRaw = Number(payload.quality)
+  const maxWidth = Number.isFinite(maxWidthRaw)
+    ? Math.max(320, Math.min(2560, Math.round(maxWidthRaw)))
+    : 1280
+  const quality = Number.isFinite(qualityRaw)
+    ? Math.max(30, Math.min(90, Math.round(qualityRaw)))
+    : 60
+
+  const captured: ScreenshotResult = await getDesktopControlManager().captureScreen(0)
+  if (!captured.success || !captured.dataUrl) {
+    throw new Error(captured.error || 'capture_failed')
+  }
+
+  let image = nativeImage.createFromDataURL(captured.dataUrl)
+  if (image.isEmpty()) throw new Error('empty_image')
+
+  const origin = image.getSize()
+  if (origin.width > maxWidth) {
+    const ratio = maxWidth / origin.width
+    image = image.resize({ width: maxWidth, height: Math.round(origin.height * ratio) })
+  }
+  const size = image.getSize()
+
+  return {
+    url: `data:image/jpeg;base64,${image.toJPEG(quality).toString('base64')}`,
+    imageWidth: size.width,
+    imageHeight: size.height,
+    screenWidth: captured.region?.width || origin.width,
+    screenHeight: captured.region?.height || origin.height,
+    takenAt: Date.now(),
+  }
+}
+
+// ============================================================================
 // 任务接续（桌面端作为源 / 目标）
 // ============================================================================
 
@@ -707,15 +1091,22 @@ export async function handleChatExport(
 // ============================================================================
 
 /** 可由移动端申请的远程权限范围 */
-export type PermissionScope = 'shell' | 'screenshot' | 'clipboard' | 'power'
+export type PermissionScope = 'shell' | 'screenshot' | 'clipboard' | 'power' | 'input'
 
-export const PERMISSION_SCOPES: PermissionScope[] = ['shell', 'screenshot', 'clipboard', 'power']
+export const PERMISSION_SCOPES: PermissionScope[] = [
+  'shell',
+  'screenshot',
+  'clipboard',
+  'power',
+  'input',
+]
 
 const SCOPE_LABELS: Record<PermissionScope, string> = {
   shell: '远程执行命令',
   screenshot: '远程截屏',
   clipboard: '远程剪贴板推送',
   power: '远程休眠/唤醒',
+  input: '远程鼠标键盘控制',
 }
 
 const SCOPE_PREFERENCE_KEYS: Record<PermissionScope, keyof DeviceLinkPreferences> = {
@@ -723,6 +1114,7 @@ const SCOPE_PREFERENCE_KEYS: Record<PermissionScope, keyof DeviceLinkPreferences
   screenshot: 'allowScreenshot',
   clipboard: 'allowClipboardPush',
   power: 'allowPowerControl',
+  input: 'allowRemoteInput',
 }
 
 /** 临时授权时长 */
@@ -737,6 +1129,8 @@ export interface PermissionSnapshot {
   allowClipboardPush: boolean
   allowScreenshot: boolean
   allowPowerControl: boolean
+  /** 是否允许远程鼠标键盘注入 */
+  allowRemoteInput: boolean
   /** 各范围临时授权剩余毫秒（0 = 无） */
   tempRemaining: Partial<Record<PermissionScope, number>>
 }
@@ -749,6 +1143,7 @@ export function handlePermissionState(ctx: DeviceHandlerContext): PermissionSnap
     allowClipboardPush: prefs.allowClipboardPush ?? true,
     allowScreenshot: prefs.allowScreenshot ?? true,
     allowPowerControl: !!prefs.allowPowerControl,
+    allowRemoteInput: !!prefs.allowRemoteInput,
     tempRemaining: Object.fromEntries(
       PERMISSION_SCOPES.map((s) => [s, ctx.tempGrantRemaining?.(s) ?? 0]),
     ) as Partial<Record<PermissionScope, number>>,
@@ -761,6 +1156,24 @@ export interface PermissionDecision {
   scope: PermissionScope
   granted: boolean
   mode: PermissionDecisionMode
+}
+
+/**
+ * 弹框前把主窗口带到前台
+ *
+ * macOS 上 dialog.showMessageBox(win, options) 是附着在窗口上的 sheet。当窗口被隐藏
+ * （悬浮头像模式下 close 会转成 hide）、最小化或停在后台时，sheet 既不显示也不抢焦点，
+ * 用户完全看不到确认框；请求会一路挂到 RPC 超时（30s）才失败，移动端只能报「请到电脑前」。
+ * 所以弹框前必须显式唤醒窗口，并用 app.focus 抢一次焦点。
+ */
+function bringMainWindowToFront(win: BrowserWindow | null): void {
+  if (win && !win.isDestroyed()) {
+    if (win.isMinimized()) win.restore()
+    if (!win.isVisible()) win.show()
+    win.focus()
+  }
+  // 仅 win.focus() 在窗口隐藏/后台时不足以把 sheet 顶到最前
+  if (process.platform === 'darwin') app.focus({ steal: true })
 }
 
 /** permission.request → 弹系统确认框，同意后写入开关或 10 分钟临时授权 */
@@ -784,6 +1197,9 @@ export async function handlePermissionRequest(
     noLink: true,
   }
   const win = ctx.getMainWindow()
+  logger.deviceLink.info(`[Client] permission.request scope=${scope} reason=${reason || '-'}`)
+  bringMainWindowToFront(win)
+
   const { response } = win && !win.isDestroyed()
     ? await dialog.showMessageBox(win, options)
     : await dialog.showMessageBox(options)

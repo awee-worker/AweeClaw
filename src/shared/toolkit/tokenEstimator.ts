@@ -88,6 +88,39 @@ class EncoderManager {
 const encoderManager = new EncoderManager()
 
 /* ================================================================== */
+/* 计数结果缓存                                                        */
+/* ================================================================== */
+
+/**
+ * 文本 → Token 数的记忆化缓存
+ *
+ * 为什么需要：cl100k_base 对中文的编码成本极高（实测约 7 千字符/秒，
+ * 五万余字中文需近 400ms），而发送一条消息的组装流程会对同一批文本
+ * 反复计数 —— 压缩级别的每一轮迭代都会把整段历史与系统提示词重新编码
+ * 一遍。历史消息在一次发送内不会变化，缓存命中后这些重复编码直接归零。
+ *
+ * 条目上限与单条长度上限是为了不把长文本长期留在内存里：超过长度上限的
+ * 文本只计一次、不缓存，长文本本就很少在单次组装中被重复统计。
+ */
+const CACHE_MAX_ENTRIES = 2000
+const CACHE_MAX_TEXT_LENGTH = 200_000
+const tokenCache = new Map<string, number>()
+
+function readCache(text: string): number | undefined {
+  return tokenCache.get(text)
+}
+
+function writeCache(text: string, tokens: number): void {
+  if (text.length > CACHE_MAX_TEXT_LENGTH) return
+  if (tokenCache.size >= CACHE_MAX_ENTRIES) {
+    // 整体清空而非逐条淘汰：这里的 key 是完整文本，逐条维护 LRU 的成本
+    // 高于重建一次缓存；清空后首轮重新计数，代价与冷启动相同。
+    tokenCache.clear()
+  }
+  tokenCache.set(text, tokens)
+}
+
+/* ================================================================== */
 /* 第三层：启发式估算器                                                 */
 /* ================================================================== */
 
@@ -117,11 +150,16 @@ function heuristicEstimate(text: string): number {
  */
 export function measureTextTokens(text: string): number {
   if (!text) return 0
+  const hit = readCache(text)
+  if (hit !== undefined) return hit
+  let tokens: number
   try {
-    return encoderManager.acquire().encode(text).length
+    tokens = encoderManager.acquire().encode(text).length
   } catch {
-    return heuristicEstimate(text)
+    tokens = heuristicEstimate(text)
   }
+  writeCache(text, tokens)
+  return tokens
 }
 
 /* ================================================================== */
@@ -245,6 +283,7 @@ export function estimateTokensHeuristic(text: string): number {
 /** 释放编码器实例（供应用退出时调用） */
 export function releaseEncoder(): void {
   encoderManager.release()
+  tokenCache.clear()
 }
 
 /* ================================================================== */

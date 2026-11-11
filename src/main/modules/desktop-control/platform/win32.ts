@@ -526,16 +526,34 @@ export class Win32PlatformAdapter implements PlatformAdapter {
 
   async captureScreen(displayId = 0): Promise<ScreenshotResult> {
     try {
+      const display = screen.getAllDisplays()[displayId] || screen.getPrimaryDisplay()
+      // 与 macOS 同一口径：按该显示器的逻辑分辨率请求缩略图，截图像素坐标才与
+      // 屏幕逻辑坐标一一对应（输入注入用的就是这套坐标）。
+      // 固定 1920x1080 时，非 16:9 的屏幕上缩略图会被拉伸，纵向比例与屏幕不一致，
+      // 移动端按比例换算出来的 y 就会系统性偏小/偏大——表现正是「点下去比光标高」。
+      const logicalWidth = display.bounds.width
+      const logicalHeight = display.bounds.height
+
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
-        thumbnailSize: { width: 1920, height: 1080 },
+        thumbnailSize: { width: logicalWidth, height: logicalHeight },
       })
 
       const source = sources[displayId] || sources[0]
       if (!source) throw new Error('No screen source available')
 
-      const dataUrl = source.thumbnail.toDataURL()
-      const display = screen.getAllDisplays()[displayId] || screen.getPrimaryDisplay()
+      // 缩略图尺寸与逻辑分辨率不一致时补一次缩放，避免换算基准与实际像素错位
+      const thumbSize = source.thumbnail.getSize()
+      let finalImage = source.thumbnail
+      if (thumbSize.width !== logicalWidth || thumbSize.height !== logicalHeight) {
+        logger.desktop.warn(
+          `[Win32] Thumbnail size mismatch: got ${thumbSize.width}x${thumbSize.height}, ` +
+            `expected ${logicalWidth}x${logicalHeight}, resizing...`,
+        )
+        finalImage = source.thumbnail.resize({ width: logicalWidth, height: logicalHeight })
+      }
+
+      const dataUrl = finalImage.toDataURL()
 
       return {
         success: true,
@@ -543,14 +561,13 @@ export class Win32PlatformAdapter implements PlatformAdapter {
         region: {
           x: display.bounds.x,
           y: display.bounds.y,
-          width: display.bounds.width,
-          height: display.bounds.height,
+          width: logicalWidth,
+          height: logicalHeight,
         },
         displayId,
         timestamp: Date.now(),
       }
     } catch (err) {
-      logger.desktop.error('[Win32] captureScreen failed:', err)
       return {
         success: false,
         dataUrl: '',
@@ -561,6 +578,7 @@ export class Win32PlatformAdapter implements PlatformAdapter {
       }
     }
   }
+
 
   async captureRegion(region: Rect, displayId = 0): Promise<ScreenshotResult> {
     const fullShot = await this.captureScreen(displayId)

@@ -166,7 +166,10 @@ function findPendingLeakPrefixStart(text: string): number {
   // 已经出现 '>' 说明标签到达了终止，或者是 <b> 这类正常标签，不该拦截
   if (fragment.includes('>')) return -1
 
-  const namePart = fragment.split(/\s/)[0] ?? ''
+  // 标签名比对统一转小写：模型吐出的标记不一定全是小写（`<Tool_Call>`、`<T`），
+  // 大小写敏感会让这类前缀绕过缓冲直接进正文，后续分片又只带参数、不带 '<'，
+  // 末尾就残留一个退不掉的 `<T`。
+  const namePart = (fragment.split(/\s/)[0] ?? '').toLowerCase()
 
   for (const candidate of LEAK_TAG_FRAGMENTS) {
     if (namePart.length <= candidate.length && candidate.startsWith(namePart)) {

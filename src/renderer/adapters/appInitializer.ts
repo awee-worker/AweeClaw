@@ -40,6 +40,7 @@ import {
 } from './workspaceLoader'
 import { initializeHarness } from '@intelligence/harness'
 import { setupAgentRuntime } from '@intelligence/engine/runtimeInitializer'
+import { measureTextTokens } from '@shared/toolkit/tokenEstimator'
 
 export interface InitResult {
   success: boolean
@@ -338,6 +339,19 @@ function scheduleBackgroundInit(isPrimaryWindow: boolean): void {
   if (isPrimaryWindow) {
     startAppScopedBackgroundTasks()
   }
+
+  // 预热 Token 编码器：cl100k_base 的 BPE 词表在首次计数时才构建（同步、
+  // 主线程约 100ms 以上），而这段开销此前全部落在「发送第一条消息」的准备阶段，
+  // 与系统提示词计数叠加后表现为发送瞬间的界面卡顿。放到空闲期先建好，
+  // 用户真正发送时只走编码、不再承担建表成本。
+  // 各窗口共用同一份编码器实例，次窗口同样需要预热。
+  scheduleIdleTask(() => {
+    try {
+      measureTextTokens('warmup')
+    } catch (e) {
+      logger.system.warn('[Init] Token encoder warmup failed:', e)
+    }
+  }, 3000)
 }
 
 export async function initializeApp(

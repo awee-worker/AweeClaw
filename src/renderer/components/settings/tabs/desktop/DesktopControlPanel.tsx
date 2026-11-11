@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Monitor, AppWindow, Activity, Layers, Camera, MousePointerClick, FolderTree, ShieldCheck, Puzzle, ExternalLink } from 'lucide-react'
+import { Monitor, AppWindow, Activity, Layers, Camera, MousePointerClick, FolderTree, ShieldCheck, Puzzle, ExternalLink, Link2 } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
 import { useStore } from '@store'
 import { isPluginInstalled } from '@services/pluginService'
@@ -19,9 +19,11 @@ import { ScreenCapturePanel } from './ScreenCapturePanel'
 import { InputSimulatorPanel } from './InputSimulatorPanel'
 import { FileManagerPanel } from './FileManagerPanel'
 import { PermissionStatusPanel } from './PermissionStatusPanel'
+import { RemoteLinkPanel } from './RemoteLinkPanel'
 
 type DesktopSubTab =
   | 'permission'
+  | 'remoteLink'
   | 'apps'
   | 'system'
   | 'processes'
@@ -58,6 +60,7 @@ export function DesktopControlPanel({ language }: DesktopControlPanelProps) {
   }
   const tabs = [
     { id: 'permission' as const, label: t('desktop.permission.title', language) || '权限状态', icon: <ShieldCheck className="w-4 h-4" /> },
+    { id: 'remoteLink' as const, label: t('desktop.remoteLink.title', language) || '远程联动权限', icon: <Link2 className="w-4 h-4" /> },
     { id: 'apps' as const, label: t('desktop.apps', language) || '应用启动', icon: <AppWindow className="w-4 h-4" /> },
     { id: 'system' as const, label: t('desktop.system', language) || '系统信息', icon: <Monitor className="w-4 h-4" /> },
     { id: 'processes' as const, label: t('desktop.processes', language) || '进程管理', icon: <Activity className="w-4 h-4" /> },
@@ -116,6 +119,7 @@ export function DesktopControlPanel({ language }: DesktopControlPanelProps) {
         )}
 
         {activeTab === 'permission' && <PermissionStatusPanel />}
+        {activeTab === 'remoteLink' && <RemoteLinkPanel />}
         {activeTab === 'apps' && <AppLauncherPanel language={language} />}
         {activeTab === 'system' && <SystemInfoPanel language={language} />}
         {activeTab === 'processes' && <ProcessManagerPanel language={language} />}

@@ -26,6 +26,7 @@ import { deviceLinkEventBridge } from './DeviceLinkEventBridge'
 import { taskControlHub } from './TaskControlHub'
 import { taskFrameStreamer } from './TaskFrameStreamer'
 import type { TakeoverRequest } from '@shared/protocols/deviceTaskProtocol'
+import type { PermissionScope } from './DeviceLinkHandlers'
 import type Store from 'electron-store'
 
 /**
@@ -141,11 +142,38 @@ function registerIpcHandlers(client: ReturnType<typeof initDeviceLinkClient>): v
       allowClipboardPush: boolean
       allowScreenshot: boolean
       allowPowerControl: boolean
+      // 远程鼠标键盘控制：与其它开关并列，缺了它设置界面就无从开启
+      allowRemoteInput: boolean
     }>) => {
-      client.updatePreferences(patch)
+      // 只允许已知键落地：patch 直接来自 renderer，多余字段不应该污染配置
+      const allowed: Array<keyof typeof patch> = [
+        'allowRemoteCommand',
+        'allowClipboardPush',
+        'allowScreenshot',
+        'allowPowerControl',
+        'allowRemoteInput',
+      ]
+      const safe: Record<string, boolean> = {}
+      for (const key of allowed) {
+        const value = patch?.[key]
+        if (typeof value === 'boolean') safe[key] = value
+      }
+      if (Object.keys(safe).length === 0) return { ok: false }
+      client.updatePreferences(safe)
       return { ok: true }
     },
   )
+
+  // ── 权限快照 ──────────────────────────────────────────────
+  // 设置界面据此显示各开关的当前值，以及临时授权的剩余时间。
+  ipcMain.handle('device-link:get-preferences', async () => {
+    return client.getPermissionSnapshot()
+  })
+
+  /** 撤销某范围的限时授权（不影响永久偏好） */
+  ipcMain.handle('device-link:clear-temp-grant', async (_event, scope: PermissionScope) => {
+    return { ok: client.clearTempGrant(scope) }
+  })
 
   // ── 状态查询 ──────────────────────────────────────────────
   ipcMain.handle('device-link:get-status', async (): Promise<DeviceLinkStatus> => {

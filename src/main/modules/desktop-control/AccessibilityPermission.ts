@@ -34,6 +34,22 @@ export type AccessibilityPermissionStatus =
   | 'restricted' // 受限（如家长控制）
   | 'not-required' // 当前平台无需此权限
 
+/**
+ * 隐私面板条目名称的 i18n key
+ *
+ * macOS 26 起「隐私与安全性」面板的所有条目由名词式改为「允许……」的描述式命名，
+ * 旧版「辅助功能」「屏幕录制」在新系统中已不再作为条目标题出现，
+ * 引导文案必须按系统大版本取对应名称，否则用户按提示在面板里找不到对应项。
+ */
+export type PrivacyPanelTitleKey =
+  | 'desktop.permission.panelTitle.accessibility'
+  | 'desktop.permission.panelTitle.accessibilityModern'
+  | 'desktop.permission.panelTitle.screenCapture'
+  | 'desktop.permission.panelTitle.screenCaptureModern'
+
+/** 隐私面板条目改为描述式命名的起始 macOS 大版本 */
+const PRIVACY_PANEL_RENAME_MAJOR = 26
+
 /** 权限检测结果 */
 export interface AccessibilityPermissionResult {
   /** 权限类型 */
@@ -42,10 +58,37 @@ export interface AccessibilityPermissionResult {
   status: AccessibilityPermissionStatus
   /** 是否需要引导用户授权 */
   needsGuide: boolean
+  /** 系统设置中该权限条目的名称 key，供渲染层按语言取文案 */
+  panelTitleKey: PrivacyPanelTitleKey
   /** 检测时间戳 */
   checkedAt: number
   /** 平台 */
   platform: NodeJS.Platform
+}
+
+/**
+ * 解析系统设置中该权限条目的名称 key
+ *
+ * - macOS 26 之前：辅助功能 / 屏幕录制
+ * - macOS 26 及之后：允许辅助应用程序控制电脑 / 允许应用程序录制你的屏幕
+ * - Windows / Linux：沿用旧版名称（无实际引导意义）
+ */
+function resolvePanelTitleKey(
+  type: AccessibilityPermissionType,
+  platform: NodeJS.Platform,
+): PrivacyPanelTitleKey {
+  const modern =
+    platform === 'darwin' &&
+    Number.parseInt(process.getSystemVersion().split('.')[0] ?? '0', 10) >= PRIVACY_PANEL_RENAME_MAJOR
+
+  if (type === 'accessibility') {
+    return modern
+      ? 'desktop.permission.panelTitle.accessibilityModern'
+      : 'desktop.permission.panelTitle.accessibility'
+  }
+  return modern
+    ? 'desktop.permission.panelTitle.screenCaptureModern'
+    : 'desktop.permission.panelTitle.screenCapture'
 }
 
 /** 系统偏好设置目标 URL */
@@ -97,6 +140,7 @@ export class AccessibilityPermissionService {
       type,
       status,
       needsGuide: status === 'denied' || status === 'not-determined',
+      panelTitleKey: resolvePanelTitleKey(type, platform),
       checkedAt: Date.now(),
       platform,
     }
@@ -165,11 +209,16 @@ export class AccessibilityPermissionService {
   }
 
   /**
-   * 请求权限（仅 macOS，会触发系统弹窗）
+   * 请求权限（仅 macOS）
    *
-   * 注意：
-   * - accessibility 权限可通过 prompt 触发系统弹窗
-   * - screenCapture 权限无法主动请求，只能引导用户去设置面板
+   * 两步都做，缺一不可：
+   * 1. isTrustedAccessibilityClient(true) 让系统登记本应用并尝试弹窗。
+   *    这是应用进入「隐私与安全性」列表的唯一途径——只打开面板不会登记，
+   *    用户会在列表里找不到本应用，无从勾选。
+   * 2. 仍未授权时直接打开对应面板。系统弹窗只在首次请求时出现，用户忽略或
+   *    拒绝过后不再弹出，此时必须由应用主动把用户送到面板前。
+   *
+   * screenCapture 无法通过 API 主动请求，只走第 2 步。
    */
   async requestPermission(type: AccessibilityPermissionType = 'accessibility'): Promise<AccessibilityPermissionResult> {
     if (process.platform !== 'darwin') {
@@ -177,14 +226,21 @@ export class AccessibilityPermissionService {
     }
 
     if (type === 'accessibility') {
-      // 触发系统弹窗（参数 true 表示弹窗询问）
+      // 让系统登记本应用（参数 true 表示同时请求弹窗）
       systemPreferences.isTrustedAccessibilityClient(true)
       // 等待用户操作后重新检测
       await this.delay(1000)
     }
 
     // 重新检测（强制刷新缓存）
-    return this.check(type, true)
+    const result = await this.check(type, true)
+
+    // 仍未授权：系统不会再次弹窗，直接把用户带到面板前
+    if (result.status !== 'granted' && result.status !== 'not-required') {
+      await this.openSystemPreferences(type)
+    }
+
+    return result
   }
 
   /**

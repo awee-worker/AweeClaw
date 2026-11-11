@@ -1423,6 +1423,9 @@ function createGroupedAPI() {
       clearCredentials: () => raw.deviceLink.clearCredentials(),
       setPreferences: (patch: Parameters<typeof raw.deviceLink.setPreferences>[0]) =>
         raw.deviceLink.setPreferences(patch),
+      getPreferences: () => raw.deviceLink.getPreferences(),
+      clearTempGrant: (scope: Parameters<typeof raw.deviceLink.clearTempGrant>[0]) =>
+        raw.deviceLink.clearTempGrant(scope),
       getStatus: () => raw.deviceLink.getStatus(),
       getDeviceId: () => raw.deviceLink.getDeviceId(),
       onTaskTransfer: (callback: Parameters<typeof raw.deviceLink.onTaskTransfer>[0]) =>

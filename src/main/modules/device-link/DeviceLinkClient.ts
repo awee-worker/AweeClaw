@@ -36,8 +36,17 @@ import {
   handleChatExport,
   handlePermissionState,
   handlePermissionRequest,
+  handleInputClick,
+  handleInputMove,
+  handleInputScroll,
+  handleInputDrag,
+  handleInputType,
+  handleInputKey,
+  handleInputEmergencyStop,
+  handleScreenFrame,
   preferenceKeyForScope,
   tempGrantDurationMs,
+  PERMISSION_SCOPES,
   type PermissionScope,
   type DeviceHandlerContext,
   type DeviceLinkPreferences,
@@ -446,6 +455,53 @@ class DeviceLinkClient {
         case 'power.control.req':
           payload = await handlePowerControl(ctx, { action: String(req.action) as any })
           break
+        // ── 远程控制：画面拉帧 + 输入注入 ──
+        case 'screen.frame.req':
+          payload = await handleScreenFrame(ctx, {
+            maxWidth: req.maxWidth,
+            quality: req.quality,
+          })
+          break
+        case 'input.click.req':
+          payload = await handleInputClick(ctx, {
+            x: req.x,
+            y: req.y,
+            button: req.button,
+            clickType: req.clickType,
+          })
+          break
+        case 'input.move.req':
+          payload = await handleInputMove(ctx, { x: req.x, y: req.y })
+          break
+        case 'input.scroll.req':
+          payload = await handleInputScroll(ctx, {
+            x: req.x,
+            y: req.y,
+            amount: req.amount,
+          })
+          break
+        case 'input.drag.req':
+          payload = await handleInputDrag(ctx, {
+            fromX: req.fromX,
+            fromY: req.fromY,
+            toX: req.toX,
+            toY: req.toY,
+            button: req.button,
+            duration: req.duration,
+          })
+          break
+        case 'input.type.req':
+          payload = await handleInputType(ctx, { text: req.text, delayMs: req.delayMs })
+          break
+        case 'input.key.req':
+          payload = await handleInputKey(ctx, { key: req.key, keys: req.keys })
+          break
+        case 'input.emergency-stop.req':
+          payload = await handleInputEmergencyStop(ctx, {
+            action: req.action,
+            reason: req.reason,
+          })
+          break
         case 'task.transfer.req':
           // 作为源设备：导出会话上下文
           payload = await handleTaskTransferPull(ctx, { threadId: String(req.threadId ?? '') })
@@ -593,11 +649,17 @@ class DeviceLinkClient {
     const temp = this.loadTempGrants()
     const active = (scope: PermissionScope) => (temp[scope] || 0) > Date.now()
     return {
-      // 临时授权有效期内视为开启，到期自动回落到本机设置值
-      allowRemoteCommand: (data?.allowRemoteCommand ?? false) || active('shell'),
+      // 默认全开：设备联动本身已由登录态与设备绑定把关，用户主动打开远程控制
+      // 时不该再被一个从未设置过的开关挡在门外。
+      // 注意 ?? 只作用于「从未设置过」的情况：用户在设置里明确关掉的项仍保持关闭。
+      // 临时授权有效期内视为开启，到期自动回落到本机设置值。
+      allowRemoteCommand: (data?.allowRemoteCommand ?? true) || active('shell'),
       allowClipboardPush: (data?.allowClipboardPush ?? true) || active('clipboard'),
       allowScreenshot: (data?.allowScreenshot ?? true) || active('screenshot'),
-      allowPowerControl: (data?.allowPowerControl ?? false) || active('power'),
+      allowPowerControl: (data?.allowPowerControl ?? true) || active('power'),
+      // 远程控制同理：漏掉这一行会让 permission.state.req 恒报未授权，
+      // 移动端每次都重新申请，且授权后输入注入仍被 forbidden_by_policy 拒绝
+      allowRemoteInput: (data?.allowRemoteInput ?? true) || active('input'),
     }
   }
 
@@ -625,6 +687,49 @@ class DeviceLinkClient {
   /** 当前是否允许远程截图（执行画面采集沿用该开关） */
   isScreenshotAllowed(): boolean {
     return this.loadPreferences().allowScreenshot === true
+  }
+
+  /**
+   * 远程权限快照（设置界面读取）
+   *
+   * 不能直接把 configStore 里的原值丢给界面：临时授权是叠加在偏好之上的，
+   * 若界面只看原值，就会把「10 分钟授权进行中」显示成「已关闭」，
+   * 用户按这个错误状态再点一次开关，反而把刚拿到的授权覆盖掉。
+   */
+  getPermissionSnapshot(): {
+    preferences: Required<DeviceLinkPreferences>
+    tempRemaining: Record<PermissionScope, number>
+  } {
+    const prefs = this.loadPreferences()
+    const tempRemaining = {} as Record<PermissionScope, number>
+    for (const scope of PERMISSION_SCOPES) {
+      tempRemaining[scope] = this.tempGrantRemaining(scope)
+    }
+    return {
+      preferences: {
+        allowRemoteCommand: !!prefs.allowRemoteCommand,
+        allowClipboardPush: prefs.allowClipboardPush ?? true,
+        allowScreenshot: prefs.allowScreenshot ?? true,
+        allowPowerControl: !!prefs.allowPowerControl,
+        allowRemoteInput: !!prefs.allowRemoteInput,
+      },
+      tempRemaining,
+    }
+  }
+
+  /**
+   * 撤销某范围的临时授权
+   *
+   * 只清临时授权，不动永久偏好：用户只是想立刻收回这次限时放行，
+   * 不该连带把「始终允许」的开关也关掉。
+   */
+  clearTempGrant(scope: PermissionScope): boolean {
+    const temp = this.loadTempGrants()
+    if (!temp[scope]) return false
+    delete temp[scope]
+    this.configStore.set(TEMP_GRANTS_KEY, temp)
+    logger.deviceLink.info(`[Client] Temp permission revoked: ${scope}`)
+    return true
   }
 
   /** 更新偏好（设置界面调用） */

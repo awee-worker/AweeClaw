@@ -123,7 +123,9 @@ function referenceClean(
   raw: string,
   options: { streaming: boolean; preserveLineBreaks: boolean },
 ): string {
-  let result = options.streaming ? stripToolCallLeaks(raw) : raw
+  // 清洗对流式与非流式一致：泄漏标记与末尾残片不分阶段剥离。
+  // 非流式若跳过这一步，漏过一次的残片（如正文末尾的 `<T`）会永久留在历史消息里。
+  let result = stripToolCallLeaks(raw)
   result = preprocessUrls(result)
   if (options.preserveLineBreaks) {
     result = convertLineBreaks(result)
@@ -227,14 +229,25 @@ describe('IncrementalTextCleaner', () => {
     )
   })
 
-  it('流式与非流式切换时重新计算（泄漏标记只在流式期间剥离）', () => {
+  it('流式与非流式切换时重新计算，两者都剥离泄漏标记', () => {
     const cleaner = new IncrementalTextCleaner()
     const raw = '正文 <tool_call>{"name":"x"}</tool_call> 结尾'
 
     expect(cleaner.update(raw, { streaming: true, preserveLineBreaks: false })).toBe('正文  结尾')
-    expect(cleaner.update(raw, { streaming: false, preserveLineBreaks: false })).toBe(
-      referenceClean(raw, { streaming: false, preserveLineBreaks: false }),
-    )
+    expect(cleaner.update(raw, { streaming: false, preserveLineBreaks: false })).toBe('正文  结尾')
+  })
+
+  it('非流式渲染同样清掉末尾的标签残片（历史消息重渲染场景）', () => {
+    // 场景：分片边界切在工具标记前缀处，残片随正文一起落库，重开会话重新渲染。
+    // 非流式分支若原样输出，用户看到的回复就会以 `<T` 收尾且再也退不掉。
+    const cleaner = new IncrementalTextCleaner()
+    const options = { streaming: false, preserveLineBreaks: false }
+
+    expect(cleaner.update('代码已改好，结果如下<T', options)).toBe('代码已改好，结果如下')
+    expect(cleaner.update('代码已改好，结果如下</tool_ca', options)).toBe('代码已改好，结果如下')
+
+    // 正文里合法的比较式不能被误伤
+    expect(cleaner.update('比较 a < b 的结果', options)).toBe('比较 a < b 的结果')
   })
 
   it('内容回退（重新生成）时重置缓存', () => {

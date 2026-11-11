@@ -293,6 +293,10 @@
         "to": "tree-sitter"
       },
       {
+        "from": "resources/bin",
+        "to": "bin"
+      },
+      {
         "from": "resources/uiux",
         "to": "uiux"
       },

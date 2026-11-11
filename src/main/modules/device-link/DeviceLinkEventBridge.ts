@@ -24,6 +24,10 @@ import { logger } from '@shared/toolkit/LogEngine'
 import { getDeviceLinkClient } from './DeviceLinkClient'
 import { setFileChangeForwarder } from '../../guard/fileSystemObserver'
 import { previewSessionReporter } from './PreviewSessionReporter'
+import {
+  getEmergencyStopController,
+  type EmergencyStopState,
+} from '../desktop-control/EmergencyStop'
 
 /** 文件变更事件防抖间隔（1s 内合并） */
 const FILE_CHANGE_DEBOUNCE_MS = 1000
@@ -47,6 +51,9 @@ class DeviceLinkEventBridge {
   private isIdleReported = false
 
   private isAttached = false
+
+  /** 紧急停止控制器的事件退订函数 */
+  private emergencyStopUnsubscribers: Array<() => void> = []
 
   /**
    * 启动事件桥接（app ready 后调用）
@@ -136,6 +143,28 @@ class DeviceLinkEventBridge {
         })
       }
     })
+
+    // ── 7.1 紧急停止控制器直连（不依赖 renderer 转发） ──────────────
+    // 远程急停可能在渲染进程未就绪、甚至窗口已关闭时触发，
+    // 由主进程直接订阅控制器事件，保证移动端一定能收到告警。
+    try {
+      const controller = getEmergencyStopController()
+      const offStop = controller.onStop((state: EmergencyStopState) => {
+        this.report('alert', {
+          reason: 'emergency_stop',
+          source: state.source || 'unknown',
+          detail: state.reason || undefined,
+          triggerCount: state.triggerCount,
+          triggeredAt: state.triggeredAt,
+        })
+      })
+      const offReset = controller.onReset(() => {
+        this.report('status', { reason: 'emergency_stop_reset' })
+      })
+      this.emergencyStopUnsubscribers.push(offStop, offReset)
+    } catch (err) {
+      logger.deviceLink.debug(`[EventBridge] emergencyStop subscribe failed: ${(err as Error).message}`)
+    }
 
     // ── 8. 连接状态上报（由 client 在 ws open/close 时调用 pushConnectivity） ─
     //    见 DeviceLinkClient 在 start/stop/connect 成功/closed 时调用此通道
@@ -243,6 +272,15 @@ class DeviceLinkEventBridge {
     this.fileChangeBuffer = []
     this.isIdleReported = false
     this.isAttached = false
+    // 退订紧急停止事件，避免控制器持有已销毁的桥接实例
+    for (const off of this.emergencyStopUnsubscribers) {
+      try {
+        off()
+      } catch {
+        /* ignore */
+      }
+    }
+    this.emergencyStopUnsubscribers = []
     // 解除文件变更转发器，防止已销毁的 client 被回调
     try {
       setFileChangeForwarder(null)

@@ -6,6 +6,7 @@
  */
 
 import { OperationType } from '@main/guard/securityPolicyEngine'
+import { logger } from '@shared/toolkit/LogEngine'
 import { getPlatformAdapter } from './platform'
 import type { PlatformAdapter } from './platform/types'
 import { AppLauncher } from './AppLauncher'
@@ -16,6 +17,7 @@ import { ScreenCaptureService } from './ScreenCapture'
 import { InputSimulator } from './InputSimulator'
 import { FileManager } from './FileManager'
 import { DesktopGuard } from './DesktopGuard'
+import { getInputInjectionGuard } from './InputInjectionGuard'
 import {
   getEmergencyStopController,
   type EmergencyStopParams,
@@ -38,6 +40,17 @@ import type {
   FileInfo,
   InputOperationResult,
 } from './types/actions'
+
+/**
+ * 需要系统级辅助功能授权才能真正生效的操作
+ *
+ * 只有这两类：鼠标与键盘。截图、文件、进程等操作走的是各自的系统 API，
+ * 未授权时会以真实错误返回，不需要在这里重复拦截。
+ */
+const INPUT_OPERATIONS = new Set<OperationType>([
+  OperationType.MOUSE_INPUT,
+  OperationType.KEYBOARD_INPUT,
+])
 
 export class DesktopControlManager {
   readonly launcher: AppLauncher
@@ -84,11 +97,50 @@ export class DesktopControlManager {
       throw new Error(`Operation ${operation} is denied by security policy`)
     }
 
+    // 注入类操作额外过一次系统授权校验：macOS 未授予辅助功能时 CGEventPost
+    // 会静默丢弃事件，平台层仍报 success，最终表现为「点了没反应」。
+    // 放在这里而不是各个入口，是因为 MCP 工具与远程控制走的是同一条路径。
+    if (INPUT_OPERATIONS.has(operation)) {
+      await getInputInjectionGuard().assertReady()
+    }
+
     // ASK（needConfirm）：MCP 工具自带审批流程，此处不再弹窗确认，直接执行。
     // 旧桌面自动化的弹窗确认已移除，避免与 MCP 工具审批重复并导致调用超时。
     // 紧急停止（emergencyStop）仍然作为全局安全守卫生后。
 
     return action()
+  }
+
+  /**
+   * 校验指针是否真的落到了目标位置
+   *
+   * 只有平台层自报成功不足以说明注入生效：系统吞掉事件时同样返回成功。
+   * 回读指针位置是唯一不依赖平台层自述的客观信号，未落地即判失败。
+   */
+  /**
+   * 校验指针是否真的落到了目标位置
+   *
+   * 平台层自报成功不足以说明注入生效：系统吞掉事件时同样返回成功。但反过来，
+   * 调用返回后立刻回读位置也不可靠——事件是异步投递到窗口服务器的，指针桥下发
+   * 后马上读往往还是旧坐标，于是「已经点中了」被判成「操作没生效」，用户看到的
+   * 就是操作生效了却在手机上弹错误。
+   *
+   * 因此这里等事件落地后再校验，且校验只作为诊断信号：不符时记告警，不推翻
+   * 已经成功提交的操作。真正被系统吞掉的事件不会让用户产生误判，反而误报会。
+   */
+  private verifyPointerLandedAsync(x: number, y: number): void {
+    void getInputInjectionGuard()
+      .verifyPointerLandedEventually(x, y)
+      .then((landed) => {
+        if (!landed) {
+          logger.desktop.warn(
+            `[DesktopControl] 指针未落到目标点 (${x},${y})，操作已提交但落点不确定`,
+          )
+        }
+      })
+      .catch((err) => {
+        logger.desktop.warn('[DesktopControl] 指针落点校验异常，已忽略:', err)
+      })
   }
 
   // ============ 应用启动 ============
@@ -283,12 +335,15 @@ export class DesktopControlManager {
   // ============ 输入模拟（Phase 2） ============
 
   async mouseClick(params: MouseClickParams): Promise<InputOperationResult> {
-    return this.executeWithPermission(
+    const result = await this.executeWithPermission(
       OperationType.MOUSE_INPUT,
       `(${params.x},${params.y})`,
       () => this.inputSimulator.click(params),
       [params],
     )
+    // 落点校验只作诊断，不阻断：事件已提交，指针未及时到位不代表点击没生效
+    this.verifyPointerLandedAsync(params.x, params.y)
+    return result
   }
 
   async mouseMove(params: MouseMoveParams): Promise<InputOperationResult> {
@@ -310,12 +365,15 @@ export class DesktopControlManager {
   }
 
   async mouseDrag(params: MouseDragParams): Promise<InputOperationResult> {
-    return this.executeWithPermission(
+    const result = await this.executeWithPermission(
       OperationType.MOUSE_INPUT,
       `(${params.fromX},${params.fromY})->(${params.toX},${params.toY})`,
       () => this.inputSimulator.drag(params),
       [params],
     )
+    // 同上，拖拽的终点同样可能在读回时还未落地
+    this.verifyPointerLandedAsync(params.toX, params.toY)
+    return result
   }
 
   async typeText(text: string, delayMs?: number): Promise<InputOperationResult> {

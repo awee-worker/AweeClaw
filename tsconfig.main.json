@@ -37,6 +37,7 @@
       "@configuration/*": ["src/shared/configuration/*"],
       "@scenario-system/*": ["src/scenario-system/*"],
       "@scenarios/*": ["src/scenarios/*"],
+      "@shared/*": ["src/shared/*"],
       "@shared/exceptions": ["src/shared/exceptions"],
       "@shared/exceptions/*": ["src/shared/exceptions/*"]
     }

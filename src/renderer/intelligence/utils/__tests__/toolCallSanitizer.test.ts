@@ -101,6 +101,22 @@ describe('filterToolCallLeakChunk', () => {
     expect(second.buffer).toBe('')
   })
 
+  it('大写标签前缀同样进入缓冲，不把半截标签漏进正文', () => {
+    const first = filterToolCallLeakChunk('结果已列出<T')
+    expect(first.visibleText).toBe('结果已列出')
+    expect(first.buffer).toBe('<T')
+
+    const second = filterToolCallLeakChunk('ool_call>{"name":"x"}', first.buffer)
+    expect(second.visibleText).toBe('')
+    expect(second.buffer).toBe('<Tool_call>{"name":"x"}')
+  })
+
+  it('流在未完成的大写标签处结束时，残片不冲进正文', () => {
+    const chunk = filterToolCallLeakChunk('已处理完毕<T')
+    expect(chunk.visibleText).toBe('已处理完毕')
+    expect(flushToolCallLeakBuffer(chunk.buffer)).toBe('')
+  })
+
   it('不是标签名的尖括号内容照常输出', () => {
     const chunk = filterToolCallLeakChunk('比较 a <b 与 c')
     expect(chunk.visibleText).toBe('比较 a <b 与 c')

@@ -29,6 +29,7 @@ export type EmergencyStopSource =
   | 'agent' // Agent 自主触发（检测到异常）
   | 'timeout' // 操作超时自动触发
   | 'external' // 外部 IPC 调用
+  | 'remote' // 远程设备联动触发（移动端一键急停）
 
 /** 停止状态记录 */
 export interface EmergencyStopState {

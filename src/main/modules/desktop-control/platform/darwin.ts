@@ -27,6 +27,7 @@ import type {
   MouseDragParams,
   InputOperationResult,
 } from '../types/actions'
+import { bridgeClick, bridgeDrag, bridgeMove, bridgeScroll } from './darwinPointerBridge'
 
 /** 执行 shell 命令的便捷封装 */
 function execCmd(command: string, options?: cp.ExecOptions): Promise<{ stdout: string; stderr: string }> {
@@ -102,18 +103,77 @@ function execJxa(script: string, timeout = 5000): Promise<string> {
 }
 
 /**
- * 检查 cliclick 是否已安装（缓存结果避免重复 which 调用）
+ * 解析 cliclick 可执行文件路径
+ *
+ * 不用 `which cliclick` 的原因：GUI 启动的 Electron 继承 launchd 的精简 PATH
+ * （/usr/bin:/bin:/usr/sbin:/sbin），Homebrew 的 /opt/homebrew/bin 不在其中。
+ * 用户明明装了 cliclick，应用却探测不到，于是白跑一次 which 再降级到 JXA——
+ * 而 JXA 每次要多 spawn 一个 osascript，比 cliclick 慢一档。
+ *
+ * 改为按固定候选顺序直接探测绝对路径：
+ *   1. 打包内置（electron-builder extraResources → Contents/Resources/bin/）
+ *   2. Apple Silicon Homebrew
+ *   3. Intel Homebrew
+ *   4. MacPorts
+ *
+ * 探测结果缓存：避免每次输入都重复走完全部候选。
  */
-let cliclickAvailable: boolean | null = null
-async function hasCliclick(): Promise<boolean> {
-  if (cliclickAvailable !== null) return cliclickAvailable
-  try {
-    await execCmd('which cliclick', { timeout: 2000 })
-    cliclickAvailable = true
-  } catch {
-    cliclickAvailable = false
+let cliclickPathCache: { path: string | null } | null = null
+
+const CLICLICK_CANDIDATES: Array<() => string | null> = [
+  () => (process.resourcesPath ? path.join(process.resourcesPath, 'bin', 'cliclick') : null),
+  () => '/opt/homebrew/bin/cliclick',
+  () => '/usr/local/bin/cliclick',
+  () => '/opt/local/bin/cliclick',
+]
+
+function resolveCliclickPath(): string | null {
+  if (cliclickPathCache) return cliclickPathCache.path
+  const tried: string[] = []
+  for (const candidate of CLICLICK_CANDIDATES) {
+    const p = candidate()
+    if (!p) continue
+    tried.push(p)
+    try {
+      // 只认带执行位的文件：存在但无执行位（如被 Gatekeeper 隔离）同样不可用
+      fs.accessSync(p, fs.constants.X_OK)
+      cliclickPathCache = { path: p }
+      logger.desktop.info(`[Darwin] cliclick 已定位: ${p}`)
+      return p
+    } catch {
+      /* 继续探测下一个候选 */
+    }
   }
-  return cliclickAvailable
+  cliclickPathCache = { path: null }
+  logger.desktop.info(
+    `[Darwin] 未找到 cliclick（已尝试: ${tried.join(', ') || '无'}），鼠标与键盘改用 CoreGraphics / AppleScript 通道`,
+  )
+  return null
+}
+
+async function hasCliclick(): Promise<boolean> {
+  return resolveCliclickPath() !== null
+}
+
+/**
+ * 以绝对路径调用 cliclick
+ *
+ * 用 execFile 而非 exec：参数逐个传递，不经 shell，路径含空格或参数含特殊字符
+ * 都不会被拆错，也避免了拼接命令字符串带来的注入面。
+ */
+function execCliclick(args: string[], timeout = 5000): Promise<string> {
+  const bin = resolveCliclickPath()
+  if (!bin) return Promise.reject(new Error('cliclick_not_available'))
+  return new Promise((resolve, reject) => {
+    cp.execFile(bin, args, { timeout, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) {
+        const stderrText = stderr ? String(stderr).trim() : ''
+        reject(new Error(stderrText || err.message))
+      } else {
+        resolve(String(stdout))
+      }
+    })
+  })
 }
 
 /** 提取应用图标为 base64（简化版，仅返回路径） */
@@ -863,6 +923,13 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
     const start = Date.now()
     const { x, y, button, clickType } = params
 
+    // 方案0：常驻指针桥
+    // 与移动指令共用同一条 stdin，天然按序执行，点击不会被迟到的移动覆盖；
+    // 也省掉每次 spawn 进程的百毫秒开销。
+    if (bridgeClick(x, y, button, clickType)) {
+      return { success: true, operation: 'mouseClick', duration: Date.now() - start }
+    }
+
     // 用 cliclick 一步完成移动+点击（c:x,y），避免分两步时鼠标位置被其他事件篡改
     if (await hasCliclick()) {
       try {
@@ -871,7 +938,7 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
           : button === 'right'
             ? `rc:${x},${y}`
             : `c:${x},${y}`
-        await execCmd(`cliclick ${action}`, { timeout: 5000 })
+        await execCliclick([action], 5000)
         logger.desktop.info(`[Darwin] mouseClick: cliclick ${action}`)
         return { success: true, operation: 'mouseClick', duration: Date.now() - start }
       } catch (err) {
@@ -912,10 +979,15 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
     const start = Date.now()
     const { x, y } = params
 
+    // 方案0：常驻指针桥。移动是逐帧高频动作，只有零启动开销的通道才跟得上手指
+    if (bridgeMove(x, y)) {
+      return { success: true, operation: 'mouseMove', duration: Date.now() - start }
+    }
+
     // 方案1：cliclick m:x,y
     if (await hasCliclick()) {
       try {
-        await execCmd(`cliclick m:${x},${y}`, { timeout: 5000 })
+        await execCliclick([`m:${x},${y}`], 5000)
         return { success: true, operation: 'mouseMove', duration: Date.now() - start }
       } catch (err) {
         logger.desktop.warn(`[Darwin] cliclick move failed, falling back to CoreGraphics: ${(err as Error).message}`)
@@ -948,10 +1020,16 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
     // amount 正值向下滚动，负值向上；cliclick scroll:dy,dx
     const dy = amount
 
+    // 方案0：常驻指针桥（端上是 Quartz 语义，正数向上，故内部取反）
+    if (bridgeScroll(x, y, dy)) {
+      return { success: true, operation: 'mouseScroll', duration: Date.now() - start }
+    }
+
     // 方案1：cliclick（需先移动到目标位置）
     if (await hasCliclick()) {
       try {
-        await execCmd(`cliclick m:${x},${y} "scroll:${dy},${dy}"`, { timeout: 5000 })
+        // 第二个参数是横向滚动量，必须给 0：给 dy 会同时横向滚一段，页面会歪着走
+        await execCliclick([`m:${x},${y}`, `scroll:${dy},0`], 5000)
         return { success: true, operation: 'mouseScroll', duration: Date.now() - start }
       } catch (err) {
         logger.desktop.warn(`[Darwin] cliclick scroll failed, falling back to CoreGraphics: ${(err as Error).message}`)
@@ -985,13 +1063,18 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
     const start = Date.now()
     const { fromX, fromY, toX, toY, button } = params
 
+    // 方案0：常驻指针桥。分段拖拽同样是逐帧动作，必须走零启动开销通道
+    if (bridgeDrag(fromX, fromY, toX, toY, button)) {
+      return { success: true, operation: 'mouseDrag', duration: Date.now() - start }
+    }
+
     // 方案1：cliclick dd: 按下 + du: 抬起（语法：cliclick dd:x1,y1 du:x2,y2）
     if (await hasCliclick()) {
       try {
-        const dragCmd = button === 'right'
-          ? `cliclick rdd:${fromX},${fromY} rdu:${toX},${toY}`
-          : `cliclick dd:${fromX},${fromY} du:${toX},${toY}`
-        await execCmd(dragCmd, { timeout: 10000 })
+        const dragArgs = button === 'right'
+          ? [`rdd:${fromX},${fromY}`, `rdu:${toX},${toY}`]
+          : [`dd:${fromX},${fromY}`, `du:${toX},${toY}`]
+        await execCliclick(dragArgs, 10000)
         return { success: true, operation: 'mouseDrag', duration: Date.now() - start }
       } catch (err) {
         logger.desktop.warn(`[Darwin] cliclick drag failed, falling back to CoreGraphics: ${(err as Error).message}`)
@@ -1148,7 +1231,14 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
       return: 36,
       tab: 48,
       space: 49,
+      // macOS 上物理退格键的 key code 就是 51（AppleScript 里也叫 delete）。
+      // 工具条的「删除」发的是 backspace，原先缺这一项，会落到默认值 0，
+      // 而 0 正是字母 a，于是远程按删除却打出 a。
       delete: 51,
+      backspace: 51,
+      del: 51,
+      forwarddelete: 117,
+      deleteforward: 117,
       escape: 53,
       escapekey: 53,
       f1: 122,
@@ -1208,7 +1298,10 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
       8: 28,
       9: 25,
     }
-    return keyMap[key.toLowerCase()] ?? 0
+    const code = keyMap[key.toLowerCase()]
+    // 不做默认回落：静默按到 0（字母 a）这类错误比直接报错更难排查
+    if (code === undefined) throw new Error(`unsupported_key:${key}`)
+    return code
   }
 
   /** 判断是否为修饰键 */

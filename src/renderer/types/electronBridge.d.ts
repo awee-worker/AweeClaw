@@ -4056,7 +4056,32 @@ export interface ElectronAPI {
       allowClipboardPush?: boolean
       allowScreenshot?: boolean
       allowPowerControl?: boolean
+      /** 允许远程鼠标键盘控制（远程控制） */
+      allowRemoteInput?: boolean
     }) => Promise<{ ok: boolean }>
+    /**
+     * 读取远程权限快照
+     *
+     * preferences 是生效值（已叠加临时授权），不是配置原值；
+     * tempRemaining 给出各范围限时授权的剩余毫秒，0 表示无。
+     */
+    getPreferences: () => Promise<{
+      preferences: {
+        allowRemoteCommand: boolean
+        allowClipboardPush: boolean
+        allowScreenshot: boolean
+        allowPowerControl: boolean
+        allowRemoteInput: boolean
+      }
+      tempRemaining: Record<
+        'shell' | 'screenshot' | 'clipboard' | 'power' | 'input',
+        number
+      >
+    }>
+    /** 撤销某范围的限时授权（不改动永久开关） */
+    clearTempGrant: (
+      scope: 'shell' | 'screenshot' | 'clipboard' | 'power' | 'input',
+    ) => Promise<{ ok: boolean }>
     /** 查询连接状态 */
     getStatus: () => Promise<{
       started: boolean

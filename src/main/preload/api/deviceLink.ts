@@ -51,6 +51,24 @@ export interface DeviceLinkPreferencesPayload {
   allowScreenshot?: boolean
   /** 允许远程休眠/唤醒（默认 false） */
   allowPowerControl?: boolean
+  /**
+   * 允许远程鼠标键盘控制（默认 false）
+   *
+   * 开启后等于把整台机器的操作权交给已登录的移动端，因此默认关闭，
+   * 且与「远程执行命令」分列不同开关。
+   */
+  allowRemoteInput?: boolean
+}
+
+/** 远程权限范围（与主进程 PermissionScope 一致） */
+export type DeviceLinkPermissionScope = 'shell' | 'screenshot' | 'clipboard' | 'power' | 'input'
+
+/** 远程权限快照（设置界面读取） */
+export interface DeviceLinkPermissionSnapshot {
+  /** 各开关的生效值（已叠加临时授权） */
+  preferences: Required<DeviceLinkPreferencesPayload>
+  /** 各范围临时授权剩余毫秒，0 表示无 */
+  tempRemaining: Record<DeviceLinkPermissionScope, number>
 }
 
 /** 设备联动连接状态 */
@@ -155,6 +173,19 @@ export function createDeviceLinkApi() {
     /** 更新偏好策略（设置面板调用） */
     setPreferences: (patch: DeviceLinkPreferencesPayload) =>
       invoke<{ ok: boolean }>('device-link:set-preferences')(patch),
+
+    /**
+     * 读取远程权限快照（设置面板初始化调用）
+     *
+     * 返回的是生效值而非配置原值：临时授权已叠加进去，
+     * 界面据此才能正确显示「限时放行中」以及剩余时间。
+     */
+    getPreferences: () =>
+      invoke<DeviceLinkPermissionSnapshot>('device-link:get-preferences')(),
+
+    /** 撤销某范围的限时授权（不改动永久开关） */
+    clearTempGrant: (scope: DeviceLinkPermissionScope) =>
+      invoke<{ ok: boolean }>('device-link:clear-temp-grant')(scope),
 
     /** 查询连接状态（设置面板状态指示器调用） */
     getStatus: () => invoke<DeviceLinkStatusPayload>('device-link:get-status')(),
