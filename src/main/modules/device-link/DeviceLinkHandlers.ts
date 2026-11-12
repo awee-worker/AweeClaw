@@ -25,6 +25,7 @@ import { promisify } from 'util'
 import { logger } from '@shared/toolkit/LogEngine'
 import { getDesktopControlManager } from '../desktop-control'
 import type { ScreenshotResult } from '../desktop-control/types/actions'
+import { peekScrollPercent } from '../desktop-control/scrollProbe'
 import { SessionDb } from '../../modules/session-db'
 
 const execAsync = promisify(exec)
@@ -1008,6 +1009,7 @@ export async function handleScreenFrame(
   screenWidth: number
   screenHeight: number
   takenAt: number
+  scroll: { percent: number; measuredAt: number } | null
 }> {
   if (!ctx.preferences().allowScreenshot) throw new Error('forbidden_by_policy')
 
@@ -1035,6 +1037,10 @@ export async function handleScreenFrame(
   }
   const size = image.getSize()
 
+  // 滚动位置只读缓存，不在这里等待采集：它来自跨进程无障碍接口，
+  // 同步等会让每一帧都被拖慢，而滑块晚几百毫秒更新完全无所谓
+  const scrollPct = peekScrollPercent()
+
   return {
     url: `data:image/jpeg;base64,${image.toJPEG(quality).toString('base64')}`,
     imageWidth: size.width,
@@ -1042,6 +1048,7 @@ export async function handleScreenFrame(
     screenWidth: captured.region?.width || origin.width,
     screenHeight: captured.region?.height || origin.height,
     takenAt: Date.now(),
+    scroll: scrollPct === null ? null : { percent: scrollPct, measuredAt: Date.now() },
   }
 }
 

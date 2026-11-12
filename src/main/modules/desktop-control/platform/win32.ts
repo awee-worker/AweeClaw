@@ -25,6 +25,7 @@ import type {
   MouseDragParams,
   InputOperationResult,
 } from '../types/actions'
+import { bridgeClick, bridgeDrag, bridgeMove, bridgeScroll } from './win32PointerBridge'
 
 /** 执行 PowerShell 命令 */
 function execPowerShell(command: string, options?: cp.ExecOptions): Promise<{ stdout: string; stderr: string }> {
@@ -590,6 +591,11 @@ export class Win32PlatformAdapter implements PlatformAdapter {
 
   async mouseClick(params: MouseClickParams): Promise<InputOperationResult> {
     const start = Date.now()
+    // 常驻桥命中即返回：它已把 user32 编译过一次，单次点击是微秒级；
+    // 未就绪（首次调用、桥进程被杀）时降级到下面的 spawn 通道
+    if (bridgeClick(params.x, params.y, params.button ?? 'left', params.clickType ?? 'single')) {
+      return { success: true, operation: 'mouseClick', duration: Date.now() - start }
+    }
     try {
       const clickCount = params.clickType === 'double' ? 2 : 1
       const downCode = params.button === 'right' ? '0x0008' : '0x0002'
@@ -612,6 +618,11 @@ export class Win32PlatformAdapter implements PlatformAdapter {
 
   async mouseMove(params: MouseMoveParams): Promise<InputOperationResult> {
     const start = Date.now()
+    // 移动是最高频的注入，必须走桥：spawn 一次 PowerShell 要 150~400ms，
+    // 远大于手指的采样间隔，不换通道光标永远追着手指跑
+    if (bridgeMove(params.x, params.y)) {
+      return { success: true, operation: 'mouseMove', duration: Date.now() - start }
+    }
     try {
       const script = `
         Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class M { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); }'
@@ -626,6 +637,11 @@ export class Win32PlatformAdapter implements PlatformAdapter {
 
   async mouseScroll(params: MouseScrollParams): Promise<InputOperationResult> {
     const start = Date.now()
+    // 滚动是长文档场景下频率最高的指令，一次滚动过程要发几十条，
+    // 走 spawn 通道时每条都要重新 Add-Type，排队会直接表现为「滑了不动」
+    if (bridgeScroll(params.x, params.y, params.amount)) {
+      return { success: true, operation: 'mouseScroll', duration: Date.now() - start }
+    }
     try {
       const script = `
         Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class M {
@@ -642,6 +658,9 @@ export class Win32PlatformAdapter implements PlatformAdapter {
 
   async mouseDrag(params: MouseDragParams): Promise<InputOperationResult> {
     const start = Date.now()
+    if (bridgeDrag(params.fromX, params.fromY, params.toX, params.toY, params.button ?? 'left')) {
+      return { success: true, operation: 'mouseDrag', duration: Date.now() - start }
+    }
     try {
       const downFlag = params.button === 'right' ? '0x0008' : '0x0002'
       const upFlag = params.button === 'right' ? '0x0010' : '0x0004'
