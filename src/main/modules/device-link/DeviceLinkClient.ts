@@ -53,6 +53,7 @@ import {
 } from './DeviceLinkHandlers'
 import { deviceLinkEventBridge } from './DeviceLinkEventBridge'
 import { getPowerGuardManager } from '../power-guard'
+import { REMOTE_SESSION_REASON } from '@shared/protocols/powerGuardProtocol'
 import { taskControlHub, type QueuedSteer, type IncomingTakeoverResolve } from './TaskControlHub'
 import type { TakeoverRequest, TaskFrame } from '@shared/protocols/deviceTaskProtocol'
 import type Store from 'electron-store'
@@ -157,6 +158,14 @@ class DeviceLinkClient {
       // 防休眠不可用不该拖垮连接本身：远程控制仍可工作，只是电脑空闲后可能休眠
       this.powerHoldActive = false
       logger.deviceLink.warn(`[Client] 防休眠持有失败：${err instanceof Error ? err.message : err}`)
+      return
+    }
+    // 防锁屏与防休眠同时持有：两者挡的是不同环节，缺一个都会前功尽弃。
+    // 失败不影响连接，由用户在电脑端设置里处理
+    try {
+      getPowerGuardManager().acquireScreenLock(REMOTE_SESSION_REASON)
+    } catch (err) {
+      logger.deviceLink.warn(`[Client] 防锁屏持有失败：${err instanceof Error ? err.message : err}`)
     }
   }
 
@@ -175,6 +184,13 @@ class DeviceLinkClient {
       getPowerGuardManager().release(POWER_HOLD_REASON)
     } catch (err) {
       logger.deviceLink.warn(`[Client] 防休眠释放失败：${err instanceof Error ? err.message : err}`)
+    }
+    // 与 acquire 严格配对：release 计数不配对会让防锁屏永远释放不掉，
+    // 结果就是断开连接后电脑再也不自动锁屏
+    try {
+      getPowerGuardManager().releaseScreenLock(REMOTE_SESSION_REASON)
+    } catch (err) {
+      logger.deviceLink.warn(`[Client] 防锁屏释放失败：${err instanceof Error ? err.message : err}`)
     }
   }
 

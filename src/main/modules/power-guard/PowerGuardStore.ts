@@ -50,6 +50,9 @@ export const DEFAULT_POWER_GUARD_CONFIG: PowerGuardConfig = {
   autoTriggerAgentTask: true,
   minDurationMs: 15_000,
   manualHold: false,
+  // 防锁屏默认关闭：它意味着屏幕内容对路过的人可见，属于安全取舍，
+  // 必须由用户显式开启。远程控制页会在遇到锁屏时引导用户去开。
+  screenLockGuard: 'off',
 }
 
 // ============================================
@@ -117,6 +120,15 @@ function normalize(config: PowerGuardConfig): PowerGuardConfig {
   const out = { ...config }
   if (out.mode !== 'off' && out.mode !== 'idle' && out.mode !== 'system') {
     out.mode = DEFAULT_POWER_GUARD_CONFIG.mode
+  }
+  // 手改配置写出非法值时回落 off：防锁屏的“错”代价是单向的（多了会挂空屏），
+  // 宁可回到不干预，也不能默认开启一个用户没确认过的降安全选项
+  if (
+    out.screenLockGuard !== 'off' &&
+    out.screenLockGuard !== 'session' &&
+    out.screenLockGuard !== 'standby'
+  ) {
+    out.screenLockGuard = DEFAULT_POWER_GUARD_CONFIG.screenLockGuard
   }
   if (!Number.isFinite(out.minDurationMs)) {
     out.minDurationMs = DEFAULT_POWER_GUARD_CONFIG.minDurationMs
@@ -194,6 +206,9 @@ export function validateConfig(config: PowerGuardConfig): string[] {
   }
   if (config.enabled && !config.autoTriggerAgentTask && !config.manualHold) {
     issues.push('自动触发已关闭且未手动保持唤醒，模块当前无生效场景')
+  }
+  if (config.screenLockGuard === 'standby') {
+    issues.push('远程待命已开启：电脑将不会自动锁屏，离开时请确认周边环境安全')
   }
   return issues
 }

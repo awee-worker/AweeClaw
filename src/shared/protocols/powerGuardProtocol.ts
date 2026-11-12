@@ -16,6 +16,14 @@ export const POWER_GUARD_STATUS_CHANNEL = 'power-guard:status'
 export const MANUAL_HOLD_REASON = 'manual'
 
 /**
+ * 远程控制连接期间的防锁屏持有者标识。
+ *
+ * 由 `DeviceLinkClient` 在 WebSocket 建立后持有、断开时释放。
+ * 只在 `screenLockGuard: 'session'` 下计入生效集合，`standby` 模式不依赖它。
+ */
+export const REMOTE_SESSION_REASON = 'remote-session'
+
+/**
  * Agent 长任务的持有者标识（`IntelligenceCore.send` 的起止驱动的来源）。
  *
  * 单独抽出常量而不是到处写字面量：主进程要按它做「`autoTriggerAgentTask` 为 false 时
@@ -34,6 +42,22 @@ export const AGENT_TASK_REASON = 'agent-task'
  * 显示熄灭由桌面环境自己管。UI 必须如实说明，不能假装做到了。
  */
 export type PowerGuardMode = 'off' | 'idle' | 'system'
+
+/**
+ * 防自动锁屏策略。
+ *
+ * 与 `PowerGuardMode` 是**两个正交的维度**，不能合并：
+ *   · `PowerGuardMode`  管「系统能不能睡」
+ *   · 本项              管「屏幕会不会锁」
+ *
+ * 远程控制真正怕的是后者 —— 息屏本身可以用一次唤醒请求解决，而一旦进了
+ * 锁屏 / 登录界面，键盘鼠标就落在安全桌面上，用户态进程再也注不进去。
+ *
+ * - `off`      不干预系统锁屏（默认）
+ * - `session`  仅在移动端远程连接期间阻止（不连接时零副作用）
+ * - `standby`  持续阻止，即「远程待命」：离开电脑前打开，回来时电脑仍是解锁状态
+ */
+export type PowerGuardScreenLockMode = 'off' | 'session' | 'standby'
 
 /** 运行平台 */
 export type PowerGuardPlatformKind = 'darwin' | 'linux' | 'win32' | 'unsupported'
@@ -74,6 +98,13 @@ export interface PowerGuardConfig {
    * 用户手动保持时即使没有任务在跑也生效；自动触发也不会把手动开关顶掉。
    */
   manualHold: boolean
+  /**
+   * 防自动锁屏策略。
+   *
+   * 默认 `off`：阻止锁屏意味着屏幕内容对外可见，属于安全取舍，
+   * 必须由用户显式开启，不能在升级后悄悄生效。
+   */
+  screenLockGuard: PowerGuardScreenLockMode
 }
 
 /** 一个正在持有防休眠断言的来源 */
@@ -112,6 +143,23 @@ export interface PowerGuardStatus {
   /** 启动 / 释放次数（排障用） */
   startCount: number
   stopCount: number
+  /** 当前平台是否具备防自动锁屏能力 */
+  screenLockGuardSupported: boolean
+  /** 防自动锁屏是否正在生效 */
+  screenLockGuardActive: boolean
+  /**
+   * 实际使用的防锁屏手段（可读文案）。
+   *
+   * 平台差异很大：macOS 是活动心跳，Windows 只能阻止息屏并探测屏保。
+   * UI 直接展示它，让用户知道「挡住的到底是哪一层」。
+   */
+  screenLockGuardMethod: string
+  /**
+   * 防锁屏覆盖不到的情况（如实告知，不假装做到）。
+   *
+   * 例如：手动锁屏快捷键、合盖、企业组策略强制空闲锁屏。
+   */
+  screenLockGuardNote: string
 }
 
 /** get-config / update-config / reset-config 的返回体 */

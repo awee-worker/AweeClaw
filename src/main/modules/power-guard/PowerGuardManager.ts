@@ -96,6 +96,23 @@ export class PowerGuardManager {
    */
   private displayHold: { reason: string; timer: NodeJS.Timeout | null } | null = null
 
+  /**
+   * 防自动锁屏的持有者（reason → 计数）
+   *
+   * 与 `holders` 分开维护而不是复用：两者语义不同。
+   * `holders` 管的是「别让系统睡」，这里管的是「别让屏幕锁」——
+   * 远程连接期间需要后者，而 Agent 长任务只需要前者。合并的后果是
+   * 「跑任务时电脑永不锁屏」，那是个没人要求过的副作用。
+   */
+  private readonly screenLockHolders = new Map<string, HolderEntry>()
+
+  /** 防自动锁屏是否正在生效 */
+  private screenLockActive = false
+  /** 防自动锁屏的实际手段（平台给的可读文案，未生效时为空串） */
+  private screenLockMethod = ''
+  /** 防自动锁屏覆盖不到的情况（平台如实上报，未生效时为空串） */
+  private screenLockNote = ''
+
   /** 去抖定时器（最早的持有者跨过 minDurationMs 时触发一次提交） */
   private holdTimer: NodeJS.Timeout | null = null
 
@@ -184,7 +201,13 @@ export class PowerGuardManager {
     // 定时保持同样要断开：否则退出流程已经释放断言，定时器还会在进程存活期间再 commit 一次
     if (this.displayHold?.timer) clearTimeout(this.displayHold.timer)
     this.displayHold = null
-    await this.enqueue(() => this.stopGuard())
+    this.screenLockHolders.clear()
+    // 防锁屏心跳是独立进程，必须在这里显式收掉：主断言停了它还在，
+    // 就会出现「应用退出了但屏幕依然不锁」的僵尸状态
+    await this.enqueue(async () => {
+      await this.stopGuard()
+      await this.stopScreenLockGuard()
+    })
   }
 
   // ============================================
@@ -359,6 +382,116 @@ export class PowerGuardManager {
   }
 
   // ============================================
+  // 防自动锁屏
+  // ============================================
+
+  /**
+   * 取得一份防锁屏持有（引用计数 +1）
+   *
+   * 调用方是远程连接的生命周期（建立时 acquire、断开时 release）。
+   * 实际是否生效仍由配置决定：`screenLockGuard` 为 `off` 时持有不计入生效集合。
+   */
+  acquireScreenLock(reason: unknown): void {
+    const key = normalizeReason(reason)
+    const entry = this.screenLockHolders.get(key)
+    if (entry) {
+      entry.count += 1
+    } else {
+      this.screenLockHolders.set(key, { count: 1, since: Date.now() })
+    }
+    void this.commit()
+  }
+
+  /** 释放一份防锁屏持有（引用计数 -1；未持有时静默忽略，理由同 release） */
+  releaseScreenLock(reason: unknown): void {
+    const key = normalizeReason(reason)
+    const entry = this.screenLockHolders.get(key)
+    if (!entry) return
+
+    entry.count -= 1
+    if (entry.count <= 0) this.screenLockHolders.delete(key)
+
+    void this.commit()
+  }
+
+  /** 清空全部防锁屏持有者（退出前兜底） */
+  releaseAllScreenLock(): void {
+    if (this.screenLockHolders.size === 0) return
+    this.screenLockHolders.clear()
+    void this.commit()
+  }
+
+  /**
+   * 当前是否应该阻止自动锁屏。
+   *
+   * 三道闸门，任一不满足就完全不干预：
+   * - 模块关闭或强度为 `off`：用户明确表达「别碰电源行为」，不越权覆盖
+   * - 策略为 `off`，或当前平台没有可靠手段（Linux）
+   * - `session` 模式下没有活跃的远程连接
+   */
+  private isScreenLockGuardNeeded(): boolean {
+    const config = getConfig()
+    if (!config.enabled || config.mode === 'off') return false
+    if (config.screenLockGuard === 'off') return false
+    if (!this.platform.supportsScreenLockGuard()) return false
+    if (config.screenLockGuard === 'standby') return true
+    return this.screenLockHolders.size > 0
+  }
+
+  /**
+   * 提交一次防锁屏状态重算。
+   *
+   * 由 `commit()` 串行驱动，**不单独入队** —— 否则会和 `applyDesiredState`
+   * 交错，出现「防锁屏起来了但主断言还没起」的中间态。
+   */
+  private async applyScreenLockState(): Promise<void> {
+    const needed = this.isScreenLockGuardNeeded()
+
+    if (!needed) {
+      if (this.screenLockActive) await this.stopScreenLockGuard()
+      return
+    }
+
+    // 已生效且守护仍活着 → 无事可做（Activity 心跳被外部杀掉由健康检查兜底）
+    if (this.screenLockActive && this.platform.isScreenLockGuardAlive()) return
+
+    if (this.screenLockActive) await this.stopScreenLockGuard()
+    await this.startScreenLockGuard()
+  }
+
+  private async startScreenLockGuard(): Promise<void> {
+    try {
+      const result = await this.platform.startScreenLockGuard()
+      this.screenLockActive = true
+      this.screenLockMethod = result.method
+      this.screenLockNote = result.note
+      logger.system.info(`[PowerGuard] 防自动锁屏已生效：${result.method}`)
+    } catch (err) {
+      // 挡锁屏是增强能力，失败不向上抛：防休眠主断言仍然有效，
+      // 而远程控制页仍会照常提示「需要去电脑前解锁」。
+      const message = err instanceof Error ? err.message : String(err)
+      this.screenLockActive = false
+      this.screenLockMethod = ''
+      this.screenLockNote = ''
+      this.lastError = `防自动锁屏启动失败：${message}`
+      logger.system.warn(`[PowerGuard] 防自动锁屏启动失败：${message}`)
+    }
+    this.notifyStatus()
+  }
+
+  private async stopScreenLockGuard(): Promise<void> {
+    try {
+      await this.platform.stopScreenLockGuard()
+    } catch (err) {
+      logger.system.warn('[PowerGuard] 停止防自动锁屏失败：', err)
+    }
+    this.screenLockActive = false
+    this.screenLockMethod = ''
+    this.screenLockNote = ''
+    this.notifyStatus()
+  }
+
+  // ============================================
   // 配置
   // ============================================
 
@@ -409,6 +542,14 @@ export class PowerGuardManager {
       lastError: this.lastError,
       startCount: this.startCount,
       stopCount: this.stopCount,
+      screenLockGuardSupported: this.platform.supportsScreenLockGuard(),
+      screenLockGuardActive: this.screenLockActive,
+      // 未生效时 method 留空；note 退回「平台能力局限」，让 UI 始终能解释
+      // 「为什么现在没挡住」——是没开、没连、还是这台机器根本做不到
+      screenLockGuardMethod: this.screenLockActive ? this.screenLockMethod : '',
+      screenLockGuardNote: this.screenLockActive
+        ? this.screenLockNote
+        : this.platform.screenLockGuardLimitation(),
     }
   }
 
@@ -468,20 +609,32 @@ export class PowerGuardManager {
     if (config.mode === 'off') return null
     if (!this.platform.supported()) return null
 
-    // 远程控制活动期间临时顶到 system 档（阻止显示器休眠）。
+    // 远程控制活动期间、或正在阻止自动锁屏时，临时顶到 system 档（阻止显示器休眠）。
     //
     // 放在上面三个判断之后是有意的：用户把防休眠关掉或设成 off 时已经返回 null，
     // 这里不会越权改写用户选择。但 mode 只是 `idle` 时要顶上去——`idle` 允许
     // 显示器按时关闭，远程操作的人正看着那块画面，熄掉就等于断了眼睛。
-    if (this.displayHold) return 'system'
+    //
+    // 防锁屏必须配套阻止息屏：显示器一关，系统按「唤醒需密码」把屏幕推进登录
+    // 界面，防锁屏做得再多也没有意义。两条路径共用同一个断言，不重复起进程。
+    if (this.displayHold || this.isScreenLockGuardNeeded()) return 'system'
 
     if (!this.hasEffectiveHolder()) return null
     return config.mode
   }
 
-  /** 提交一次状态重算（走串行链） */
+  /**
+   * 提交一次状态重算（走串行链）
+   *
+   * 主断言与防锁屏在同一轮里先后计算，顺序不能反过来：防锁屏依赖
+   * `resolveDesiredMode` 把档位顶到 `system`，先起防锁屏会有一段
+   * 「屏幕可能被息屏」的空窗。
+   */
   private commit(): Promise<void> {
-    return this.enqueue(() => this.applyDesiredState())
+    return this.enqueue(async () => {
+      await this.applyDesiredState()
+      await this.applyScreenLockState()
+    })
   }
 
   /** 把异步状态变更排入串行链，保证 start/stop 不交错 */
@@ -686,6 +839,17 @@ export class PowerGuardManager {
         this.clearHealthTimer()
         return
       }
+      // 防锁屏心跳是独立进程，可能先于主断言退出（shell 循环因 caffeinate
+      // 异常而 exit 是典型情况）。它挂了不影响主断言，所以单独判定、单独重启，
+      // 不在这里把整个守卫判死。
+      if (this.screenLockActive && !this.platform.isScreenLockGuardAlive()) {
+        logger.system.warn('[PowerGuard] 防锁屏心跳已退出，重新启动')
+        this.screenLockActive = false
+        this.screenLockMethod = ''
+        this.screenLockNote = ''
+        void this.commit()
+      }
+
       if (this.platform.isAlive()) return
 
       logger.system.warn('[PowerGuard] 守护进程已意外退出，重新尝试启动')

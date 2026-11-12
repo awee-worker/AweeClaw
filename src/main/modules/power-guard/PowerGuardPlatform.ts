@@ -26,7 +26,7 @@ import type { PowerGuardPlatformKind, PowerGuardSource } from './types'
 /** 强度（`off` 不会走到平台层） */
 type ActiveMode = 'idle' | 'system'
 
-/** 平台守护句柄 */
+  /** 平台守护句柄 */
 export interface GuardStartResult {
   /** 守护子进程 pid（拿不到时为 null） */
   pid: number | null
@@ -36,6 +36,14 @@ export interface GuardStartResult {
   effectiveMode: ActiveMode
   /** 降级说明（未降级时为空串） */
   downgraded: string
+}
+
+/** 防自动锁屏启动结果 */
+export interface ScreenLockGuardResult {
+  /** 实际使用的防锁屏手段（面向用户的可读文案） */
+  method: string
+  /** 当前配置下仍然挡不住的锁屏路径（如实告知，无则为空串） */
+  note: string
 }
 
 /** 平台守卫接口 */
@@ -53,6 +61,23 @@ export interface PlatformGuard {
   stop(): Promise<void>
   /** 守护子进程是否仍活着 */
   isAlive(): boolean
+  // ---------------------------------------------------------------------
+  // 防自动锁屏（与上面的防休眠正交，但两者往往同时需要）
+  // ---------------------------------------------------------------------
+  /** 该平台是否具备阻止系统自动锁屏的能力 */
+  supportsScreenLockGuard(): boolean
+  /** 平台能力层面的局限说明（`supportsScreenLockGuard() === false` 时也必须给出原因） */
+  screenLockGuardLimitation(): string
+  /**
+   * 启动防自动锁屏守护（幂等；失败时抛错，错误消息面向用户可读）。
+   *
+   * 失败不阻断主流程：挡住锁屏是增强能力，而防休眠才是主断言。
+   */
+  startScreenLockGuard(): Promise<ScreenLockGuardResult>
+  /** 停止防自动锁屏守护（幂等；必须把任何系统设置改动回滚） */
+  stopScreenLockGuard(): Promise<void>
+  /** 防锁屏守护是否仍活着（无独立进程的平台返回 true） */
+  isScreenLockGuardAlive(): boolean
 }
 
 // ============================================
@@ -244,6 +269,8 @@ class CaffeinateGuard implements PlatformGuard {
   kind: PowerGuardSource = 'none'
 
   private child: ChildProcess | null = null
+  /** 防自动锁屏的活动心跳进程（与主断言分开） */
+  private screenLockChild: ChildProcess | null = null
 
   supported(): boolean {
     return true
@@ -276,6 +303,58 @@ class CaffeinateGuard implements PlatformGuard {
 
   isAlive(): boolean {
     return !!this.child && this.child.exitCode === null && this.child.signalCode === null
+  }
+
+  // ---------------------------------------------------------------------
+  // 防自动锁屏
+  // ---------------------------------------------------------------------
+
+  supportsScreenLockGuard(): boolean {
+    return true
+  }
+
+  screenLockGuardLimitation(): string {
+    return ''
+  }
+
+  /**
+   * macOS 阻止自动锁屏
+   *
+   * `-d`（阻止显示器休眠）压不住屏保：屏保由**用户输入空闲计时器**触发，
+   * 与显示器空闲计时器是两套东西。只有声明用户活动（`-u`）才能把两者一起复位，
+   * 屏保以及「屏保开始后立即要求密码」都不会发生。
+   *
+   * `-u` 单次默认只维持 5 秒，必须用 `-t` 给足时长；再靠外层 shell 循环周期性
+   * 续上，两次之间留 40/45 的重叠，不留空档。
+   *
+   * 循环里用 `kill -0 <主进程 pid>` 做存活判断：AweeClaw 被强杀后最多 40 秒自行
+   * 退出，不会留下一个持续阻止屏保的孤儿进程。
+   */
+  async startScreenLockGuard(): Promise<ScreenLockGuardResult> {
+    await this.stopScreenLockGuard()
+
+    const script =
+      `while kill -0 ${process.pid} 2>/dev/null; ` +
+      `do /usr/bin/caffeinate -u -t 45 >/dev/null 2>&1 || exit 1; sleep 40; done`
+
+    const { child } = await spawnPersistent('/bin/sh', ['-c', script], 600)
+    this.screenLockChild = child
+
+    return {
+      method: '声明用户活动（caffeinate -u），同时挡住屏保与空闲锁屏',
+      note: '手动锁屏（⌃⌘Q）、合盖，以及 MDM / 描述文件强制的锁屏策略仍需在电脑前解锁',
+    }
+  }
+
+  async stopScreenLockGuard(): Promise<void> {
+    const child = this.screenLockChild
+    this.screenLockChild = null
+    await terminateChild(child)
+  }
+
+  isScreenLockGuardAlive(): boolean {
+    const child = this.screenLockChild
+    return !!child && child.exitCode === null && child.signalCode === null
   }
 }
 
@@ -342,6 +421,38 @@ class SystemdInhibitGuard implements PlatformGuard {
   isAlive(): boolean {
     return !!this.child && this.child.exitCode === null && this.child.signalCode === null
   }
+
+  // ---------------------------------------------------------------------
+  // 防自动锁屏
+  // ---------------------------------------------------------------------
+
+  /**
+   * Linux 下不提供防自动锁屏。
+   *
+   * 锁屏由桌面环境（GNOME / KDE / Xfce）各自实现，没有跨发行版统一的用户态接口。
+   * `xdg-screensaver reset` 名义上存在，实际依赖 xdg-utils 与具体 DE 的支持，
+   * 大量环境里是个空壳脚本 —— 那种情况最危险：UI 显示「已阻止」而屏幕照样锁。
+   * 与其给出一个不可靠的实现，不如如实上报不支持，让用户知道要自己去关屏保。
+   */
+  supportsScreenLockGuard(): boolean {
+    return false
+  }
+
+  screenLockGuardLimitation(): string {
+    return 'Linux 下锁屏由桌面环境自行实现，没有可靠的用户态接口，本平台不提供防自动锁屏'
+  }
+
+  async startScreenLockGuard(): Promise<ScreenLockGuardResult> {
+    throw new Error(this.screenLockGuardLimitation())
+  }
+
+  async stopScreenLockGuard(): Promise<void> {
+    /* 从未启动，无需释放 */
+  }
+
+  isScreenLockGuardAlive(): boolean {
+    return false
+  }
 }
 
 // ============================================
@@ -362,6 +473,101 @@ class SystemdInhibitGuard implements PlatformGuard {
 const ES_CONTINUOUS = 0x80000000
 const ES_SYSTEM_REQUIRED = 0x00000001
 const ES_DISPLAY_REQUIRED = 0x00000002
+
+/** SystemParametersInfo 的屏保相关动作码 */
+const SPI_GETSCREENSAVETIMEOUT = 0x000e
+const SPI_GETSCREENSAVEACTIVE = 0x0010
+
+/** Windows 屏幕保护程序状态 */
+interface WindowsScreensaverProbe {
+  /** 是否启用了屏幕保护程序 */
+  active: boolean
+  /** 屏保等待秒数（未启用时可能为 0） */
+  timeoutSeconds: number
+}
+
+/**
+ * 跑一段一次性 PowerShell 并取回 stdout。
+ *
+ * 与 `spawnPersistent` 的分工：那个用于「长驻守护」，这个用于「问一句就退」。
+ * 走异步 spawn 而不是 spawnSync —— 后者会卡住主进程事件循环，而这里最长可能等
+ * 十秒（首次 Add-Type 编译），卡住等于整个应用无响应。
+ */
+function runPowerShellOnce(script: string, timeoutMs = 10_000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const encoded = Buffer.from(script, 'utf16le').toString('base64')
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
+      { windowsHide: true },
+    )
+
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+
+    const finish = (fn: () => void): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      fn()
+    }
+
+    const timer = setTimeout(() => {
+      try {
+        child.kill()
+      } catch {
+        /* 已退出 */
+      }
+      finish(() => reject(new Error('PowerShell 请求超时')))
+    }, timeoutMs)
+    timer.unref?.()
+
+    child.stdout?.on('data', (chunk: Buffer | string) => {
+      stdout += String(chunk)
+    })
+    child.stderr?.on('data', (chunk: Buffer | string) => {
+      stderr += String(chunk)
+    })
+    child.once('error', (err: Error) => finish(() => reject(err)))
+    child.once('exit', (code: number | null) => {
+      finish(() => {
+        if (code === 0) resolve(stdout)
+        else reject(new Error(stderr.trim() || `PowerShell 退出码 ${String(code)}`))
+      })
+    })
+  })
+}
+
+/**
+ * 读取屏幕保护程序状态（只读，不修改任何设置）
+ *
+ * 微软文档明确写明 `SetThreadExecutionState` **不会停止屏幕保护程序** ——
+ * 屏保由用户输入空闲计时器触发，与显示器空闲计时器是两套机制。因此这里
+ * 只做探测，把真实状态交给上层如实展示，而不是假装已经挡住了。
+ */
+async function probeWindowsScreensaver(): Promise<WindowsScreensaverProbe | null> {
+  const script = `$ErrorActionPreference='Stop'
+$src='using System;using System.Runtime.InteropServices;public static class AweeClawScreenSaverProbe{[DllImport("user32.dll",SetLastError=true)]public static extern bool SystemParametersInfo(uint uiAction,uint uiParam,ref uint pvParam,uint fWinIni);}'
+Add-Type -TypeDefinition $src -Language CSharp
+$active=[uint32]0
+[void][AweeClawScreenSaverProbe]::SystemParametersInfo(${SPI_GETSCREENSAVEACTIVE},0,[ref]$active,0)
+$timeout=[uint32]0
+[void][AweeClawScreenSaverProbe]::SystemParametersInfo(${SPI_GETSCREENSAVETIMEOUT},0,[ref]$timeout,0)
+Write-Output ("{0}|{1}" -f $active,$timeout)`
+
+  try {
+    const out = await runPowerShellOnce(script)
+    const [rawActive, rawTimeout] = out.trim().split('|')
+    const active = Number(rawActive)
+    const timeoutSeconds = Number(rawTimeout)
+    if (!Number.isFinite(active) || !Number.isFinite(timeoutSeconds)) return null
+    return { active: active === 1, timeoutSeconds }
+  } catch (err) {
+    logger.system.debug('[PowerGuard] 屏保探测失败：', err)
+    return null
+  }
+}
 
 /** 断言定义 + 常驻空转（模式差异由占位符替换） */
 const POWERSHELL_TEMPLATE = `$ErrorActionPreference='Stop'
@@ -417,6 +623,61 @@ class WindowsExecutionStateGuard implements PlatformGuard {
   isAlive(): boolean {
     return !!this.child && this.child.exitCode === null && this.child.signalCode === null
   }
+
+  // ---------------------------------------------------------------------
+  // 防自动锁屏
+  // ---------------------------------------------------------------------
+
+  supportsScreenLockGuard(): boolean {
+    return true
+  }
+
+  screenLockGuardLimitation(): string {
+    return 'Windows 下只能阻止显示器关闭；组策略「计算机空闲时限制用户会话」仍会导致锁屏'
+  }
+
+  /**
+   * Windows 阻止自动锁屏
+   *
+   * 与 macOS 不同，这里**不修改任何系统设置**：阻止息屏依靠常驻的
+   * `ES_DISPLAY_REQUIRED` 断言（由主守护持有），进程一退即失效，天然无残留。
+   * 这符合本模块「绝不用改变系统全局设置」的底线 —— 否则任何一次崩溃都会
+   * 永久留下副作用。
+   *
+   * 代价是屏保挡不住：微软文档明确写了 `SetThreadExecutionState` 不停止屏幕
+   * 保护程序，它由用户输入空闲计时器触发。因此这里只探测屏保状态并如实上报，
+   * 让用户自己去关，而不是假装已经挡住了。
+   */
+  async startScreenLockGuard(): Promise<ScreenLockGuardResult> {
+    const method = '保持显示器唤醒（ES_DISPLAY_REQUIRED），阻止息屏与「唤醒需密码」'
+    const probe = await probeWindowsScreensaver()
+
+    if (!probe) {
+      return {
+        method,
+        note: '未能读取屏幕保护程序状态；若系统启用了屏保并勾选「在恢复时显示登录屏幕」，屏保启动后仍会锁屏',
+      }
+    }
+
+    if (!probe.active) return { method, note: '' }
+
+    const minutes = Math.max(1, Math.round(probe.timeoutSeconds / 60))
+    return {
+      method,
+      note:
+        `系统启用了屏幕保护程序（约 ${minutes} 分钟）。若勾选了「在恢复时显示登录屏幕」，` +
+        `屏保一启动远程输入就送不进去了，请在「设置 → 个性化 → 锁屏界面 → 屏幕保护程序设置」中关闭它`,
+    }
+  }
+
+  async stopScreenLockGuard(): Promise<void> {
+    // 没有独立进程，也没有系统设置需要回滚：断言随主守护进程退出而释放
+  }
+
+  isScreenLockGuardAlive(): boolean {
+    // 防锁屏依附于主守护的电源断言，没有独立进程可供守护
+    return true
+  }
 }
 
 // ============================================
@@ -444,6 +705,30 @@ class UnsupportedGuard implements PlatformGuard {
   }
 
   isAlive(): boolean {
+    return false
+  }
+
+  // ---------------------------------------------------------------------
+  // 防自动锁屏
+  // ---------------------------------------------------------------------
+
+  supportsScreenLockGuard(): boolean {
+    return false
+  }
+
+  screenLockGuardLimitation(): string {
+    return `当前平台（${process.platform}）没有可用的防自动锁屏机制`
+  }
+
+  async startScreenLockGuard(): Promise<ScreenLockGuardResult> {
+    throw new Error(this.screenLockGuardLimitation())
+  }
+
+  async stopScreenLockGuard(): Promise<void> {
+    /* 无守护进程 */
+  }
+
+  isScreenLockGuardAlive(): boolean {
     return false
   }
 }

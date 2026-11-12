@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback, useEffect, useRef, useSyncExternalStore, useState } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send, Lock, GitBranch, GraduationCap, Braces } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Power, Box, Send, Lock, GitBranch, GraduationCap, Braces } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -304,6 +304,7 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         { id: 'perception', label: t('settings.perception', language as Language) || '感知预测', icon: <Activity className="w-4 h-4" />, featureKey: 'perception' as ClientCapabilityKey },
         { id: 'causal', label: t('settings.causal', language as Language) || '因果推理', icon: <Network className="w-4 h-4" />, featureKey: null },
         { id: 'desktop', label: t('settings.desktop', language as Language) || '电脑控制', icon: <MonitorSmartphone className="w-4 h-4" /> },
+        { id: 'powerGuard', label: language === 'zh' ? '电源与防休眠' : 'Power & Sleep', icon: <Power className="w-4 h-4" /> },
         { id: 'proactive', label: t('settings.proactive', language as Language) || '主动助手', icon: <Sparkles className="w-4 h-4" />, featureKey: 'proactive' as ClientCapabilityKey },
         { id: 'iot', label: t('settings.iot', language as Language) || 'IoT 集成', icon: <Cable className="w-4 h-4" />, featureKey: 'iot' as ClientCapabilityKey },
         { id: 'externalAgents', label: '外部智能体', icon: <Puzzle className="w-4 h-4" /> },
@@ -314,7 +315,6 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         { id: 'a2a', label: language === 'zh' ? 'A2A 协议' : 'A2A', icon: <Network className="w-4 h-4" />, featureKey: 'a2a' as ClientCapabilityKey },
         { id: 'vmc', label: language === 'zh' ? 'VMC 协议' : 'VMC Protocol', icon: <Send className="w-4 h-4" />, featureKey: 'vmc' as ClientCapabilityKey },
         { id: 'openapi', label: language === 'zh' ? '对外 API' : 'External API', icon: <Cable className="w-4 h-4" />, featureKey: 'externalApi' as ClientCapabilityKey },
-        { id: 'powerGuard', label: language === 'zh' ? '防休眠' : 'Sleep Guard', icon: <Coffee className="w-4 h-4" /> },
         { id: 'git', label: t('settings.git', language as Language), icon: <GitBranch className="w-4 h-4" /> },
         { id: 'sandbox', label: language === 'zh' ? '代码沙箱' : 'Code Sandbox', icon: <Box className="w-4 h-4" /> },
         { id: 'lsp', label: t('settings.lsp', language as Language) || '语言服务器', icon: <Braces className="w-4 h-4" /> },

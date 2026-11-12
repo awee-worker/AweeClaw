@@ -122,17 +122,21 @@ function ModeOption({
   title,
   hint,
   onClick,
+  disabled,
 }: {
   active: boolean
   title: string
   hint: string
   onClick: () => void
+  disabled?: boolean
 }) {
   return (
     <button
       type="button"
+      aria-pressed={active}
+      disabled={disabled}
       onClick={onClick}
-      className={`flex-1 rounded-lg border px-3 py-2 text-left transition-colors ${
+      className={`flex-1 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:cursor-not-allowed disabled:opacity-50 ${
         active
           ? 'border-accent/60 bg-accent/10'
           : 'border-border/50 hover:bg-surface-hover'
@@ -449,6 +453,80 @@ export function PowerGuardSettings({ language }: PowerGuardSettingsProps) {
         {platformHint ? (
           <div className="text-[11px] text-text-muted">{platformHint}</div>
         ) : null}
+      </Card>
+
+      {/* ============ 防自动锁屏 ============ */}
+      <Card title={tt('远程待命 · 防自动锁屏', 'Remote standby · screen lock')}>
+        <div className="text-xs text-text-muted">
+          {tt(
+            '电脑一旦进锁屏，远程键盘鼠标就落在系统的安全桌面上，任何用户态程序都注不进去。这里决定要不要抢在系统锁屏之前把它挡下来。',
+            'Once the screen locks, remote input lands on the OS secure desktop and no user-space app can reach it. This decides whether to hold it off.',
+          )}
+        </div>
+
+        {!status.screenLockGuardSupported ? (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-amber-500" />
+            <div className="text-xs text-text-secondary">{status.screenLockGuardNote}</div>
+          </div>
+        ) : (
+          <>
+            <div className="flex gap-2">
+              <ModeOption
+                active={config.screenLockGuard === 'off'}
+                title={tt('关闭', 'Off')}
+                hint={tt('由系统自己决定何时锁屏', 'Let the OS lock whenever it likes')}
+                onClick={() => void patch({ screenLockGuard: 'off' })}
+              />
+              <ModeOption
+                active={config.screenLockGuard === 'session'}
+                title={tt('连接期间', 'While connected')}
+                hint={tt('只在手机连着时生效', 'Only while a phone is connected')}
+                onClick={() => void patch({ screenLockGuard: 'session' })}
+              />
+              <ModeOption
+                active={config.screenLockGuard === 'standby'}
+                title={tt('远程待命', 'Standby')}
+                hint={tt('一直生效，离开电脑前打开', 'Always on; enable before leaving')}
+                onClick={() => void patch({ screenLockGuard: 'standby' })}
+              />
+            </div>
+
+            {status.screenLockGuardActive ? (
+              <div className="space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5">
+                <div className="text-xs text-text-secondary">
+                  {tt('生效中', 'Active')}：{status.screenLockGuardMethod}
+                </div>
+                {status.screenLockGuardNote ? (
+                  <div className="text-[11px] leading-snug text-text-muted">
+                    {status.screenLockGuardNote}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="text-[11px] text-text-muted">
+                {config.screenLockGuard === 'session'
+                  ? tt(
+                      '当前没有远程连接，暂不阻止锁屏；手机连上后会立即接管。',
+                      'No remote session right now. It takes over as soon as a phone connects.',
+                    )
+                  : status.screenLockGuardNote || tt('未生效', 'Inactive')}
+              </div>
+            )}
+
+            {config.screenLockGuard === 'standby' ? (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5">
+                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-amber-500" />
+                <div className="text-xs text-text-secondary">
+                  {tt(
+                    '待命期间电脑不会自动锁屏，屏幕内容对经过的人可见。离开前请确认环境安全，用完记得切回。',
+                    'The machine stays unlocked during standby — anyone passing by can see the screen. Switch back when you are done.',
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </>
+        )}
       </Card>
 
       {/* ============ 触发规则 ============ */}

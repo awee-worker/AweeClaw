@@ -5227,6 +5227,7 @@ export type {
   PowerGuardIpcResponse,
   PowerGuardMode,
   PowerGuardPlatformKind,
+  PowerGuardScreenLockMode,
   PowerGuardSource,
   PowerGuardStatus,
 } from '@shared/protocols/powerGuardProtocol'
