@@ -84,6 +84,18 @@ export class PowerGuardManager {
   /** 动态持有者（reason → 计数） */
   private readonly holders = new Map<string, HolderEntry>()
 
+  /**
+   * 临时「保持显示器点亮」持有
+   *
+   * 与上面的动态持有者分开，因为它的语义不同：
+   * - 带 TTL，到点自动失效。远程控制是被动收请求的场景，断开、崩溃、手机息屏
+   *   都可能让「释放」永远不到来，靠调用方严格配对会留下永久点亮的屏幕
+   * - 不参与 minDurationMs 去抖。唤醒后用户马上就要看画面，等一两秒没有意义
+   * - 强度直接顶到 `system` 档。`idle` 档只阻止系统休眠、不阻止显示器关闭，
+   *   远程操作时屏幕照熄，等于没解决问题
+   */
+  private displayHold: { reason: string; timer: NodeJS.Timeout | null } | null = null
+
   /** 去抖定时器（最早的持有者跨过 minDurationMs 时触发一次提交） */
   private holdTimer: NodeJS.Timeout | null = null
 
@@ -169,6 +181,9 @@ export class PowerGuardManager {
     this.clearHealthTimer()
     this.detachReloadGuards()
     this.holders.clear()
+    // 定时保持同样要断开：否则退出流程已经释放断言，定时器还会在进程存活期间再 commit 一次
+    if (this.displayHold?.timer) clearTimeout(this.displayHold.timer)
+    this.displayHold = null
     await this.enqueue(() => this.stopGuard())
   }
 
@@ -304,6 +319,46 @@ export class PowerGuardManager {
   }
 
   // ============================================
+  // 显示器临时保持（远程控制）
+  // ============================================
+
+  /**
+   * 声明「接下来 ttlMs 内显示器必须保持点亮」，续约式调用
+   *
+   * 典型调用方是远程控制：拉帧与输入注入都说明有人正在看、正在操作这台机器。
+   * 每次调用重置到期时间，因此活动持续时屏幕就持续点亮；活动停止后自然失效，
+   * 不会出现「手机早退出了、电脑屏幕却再也不熄」的副作用。
+   *
+   * 用户显式关掉防休眠（`enabled:false` 或 `mode:'off'`）时不覆盖其选择——
+   * 那是明确意图，不该被一次远程连接悄悄推翻。
+   */
+  holdDisplay(reason: unknown, ttlMs: number): void {
+    const config = getConfig()
+    if (!config.enabled || config.mode === 'off') return
+
+    const key = normalizeReason(reason)
+    if (this.displayHold?.timer) clearTimeout(this.displayHold.timer)
+
+    const timer = setTimeout(() => this.releaseDisplay(key), Math.max(1000, ttlMs))
+    // 这个定时器不该独自撑住事件循环：进程退出时断言随之消失，无需等它跑完
+    timer.unref()
+
+    const wasActive = this.displayHold !== null
+    this.displayHold = { reason: key, timer }
+    // 已经因为这条保持在 system 档跑着时，续约不需要重算，省掉一次无谓的 commit
+    if (!wasActive) void this.commit()
+  }
+
+  /** 撤销显示器保持；传 reason 时只撤销该来源 */
+  releaseDisplay(reason?: unknown): void {
+    if (!this.displayHold) return
+    if (reason !== undefined && this.displayHold.reason !== normalizeReason(reason)) return
+    if (this.displayHold.timer) clearTimeout(this.displayHold.timer)
+    this.displayHold = null
+    void this.commit()
+  }
+
+  // ============================================
   // 配置
   // ============================================
 
@@ -412,6 +467,14 @@ export class PowerGuardManager {
     if (!config.enabled) return null
     if (config.mode === 'off') return null
     if (!this.platform.supported()) return null
+
+    // 远程控制活动期间临时顶到 system 档（阻止显示器休眠）。
+    //
+    // 放在上面三个判断之后是有意的：用户把防休眠关掉或设成 off 时已经返回 null，
+    // 这里不会越权改写用户选择。但 mode 只是 `idle` 时要顶上去——`idle` 允许
+    // 显示器按时关闭，远程操作的人正看着那块画面，熄掉就等于断了眼睛。
+    if (this.displayHold) return 'system'
+
     if (!this.hasEffectiveHolder()) return null
     return config.mode
   }

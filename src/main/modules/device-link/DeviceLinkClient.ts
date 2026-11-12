@@ -72,10 +72,33 @@ const TEMP_GRANTS_KEY = 'deviceLinkTempGrants'
  *
  * 移动端能否连上电脑，前提是电脑没进入系统休眠——一旦睡了，桌面进程被挂起，
  * WebSocket 断开、RPC 无从投递，此时任何软件手段都唤不回来。所以在整段连接
- * 生命周期内持有防休眠断言（默认只阻止系统空闲休眠，允许显示器照常熄灭），
- * 把「远程控制时电脑必定在线」这件事从概率变成确定。
+ * 生命周期内持有防休眠断言，把「远程控制时电脑必定在线」这件事从概率变成确定。
+ *
+ * 注意这条持有只保证**系统不睡**：断言强度取自用户配置的防休眠档位，默认是
+ * `idle`，允许显示器照常熄灭。而远程控制要的是「看得见画面」，所以显示器
+ * 另有一条按活动续约的临时保持，见 REMOTE_DISPLAY_HOLD_MS。
  */
 const POWER_HOLD_REASON = 'device-link'
+
+/** 远程控制活动后维持显示器点亮的时长；活动持续时会被不断续约 */
+const REMOTE_DISPLAY_HOLD_MS = 60_000
+
+/**
+ * 视为「用户正在远程使用这台机器」的 RPC 类型
+ *
+ * 拉帧覆盖「页面开着」的整个时段（200ms 一次），输入注入覆盖「正在操作」。
+ * 两类都算活动，任一项停止后 60 秒自然失效——不会因为手机端忘记退出，
+ * 就让电脑屏幕永久亮着。
+ */
+const REMOTE_ACTIVITY_TYPES = new Set([
+  'screen.frame.req',
+  'input.click.req',
+  'input.move.req',
+  'input.scroll.req',
+  'input.drag.req',
+  'input.type.req',
+  'input.key.req',
+])
 
 /**
  * 设备联动客户端
@@ -139,6 +162,13 @@ class DeviceLinkClient {
 
   /** 释放防休眠持有（幂等） */
   private releasePowerHold(): void {
+    // 显示器保持是独立的 TTL 持有，不受下面的引用计数门控：
+    // 断开、登出、退出都必须让它立刻失效，否则屏幕会亮到 TTL 走完
+    try {
+      getPowerGuardManager().releaseDisplay('remote-control')
+    } catch (err) {
+      logger.deviceLink.warn(`[Client] 显示器保持释放失败：${err instanceof Error ? err.message : err}`)
+    }
     if (!this.powerHoldActive) return
     this.powerHoldActive = false
     try {
@@ -469,6 +499,11 @@ class DeviceLinkClient {
    * RPC 请求分发
    */
   private async handleRpc(req: { rpcId: string; type: string; [k: string]: unknown }): Promise<void> {
+    // 远程控制活动即续约显示器保持：否则手机端还看着画面，电脑却按系统节能
+    // 把屏幕熄了——远程操作最基础的「看得见」就断了
+    if (REMOTE_ACTIVITY_TYPES.has(req.type)) {
+      getPowerGuardManager().holdDisplay('remote-control', REMOTE_DISPLAY_HOLD_MS)
+    }
     const ctx = this.buildHandlerContext()
     let payload: unknown
     try {

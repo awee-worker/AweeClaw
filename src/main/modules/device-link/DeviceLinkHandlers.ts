@@ -24,6 +24,7 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { logger } from '@shared/toolkit/LogEngine'
 import { getDesktopControlManager } from '../desktop-control'
+import { getPowerGuardManager } from '../power-guard'
 import type { ScreenshotResult } from '../desktop-control/types/actions'
 import { peekScrollPercent } from '../desktop-control/scrollProbe'
 import { SessionDb } from '../../modules/session-db'
@@ -585,8 +586,22 @@ export async function handleScreenshot(
 // 电源控制
 // ============================================================================
 
-/** 唤醒后维持「有用户活动」的秒数：够移动端拉到首帧即可，不长期压制屏幕节能 */
-const WAKE_HOLD_SECONDS = 10
+/**
+ * 唤醒脚本内保持断言的秒数
+ *
+ * 只需覆盖「点亮显示器 → 输入事件被系统受理」这一段，之后由防休眠的显示器保持
+ * 接续。原来这里是 10 秒，既让唤醒请求白等 10 秒，又仍然挡不住之后再次熄屏。
+ */
+const WAKE_TOUCH_SECONDS = 1
+
+/**
+ * 唤醒后主动维持显示器点亮的时长
+ *
+ * 只点亮一次而不按住，系统会在节能时间到点后再次熄屏——用户看到的就是
+ * 「刚唤醒又黑了」。这段时间的用意是给移动端连上并开始操作留出余量，
+ * 后续每一步远程操作都会把它续约，真正没人用时会自然失效。
+ */
+const WAKE_DISPLAY_HOLD_MS = 180_000
 
 /** Windows 唤醒脚本的线程执行状态标志：ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED */
 const WIN_ES_ALL = 0x80000003
@@ -607,7 +622,9 @@ const WIN_ES_CONTINUOUS = 0x80000000
 async function wakeDisplay(): Promise<{ displayWake: boolean; note: string }> {
   try {
     if (process.platform === 'darwin') {
-      await execAsync(`/usr/bin/caffeinate -u -t ${WAKE_HOLD_SECONDS}`, { windowsHide: true })
+      // `-u` 声明一次用户活动，足以点亮已熄灭的显示器；不等它跑完是有意的——
+      // 持续保持交给防休眠的显示器保持，这里只负责「点亮」这一下
+      await execAsync(`/usr/bin/caffeinate -u -t ${WAKE_TOUCH_SECONDS}`, { windowsHide: true })
       return { displayWake: true, note: '' }
     }
 
@@ -619,13 +636,13 @@ async function wakeDisplay(): Promise<{ displayWake: boolean; note: string }> {
         'Add-Type -TypeDefinition $src -Language CSharp',
         `[AweeClawWakeHost]::SetThreadExecutionState([uint32]${WIN_ES_ALL}) > $null`,
         "(New-Object -ComObject WScript.Shell).SendKeys('{F15}')",
-        `Start-Sleep -Seconds ${WAKE_HOLD_SECONDS}`,
+        `Start-Sleep -Seconds ${WAKE_TOUCH_SECONDS}`,
         `[AweeClawWakeHost]::SetThreadExecutionState([uint32]${WIN_ES_CONTINUOUS}) > $null`,
       ].join('\r\n')
       const encoded = Buffer.from(script, 'utf16le').toString('base64')
       await execAsync(`powershell -NoProfile -NonInteractive -EncodedCommand ${encoded}`, {
         windowsHide: true,
-        timeout: (WAKE_HOLD_SECONDS + 10) * 1000,
+        timeout: (WAKE_TOUCH_SECONDS + 10) * 1000,
       })
       return { displayWake: true, note: '' }
     }
@@ -656,6 +673,9 @@ export async function handlePowerControl(
       return { applied: true }
     }
     case 'wake': {
+      // 先按住显示器保持，再点亮：只点亮一次而不按住，系统会在节能时间到点后
+      // 再次熄屏，用户看到的就是「刚唤醒又黑了」。后续远程操作会持续续约。
+      getPowerGuardManager().holdDisplay('remote-control', WAKE_DISPLAY_HOLD_MS)
       const { displayWake, note } = await wakeDisplay()
       if (!displayWake) {
         // 不抛错：调用方需要拿到「没成功 + 为什么」，抛错只会退化成一句笼统的失败
