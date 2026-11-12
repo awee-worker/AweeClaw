@@ -5,7 +5,7 @@
 import { api } from '../../adapters/electronBridge'
 import { openLinkSmart } from '@utils/linkRouter'
 import { logger } from '@toolkit/LogEngine'
-import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react'
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo, memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -48,13 +48,28 @@ function toLocalPreviewUrl(filePath: string): string {
 
 // ===== Markdown 预览组件 =====
 
+// 预览是随 activeFile 卸载重建的，滚动位置只存在 DOM 上，
+// 切换文件再切回就会丢失。按 scrollKey（文件路径）把滚动位置存在模块级，
+// 挂载时还原，卸载/滚动时写回。
+const markdownScrollPositions = new Map<string, number>()
+const MARKDOWN_SCROLL_CACHE_LIMIT = 200
+
+function rememberMarkdownScroll(key: string, top: number): void {
+    markdownScrollPositions.set(key, top)
+    if (markdownScrollPositions.size <= MARKDOWN_SCROLL_CACHE_LIMIT) return
+    const oldestKey = markdownScrollPositions.keys().next().value
+    if (oldestKey !== undefined) markdownScrollPositions.delete(oldestKey)
+}
+
 interface MarkdownPreviewProps {
     content: string
     fontSize?: number
     isStreaming?: boolean
+    /** 滚动位置缓存键，通常是文件路径；不传则不保留滚动位置 */
+    scrollKey?: string
 }
 
-export const MarkdownPreview = memo(function MarkdownPreview({ content, fontSize = 14, isStreaming }: MarkdownPreviewProps) {
+export const MarkdownPreview = memo(function MarkdownPreview({ content, fontSize = 14, isStreaming, scrollKey }: MarkdownPreviewProps) {
     const currentTheme = useStore(s => s.currentTheme)
     const theme = themeManager.getThemeById(currentTheme)
     const isLight = theme?.type === 'light'
@@ -64,6 +79,9 @@ export const MarkdownPreview = memo(function MarkdownPreview({ content, fontSize
     const autoScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const recentGrowthCountRef = useRef(0)
     const growthWindowRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    // 待还原的滚动位置：非 null 表示还没还原成功，此期间不往缓存写值，
+    // 避免把程序置位前的 0 覆盖掉已保存的位置。
+    const pendingRestoreRef = useRef<number | null>(scrollKey ? (markdownScrollPositions.get(scrollKey) ?? 0) : null)
 
     // components 映射用 useMemo 固定引用：内联字面量每次渲染都是新对象，
     // 会让 react-markdown 整棵重新解析重建 DOM，表现为预览内容闪动。
@@ -130,9 +148,55 @@ export const MarkdownPreview = memo(function MarkdownPreview({ content, fontSize
     const handleScroll = useCallback(() => {
         const el = containerRef.current
         if (!el) return
+        if (pendingRestoreRef.current === null && scrollKey) {
+            rememberMarkdownScroll(scrollKey, el.scrollTop)
+        }
         const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
         isUserScrollingRef.current = distanceFromBottom > 80
-    }, [])
+    }, [scrollKey])
+
+    // 组件被复用时（未加 key 的调用方），scrollKey 变化要先落盘旧位置、
+    // 再切到新位置的缓存，否则新文件会先停在旧文件的滚动偏移上。
+    const prevScrollKeyRef = useRef(scrollKey)
+    useLayoutEffect(() => {
+        if (prevScrollKeyRef.current === scrollKey) return
+        const el = containerRef.current
+        if (prevScrollKeyRef.current && el) {
+            rememberMarkdownScroll(prevScrollKeyRef.current, el.scrollTop)
+        }
+        prevScrollKeyRef.current = scrollKey
+        pendingRestoreRef.current = scrollKey ? (markdownScrollPositions.get(scrollKey) ?? 0) : null
+        if (el && scrollKey) el.scrollTop = 0
+    }, [scrollKey])
+
+    // 还原滚动位置。预览内容是异步进来的，首帧高度可能不够，
+    // 因此在 content 变化时重试若干帧，直到能滚到目标位置为止。
+    useEffect(() => {
+        const target = pendingRestoreRef.current
+        if (!scrollKey || target === null || target <= 0) {
+            pendingRestoreRef.current = null
+            return
+        }
+        let rafId = 0
+        let attempts = 0
+        const apply = () => {
+            const el = containerRef.current
+            if (el && el.scrollHeight - el.clientHeight >= target) {
+                el.scrollTop = target
+                pendingRestoreRef.current = null
+                return
+            }
+            if (attempts++ < 12) {
+                rafId = requestAnimationFrame(apply)
+            } else {
+                pendingRestoreRef.current = null
+            }
+        }
+        apply()
+        return () => {
+            if (rafId) cancelAnimationFrame(rafId)
+        }
+    }, [content, scrollKey])
 
     useEffect(() => {
         const contentGrew = content.length > lastContentLengthRef.current
@@ -150,11 +214,12 @@ export const MarkdownPreview = memo(function MarkdownPreview({ content, fontSize
             return
         }
 
+        if (pendingRestoreRef.current !== null) return
         if (isUserScrollingRef.current) return
 
         if (autoScrollTimerRef.current) clearTimeout(autoScrollTimerRef.current)
         autoScrollTimerRef.current = setTimeout(() => {
-            if (containerRef.current && !isUserScrollingRef.current) {
+            if (containerRef.current && !isUserScrollingRef.current && pendingRestoreRef.current === null) {
                 containerRef.current.scrollTo({
                     top: containerRef.current.scrollHeight,
                     behavior: 'smooth',

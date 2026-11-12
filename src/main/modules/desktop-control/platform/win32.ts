@@ -25,7 +25,7 @@ import type {
   MouseDragParams,
   InputOperationResult,
 } from '../types/actions'
-import { bridgeClick, bridgeDrag, bridgeMove, bridgeScroll } from './win32PointerBridge'
+import { bridgeClick, bridgeDrag, bridgeMove, bridgeScroll, bridgeTypeText, bridgeKeyCombo, bridgeQueryLocked } from './win32PointerBridge'
 
 /** 执行 PowerShell 命令 */
 function execPowerShell(command: string, options?: cp.ExecOptions): Promise<{ stdout: string; stderr: string }> {
@@ -52,6 +52,127 @@ function execCmd(command: string, options?: cp.ExecOptions): Promise<{ stdout: s
       }
     })
   })
+}
+
+/**
+ * 以 -EncodedCommand 执行一段多行 PowerShell 脚本
+ *
+ * -Command 需要把整段脚本塞进一对双引号里，脚本自身的引号、换行、here-string
+ * 都要再过一层转义，写错一处就是「命令能跑但语义变了」这种最难查的故障。
+ * UTF-16LE + Base64 是 PowerShell 官方为「传复杂脚本」留的通道，命令行里只出现
+ * Base64 字符，脚本内容原样抵达解释器。
+ */
+function execPowerShellEncoded(
+  script: string,
+  options?: cp.ExecOptions,
+): Promise<{ stdout: string; stderr: string }> {
+  const encoded = Buffer.from(script, 'utf16le').toString('base64')
+  return new Promise((resolve, reject) => {
+    cp.exec(
+      `powershell -NoProfile -NonInteractive -EncodedCommand ${encoded}`,
+      { maxBuffer: 10 * 1024 * 1024, windowsHide: true, ...options },
+      (err, stdout, stderr) => {
+        if (err) {
+          reject(err)
+        } else {
+          resolve({ stdout: stdout.toString(), stderr: stderr.toString() })
+        }
+      },
+    )
+  })
+}
+
+/**
+ * 降级通道用的 SendInput 定义
+ *
+ * 与常驻桥里那份 C# 保持同一套语义：文本按 UTF-16 码元投递（KEYEVENTF_UNICODE），
+ * 组合键按顺序按下再逆序抬起。写法上刻意精简，只保留键盘入口——这条通道只负责
+ * 桥不可用时的兜底，鼠标早已由桥与各自的 spawn 实现覆盖。
+ */
+const WIN_SENDINPUT_DEF = `Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class AweeClawKey {
+  [StructLayout(LayoutKind.Sequential)]
+  public struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
+  [StructLayout(LayoutKind.Explicit)]
+  public struct INPUT { [FieldOffset(0)] public uint type; [FieldOffset(4)] public KEYBDINPUT ki; }
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+  private const uint INPUT_KEYBOARD = 1, KEYUP = 0x0002, UNICODE = 0x0004;
+  private static void SendOne(INPUT input) { INPUT[] b = new INPUT[1]; b[0] = input; SendInput(1, b, Marshal.SizeOf(typeof(INPUT))); }
+  private static INPUT Make(ushort vk, ushort scan, uint flags) { INPUT i = new INPUT(); i.type = INPUT_KEYBOARD; i.ki.wVk = vk; i.ki.wScan = scan; i.ki.dwFlags = flags; return i; }
+  public static void KeyDown(ushort vk) { SendOne(Make(vk, 0, 0)); }
+  public static void KeyUp(ushort vk) { SendOne(Make(vk, 0, KEYUP)); }
+  public static void KeyCombo(ushort[] vks) { foreach (ushort vk in vks) { KeyDown(vk); } for (int i = vks.Length - 1; i >= 0; i--) { KeyUp(vks[i]); } }
+  public static void TypeText(string text) {
+    foreach (char c in text) {
+      if (c == '\\n') { KeyCombo(new ushort[] { 0x0D }); }
+      else if (c == '\\t') { KeyCombo(new ushort[] { 0x09 }); }
+      else {
+        SendOne(Make(0, (ushort)c, UNICODE));
+        SendOne(Make(0, (ushort)c, UNICODE | KEYUP));
+      }
+    }
+  }
+}
+'@`
+
+/**
+ * 按键名 → Windows 虚拟键码
+ *
+ * 移动端发的是可读键名（enter / tab / escape…），Windows 侧要的是 VK 值。
+ * 这张表只收跨端协议里真实会出现的键，不做全键盘映射：多出来的条目没有
+ * 调用方，只会变成需要长期维护的死代码。
+ */
+const VK_MAP: Record<string, number> = {
+  enter: 0x0d,
+  return: 0x0d,
+  tab: 0x09,
+  escape: 0x1b,
+  esc: 0x1b,
+  backspace: 0x08,
+  delete: 0x2e,
+  del: 0x2e,
+  insert: 0x2d,
+  space: 0x20,
+  up: 0x26,
+  down: 0x28,
+  left: 0x25,
+  right: 0x27,
+  home: 0x24,
+  end: 0x23,
+  pageup: 0x21,
+  pagedown: 0x22,
+  ctrl: 0x11,
+  control: 0x11,
+  shift: 0x10,
+  alt: 0x12,
+  cmd: 0x5b,
+  command: 0x5b,
+  meta: 0x5b,
+  win: 0x5b,
+}
+
+/** 修饰键集合：组合键的判定依据 */
+const MODIFIER_KEYS = new Set(['ctrl', 'control', 'shift', 'alt', 'cmd', 'command', 'meta', 'win'])
+
+/** 单个可打印字符转虚拟键码（仅用于组合键里的字母数字） */
+function charToVk(ch: string): number | null {
+  if (ch.length !== 1) return null
+  const upper = ch.toUpperCase()
+  const code = upper.charCodeAt(0)
+  // A-Z 与 0-9 在虚拟键码表里与 ASCII 大写码点重合，可直接使用
+  if ((code >= 0x41 && code <= 0x5a) || (code >= 0x30 && code <= 0x39)) return code
+  if (ch === ' ') return 0x20
+  return null
+}
+
+/** 键名解析成虚拟键码；无法识别返回 null，由调用方决定降级或报错 */
+function resolveVk(key: string): number | null {
+  const lower = key.toLowerCase()
+  if (VK_MAP[lower] !== undefined) return VK_MAP[lower]
+  return charToVk(key)
 }
 
 export class Win32PlatformAdapter implements PlatformAdapter {
@@ -683,13 +804,31 @@ export class Win32PlatformAdapter implements PlatformAdapter {
 
   async typeText(text: string, delayMs = 0): Promise<InputOperationResult> {
     const start = Date.now()
+    // 常驻桥命中即返回：桥已把 SendInput 编译过一次，单段文本是毫秒级
+    if (bridgeTypeText(text)) {
+      if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs))
+      return { success: true, operation: 'typeText', duration: Date.now() - start }
+    }
     try {
-      const escaped = text.replace(/'/g, "''").replace(/"/g, '`"')
-      const script = `
-        Add-Type -AssemblyName System.Windows.Forms
-        [System.Windows.Forms.SendKeys]::SendWait("${escaped}")
-      `
-      await execPowerShell(script, { timeout: 10000 })
+      /**
+       * 降级通道同样走 SendInput，不再用 System.Windows.Forms.SendKeys
+       *
+       * SendKeys 把 + ^ % ~ ( ) { } [ ] 解析成控制字符：密码里只要有这些符号，
+       * 就会被当成修饰键或直接抛异常，用户看到的是「密码怎么输都不对」。
+       * SendInput 的 UNICODE 通道按码点投递，与键盘布局和特殊字符无关。
+       *
+       * 文本以 Base64 传入脚本内部解码，既避开 -EncodedCommand 之外的转义，
+       * 也避免把含引号、换行的原文拼进命令字符串。
+       */
+      const encoded = Buffer.from(text, 'utf16le').toString('base64')
+      const script = [
+        `$ErrorActionPreference='Stop'`,
+        WIN_SENDINPUT_DEF,
+        `$text=[System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('${encoded}'))`,
+        `[AweeClawKey]::TypeText($text)`,
+      ].join('\r\n')
+      // 冷启动放宽：休眠唤醒后首次加载 Add-Type 明显更慢，10s 会把正常输入判成失败
+      await execPowerShellEncoded(script, { timeout: 15000 })
       if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs))
       return { success: true, operation: 'typeText', duration: Date.now() - start }
     } catch (err) {
@@ -699,29 +838,20 @@ export class Win32PlatformAdapter implements PlatformAdapter {
 
   async pressKey(key: string): Promise<InputOperationResult> {
     const start = Date.now()
+    const vk = resolveVk(key)
+    if (vk === null) {
+      return { success: false, operation: 'pressKey', error: `unsupported_key: ${key}`, duration: Date.now() - start }
+    }
+    if (bridgeKeyCombo([vk])) {
+      return { success: true, operation: 'pressKey', duration: Date.now() - start }
+    }
     try {
-      const keyMap: Record<string, string> = {
-        enter: '{ENTER}',
-        tab: '{TAB}',
-        escape: '{ESC}',
-        backspace: '{BACKSPACE}',
-        delete: '{DELETE}',
-        up: '{UP}',
-        down: '{DOWN}',
-        left: '{LEFT}',
-        right: '{RIGHT}',
-        home: '{HOME}',
-        end: '{END}',
-        pageup: '{PGUP}',
-        pagedown: '{PGDN}',
-        space: ' ',
-      }
-      const mapped = keyMap[key.toLowerCase()] || key
-      const script = `
-        Add-Type -AssemblyName System.Windows.Forms
-        [System.Windows.Forms.SendKeys]::SendWait("${mapped}")
-      `
-      await execPowerShell(script, { timeout: 5000 })
+      const script = [
+        `$ErrorActionPreference='Stop'`,
+        WIN_SENDINPUT_DEF,
+        `[AweeClawKey]::KeyCombo([uint16[]]@(${vk}))`,
+      ].join('\r\n')
+      await execPowerShellEncoded(script, { timeout: 15000 })
       return { success: true, operation: 'pressKey', duration: Date.now() - start }
     } catch (err) {
       return { success: false, operation: 'pressKey', error: (err as Error).message, duration: Date.now() - start }
@@ -730,29 +860,56 @@ export class Win32PlatformAdapter implements PlatformAdapter {
 
   async keyCombo(keys: string[]): Promise<InputOperationResult> {
     const start = Date.now()
-    try {
-      const modifierMap: Record<string, string> = {
-        ctrl: '^',
-        control: '^',
-        shift: '+',
-        alt: '%',
-        cmd: '^',
-        command: '^',
+    const vks: number[] = []
+    for (const key of keys) {
+      const vk = resolveVk(key)
+      if (vk === null) {
+        return { success: false, operation: 'keyCombo', error: `unsupported_key: ${key}`, duration: Date.now() - start }
       }
-      const normalKeys = keys.filter(k => !modifierMap[k.toLowerCase()])
-      const modifiers = keys.filter(k => modifierMap[k.toLowerCase()]).map(k => modifierMap[k.toLowerCase()])
-
-      if (normalKeys.length === 0) throw new Error('Key combo requires non-modifier key')
-
-      const combo = modifiers.join('') + normalKeys[0]
-      const script = `
-        Add-Type -AssemblyName System.Windows.Forms
-        [System.Windows.Forms.SendKeys]::SendWait("${combo}")
-      `
-      await execPowerShell(script, { timeout: 5000 })
+      vks.push(vk)
+    }
+    // 只给了修饰键没有主键：按下不抬起会把键盘卡在修饰态，直接拒绝
+    if (!vks.length || vks.every((_, i) => MODIFIER_KEYS.has(keys[i].toLowerCase()))) {
+      return { success: false, operation: 'keyCombo', error: 'Key combo requires non-modifier key', duration: Date.now() - start }
+    }
+    if (bridgeKeyCombo(vks)) {
+      return { success: true, operation: 'keyCombo', duration: Date.now() - start }
+    }
+    try {
+      const script = [
+        `$ErrorActionPreference='Stop'`,
+        WIN_SENDINPUT_DEF,
+        `[AweeClawKey]::KeyCombo([uint16[]]@(${vks.join(',')}))`,
+      ].join('\r\n')
+      await execPowerShellEncoded(script, { timeout: 15000 })
       return { success: true, operation: 'keyCombo', duration: Date.now() - start }
     } catch (err) {
       return { success: false, operation: 'keyCombo', error: (err as Error).message, duration: Date.now() - start }
+    }
+  }
+
+  /**
+   * 当前输入桌面是否被锁屏占用
+   *
+   * 会话锁定时系统切到 Winlogon 安全桌面，普通用户态进程的注入到不了那里。
+   * 桥可用时由桥直接问系统；桥不可用时降级到一次性脚本，两条路都失败时
+   * 返回 false——宁可让注入照常尝试并给出真实错误，也不要凭猜测拦下用户的
+   * 正常操作。
+   */
+  async isSessionLocked(): Promise<boolean> {
+    const viaBridge = await bridgeQueryLocked()
+    if (viaBridge !== null) return viaBridge
+    try {
+      const script = [
+        `$ErrorActionPreference='Stop'`,
+        `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public static class AweeClawLock{[DllImport("user32.dll",SetLastError=true)]public static extern IntPtr OpenInputDesktop(uint dwFlags,bool fInherit,uint dwDesiredAccess);[DllImport("user32.dll",SetLastError=true)]public static extern bool CloseDesktop(IntPtr h);public static bool Locked(){IntPtr h=OpenInputDesktop(0,false,0x0100);if(h==IntPtr.Zero){return true;}CloseDesktop(h);return false;}}'`,
+        `if ([AweeClawLock]::Locked()) { 'LOCKED' } else { 'UNLOCKED' }`,
+      ].join('\r\n')
+      const { stdout } = await execPowerShellEncoded(script, { timeout: 8000 })
+      return stdout.trim() === 'LOCKED'
+    } catch (err) {
+      logger.desktop.warn(`[Win32] 锁屏状态探测失败: ${(err as Error).message}`)
+      return false
     }
   }
 }

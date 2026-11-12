@@ -660,4 +660,21 @@ export class LinuxPlatformAdapter implements PlatformAdapter {
       return { success: false, operation: 'keyCombo', error: (err as Error).message, duration: Date.now() - start }
     }
   }
+
+  /**
+   * 当前会话是否处于锁屏
+   *
+   * loginctl 的 LockedHint 由桌面环境在锁屏 / 解锁时更新，是 systemd 会话层的
+   * 公开属性。拿不到（无 systemd、无会话号）时返回 false，让注入照常尝试。
+   */
+  async isSessionLocked(): Promise<boolean> {
+    try {
+      const { stdout } = await execCmd(`loginctl show-session $(loginctl | awk 'NR==2{print $1}') -p LockedHint --value`, { timeout: 4000 })
+      return stdout.trim().toLowerCase() === 'yes'
+    } catch (err) {
+      logger.desktop.warn(`[Linux] 锁屏状态探测失败: ${(err as Error).message}`)
+      return false
+    }
+  }
+
 }

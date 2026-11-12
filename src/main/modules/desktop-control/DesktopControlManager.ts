@@ -403,6 +403,36 @@ export class DesktopControlManager {
     )
   }
 
+  // ============ 锁屏状态 ============
+
+  /** 锁屏探测结果的缓存窗口：一次远程操作会连续触发多次探测，逐个问系统没必要 */
+  private static readonly LOCK_CACHE_MS = 1000
+  private lockCache: { at: number; locked: boolean } | null = null
+
+  /**
+   * 当前输入桌面是否处于锁屏 / 登录界面
+   *
+   * 会话锁定时输入焦点在安全桌面，普通用户态进程的注入到不了那里：不提前判断，
+   * 上游只会收到一个「平台层自报成功」的结果，用户看到的是「密码怎么输都没反应」。
+   *
+   * 平台未实现时按「未锁屏」处理——把判断失败的代价控制成一次正常的注入尝试，
+   * 而不是凭一个拿不到的信号把用户拦在门外。
+   */
+  async isSessionLocked(force = false): Promise<boolean> {
+    if (!force && this.lockCache && Date.now() - this.lockCache.at < DesktopControlManager.LOCK_CACHE_MS) {
+      return this.lockCache.locked
+    }
+    let locked = false
+    try {
+      locked = (await this.adapter.isSessionLocked?.()) ?? false
+    } catch (err) {
+      logger.desktop.warn('[DesktopControl] 锁屏状态探测异常，按未锁屏处理:', err)
+      locked = false
+    }
+    this.lockCache = { at: Date.now(), locked }
+    return locked
+  }
+
   // ============ 文件操作（Phase 2） ============
 
   async copyFile(sourcePath: string, targetPath: string): Promise<FileOperationResult> {

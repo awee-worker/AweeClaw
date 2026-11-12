@@ -112,6 +112,15 @@ export interface PlatformAdapter {
 
   /** 组合键（如 Cmd+C） */
   keyCombo(keys: string[]): Promise<InputOperationResult>
+
+  /**
+   * 当前输入桌面是否处于锁屏 / 登录界面
+   *
+   * 可选实现：拿不到结论的平台可以不实现，调用方按「未知即放行」处理。
+   * 锁屏时系统把输入焦点交给安全桌面，普通用户态进程的注入到不了那里，
+   * 提前判断能让上游给出「电脑已锁屏」这个准确原因，而不是一句笼统的失败。
+   */
+  isSessionLocked?(): Promise<boolean>
 }
 
 /** 平台适配器工厂函数类型 */

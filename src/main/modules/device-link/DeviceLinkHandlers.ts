@@ -708,6 +708,23 @@ function assertRemoteInputAllowed(ctx: DeviceHandlerContext): void {
   getDesktopControlManager().emergencyStop.check()
 }
 
+/**
+ * 锁屏拦截
+ *
+ * 远程电脑休眠 / 息屏后被唤醒，若系统设置了「唤醒时需要密码」，画面停在
+ * 登录界面——那是 Winlogon / 登录窗口所在的安全桌面，普通用户态进程的
+ * 键盘与鼠标注入到不了那里。不拦下来的话，平台层会自报成功，移动端看到的是
+ * 「点了没反应、也没报错」，用户只能反复重试密码。
+ *
+ * 这里把它变成一个明确的可读原因，让上层告诉用户「电脑已锁屏，需要先在
+ * 电脑前解锁」。锁屏状态本身仍然每 1s 缓存一次，不会拖慢输入链路。
+ */
+async function assertNotLocked(): Promise<void> {
+  if (await getDesktopControlManager().isSessionLocked()) {
+    throw new Error('desktop_locked')
+  }
+}
+
 /** 坐标合法性校验：否定值、NaN、Infinity 一律拒绝，避免把异常值喂进注入层 */
 function assertPoint(x: unknown, y: unknown): { x: number; y: number } {
   const px = Number(x)
@@ -818,6 +835,7 @@ export async function handleInputClick(
   payload: { x?: unknown; y?: unknown; button?: unknown; clickType?: unknown },
 ): Promise<{ applied: boolean }> {
   assertRemoteInputAllowed(ctx)
+  await assertNotLocked()
   const { x, y } = assertPoint(payload.x, payload.y)
   const clickType = String(payload.clickType) === 'double' ? 'double' : 'single'
   const button = normalizeButton(payload.button)
@@ -837,6 +855,7 @@ export async function handleInputMove(
   payload: { x?: unknown; y?: unknown },
 ): Promise<{ applied: boolean }> {
   assertRemoteInputAllowed(ctx)
+  await assertNotLocked()
   const { x, y } = assertPoint(payload.x, payload.y)
   // 不等执行结果：等一次就退回串行 RPC，帧率会被单次注入耗时锁死。
   // 移动是持续动作，合并后只执行最新位置，个别帧失败会被下一帧覆盖。
@@ -850,6 +869,7 @@ export async function handleInputScroll(
   payload: { x?: unknown; y?: unknown; amount?: unknown },
 ): Promise<{ applied: boolean }> {
   assertRemoteInputAllowed(ctx)
+  await assertNotLocked()
   const { x, y } = assertPoint(payload.x, payload.y)
   const amount = Number(payload.amount)
   if (!Number.isFinite(amount) || amount === 0) throw new Error('invalid_scroll_amount')
@@ -875,6 +895,7 @@ export async function handleInputDrag(
   },
 ): Promise<{ applied: boolean }> {
   assertRemoteInputAllowed(ctx)
+  await assertNotLocked()
   const from = assertPoint(payload.fromX, payload.fromY)
   const to = assertPoint(payload.toX, payload.toY)
   const duration = Number(payload.duration)
@@ -899,6 +920,7 @@ export async function handleInputType(
   payload: { text?: unknown; delayMs?: unknown },
 ): Promise<{ applied: boolean; length: number }> {
   assertRemoteInputAllowed(ctx)
+  await assertNotLocked()
   const text = String(payload.text ?? '')
   if (!text) throw new Error('empty_text')
   // 单次上限：防止一条消息灌进超长文本把注入层卡住
@@ -918,6 +940,7 @@ export async function handleInputKey(
   payload: { key?: unknown; keys?: unknown },
 ): Promise<{ applied: boolean }> {
   assertRemoteInputAllowed(ctx)
+  await assertNotLocked()
   const keys = Array.isArray(payload.keys) ? payload.keys.map((k) => String(k)).filter(Boolean) : []
   const single = typeof payload.key === 'string' ? payload.key : ''
   let result: { success?: boolean; error?: string } | undefined
@@ -1030,6 +1053,8 @@ export async function handleScreenFrame(
   screenHeight: number
   takenAt: number
   scroll: { percent: number; measuredAt: number } | null
+  /** 这一帧是否是锁屏 / 登录界面：移动端据此提示「需先在电脑前解锁」 */
+  locked: boolean
 }> {
   if (!ctx.preferences().allowScreenshot) throw new Error('forbidden_by_policy')
 
@@ -1061,6 +1086,10 @@ export async function handleScreenFrame(
   // 同步等会让每一帧都被拖慢，而滑块晚几百毫秒更新完全无所谓
   const scrollPct = peekScrollPercent()
 
+  // 锁屏状态随帧下发：登录界面往往截出来是一片纯色或黑屏，
+  // 只看画面用户无法区分「电脑卡了」与「电脑锁着要密码」
+  const locked = await getDesktopControlManager().isSessionLocked()
+
   return {
     url: `data:image/jpeg;base64,${image.toJPEG(quality).toString('base64')}`,
     imageWidth: size.width,
@@ -1069,6 +1098,7 @@ export async function handleScreenFrame(
     screenHeight: captured.region?.height || origin.height,
     takenAt: Date.now(),
     scroll: scrollPct === null ? null : { percent: scrollPct, measuredAt: Date.now() },
+    locked,
   }
 }
 

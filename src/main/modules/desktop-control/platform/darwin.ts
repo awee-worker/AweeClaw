@@ -1243,6 +1243,23 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
     }
   }
 
+  /**
+   * 当前控制台是否处于锁屏 / 登录窗口
+   *
+   * ioreg 里 Root 节点的 IOConsoleLocked 是系统自己维护的锁屏标志：锁屏时置位，
+   * 解锁即清除。它不需要任何授权，也不依赖辅助功能，是 macOS 上最直接的判断依据。
+   * 读不到时返回 false，让注入照常尝试并用真实结果说话，不凭猜测拦人。
+   */
+  async isSessionLocked(): Promise<boolean> {
+    try {
+      const { stdout } = await execCmd('/usr/sbin/ioreg -n Root -d1', { timeout: 4000 })
+      return /"IOConsoleLocked"\s*=\s*(Yes|true)/i.test(stdout)
+    } catch (err) {
+      logger.desktop.warn(`[Darwin] 锁屏状态探测失败: ${(err as Error).message}`)
+      return false
+    }
+  }
+
   /** 按键名转 macOS key code */
   private keyToKeyCode(key: string): number {
     const keyMap: Record<string, number> = {
