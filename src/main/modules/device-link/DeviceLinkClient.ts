@@ -52,6 +52,7 @@ import {
   type DeviceLinkPreferences,
 } from './DeviceLinkHandlers'
 import { deviceLinkEventBridge } from './DeviceLinkEventBridge'
+import { getPowerGuardManager } from '../power-guard'
 import { taskControlHub, type QueuedSteer, type IncomingTakeoverResolve } from './TaskControlHub'
 import type { TakeoverRequest, TaskFrame } from '@shared/protocols/deviceTaskProtocol'
 import type Store from 'electron-store'
@@ -65,6 +66,16 @@ const RECONNECT_BACKOFF_FACTOR = 1.5
 const PREFERENCES_KEY = 'deviceLink'
 /** 各权限范围的临时授权到期时间戳（scope → expiresAt） */
 const TEMP_GRANTS_KEY = 'deviceLinkTempGrants'
+
+/**
+ * 连接期间持有的防休眠来源标识
+ *
+ * 移动端能否连上电脑，前提是电脑没进入系统休眠——一旦睡了，桌面进程被挂起，
+ * WebSocket 断开、RPC 无从投递，此时任何软件手段都唤不回来。所以在整段连接
+ * 生命周期内持有防休眠断言（默认只阻止系统空闲休眠，允许显示器照常熄灭），
+ * 把「远程控制时电脑必定在线」这件事从概率变成确定。
+ */
+const POWER_HOLD_REASON = 'device-link'
 
 /**
  * 设备联动客户端
@@ -104,6 +115,38 @@ class DeviceLinkClient {
 
   /** 执行画面采集开关的回调：由 ipc 层注入，避免与本模块循环依赖 */
   private frameStreamSink: ((taskId: string, action: 'start' | 'stop') => void) | null = null
+
+  /**
+   * 当前是否已持有防休眠断言
+   *
+   * 防休眠管理器按来源做引用计数，重复 acquire 会把计数堆高、导致断开后
+   * 永远释放不干净。用这个标志保证一次连接周期内 acquire / release 严格配对。
+   */
+  private powerHoldActive = false
+
+  /** 取得防休眠持有（幂等） */
+  private acquirePowerHold(): void {
+    if (this.powerHoldActive) return
+    this.powerHoldActive = true
+    try {
+      getPowerGuardManager().acquire(POWER_HOLD_REASON)
+    } catch (err) {
+      // 防休眠不可用不该拖垮连接本身：远程控制仍可工作，只是电脑空闲后可能休眠
+      this.powerHoldActive = false
+      logger.deviceLink.warn(`[Client] 防休眠持有失败：${err instanceof Error ? err.message : err}`)
+    }
+  }
+
+  /** 释放防休眠持有（幂等） */
+  private releasePowerHold(): void {
+    if (!this.powerHoldActive) return
+    this.powerHoldActive = false
+    try {
+      getPowerGuardManager().release(POWER_HOLD_REASON)
+    } catch (err) {
+      logger.deviceLink.warn(`[Client] 防休眠释放失败：${err instanceof Error ? err.message : err}`)
+    }
+  }
 
   /**
    * 注入执行画面采集开关
@@ -146,6 +189,8 @@ class DeviceLinkClient {
       this.ws = null
     }
     deviceLinkEventBridge.pushConnectivity('offline', 'client_stopped')
+    // removeAllListeners 让 close 回调不再执行，释放必须在这里显式做一次
+    this.releasePowerHold()
     logger.deviceLink.info('[Client] Stopped')
   }
 
@@ -178,6 +223,7 @@ class DeviceLinkClient {
       this.ws = null
     }
     this.reconnectAttempts = 0
+    this.releasePowerHold()
   }
 
   /** 设备 ID（用于诊断、设置界面展示） */
@@ -250,6 +296,8 @@ class DeviceLinkClient {
         this.ws = ws
         this.attachMessageHandlers(ws)
         this.startHeartbeat()
+        // 连接建立即按住系统不休眠：移动端随时可能接管，电脑不能在无人使用时睡过去
+        this.acquirePowerHold()
         logger.deviceLink.info('[Client] WebSocket connected')
         deviceLinkEventBridge.pushConnectivity('online', 'connected')
         resolve()
@@ -265,6 +313,8 @@ class DeviceLinkClient {
         const reasonStr = reason?.toString() || ''
         logger.deviceLink.info(`[Client] WebSocket closed: code=${code} reason=${reasonStr}`)
         deviceLinkEventBridge.pushConnectivity('offline', `code=${code} reason=${reasonStr}`)
+        // 断开即交还防休眠：否则后端长时间不可达时，电脑会被永久按住不睡
+        this.releasePowerHold()
         // 4001 凭据刷新、1000 用户登出 → 不重连
         if (code === 4001 || code === 1000) return
         // 4003 鉴权失败 → 不重连（等新 token）

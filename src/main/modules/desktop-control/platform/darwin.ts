@@ -3,7 +3,7 @@
  * 使用 NSWorkspace / AppleScript / mdfind 等原生能力
  */
 
-import { app, shell, screen, desktopCapturer } from 'electron'
+import { app, shell, screen, desktopCapturer, clipboard } from 'electron'
 import * as cp from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -1114,34 +1114,21 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
   async typeText(text: string, delayMs = 0): Promise<InputOperationResult> {
     const start = Date.now()
     try {
-      // AppleScript 的 keystroke 对中文等非 ASCII 字符支持差（会输出乱码或无效字符）
-      // 对包含非 ASCII 字符的文本，使用剪贴板粘贴方式；纯 ASCII 文本用 keystroke
-      const hasNonAscii = /[^\x00-\x7F]/.test(text)
-
-      if (hasNonAscii) {
-        // 剪贴板粘贴方式：备份原剪贴板 → 设置新内容 → 粘贴 → 恢复原剪贴板
-        // 使用 pbcopy 设置剪贴板，通过 osascript 执行 cmd+v 粘贴
-        await new Promise<void>((resolve, reject) => {
-          const pbcopy = cp.spawn('/usr/bin/pbcopy', [], { stdio: ['pipe', 'ignore', 'ignore'] })
-          pbcopy.stdin.on('error', reject)
-          pbcopy.stdin.write(Buffer.from(text, 'utf-8'))
-          pbcopy.stdin.end()
-          pbcopy.on('exit', (code) => {
-            if (code === 0) resolve()
-            else reject(new Error(`pbcopy exited with code ${code}`))
-          })
-          pbcopy.on('error', reject)
-        })
-
-        // 等待剪贴板就绪
-        await new Promise(resolve => setTimeout(resolve, 50))
-
-        // 执行 cmd+v 粘贴
-        await execAppleScriptLines([
-          'tell application "System Events" to keystroke "v" using command down',
-        ], 5000)
-      } else {
-        // 纯 ASCII：使用 keystroke（AppleScript 中双引号和反斜杠需要转义）
+      /**
+       * 统一走剪贴板粘贴，而不是逐字符键入
+       *
+       * System Events 的 keystroke 依赖目标应用的键盘布局与输入法状态：中文输入法
+       * 激活时，键入的字符会进候选框而不是文档，用户看到的现象就是「发送成功，
+       * 电脑上却什么都没打出来」；换行、@ # $ 这类需要修饰键的字符同样会被吞掉。
+       * 剪贴板粘贴不受输入法与键盘布局影响，多行文本也能完整落地。
+       */
+      const pasted = await this.pasteViaClipboard(text)
+      if (!pasted) {
+        // 极少数目标不接受 Cmd+V（个别终端、自绘输入框）时退回 keystroke。
+        // 该通道只对纯 ASCII 有效，非 ASCII 会输出乱码，此时如实报错而不是假装成功
+        if (/[^\x00-\x7F]/.test(text)) {
+          throw new Error('paste_failed: target rejected clipboard paste')
+        }
         const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
         await execAppleScriptLines([
           'tell application "System Events" to keystroke "' + escaped + '"',
@@ -1163,6 +1150,38 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
         operation: 'typeText',
         error: (err as Error).message,
         duration: Date.now() - start,
+      }
+    }
+  }
+
+  /**
+   * 用剪贴板 + Cmd+V 把文本送进当前焦点窗口
+   *
+   * 远程输入是旁路操作，不能把用户自己的剪贴板顶掉：粘贴前备份，内容被取走后
+   * 再恢复。恢复前比对一次内容——这期间用户若自己复制了别的东西，就不覆盖。
+   *
+   * @returns 是否成功投递（osascript 未报错即视为已发出）
+   */
+  private async pasteViaClipboard(text: string): Promise<boolean> {
+    const backup = clipboard.readText()
+    let written = false
+    try {
+      clipboard.writeText(text)
+      written = true
+      // 写入与系统读取之间有短暂延迟，立刻粘贴偶尔会拿到上一次的内容
+      await new Promise(resolve => setTimeout(resolve, 60))
+      await execAppleScriptLines([
+        'tell application "System Events" to keystroke "v" using command down',
+      ], 5000)
+      // 等目标应用真正取走内容再恢复，过早恢复会让粘贴结果变成空
+      await new Promise(resolve => setTimeout(resolve, 150))
+      return true
+    } catch (err) {
+      logger.desktop.warn(`[Darwin] 剪贴板粘贴失败: ${(err as Error).message}`)
+      return false
+    } finally {
+      if (written && clipboard.readText() === text) {
+        clipboard.writeText(backup)
       }
     }
   }

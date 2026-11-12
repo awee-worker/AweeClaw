@@ -12,7 +12,7 @@
  */
 import { useEffect } from 'react'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
-import { collectFromThread, reconcileThreadTodos, resolveThreadTodos } from './todoHubActions'
+import { collectFromThread, reconcileThreadTodos, resolveThreadTodos, settleConversationTodos } from './todoHubActions'
 import { resolveThreadWorkTodos } from '@components/scene-tools/work/workTodoExec'
 
 /** 请求采集指定会话的待办（供挂载等场景解耦派发） */
@@ -39,6 +39,9 @@ export function TodoHubCollector() {
         const settled = SETTLED_LOOP_END_REASONS.has(event.reason)
         resolveThreadTodos(threadId, settled)
         resolveThreadWorkTodos(threadId, settled)
+        // 正常收尾且会话清单已全部完成 ⇒ 该会话遗留的待办都是做完的任务，一并收尾。
+        // 此前只靠标题比对同步，措辞一变就漏，刚被 AI 做掉的任务会留在待办里。
+        if (settled) settleConversationTodos(threadId)
         // AI 介入：对齐会话任务清单与待办中心条目（抑制重复、同步完成状态）。
         // 异步执行且自带降级，不阻塞 loop:end 的同步收尾。
         void reconcileThreadTodos(threadId)

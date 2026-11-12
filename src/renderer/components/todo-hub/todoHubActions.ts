@@ -12,6 +12,7 @@ import { logger } from '@toolkit/LogEngine'
 import { openBuiltinPanel } from '@renderer/plugins/pluginDrawerStore'
 import { closeOverlaysForChat } from '@renderer/utils/chatOverlays'
 import { useTodoHubStore, type HubTodoItem, type TodoSourceType } from './todoHubStore'
+import { isSameContinuationItem, normalizeContinuationItem } from '@intelligence/utils/continuationItems'
 import type { TaskItem } from '../explorer/panels/tasks/types'
 
 /* ------------------------------------------------------------------ */
@@ -50,8 +51,10 @@ export function collectFromThread(threadId: string): void {
   const sourceLabel = getThreadDisplayTitle(thread, 'New Chat')
 
   // 1) 未完成的会话待办清单
+  //    只采集真正待做的条目：verifying 表示任务已经做完、正在过验证门，
+  //    把它当待办会让刚被 AI 做掉的任务重新以「待办」冒出来。
   for (const todo of thread.todos ?? []) {
-    if (todo.status === 'completed') continue
+    if (todo.status !== 'pending' && todo.status !== 'in_progress') continue
     add({
       title: todo.content,
       detail: todo.activeForm && todo.activeForm !== todo.content ? todo.activeForm : undefined,
@@ -189,6 +192,36 @@ export function resolveThreadTodos(threadId: string, settled: boolean): void {
       aiNote: undefined,
     })
   }
+}
+
+/**
+ * 会话某一轮正常收尾时，把该会话遗留在待办中心里的条目一并收尾。
+ *
+ * AI 做完活之后，清单里全是 completed，但待办中心里由上一轮采集进去的条目
+ * 可能因为措辞变化而没被同步到——它们其实是「已经执行完的任务」，却仍以
+ * 待办形态留在清单里，用户会重复执行一遍。这里用一条不依赖模型的确定性规则兜底：
+ * 本轮正常收尾 + 该会话清单存在且全部完成 ⇒ 该会话来源的待办都已做完。
+ *
+ * 清单为空时不收尾：todo_write 清空清单既可能是「全做完了」，也可能是模型
+ * 中途放弃重排，无从判断，留给用户决定。
+ * 执行中的条目由 resolveThreadTodos 按结束原因处理，此处不越权。
+ */
+export function settleConversationTodos(threadId: string): void {
+  const thread = useAgentStore.getState().threads[threadId]
+  if (!thread) return
+
+  const todos = thread.todos ?? []
+  if (todos.length === 0) return
+  if (todos.some((t) => t.status !== 'completed')) return
+
+  const hub = useTodoHubStore.getState()
+  const pending = hub.items.filter(
+    (i) =>
+      i.sourceType === 'conversation' &&
+      i.sourceId === threadId &&
+      i.status === 'pending',
+  )
+  for (const item of pending) hub.complete(item.id)
 }
 
 /* ------------------------------------------------------------------ */
@@ -355,16 +388,21 @@ export async function reconcileThreadTodos(threadId: string): Promise<void> {
     )
   if (related.length === 0) return
 
-  // 1) 确定性同步：会话里已完成的任务，同名条目一并收尾
-  const completedContents = new Set(
-    (thread.todos ?? [])
-      .filter((t) => t.status === 'completed')
-      .map((t) => t.content.trim()),
-  )
-  if (completedContents.size > 0) {
+  // 1) 确定性同步：会话里已完成的任务，标题措辞有出入也一并收尾。
+  //    这里不能只做字符串全等比对：模型重写清单时常把「编写登录页」改成
+  //    「完成登录页实现」，全等比对会一条都匹配不上，已完成的任务就残留在待办里。
+  const completedKeys = (thread.todos ?? [])
+    .filter((t) => t.status === 'completed')
+    .map((t) => normalizeContinuationItem(t.content))
+    .filter(Boolean)
+  if (completedKeys.length > 0) {
     const hub = useTodoHubStore.getState()
     for (const item of related) {
-      if (completedContents.has((item.title ?? '').trim())) hub.complete(item.id)
+      const titleKey = normalizeContinuationItem(item.title ?? '')
+      if (!titleKey) continue
+      if (completedKeys.some((done) => isSameContinuationItem(done, titleKey))) {
+        hub.complete(item.id)
+      }
     }
   }
 

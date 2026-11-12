@@ -11,7 +11,10 @@ export interface AgentStorePlanBridge {
 }
 
 export interface AgentStoreTodoBridge {
-  setTodos: (todos: Array<{ content: string; status: 'pending' | 'in_progress' | 'verifying' | 'completed'; activeForm: string }>) => void
+  setTodos: (
+    todos: Array<{ content: string; status: 'pending' | 'in_progress' | 'verifying' | 'completed'; activeForm: string }>,
+    threadId?: string,
+  ) => void
 }
 
 function getStoreState() {
@@ -45,7 +48,7 @@ export const agentStorePlanBridge: AgentStorePlanBridge = {
 }
 
 export const agentStoreTodoBridge: AgentStoreTodoBridge = {
-  setTodos(todos) {
-    getStoreState().setTodos(todos)
+  setTodos(todos, threadId) {
+    getStoreState().setTodos(todos, threadId)
   },
 }

@@ -5503,7 +5503,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         }
     },
 
-    async todo_write(args) {
+    async todo_write(args, ctx) {
         if (useStore.getState().teamModeEnabled) {
             return { success: true, result: 'Task list skipped in team mode' }
         }
@@ -5529,7 +5529,12 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
         }
 
-        const currentTodos: Array<{ content: string; status: string; activeForm: string }> = useAgentStore.getState().getTodos() || []
+        // 清单必须落在「发起这次执行的会话」上：执行期间用户可能切换会话，
+        // 不指定 threadId 会写到当时的前台会话，待办中心按来源会话采集时就对不上，
+        // 表现为刚执行完的任务仍以待办留在清单里。
+        const threadId = ctx?.threadId ?? undefined
+
+        const currentTodos: Array<{ content: string; status: string; activeForm: string }> = useAgentStore.getState().getTodos(threadId) || []
         const newContents = new Set(todos.map(t => t.content.trim()))
         const lostCompleted = currentTodos.filter(
             (t: { content: string; status: string; activeForm: string }) => t.status === 'completed' && !newContents.has(t.content.trim())
@@ -5541,7 +5546,8 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 content: t.content,
                 status: t.status as 'pending' | 'in_progress' | 'verifying' | 'completed',
                 activeForm: t.activeForm,
-            }))
+            })),
+            threadId,
         )
 
         const completed = merged.filter(t => t.status === 'completed').length

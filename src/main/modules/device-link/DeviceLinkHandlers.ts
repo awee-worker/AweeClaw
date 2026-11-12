@@ -51,6 +51,23 @@ export interface DeviceLinkPreferences {
   allowRemoteInput?: boolean
 }
 
+/**
+ * 电源控制结果
+ *
+ * 唤醒与休眠的结论不同：休眠只有「已执行」一种可能，而唤醒要区分
+ * 「显示器已点亮」与「系统仍在睡眠、软件无法拉起」——后者只能由用户
+ * 到机器前按电源键或依赖网络唤醒，移动端必须能据此给出正确引导。
+ */
+export interface PowerControlResult {
+  applied: boolean
+  /** 显示器是否被点亮（系统深度睡眠时为 false） */
+  displayWake?: boolean
+  /** 未生效原因 */
+  reason?: 'failed'
+  /** 失败细节，仅用于日志与排障，不作为界面文案 */
+  detail?: string
+}
+
 export interface DeviceHandlerContext {
   resolveWorkspaceRoot: WorkspaceRootResolver
   preferences: () => DeviceLinkPreferences
@@ -567,10 +584,64 @@ export async function handleScreenshot(
 // 电源控制
 // ============================================================================
 
+/** 唤醒后维持「有用户活动」的秒数：够移动端拉到首帧即可，不长期压制屏幕节能 */
+const WAKE_HOLD_SECONDS = 10
+
+/** Windows 唤醒脚本的线程执行状态标志：ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED */
+const WIN_ES_ALL = 0x80000003
+/** 只保留 ES_CONTINUOUS，用于结束上面那段临时断言 */
+const WIN_ES_CONTINUOUS = 0x80000000
+
+/**
+ * 点亮显示器并重置空闲计时。
+ *
+ * 能走到这里的请求说明桌面进程仍在运行（系统真睡眠时进程被挂起，RPC 根本
+ * 到不了），因此这里要解决的是「显示器已熄 / 屏幕已锁」，而不是把机器从
+ * 系统睡眠里拉起——后者属于硬件与网络唤醒（WoL）的范畴，软件无法保证。
+ *
+ *   macOS   `caffeinate -u`  声明用户活动，立刻点亮已熄灭的显示器
+ *   Windows `SetThreadExecutionState` + 一次无害按键，显示器已关闭时只有输入事件能可靠唤醒
+ *   Linux   DPMS 强制开，并顺带重置屏保
+ */
+async function wakeDisplay(): Promise<{ displayWake: boolean; note: string }> {
+  try {
+    if (process.platform === 'darwin') {
+      await execAsync(`/usr/bin/caffeinate -u -t ${WAKE_HOLD_SECONDS}`, { windowsHide: true })
+      return { displayWake: true, note: '' }
+    }
+
+    if (process.platform === 'win32') {
+      // 用 -EncodedCommand（UTF-16LE + Base64）传递，避开 -Command 里引号与换行的转义问题
+      const script = [
+        "$ErrorActionPreference='Stop'",
+        `$src='using System;using System.Runtime.InteropServices;public static class AweeClawWakeHost{[DllImport("kernel32.dll",SetLastError=true)]public static extern uint SetThreadExecutionState(uint esFlags);}'`,
+        'Add-Type -TypeDefinition $src -Language CSharp',
+        `[AweeClawWakeHost]::SetThreadExecutionState([uint32]${WIN_ES_ALL}) > $null`,
+        "(New-Object -ComObject WScript.Shell).SendKeys('{F15}')",
+        `Start-Sleep -Seconds ${WAKE_HOLD_SECONDS}`,
+        `[AweeClawWakeHost]::SetThreadExecutionState([uint32]${WIN_ES_CONTINUOUS}) > $null`,
+      ].join('\r\n')
+      const encoded = Buffer.from(script, 'utf16le').toString('base64')
+      await execAsync(`powershell -NoProfile -NonInteractive -EncodedCommand ${encoded}`, {
+        windowsHide: true,
+        timeout: (WAKE_HOLD_SECONDS + 10) * 1000,
+      })
+      return { displayWake: true, note: '' }
+    }
+
+    await execAsync('xset dpms force on', { windowsHide: true })
+    // 屏保不一定会被 DPMS 指令解除，失败也不影响显示器已点亮这一结果
+    await execAsync('xdg-screensaver reset', { windowsHide: true }).catch(() => undefined)
+    return { displayWake: true, note: '' }
+  } catch (err) {
+    return { displayWake: false, note: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 export async function handlePowerControl(
   ctx: DeviceHandlerContext,
   payload: { action: 'sleep' | 'wake' },
-): Promise<{ applied: boolean }> {
+): Promise<PowerControlResult> {
   if (!ctx.preferences().allowPowerControl) throw new Error('forbidden_by_policy')
   switch (payload.action) {
     case 'sleep': {
@@ -584,9 +655,13 @@ export async function handlePowerControl(
       return { applied: true }
     }
     case 'wake': {
-      // 防止休眠：caffeinate（macOS）/ 不做实际操作（仅作为"保持唤醒"心跳）
-      // 实际唤醒需要硬件事件，桌面端无法主动触发，这里返回 false
-      return { applied: false }
+      const { displayWake, note } = await wakeDisplay()
+      if (!displayWake) {
+        // 不抛错：调用方需要拿到「没成功 + 为什么」，抛错只会退化成一句笼统的失败
+        logger.deviceLink.warn(`[Handlers] 唤醒显示器失败：${note}`)
+        return { applied: false, displayWake: false, reason: 'failed', detail: note }
+      }
+      return { applied: true, displayWake: true }
     }
     default:
       throw new Error('unknown_action')
