@@ -13,9 +13,23 @@
 
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Globe, Sun, Moon, Monitor, Check, ChevronRight, ChevronLeft, Palette } from 'lucide-react'
+import {
+  Globe,
+  Sun,
+  Moon,
+  Monitor,
+  MonitorSmartphone,
+  Check,
+  ChevronRight,
+  ChevronLeft,
+  Palette,
+} from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
+import type {
+  PowerGuardConfigPayload,
+  PowerGuardScreenLockMode,
+} from '@shared/protocols/powerGuardProtocol'
 import { themeManager } from '@/renderer/config/themeDefinition'
 import {
   BUILTIN_WALLPAPERS,
@@ -593,6 +607,116 @@ function ThemeSubMenu({
 }
 
 
+/**
+ * 远程待命快捷开关
+ *
+ * 对应「设置 → 电源与防休眠 → 远程待命」那一档：screenLockGuard === 'standby'
+ * 表示持续阻止系统自动锁屏，手机随时连上来都能操作。菜单里只做开 / 关，
+ * 三档策略本身仍在设置页里选。
+ *
+ * 关掉时回到开启前的档位，而不是一律置成 off：原本选了「连接期间」的用户，
+ * 从菜单里关一下不该把设置页里的选择一起抹掉。
+ */
+function StandbyToggle({ language }: { language: Language }) {
+  const [enabled, setEnabled] = useState(false)
+  const [supported, setSupported] = useState(true)
+  const [note, setNote] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  /** 读取或切换失败的原因，挂在 title 上——菜单宽度放不下正文提示 */
+  const [errorMsg, setErrorMsg] = useState('')
+  const restoreRef = useRef<PowerGuardScreenLockMode>('off')
+
+  const failText = language === 'zh' ? '切换失败，请到设置页重试' : 'Failed to switch, try the settings page'
+
+  const apply = useCallback((payload: PowerGuardConfigPayload) => {
+    if (payload.config.screenLockGuard !== 'standby') {
+      restoreRef.current = payload.config.screenLockGuard
+    }
+    setEnabled(payload.config.screenLockGuard === 'standby')
+    setSupported(payload.status.screenLockGuardSupported)
+    setNote(payload.status.screenLockGuardNote)
+    setErrorMsg('')
+  }, [])
+
+  // 菜单每次打开都会重新挂载，这里读到的一定是最新配置
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await api.powerGuard.getConfig()
+        if (cancelled) return
+        if (res.success && res.data) apply(res.data)
+        else setErrorMsg(res.error || (language === 'zh' ? '读取配置失败' : 'Failed to read config'))
+      } catch (err) {
+        console.error('[StandbyToggle] Failed to read power guard config:', err)
+        if (!cancelled) setErrorMsg(language === 'zh' ? '读取配置失败' : 'Failed to read config')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [apply, language])
+
+  const handleToggle = useCallback(async () => {
+    if (loading || busy || !supported) return
+    setBusy(true)
+    try {
+      const res = await api.powerGuard.updateConfig({
+        screenLockGuard: enabled ? restoreRef.current : 'standby',
+      })
+      if (res.success && res.data) apply(res.data)
+      else setErrorMsg(res.error || failText)
+    } catch (err) {
+      console.error('[StandbyToggle] Failed to update power guard config:', err)
+      setErrorMsg(failText)
+    } finally {
+      setBusy(false)
+    }
+  }, [loading, busy, supported, enabled, apply, failText])
+
+  // 平台不具备防锁屏能力时置灰，原因挂在 title 上，菜单宽度放不下完整说明
+  const disabled = loading || busy || !supported
+  const label = language === 'zh' ? '远程待命' : 'Remote standby'
+  const hint = errorMsg
+    ? errorMsg
+    : !supported
+      ? note || (language === 'zh' ? '当前平台不支持防自动锁屏' : 'Screen lock guard is not supported here')
+      : language === 'zh'
+        ? '保持屏幕不自动锁屏，手机随时可连'
+        : 'Keep the screen unlocked so your phone can connect anytime'
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={label}
+      disabled={disabled}
+      title={hint}
+      onClick={() => void handleToggle()}
+      className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px] disabled:cursor-default disabled:hover:bg-transparent"
+    >
+      <MonitorSmartphone className="w-[16px] h-[16px]" strokeWidth={1.5} />
+      <span className={`flex-1 text-left ${disabled ? 'text-text-muted' : ''}`}>{label}</span>
+      <span
+        className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${
+          enabled ? 'bg-accent' : 'bg-border'
+        } ${disabled ? 'opacity-50' : ''}`}
+      >
+        <span
+          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${
+            enabled ? 'left-[18px]' : 'left-0.5'
+          }`}
+        />
+      </span>
+    </button>
+  )
+}
+
+
 export function QuickSettingsMenu({
   language,
   onClose,
@@ -608,6 +732,7 @@ export function QuickSettingsMenu({
         direction={direction}
         onOpenAppearanceSettings={onOpenAppearanceSettings}
       />
+      <StandbyToggle language={language} />
     </>
   )
 }
