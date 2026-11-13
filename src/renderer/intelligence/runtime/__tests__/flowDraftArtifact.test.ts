@@ -83,7 +83,7 @@ describe('buildFlowDraftPayload', () => {
     const payload = buildFlowDraftPayload({
       title: 'x',
       description: 'y',
-      skillDraft: { name: 'n', description: 'd', body, provenance: { successCount: 1, totalCount: 1, successRate: 1, sampleIntents: [] }, createdAt: 0 },
+      skillDraft: { templateId: 't1', name: 'n', description: 'd', body, provenance: { successCount: 1, totalCount: 1, successRate: 1, sampleIntents: [] }, createdAt: 0 },
     })
 
     expect(payload.steps).toHaveLength(2)
@@ -103,7 +103,7 @@ describe('buildFlowDraftPayload', () => {
       title: 'x',
       description: 'y',
       template: makeTemplate(),
-      skillDraft: { name: 'n', description: 'd', body, provenance: { successCount: 1, totalCount: 1, successRate: 1, sampleIntents: [] }, createdAt: 0 },
+      skillDraft: { templateId: 't1', name: 'n', description: 'd', body, provenance: { successCount: 1, totalCount: 1, successRate: 1, sampleIntents: [] }, createdAt: 0 },
     })
     expect(payload.steps[0].text).toContain('read_file')
     expect(payload.steps.some((s) => s.text.includes('wrong_tool'))).toBe(false)

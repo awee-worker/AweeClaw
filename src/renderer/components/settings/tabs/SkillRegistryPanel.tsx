@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { skillService, type SkillItem, type SkillTriggerType, type SkillSource } from '@intelligence/runtime/skillRepository'
-import { proceduralSkillLearner, type ProceduralTemplate } from '@intelligence/runtime/proceduralSkillLearner'
+import { proceduralSkillLearner, isReusableSequence, type ProceduralTemplate } from '@intelligence/runtime/proceduralSkillLearner'
 import { syncProcedureTools } from '@intelligence/toolkit/procedureTool'
 import { buildSkillDrafts, type SkillDraft } from '@intelligence/runtime/skillDraftProposer'
 import { logger } from '@shared/toolkit/LogEngine'
@@ -315,6 +315,9 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
     // 状态标识直接由 canInvoke 判定，与注册层用的是同一套阈值，UI 不会和实际能力脱节。
     const [templates, setTemplates] = useState<ProceduralTemplate[]>([])
     const [templatesLoading, setTemplatesLoading] = useState(false)
+    /** 待确认删除的模板 id：删除不可撤销，先点一次进入确认态 */
+    const [templateDeleteConfirm, setTemplateDeleteConfirm] = useState<string | null>(null)
+    const [clearingTemplates, setClearingTemplates] = useState(false)
 
     const loadTemplates = useCallback(async () => {
         setTemplatesLoading(true)
@@ -349,13 +352,68 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
         )
     }
 
+    // 存量记录里不满足当前形态门槛的条目：单步、单工具重复、纯只读探查
+    const unqualifiedCount = useMemo(
+        () => templates.filter(t => !isReusableSequence(t.toolSequence)).length,
+        [templates]
+    )
+
+    const handlePruneTemplates = async () => {
+        const removed = await proceduralSkillLearner.pruneUnqualifiedTemplates()
+        await syncProcedureTools()
+        await loadTemplates()
+        setDrafts(prev => prev.filter(draft => {
+            const kept = templates.find(t => t.id === draft.templateId)
+            return kept ? isReusableSequence(kept.toolSequence) : false
+        }))
+        showInstalledMessage(
+            'success',
+            removed > 0
+                ? (zh ? `已清理 ${removed} 条不合格记录` : `Removed ${removed} unqualified record(s)`)
+                : (zh ? '没有需要清理的记录' : 'Nothing to prune')
+        )
+    }
+
+    // 删除是唯一能真正抹掉一条记录的方式：下线只是不参与匹配，条目仍在列表里
+    const handleDeleteTemplate = async (template: ProceduralTemplate) => {
+        if (templateDeleteConfirm !== template.id) {
+            setTemplateDeleteConfirm(template.id)
+            return
+        }
+        setTemplateDeleteConfirm(null)
+        const ok = await proceduralSkillLearner.deleteTemplate(template.id)
+        if (!ok) {
+            showInstalledMessage('error', zh ? '记录不存在' : 'Record not found')
+            return
+        }
+        // 模板被删后宏工具也要同步注销，否则工具列表里残留一个已无来源的可执行项
+        await syncProcedureTools()
+        await loadTemplates()
+        // 草稿直接由模板派生，来源没了就不该继续展示
+        setDrafts(prev => prev.filter(draft => draft.templateId !== template.id))
+        showInstalledMessage('success', zh ? '已删除该记录' : 'Record deleted')
+    }
+
+    const handleClearTemplates = async () => {
+        if (!clearingTemplates) {
+            setClearingTemplates(true)
+            return
+        }
+        setClearingTemplates(false)
+        await proceduralSkillLearner.clearTemplates()
+        await syncProcedureTools()
+        await loadTemplates()
+        setDrafts([])
+        showInstalledMessage('success', zh ? '已清空全部记录' : 'All records cleared')
+    }
+
     // 导出走浏览器下载：草稿生成时已对绝对路径脱敏，不会带出本机目录结构
     const handleExportDraft = useCallback((draft: SkillDraft) => {
         const blob = new Blob([draft.body], { type: 'text/markdown;charset=utf-8' })
         const url = URL.createObjectURL(blob)
         const anchor = document.createElement('a')
         anchor.href = url
-        anchor.download = `${draft.name}.md`
+        anchor.download = `${draft.name || 'skill-draft'}-${draft.templateId.slice(0, 6)}.md`
         anchor.click()
         URL.revokeObjectURL(url)
     }, [])
@@ -404,6 +462,11 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                         <div>
                             <h5 className="text-sm font-semibold text-text-primary">
                                 {zh ? '技能草稿' : 'Skill drafts'}
+                                {drafts.length > 0 && (
+                                    <span className="ml-1.5 text-[10px] font-normal text-text-muted">
+                                        {zh ? `${drafts.length} 条` : `${drafts.length}`}
+                                    </span>
+                                )}
                             </h5>
                             <p className="text-[11px] text-text-muted mt-0.5">
                                 {zh
@@ -423,13 +486,13 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                         {zh ? '从使用记录生成' : 'Generate'}
                     </button>
                 </div>
-                <div className="px-5 pb-4 space-y-2">
+                <div className="px-5 pb-4 space-y-2 max-h-[320px] overflow-y-auto custom-scrollbar overscroll-contain">
                     {drafts.length === 0 ? (
                         <p className="text-[11px] text-text-muted">
                             {draftsLoaded
                                 ? (zh
-                                    ? '暂无可归纳的流程：同一类任务成功执行两次以上才会形成模板。'
-                                    : 'No distillable workflow yet — a workflow must succeed at least twice.')
+                                    ? '暂无可归纳的流程：同一类任务成功执行 3 次以上、且步骤结构一致，才会固化为流程。'
+                                    : 'No distillable workflow yet — a workflow must succeed 3+ times with a stable step sequence.')
                                 : (zh
                                     ? '点击右上角按钮，从本机使用记录中归纳可复用流程。'
                                     : 'Use the button above to distil reusable workflows from local history.')}
@@ -437,7 +500,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                     ) : (
                         drafts.map((draft) => (
                             <div
-                                key={draft.name}
+                                key={draft.templateId}
                                 className="flex items-start gap-3 rounded-lg border border-border/40 bg-background/40 p-3"
                             >
                                 <div className="flex-1 min-w-0">
@@ -454,17 +517,34 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                 <div className="flex items-center gap-1.5 flex-shrink-0">
                                     <button
                                         onClick={() => void handleCopyDraft(draft)}
-                                        className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-md text-text-muted hover:text-accent hover:bg-accent/10 transition-colors"
+                                        className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-md text-text-muted hover:text-accent hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40 transition-colors"
                                     >
                                         <Copy className="w-3 h-3" />
                                         {zh ? '复制' : 'Copy'}
                                     </button>
                                     <button
                                         onClick={() => handleExportDraft(draft)}
-                                        className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-md bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
+                                        className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-md bg-accent/15 text-accent hover:bg-accent/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40 transition-colors"
                                     >
                                         <Download className="w-3 h-3" />
                                         SKILL.md
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            const source = templates.find(t => t.id === draft.templateId)
+                                            if (source) void handleDeleteTemplate(source)
+                                        }}
+                                        aria-label={zh ? '删除这条草稿及其来源记录' : 'Delete this draft and its source record'}
+                                        title={zh ? '删除草稿：同时抹掉它的来源记录，不会再次生成' : 'Delete: removes the source record too'}
+                                        className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/40 ${templateDeleteConfirm === draft.templateId
+                                            ? 'bg-red-500/20 text-red-400'
+                                            : 'text-text-muted hover:text-red-400 hover:bg-red-500/10'
+                                        }`}
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                        {templateDeleteConfirm === draft.templateId
+                                            ? (zh ? '确认' : 'Confirm')
+                                            : (zh ? '删除' : 'Delete')}
                                     </button>
                                 </div>
                             </div>
@@ -483,6 +563,11 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                         <div>
                             <h5 className="text-sm font-semibold text-text-primary">
                                 {zh ? '已固化流程' : 'Learned workflows'}
+                                {templates.length > 0 && (
+                                    <span className="ml-1.5 text-[10px] font-normal text-text-muted">
+                                        {zh ? `${templates.length} 条` : `${templates.length}`}
+                                    </span>
+                                )}
                             </h5>
                             <p className="text-[11px] text-text-muted mt-0.5">
                                 {zh
@@ -491,21 +576,54 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={() => void loadTemplates()}
-                        disabled={templatesLoading}
-                        className="p-1.5 text-text-muted hover:text-accent transition-colors rounded-md hover:bg-accent/10 disabled:opacity-50"
-                        title={t('app.refresh', language as Language)}
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 ${templatesLoading ? 'animate-spin' : ''}`} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                        {templates.length > 0 && (
+                            <button
+                                onClick={() => void handleClearTemplates()}
+                                aria-label={zh ? '清空全部固化流程' : 'Clear all learned workflows'}
+                                className={`px-2 py-1 text-[11px] rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/40 ${clearingTemplates
+                                    ? 'bg-red-500/20 text-red-400'
+                                    : 'text-text-muted hover:text-red-400 hover:bg-red-500/10'
+                                }`}
+                            >
+                                {clearingTemplates
+                                    ? (zh ? '确认清空' : 'Confirm clear')
+                                    : (zh ? '清空' : 'Clear all')}
+                            </button>
+                        )}
+                        <button
+                            onClick={() => void loadTemplates()}
+                            disabled={templatesLoading}
+                            className="p-1.5 text-text-muted hover:text-accent transition-colors rounded-md hover:bg-accent/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40"
+                            title={t('app.refresh', language as Language)}
+                        >
+                            <RefreshCw className={`w-3.5 h-3.5 ${templatesLoading ? 'animate-spin' : ''}`} />
+                        </button>
+                    </div>
                 </div>
-                <div className="px-5 pb-4 space-y-2">
+                <div className="px-5 pb-3">
+                    {unqualifiedCount > 0 && (
+                        <div className="flex items-start justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3">
+                            <p className="text-[11px] text-amber-400/90 leading-relaxed">
+                                {zh
+                                    ? `有 ${unqualifiedCount} 条旧记录不满足当前门槛（不足 3 步、单工具重复或纯只读），不建议当作技能保留。`
+                                    : `${unqualifiedCount} legacy record(s) fall below the current bar (fewer than 3 steps, single-tool repeats, or read-only).`}
+                            </p>
+                            <button
+                                onClick={() => void handlePruneTemplates()}
+                                className="flex-shrink-0 px-2 py-1 text-[11px] rounded-md bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-400/40"
+                            >
+                                {zh ? '清理' : 'Prune'}
+                            </button>
+                        </div>
+                    )}
+                </div>
+                <div className="px-5 pb-4 space-y-2 max-h-[320px] overflow-y-auto custom-scrollbar overscroll-contain">
                     {templates.length === 0 ? (
                         <p className="text-[11px] text-text-muted">
                             {zh
-                                ? '暂无固化流程：同一类任务成功执行两次以上才会形成模板。'
-                                : 'No learned workflow yet — a workflow must succeed at least twice.'}
+                                ? '暂无固化流程：同一类任务成功执行 3 次以上、步骤结构一致才会形成模板。'
+                                : 'No learned workflow yet — a workflow needs 3+ successes with a stable step sequence.'}
                         </p>
                     ) : (
                         templates.map((template) => {
@@ -554,17 +672,32 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                                 : `${dynamicCount} dynamic params · ${template.taskType}`}
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => void handleToggleTemplate(template)}
-                                        className={`flex-shrink-0 flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors ${template.enabled
-                                            ? 'text-text-muted hover:text-red-400 hover:bg-red-500/10'
-                                            : 'text-accent bg-accent/15 hover:bg-accent/25'
-                                        }`}
-                                    >
-                                        {template.enabled
-                                            ? (zh ? '下线' : 'Disable')
-                                            : (zh ? '恢复' : 'Enable')}
-                                    </button>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                        <button
+                                            onClick={() => void handleToggleTemplate(template)}
+                                            className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40 ${template.enabled
+                                                ? 'text-text-muted hover:text-accent hover:bg-accent/10'
+                                                : 'text-accent bg-accent/15 hover:bg-accent/25'
+                                            }`}
+                                        >
+                                            {template.enabled
+                                                ? (zh ? '下线' : 'Disable')
+                                                : (zh ? '恢复' : 'Enable')}
+                                        </button>
+                                        <button
+                                            onClick={() => void handleDeleteTemplate(template)}
+                                            aria-label={zh ? '删除这条固化记录' : 'Delete this learned workflow'}
+                                            className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/40 ${templateDeleteConfirm === template.id
+                                                ? 'bg-red-500/20 text-red-400'
+                                                : 'text-text-muted hover:text-red-400 hover:bg-red-500/10'
+                                            }`}
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                            {templateDeleteConfirm === template.id
+                                                ? (zh ? '确认' : 'Confirm')
+                                                : (zh ? '删除' : 'Delete')}
+                                        </button>
+                                    </div>
                                 </div>
                             )
                         })
@@ -700,7 +833,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                     : t('app.noskillsmatchthe', language as Language)}
                             </div>
                         ) : (
-                            <div className="space-y-2">
+                            <div className="space-y-2 max-h-[52vh] overflow-y-auto custom-scrollbar overscroll-contain">
                                 {filteredSkills.map((skill) => {
                                     const Icon = getSkillIcon(skill.name)
                                     const color = getSkillColor(skill.name)

@@ -22,6 +22,8 @@ import { logger } from '@shared/toolkit/LogEngine'
  *   C x y button single|double  在 (x, y) 点击
  *   G x1 y1 x2 y2 button        从 (x1, y1) 拖到 (x2, y2)
  *   S x y amount                在 (x, y) 滚动，amount 正值向下
+ *   K vk                        按下并抬起一个键
+ *   KC vk1,vk2,...              按下组合键，再逆序抬起
  *   Q                           主动退出
  *
  * 逐行 try 包裹：单条指令失败不能把整个桥带崩，否则一次异常就退化成每帧 spawn。
@@ -87,6 +89,39 @@ const BRIDGE_SCRIPT = [
   "  if (name === 'middle') return [$.kCGEventOtherMouseDown, $.kCGEventOtherMouseUp, 2];",
   '  return [$.kCGEventLeftMouseDown, $.kCGEventLeftMouseUp, $.kCGMouseButtonLeft];',
   '}',
+  // 键盘事件走 CGEvent，与鼠标同属「辅助功能」授权，不需要再单独授予
+  // 「自动化 / 控制 System Events」——那条权限缺失时 osascript 的 keystroke
+  // 会整个失效，表现为鼠标能点、键盘一个字也发不出去
+  'function postKeyRaw(code, down, flags) {',
+  '  var ev = $.CGEventCreateKeyboardEvent(null, code, down);',
+  '  if (flags) { $.CGEventSetFlags(ev, flags); }',
+  '  post(ev);',
+  '}',
+  // 修饰键的 flag 位：主键事件必须带上它，否则目标应用只看到一个孤立的字符，
+  // 不会解释成「Cmd+V」这类组合
+  'function flagOf(code) {',
+  "  if (code === 55) return 0x100000; // command",
+  "  if (code === 56) return 0x020000; // shift",
+  "  if (code === 58) return 0x080000; // option",
+  "  if (code === 59) return 0x040000; // control",
+  '  return 0;',
+  '}',
+  'function tapKey(code) {',
+  '  postKeyRaw(code, true, 0);',
+  '  postKeyRaw(code, false, 0);',
+  '}',
+  'function tapCombo(vks) {',
+  '  var n = vks.length;',
+  '  if (!n) return;',
+  '  var flags = 0;',
+  '  var i;',
+  '  for (i = 0; i < n - 1; i++) { flags |= flagOf(vks[i]); }',
+  '  for (i = 0; i < n - 1; i++) { postKeyRaw(vks[i], true, flags); }',
+  '  var main = vks[n - 1];',
+  '  postKeyRaw(main, true, flags);',
+  '  postKeyRaw(main, false, flags);',
+  '  for (i = n - 2; i >= 0; i--) { postKeyRaw(vks[i], false, 0); }',
+  '}',
   'function handle(line) {',
   "  var p = line.split(' ');",
   '  var op = p[0];',
@@ -116,6 +151,12 @@ const BRIDGE_SCRIPT = [
   "  if (op === 'V') {",
   '    var pct = readScrollPercent();',
   '    outLine("V:" + (pct === null ? "NA" : Math.round(pct * 100)));',
+  '    return;',
+  '  }',
+  "  if (op === 'K') { tapKey(Number(p[1])); return; }",
+  "  if (op === 'KC') {",
+  "    var vks = p[1].split(',').map(Number);",
+  '    tapCombo(vks);',
   '    return;',
   '  }',
   '}',
@@ -288,6 +329,28 @@ export function bridgeDrag(
 /** 滚动 */
 export function bridgeScroll(x: number, y: number, amount: number): boolean {
   return sendPointerCommand(`S ${x} ${y} ${amount}`)
+}
+
+/**
+ * 按下并抬起一个键
+ *
+ * 走 CGEvent 而不是 AppleScript：后者依赖「自动化 → 控制 System Events」授权，
+ * 那条权限缺失时 osascript 会静默失败，而鼠标（同样是 CGEvent）却照常工作，
+ * 表现为「能点不能打字」。CGEvent 只需要辅助功能授权，鼠标已经在用同一份。
+ */
+export function bridgeKeyPress(vk: number): boolean {
+  return sendPointerCommand(`K ${vk}`)
+}
+
+/**
+ * 一次性按下并抬起一组键
+ *
+ * 组合键必须在桥里一口气完成：拆成多条时中间可能插进其他指令，
+ * 目标应用看到的就是「Command 按着的时候发生了别的事」。
+ */
+export function bridgeKeyCombo(vks: number[]): boolean {
+  if (!vks.length) return false
+  return sendPointerCommand(`KC ${vks.join(',')}`)
 }
 
 /** 桥当前是否可用于判断降级（不启动新进程，只读状态） */

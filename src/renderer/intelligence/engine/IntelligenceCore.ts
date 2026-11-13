@@ -610,16 +610,35 @@ export class AgentClass {
       // 任何被执行两次的任务（哪怕一直失败）都会被固化。
       const threadForLearning = useAgentStore.getState().threads[threadId]
       const finalLoopState = threadForLearning?.executionMeta?.loopState
+      // 终态之外还要看本轮助手消息上是否留了 error 级告警：
+      // loopDetector 在「工具连续失败 / 模型反复报错后放弃 / 无产出直接收尾」等
+      // 路径上会把 loopState 收成 completed 或 waiting_for_user，但执行实际上是坏的。
+      // 只看终态会把这类样本记成成功，successRate 又被稀释。
+      // 只扫本轮 assistantId 对应的消息，历史轮次残留的旧告警不计入。
+      type LearningMessageLike = {
+        id: string
+        role: string
+        parts?: Array<{ type: string; alertType?: string }>
+      }
+      const finalAssistantMessage = (threadForLearning?.messages ?? []).find(
+        (m: LearningMessageLike) => m.role === 'assistant' && m.id === assistantId
+      )
+      let hasErrorAlert = false
+      if (finalAssistantMessage?.role === 'assistant') {
+        hasErrorAlert = finalAssistantMessage.parts.some(
+          (part) => part.type === 'system_alert' && part.alertType === 'error'
+        )
+      }
       // aborted 是用户主动中断，不代表流程本身对错，不计入统计；
-      // completed / waiting_for_user 视为成功（后者工具序列已有效执行，只是任务待续）；
-      // failed 记为失败。
+      // completed / waiting_for_user 且无 error 告警视为成功（后者工具序列已有效执行，只是任务待续）；
+      // failed 或有 error 告警记为失败。
       const learningAborted = abortController.signal.aborted || finalLoopState === 'aborted'
       if (threadForLearning && !learningAborted) {
         void proceduralSkillLearner.recordTaskCompletion({
           userMessage,
           threadMessages: threadForLearning.messages,
           assistantId,
-          success: finalLoopState !== 'failed',
+          success: finalLoopState !== 'failed' && !hasErrorAlert,
         })
           // 统计写入后再同步宏工具注册表：刚达标（连续成功 ≥ 3）的流程立即变成
           // 可调用工具；因失败把连续成功清零的，同步时自动下线

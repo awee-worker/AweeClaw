@@ -28,6 +28,7 @@ function makeSkillDraft(overrides: Partial<SkillDraft> = {}): SkillDraft {
   ].join('\n')
 
   return {
+    templateId: 't1',
     name: 'weekly-report',
     description: '生成周报并导出',
     body,

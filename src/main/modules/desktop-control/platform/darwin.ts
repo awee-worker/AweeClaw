@@ -27,7 +27,7 @@ import type {
   MouseDragParams,
   InputOperationResult,
 } from '../types/actions'
-import { bridgeClick, bridgeDrag, bridgeMove, bridgeScroll } from './darwinPointerBridge'
+import { bridgeClick, bridgeDrag, bridgeMove, bridgeScroll, bridgeKeyPress, bridgeKeyCombo } from './darwinPointerBridge'
 
 /** 执行 shell 命令的便捷封装 */
 function execCmd(command: string, options?: cp.ExecOptions): Promise<{ stdout: string; stderr: string }> {
@@ -215,6 +215,16 @@ function parseInfoPlist(appPath: string): { name?: string; bundleId?: string; ve
     return {}
   }
 }
+
+/**
+ * 桥通道用到的固定键码
+ *
+ * macOS 的 key code 与 CGKeyCode 是同一套数值，桥直接用它们合成事件。
+ * 单独列出来是因为它们不属于「按键名 → 键码」那张表：那张表服务的是
+ * 单个可读键名，而组合键里的修饰键要按固定 key code 逐个按下。
+ */
+const MOD_KEY_CMD = 55
+const KEY_CODE_V = 9
 
 export class DarwinPlatformAdapter implements PlatformAdapter {
   /** 已安装应用缓存 */
@@ -1127,7 +1137,11 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
         // 极少数目标不接受 Cmd+V（个别终端、自绘输入框）时退回 keystroke。
         // 该通道只对纯 ASCII 有效，非 ASCII 会输出乱码，此时如实报错而不是假装成功
         if (/[^\x00-\x7F]/.test(text)) {
-          throw new Error('paste_failed: target rejected clipboard paste')
+          // 文案要能直接指引用户，而不是只抛一个内部标记：
+          // 这条路上最常见的失败原因就是辅助功能/自动化授权没给
+          throw new Error(
+            'paste_failed: 文本未送达，请在 Mac「系统设置 → 隐私与安全性 → 辅助功能」中允许 AweeClaw',
+          )
         }
         const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
         await execAppleScriptLines([
@@ -1160,7 +1174,12 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
    * 远程输入是旁路操作，不能把用户自己的剪贴板顶掉：粘贴前备份，内容被取走后
    * 再恢复。恢复前比对一次内容——这期间用户若自己复制了别的东西，就不覆盖。
    *
-   * @returns 是否成功投递（osascript 未报错即视为已发出）
+   * Cmd+V 优先由常驻桥用 CGEvent 合成，而不是 osascript 的 keystroke：
+   * 后者依赖「自动化 → 控制 System Events」这条独立授权，未授予时直接失效，
+   * 而鼠标（同样是 CGEvent，只依赖辅助功能授权）却照常工作。用户看到的现象
+   * 就是「能点开弹层、键盘却打不进一个字」。桥不可用时才退回 AppleScript。
+   *
+   * @returns 是否成功投递（未抛异常即视为已发出）
    */
   private async pasteViaClipboard(text: string): Promise<boolean> {
     const backup = clipboard.readText()
@@ -1170,11 +1189,14 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
       written = true
       // 写入与系统读取之间有短暂延迟，立刻粘贴偶尔会拿到上一次的内容
       await new Promise(resolve => setTimeout(resolve, 60))
-      await execAppleScriptLines([
-        'tell application "System Events" to keystroke "v" using command down',
-      ], 5000)
-      // 等目标应用真正取走内容再恢复，过早恢复会让粘贴结果变成空
-      await new Promise(resolve => setTimeout(resolve, 150))
+      if (!bridgeKeyCombo([MOD_KEY_CMD, KEY_CODE_V])) {
+        await execAppleScriptLines([
+          'tell application "System Events" to keystroke "v" using command down',
+        ], 5000)
+      }
+      // 等目标应用真正取走内容再恢复，过早恢复会让粘贴结果变成空。
+      // 远程链路下目标应用的响应比本地慢一档，这里留得比纯本地更宽。
+      await new Promise(resolve => setTimeout(resolve, 280))
       return true
     } catch (err) {
       logger.desktop.warn(`[Darwin] 剪贴板粘贴失败: ${(err as Error).message}`)
@@ -1189,9 +1211,12 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
   async pressKey(key: string): Promise<InputOperationResult> {
     const start = Date.now()
     try {
-      await execAppleScriptLines([
-        'tell application "System Events" to key code ' + this.keyToKeyCode(key),
-      ], 5000)
+      // 与鼠标同一条 Quartz 通道，不依赖「控制 System Events」授权
+      if (!bridgeKeyPress(this.keyToKeyCode(key))) {
+        await execAppleScriptLines([
+          'tell application "System Events" to key code ' + this.keyToKeyCode(key),
+        ], 5000)
+      }
 
       return {
         success: true,
@@ -1211,17 +1236,41 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
   async keyCombo(keys: string[]): Promise<InputOperationResult> {
     const start = Date.now()
     try {
-      // 使用 keystroke 组合键
-      const modifiers = keys.filter(k => this.isModifier(k)).map(k => this.modifierName(k))
+      const modifiers = keys.filter(k => this.isModifier(k))
       const normalKeys = keys.filter(k => !this.isModifier(k))
 
       if (normalKeys.length === 0) {
         throw new Error('Key combo requires at least one non-modifier key')
       }
 
+      // 桥通道优先：修饰键在前、主键在最后，一次下发完成整个组合，
+      // 中间不会被其他输入指令插进来打断组合状态
+      let bridgeable = true
+      const codes: number[] = []
+      for (const m of modifiers) {
+        const code = this.modifierKeyCode(m)
+        if (code === null) {
+          bridgeable = false
+          break
+        }
+        codes.push(code)
+      }
+      if (bridgeable) {
+        codes.push(this.keyToKeyCode(normalKeys[0]))
+        if (bridgeKeyCombo(codes)) {
+          return {
+            success: true,
+            operation: 'keyCombo',
+            duration: Date.now() - start,
+          }
+        }
+      }
+
+      // 回退：桥未就绪或含有桥不支持的修饰键时走 AppleScript
+      const modifierNames = modifiers.map(k => this.modifierName(k))
       let line: string
-      if (modifiers.length > 0) {
-        line = 'tell application "System Events" to keystroke "' + normalKeys[0] + '" using {' + modifiers.join(', ') + '}'
+      if (modifierNames.length > 0) {
+        line = 'tell application "System Events" to keystroke "' + normalKeys[0] + '" using {' + modifierNames.join(', ') + '}'
       } else {
         line = 'tell application "System Events" to keystroke "' + normalKeys[0] + '"'
       }
@@ -1344,6 +1393,21 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
   private isModifier(key: string): boolean {
     const k = key.toLowerCase()
     return ['cmd', 'command', 'ctrl', 'control', 'alt', 'option', 'shift', 'fn'].includes(k)
+  }
+
+  /**
+   * 修饰键转 CGKeyCode
+   *
+   * fn 没有独立的组合语义（它改变的是其他键的行为，而不是自身参与组合），
+   * 因此返回 null，由调用方退回 AppleScript。
+   */
+  private modifierKeyCode(key: string): number | null {
+    const k = key.toLowerCase()
+    if (k === 'cmd' || k === 'command') return 55
+    if (k === 'ctrl' || k === 'control') return 59
+    if (k === 'alt' || k === 'option') return 58
+    if (k === 'shift') return 56
+    return null
   }
 
   /** 修饰键转 AppleScript 名称 */

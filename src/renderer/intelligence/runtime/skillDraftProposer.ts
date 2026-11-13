@@ -11,6 +11,7 @@
  */
 
 import type { ProceduralTemplate } from './proceduralSkillLearner'
+import { MIN_STEPS_FOR_SOLIDIFY, isReusableSequence } from './proceduralSkillLearner'
 
 /** 技能名的最大长度（过长的名字在清单里不便于识别） */
 const MAX_NAME_LENGTH = 48
@@ -18,8 +19,13 @@ const MAX_NAME_LENGTH = 48
 /** 描述的最大长度 */
 const MAX_DESCRIPTION_LENGTH = 140
 
-/** 生成一个草稿所需的最少工具步骤数 */
-export const MIN_STEPS_FOR_DRAFT = 1
+/**
+ * 生成一个草稿所需的最少工具步骤数
+ *
+ * 与固化门槛保持一致：单步调用只是「用了一次工具」，
+ * 写不成技能里可复述的方法，导出后也没有复用价值。
+ */
+export const MIN_STEPS_FOR_DRAFT = MIN_STEPS_FOR_SOLIDIFY
 
 export interface SkillDraftProvenance {
   successCount: number
@@ -30,6 +36,8 @@ export interface SkillDraftProvenance {
 }
 
 export interface SkillDraft {
+  /** 来源模板 id：草稿的增删都回到模板上，避免清掉草稿却留下记录 */
+  templateId: string
   name: string
   description: string
   /** 完整的 SKILL.md 文本（含 frontmatter） */
@@ -52,14 +60,29 @@ function redactPath(value: string): string {
   return /^([a-zA-Z]:[\\/]|\/)/.test(value) ? '<local-path>' : value
 }
 
-/** 由意图关键词生成符合技能命名约定的名字 */
+/** 把工具名转成可用于技能名的片段 */
+function toolSlug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+/**
+ * 由意图关键词生成符合技能命名约定的名字
+ *
+ * 中文请求提取不出英文词时，用「任务类型 + 主要产出工具」兜底：
+ * 只用任务类型会让所有中文任务的草稿同名，列表与导出文件互相覆盖。
+ */
 function buildDraftName(template: ProceduralTemplate): string {
   const words = template.intentKeywords
-    .map(keyword => keyword.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))
-    .filter(Boolean)
-    .slice(0, 4)
+    .map(toolSlug)
+    .filter(word => word.length >= 3)
+    .slice(0, 3)
 
-  const slug = words.length > 0 ? words.join('-') : `${template.taskType}-workflow`
+  const primaryTool = template.toolSequence[template.toolSequence.length - 1]?.toolName
+  const fallback = primaryTool
+    ? `${template.taskType}-${toolSlug(primaryTool)}`
+    : `${template.taskType}-workflow`
+
+  const slug = words.length > 0 ? words.join('-') : fallback
   return slug.slice(0, MAX_NAME_LENGTH)
 }
 
@@ -79,12 +102,12 @@ function collectToolNames(template: ProceduralTemplate): string[] {
 
 function buildDraftDescription(template: ProceduralTemplate): string {
   const tools = collectToolNames(template)
-  const toolPart = tools.length > 0 ? ` using ${tools.join(', ')}` : ''
+  const pipeline = tools.join(' → ')
   const sample = template.exampleIntents[0]
 
   const description = sample
-    ? `${truncate(sample, 90)} — a ${template.taskType} workflow${toolPart}`
-    : `A ${template.taskType} workflow${toolPart}`
+    ? `${truncate(sample, 60)}：按 ${pipeline} 执行 ${template.toolSequence.length} 步`
+    : `按 ${pipeline} 执行 ${template.toolSequence.length} 步的 ${template.taskType} 流程`
 
   return truncate(description, MAX_DESCRIPTION_LENGTH)
 }
@@ -115,7 +138,9 @@ function buildDraftBody(
     '',
     '## When to use',
     '',
-    `适用于 ${template.taskType} 类任务，且请求与该流程此前出现的场景相似。`,
+    template.exampleIntents[0]
+      ? `当请求与「${truncate(template.exampleIntents[0], 60)}」属于同类任务时使用。`
+      : `适用于 ${template.taskType} 类任务中步骤结构相同的情形。`,
     '',
     '## Steps',
     '',
@@ -148,10 +173,12 @@ function buildDraftBody(
 /**
  * 是否值得为该模板生成草稿
  *
- * 只有实际产生过工具调用的模板才有流程可写；纯对话记录无法构成技能。
+ * 与固化门槛同一口径：步数不足、单工具重复、纯只读探查都只是某次任务的操作流水，
+ * 写成 SKILL.md 也不会被复用，只会把技能清单撑成流水账。
  */
 export function isDraftable(template: ProceduralTemplate): boolean {
-  return template.toolSequence.length >= MIN_STEPS_FOR_DRAFT
+  if (template.toolSequence.length < MIN_STEPS_FOR_DRAFT) return false
+  return isReusableSequence(template.toolSequence)
 }
 
 /** 把已固化的模板转成技能草稿 */
@@ -160,6 +187,7 @@ export function buildSkillDraft(template: ProceduralTemplate): SkillDraft {
   const description = buildDraftDescription(template)
 
   return {
+    templateId: template.id,
     name,
     description,
     body: buildDraftBody(template, name, description),

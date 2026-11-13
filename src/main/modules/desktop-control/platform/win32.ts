@@ -119,6 +119,16 @@ public static class AweeClawKey {
 '@`
 
 /**
+ * 文本是否含非 ASCII 字符
+ *
+ * 中文、日文、emoji、全角标点都属于这一类。它们经 SendInput 的 UNICODE 通道
+ * 投递到已开启输入法的目标时，容易被当作组合输入吞掉，必须改走剪贴板粘贴。
+ */
+function hasNonAscii(text: string): boolean {
+  return /[^\x00-\x7F]/.test(text)
+}
+
+/**
  * 按键名 → Windows 虚拟键码
  *
  * 移动端发的是可读键名（enter / tab / escape…），Windows 侧要的是 VK 值。
@@ -804,6 +814,25 @@ export class Win32PlatformAdapter implements PlatformAdapter {
 
   async typeText(text: string, delayMs = 0): Promise<InputOperationResult> {
     const start = Date.now()
+    /**
+     * 含非 ASCII 字符时优先走剪贴板粘贴
+     *
+     * SendInput 的 UNICODE 通道按码点投递，对纯 ASCII 已经够用；但中文这类字符
+     * 进入开启了输入法的目标时，常被当成「组合过程」的一部分吞掉——请求返回成功，
+     * 文档里却一个字都没多。只认按键序列的自绘输入框（浏览器地址栏、部分 Electron
+     * 应用、游戏内聊天）同样收不到。用户看到的现象就是「发送了，电脑上没反应」。
+     *
+     * 剪贴板粘贴是整段文本一次性落地，与输入法状态、键盘布局都无关，是这条路上
+     * 唯一稳的方式。纯 ASCII 仍走注入：终端、IDE 里比 Ctrl+V 更可靠，也更快。
+     */
+    if (hasNonAscii(text)) {
+      const pasted = await this.pasteViaClipboard(text)
+      if (pasted) {
+        if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs))
+        return { success: true, operation: 'typeText', duration: Date.now() - start }
+      }
+      // 粘贴失败（剪贴板被占用、目标拒绝 Ctrl+V）时继续走注入，宁可字符错位也别丢
+    }
     // 常驻桥命中即返回：桥已把 SendInput 编译过一次，单段文本是毫秒级
     if (bridgeTypeText(text)) {
       if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs))
@@ -833,6 +862,81 @@ export class Win32PlatformAdapter implements PlatformAdapter {
       return { success: true, operation: 'typeText', duration: Date.now() - start }
     } catch (err) {
       return { success: false, operation: 'typeText', error: (err as Error).message, duration: Date.now() - start }
+    }
+  }
+
+  /**
+   * 用剪贴板把整段文本送进当前焦点窗口
+   *
+   * 剪贴板是用户自己的资源，粘贴完必须还原：先备份文本，内容被取走后再写回。
+   * 备份失败（剪贴板里是非文本内容，或读取被拒）时不做还原——宁可不还原，
+   * 也不要写回一份空内容把用户的剪贴板清掉。
+   *
+   * @returns 是否已发出粘贴动作；false 表示交给上游回退到注入通道
+   */
+  private async pasteViaClipboard(text: string): Promise<boolean> {
+    try {
+      const backup = await this.readClipboardText()
+      const encoded = Buffer.from(text, 'utf16le').toString('base64')
+      await execPowerShellEncoded(
+        [
+          `$ErrorActionPreference='Stop'`,
+          `$text=[System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('${encoded}'))`,
+          `Set-Clipboard -Value $text`,
+        ].join('\r\n'),
+        { timeout: 10000 },
+      )
+
+      const pasted = bridgeKeyCombo([0x11, 0x56])
+      if (!pasted) {
+        await execPowerShellEncoded(
+          [`$ErrorActionPreference='Stop'`, WIN_SENDINPUT_DEF, `[AweeClawKey]::KeyCombo([uint16[]]@(0x11,0x56))`].join('\r\n'),
+          { timeout: 15000 },
+        )
+      }
+
+      // 粘贴是异步投递的：立刻还原有可能赶在目标取走内容之前，先让出一拍
+      await new Promise(r => setTimeout(r, 150))
+      if (backup !== null) await this.writeClipboardText(backup)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** 读取剪贴板文本；非文本内容或读取失败返回 null（此时不还原） */
+  private async readClipboardText(): Promise<string | null> {
+    try {
+      const { stdout } = await execPowerShellEncoded(
+        [
+          `$ErrorActionPreference='Stop'`,
+          `$prev = Get-Clipboard -Raw -ErrorAction SilentlyContinue`,
+          `if ($null -eq $prev) { '' } else { [System.Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($prev)) }`,
+        ].join('\r\n'),
+        { timeout: 8000 },
+      )
+      const b64 = stdout.trim()
+      if (!b64) return null
+      return Buffer.from(b64, 'base64').toString('utf16le')
+    } catch {
+      return null
+    }
+  }
+
+  /** 写回剪贴板文本；失败静默，不影响本次输入已经完成的事实 */
+  private async writeClipboardText(text: string): Promise<void> {
+    try {
+      const encoded = Buffer.from(text, 'utf16le').toString('base64')
+      await execPowerShellEncoded(
+        [
+          `$ErrorActionPreference='Stop'`,
+          `$text=[System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('${encoded}'))`,
+          `Set-Clipboard -Value $text`,
+        ].join('\r\n'),
+        { timeout: 8000 },
+      )
+    } catch {
+      // 还原失败只影响用户剪贴板，不throw：本次输入已经投递成功
     }
   }
 
