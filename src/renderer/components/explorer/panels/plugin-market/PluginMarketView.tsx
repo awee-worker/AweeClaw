@@ -18,11 +18,12 @@
  * │  已安装     │                                      │
  * └────────────┴──────────────────────────────────────┘
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Store, Package } from 'lucide-react'
 import { useStore } from '@store'
 import { PluginMarketplacePanel } from '@components/plugin/PluginMarketplacePanel'
 import { PluginInstalledPanel } from '@components/plugin/PluginInstalledPanel'
+import { onPluginSettingsIntent, peekPluginSettingsIntent } from '@components/plugin/pluginSettingsIntent'
 
 type PluginTab = 'marketplace' | 'installed'
 
@@ -36,7 +37,20 @@ export function PluginMarketView() {
   const language = useStore(s => s.language)
   const isZh = language === 'zh'
 
-  const [activeTab, setActiveTab] = useState<PluginTab>('marketplace')
+  /**
+   * 初始页签看有没有待处理的配置意图
+   *
+   * 场景从「去插件设置」跳过来时，意图在抽屉挂载之前就设好了，
+   * 直接落到插件市场会让人再点一次「已安装」，这里一并接住。
+   */
+  const [activeTab, setActiveTab] = useState<PluginTab>(
+    () => (peekPluginSettingsIntent() ? 'installed' : 'marketplace'),
+  )
+
+  useEffect(
+    () => onPluginSettingsIntent(() => setActiveTab('installed')),
+    [],
+  )
 
   const tabs: TabDescriptor[] = [
     { id: 'marketplace', icon: <Store className="w-4 h-4" />, label: isZh ? '插件与技能市场' : 'Plugin & Skill Market' },

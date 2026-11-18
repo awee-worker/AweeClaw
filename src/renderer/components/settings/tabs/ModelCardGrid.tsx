@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Trash, Settings2, X, Eye, Sparkles, Cpu, Image, Wrench, Brain, Code, Mic, Film, RotateCcw, Sliders, Pencil } from 'lucide-react'
+import { Check, Trash, Settings2, X, Eye, Sparkles, Cpu, Image, Wrench, Brain, Code, Mic, Film, RotateCcw, Sliders, Pencil, Ear, Volume2, Box, Globe } from 'lucide-react'
 import {
   type ModelCapability,
   type ModelConfig,
@@ -37,10 +37,15 @@ const CAPABILITY_ICONS: Record<string, React.ReactNode> = {
   'video-gen': <Film className="w-2.5 h-2.5" />,
   code: <Code className="w-2.5 h-2.5" />,
   audio: <Mic className="w-2.5 h-2.5" />,
+  asr: <Ear className="w-2.5 h-2.5" />,
+  tts: <Volume2 className="w-2.5 h-2.5" />,
+  '3d-gen': <Box className="w-2.5 h-2.5" />,
+  'world-model': <Globe className="w-2.5 h-2.5" />,
 }
 
 const ALL_CAPABILITIES: ModelCapability[] = [
   'llm', 'embedding', 'vision', 'tool-calling', 'reasoning', 'image-gen', 'video-gen', 'code', 'audio',
+  'asr', 'tts', '3d-gen', 'world-model',
 ]
 
 function CapabilityTag({ capability, language }: { capability: ModelCapability; language: Language }) {
@@ -562,7 +567,7 @@ export const ModelCardGrid = memo(function ModelCardGrid({
     return groups
   }, [models, getModelCapabilities])
 
-  const groupOrder: string[] = ['llm', 'code', 'reasoning', 'vision', 'tool-calling', 'embedding', 'image-gen', 'audio']
+  const groupOrder: string[] = ['llm', 'code', 'reasoning', 'vision', 'tool-calling', 'embedding', 'image-gen', 'video-gen', '3d-gen', 'world-model', 'asr', 'tts', 'audio']
   const sortedGroups = Object.entries(groupedModels).sort(([a], [b]) => {
     const ai = groupOrder.indexOf(a)
     const bi = groupOrder.indexOf(b)

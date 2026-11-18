@@ -156,7 +156,7 @@ export function AutomationRuleEditDialog({
 
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-surface border border-border rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="bg-popover border border-border rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* 头部 */}
         <div className="flex items-center justify-between p-5 border-b border-border">
           <h3 className="text-base font-semibold text-text-primary">

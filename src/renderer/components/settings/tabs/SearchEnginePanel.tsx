@@ -608,7 +608,7 @@ function AddProviderDialog({
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-surface border border-border/50 rounded-2xl shadow-2xl w-[460px] max-h-[80vh] flex flex-col">
+      <div className="relative bg-popover border border-border/50 rounded-2xl shadow-2xl w-[460px] max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
           <h3 className="text-sm font-semibold text-text-primary">{t('search.addProviderTitle', language as Language)}</h3>
           <button onClick={onClose} className="p-1 rounded-md hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors">

@@ -63,6 +63,7 @@ import { mcpService } from '@services/toolProtocolAdapter'
 import type { McpServerStatus } from '@shared/protocols/toolProtocolBridge'
 import { type Language } from '@renderer/i18n'
 import { PluginConfigEditDialog } from './PluginConfigEditDialog'
+import { consumePluginSettingsIntent } from './pluginSettingsIntent'
 import { PluginManageDrawer, type PluginManageablePanel } from './PluginManageDrawer'
 import type { PluginConfigField } from './PluginConfigForm'
 
@@ -593,6 +594,44 @@ export function PluginInstalledPanel() {
       fields: extractConfigFields(manifest),
     })
   }
+
+  /**
+   * 接住场景发来的「打开某个插件的配置」请求
+   *
+   * 场景侧只拿得到 MCP serverId（形如 plugin:design-image-gen），这里同时按
+   * pluginKey 与 mcpServerId 匹配，兼容自定义服务 ID 的插件。
+   *
+   * 列表没加载完不消费意图：这时候弹不出配置框，消费掉就再也找不回来了。
+   * 插件确实没装时清掉意图并给出提示，避免用户以为点了没反应。
+   */
+  useEffect(() => {
+    if (isLoading || plugins.length === 0) return
+    const key = consumePluginSettingsIntent()
+    if (!key) return
+
+    const target = plugins.find((p) => p.pluginKey === key || p.mcpServerId === key)
+    if (!target) {
+      toast.warning(
+        language === 'zh'
+          ? `未找到插件「${key}」，可能尚未安装或已卸载`
+          : `Plugin "${key}" not found — it may not be installed`,
+      )
+      return
+    }
+
+    const manifest = target.manifest as Record<string, unknown>
+    const schema = manifest.configSchema as { fields?: Array<Record<string, unknown>> } | undefined
+    const fields = (schema?.fields || []).map((f) => ({
+      ...f,
+      defaultValue: (f.defaultValue as string) ?? (f.default as string),
+    })) as PluginConfigField[]
+
+    setConfigTarget({
+      pluginKey: target.pluginKey,
+      name: (manifest.nameZh as string) || (manifest.name as string) || target.pluginKey,
+      fields,
+    })
+  }, [plugins, isLoading, language])
 
   /** 打开功能面板抽屉（插件声明的 sidebarPanels） */
   function handleOpenManage(plugin: InstalledPlugin) {

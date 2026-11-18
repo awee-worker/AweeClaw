@@ -111,7 +111,7 @@ export function HintOverlay({ content, children, side = 'top', delay = 300, clas
   const tip = visible ? (
     <div
       ref={tipRef}
-      className="fixed z-[9999] px-2.5 py-1 text-[12px] font-medium text-text-primary bg-surface-active/90 backdrop-blur-md border border-border rounded-lg shadow-xl animate-scale-in pointer-events-none whitespace-nowrap tracking-wide select-none origin-center"
+      className="fixed z-[9999] px-2.5 py-1 text-[12px] font-medium text-text-primary bg-popover backdrop-blur-md border border-border rounded-lg shadow-xl animate-scale-in pointer-events-none whitespace-nowrap tracking-wide select-none origin-center"
       style={{ top: coords.top, left: coords.left }}
     >
       {content}

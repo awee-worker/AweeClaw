@@ -42,6 +42,10 @@ import {
   type HostVoiceStatusDetail,
 } from './HostCapabilitiesApi'
 import { setPluginMarketQuery } from '@components/plugin/pluginMarketIntent'
+import {
+  pluginKeyFromServerId,
+  setPluginSettingsIntent,
+} from '@components/plugin/pluginSettingsIntent'
 
 /** 单次合成长度上限：再长的正文应当拆句，一次性推送会被服务商截断 */
 const MAX_TTS_CHARS = 4000
@@ -234,7 +238,11 @@ async function readVoiceStatus(): Promise<Omit<HostVoiceStatusDetail, 'requestId
 }
 
 /** 导航目标 → 实际动作 */
-function applyNavigate(target: HostNavigateTarget, query?: string): { success: boolean; error?: string } {
+function applyNavigate(
+  target: HostNavigateTarget,
+  query?: string,
+  serverId?: string,
+): { success: boolean; error?: string } {
   const state = useStore.getState()
 
   switch (target) {
@@ -244,8 +252,24 @@ function applyNavigate(target: HostNavigateTarget, query?: string): { success: b
       if (query) setPluginMarketQuery(query)
       return { success: true }
 
+    case 'plugin-settings': {
+      // 先按 serverId 换回 pluginKey，query 作为显式指定时的兜底：
+      // 有些插件自定义了 mcpServerId 前缀，反推不出来，调用方会直接传 key
+      const pluginKey = pluginKeyFromServerId(serverId ?? '') || String(query ?? '').trim()
+      if (!pluginKey) return { success: false, error: 'plugin-settings 缺少 serverId 或 query' }
+      openBuiltinPanel('plugin-market')
+      setPluginSettingsIntent(pluginKey)
+      return { success: true }
+    }
+
     case 'scenario-market':
       state.setActiveSidePanel('scenarios')
+      return { success: true }
+
+    case 'model-settings':
+      // 模型服务就是设置里的「服务商 / 模型」页
+      state.setSettingsIntent({ tab: 'provider' })
+      state.setShowSettingsPage(true)
       return { success: true }
 
     case 'voice-settings':
@@ -363,7 +387,7 @@ export function HostCapabilitiesBridge() {
       const requestId = detail?.requestId
       let result: { success: boolean; error?: string }
       try {
-        result = applyNavigate(detail.target, detail.query)
+        result = applyNavigate(detail.target, detail.query, detail.serverId)
       } catch (err) {
         result = { success: false, error: err instanceof Error ? err.message : String(err) }
       }

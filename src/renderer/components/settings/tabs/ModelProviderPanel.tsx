@@ -431,7 +431,7 @@ const FetchModelsButton = memo(function FetchModelsButton({
   const dropdownMenu = showList && fetchedModels.length > 0 && createPortal(
     <div
       id="fetch-models-portal"
-      className="fixed z-[9999] mt-2 w-72 overflow-hidden bg-surface border border-border rounded-xl shadow-2xl animate-in fade-in zoom-in duration-200 flex flex-col"
+      className="fixed z-[9999] mt-2 w-72 overflow-hidden bg-popover border border-border rounded-xl shadow-2xl animate-in fade-in zoom-in duration-200 flex flex-col"
       style={{
         top: coords.top,
         left: Math.max(10, coords.left + coords.width - 288),
@@ -611,7 +611,7 @@ function AddProviderDialog({
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative bg-surface border border-border/50 rounded-2xl shadow-2xl w-[560px] max-h-[85vh] flex flex-col">
+      <div className="relative bg-popover border border-border/50 rounded-2xl shadow-2xl w-[560px] max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 bg-accent/10 rounded-md text-accent">

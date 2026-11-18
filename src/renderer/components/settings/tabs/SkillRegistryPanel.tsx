@@ -1324,7 +1324,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                 return (
                     <div
                         style={{ position: 'fixed', top: menuPosition.top, right: menuPosition.right, zIndex: 9999 }}
-                        className="w-36 bg-surface border border-border/60 rounded-lg shadow-xl py-1 animate-fade-in"
+                className="w-36 bg-popover border border-border/60 rounded-lg shadow-xl py-1 animate-fade-in"
                         data-skill-menu={skill.name}
                     >
                         {(skill.source === 'project' || skill.source === 'global') && (

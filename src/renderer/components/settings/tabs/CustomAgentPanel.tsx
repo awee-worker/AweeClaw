@@ -506,7 +506,7 @@ function AgentEditor({
                 </button>
 
                 {iconPickerOpen && (
-                  <div className="absolute left-0 top-full mt-2 z-30 w-72 bg-surface border border-border rounded-xl shadow-2xl p-3 animate-scale-in">
+          <div className="absolute left-0 top-full mt-2 z-30 w-72 bg-popover border border-border rounded-xl shadow-2xl p-3 animate-scale-in">
                     {/* 预设图标 */}
                     <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2">
                       {t('agent.iconPreset', language as Language)}

@@ -119,7 +119,7 @@ export default function DefinitionQuickPick({ items, position, onSelect, onClose
   return createPortal(
     <div
       ref={containerRef}
-      className="fixed z-[9999] no-drag bg-surface border border-border-subtle rounded-lg shadow-2xl overflow-hidden flex flex-col"
+      className="fixed z-[9999] no-drag bg-popover border border-border-subtle rounded-lg shadow-2xl overflow-hidden flex flex-col"
       style={{ left: layout.left, top: layout.top, width: PANEL_WIDTH, maxHeight: PANEL_MAX_HEIGHT }}
       onKeyDown={handleKeyDown}
       onContextMenu={(e) => e.preventDefault()}

@@ -10,6 +10,10 @@ export type ModelCapability =
   | 'video-gen'
   | 'code'
   | 'audio'
+  | 'asr'
+  | 'tts'
+  | '3d-gen'
+  | 'world-model'
 
 export interface ModelGenerationParams {
   maxTokens?: number
@@ -74,6 +78,10 @@ export const CAPABILITY_META: Record<ModelCapability, { label: { en: string; zh:
   'video-gen': { label: { en: 'Video Gen', zh: '视频生成' }, color: 'text-indigo-400', bgColor: 'bg-indigo-400/10 border-indigo-400/20' },
   code: { label: { en: 'Code', zh: '代码' }, color: 'text-cyan-400', bgColor: 'bg-cyan-400/10 border-cyan-400/20' },
   audio: { label: { en: 'Audio', zh: '音频' }, color: 'text-orange-400', bgColor: 'bg-orange-400/10 border-orange-400/20' },
+  asr: { label: { en: 'ASR', zh: '语音识别' }, color: 'text-teal-400', bgColor: 'bg-teal-400/10 border-teal-400/20' },
+  tts: { label: { en: 'TTS', zh: '语音合成' }, color: 'text-lime-400', bgColor: 'bg-lime-400/10 border-lime-400/20' },
+  '3d-gen': { label: { en: '3D Gen', zh: '3D模型生成' }, color: 'text-violet-400', bgColor: 'bg-violet-400/10 border-violet-400/20' },
+  'world-model': { label: { en: 'World Model', zh: '世界模型' }, color: 'text-sky-400', bgColor: 'bg-sky-400/10 border-sky-400/20' },
 }
 
 export function inferCapabilities(modelName: string): ModelCapability[] {
@@ -83,6 +91,17 @@ export function inferCapabilities(modelName: string): ModelCapability[] {
   const isEmbedding = /\bembed\b|\bembedding\b/i.test(name)
   const isImageGen = /\bdall\b|\bstable\b|\bdiffus\b|\bsdxl\b|\bimage.gen\b/i.test(name)
   const isAudio = /\btts\b|\bstt\b|\bwhisper\b|\baudio\b|\bspeech\b/i.test(name)
+  // 语音识别 / 语音合成：比通用 audio 更具体，命中时优先落到对应标签
+  const isAsr = /\basr\b|\bstt\b|\bwhisper\b|\btranscrib|\bspeech-to-text\b|\bsensevoice\b|\bfunasr\b|\bparaformer\b/i.test(name)
+  const isTts = /\btts\b|\bspeech-synthesis\b|\btext-to-speech\b|\bcosyvoice\b|\bsovits\b|\bvits\b|\bchattts\b|\bfish-speech\b/i.test(name)
+  // 3D 模型生成：图像/文本转三维网格
+  const is3dGen =
+    /\b3d\b|\bhunyuan3d\b|\btripo\b|\btrellis\b|\bmeshy\b|\brodin\b|\bpoint-e\b|\bshape-e\b|\btext-to-3d\b|\bimage-to-3d\b/i.test(
+      name,
+    )
+  // 世界模型：可交互环境生成 / 世界模拟
+  const isWorldModel =
+    /\bworld[-_ ]?model\b|\bgenie\b|\bcosmos\b|\bworldlabs\b|\bdecart\b|\bmarble\b|\bdreamer\b/i.test(name)
   // 视频生成：主流服务商的模型命名基本都会带上这几个词根
   const isVideoGen =
     /\bseedance\b|\bsora\b|\bkling\b|\bkeling\b|\bveo\b|\bhailuo\b|\bcogvideo\b|\bwanx?2?\.[0-9]-?t2v\b|\bt2v\b|\bi2v\b|\btext-to-video\b|\bvideo-gen\b|\bpika\b|\bvidu\b|\brunway\b|\bminimax-video\b/i.test(
@@ -93,12 +112,29 @@ export function inferCapabilities(modelName: string): ModelCapability[] {
     caps.push('embedding')
     return caps
   }
+  if (isWorldModel) {
+    caps.push('world-model')
+    return caps
+  }
+  if (is3dGen) {
+    caps.push('3d-gen')
+    return caps
+  }
   if (isVideoGen) {
     caps.push('video-gen')
     return caps
   }
   if (isImageGen) {
     caps.push('image-gen')
+    return caps
+  }
+  // 语音识别 / 合成要在通用 audio 之前判定，避免 whisper、tts 这类模型只落到「音频」
+  if (isAsr) {
+    caps.push('asr')
+    return caps
+  }
+  if (isTts) {
+    caps.push('tts')
     return caps
   }
   if (isAudio) {

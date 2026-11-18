@@ -8,12 +8,13 @@
  * 布局参考 BillingCenterPage：左侧 Tab 导航 + 右侧内容区。
  * 每个子面板保持独立组件，便于后续扩展「开发者上传」「插件设置」等 Tab。
  */
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Store, Package, ArrowLeft } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { PluginMarketplacePanel } from './PluginMarketplacePanel'
 import { PluginInstalledPanel } from './PluginInstalledPanel'
+import { onPluginSettingsIntent, peekPluginSettingsIntent } from './pluginSettingsIntent'
 import { t, type Language } from '@renderer/i18n'
 
 type PluginTab = 'marketplace' | 'installed'
@@ -31,7 +32,15 @@ export default function PluginCenterPage() {
     })),
   )
 
-  const [activeTab, setActiveTab] = useState<PluginTab>('marketplace')
+  const [activeTab, setActiveTab] = useState<PluginTab>(
+    () => (peekPluginSettingsIntent() ? 'installed' : 'marketplace'),
+  )
+
+  /** 场景请求打开某个插件的配置时，先切到「已安装」，由子面板负责弹出配置框 */
+  useEffect(
+    () => onPluginSettingsIntent(() => setActiveTab('installed')),
+    [],
+  )
 
   const handleClose = useCallback(() => {
     setShowPluginCenterPage(false)

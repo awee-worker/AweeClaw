@@ -90,6 +90,20 @@ export type HostNavigateTarget =
   | 'plugin-market'
   /** 场景应用市场 */
   | 'scenario-market'
+  /**
+   * 某个已安装插件的配置弹窗
+   *
+   * 与 plugin-market 的区别：那边是「去装了没」，这里是「装了但没配好」。
+   * 落到插件中心的「已安装」页签并直接弹出该插件的配置框，配 serverId 定位。
+   */
+  | 'plugin-settings'
+  /**
+   * 设置 → 模型服务
+   *
+   * 场景要 AI 生成时，模型由用户从已配置模型里按标签自己选；没有带标签的
+   * 模型时落到这里，让用户启用服务商或给模型补标签。
+   */
+  | 'model-settings'
   /** 设置 → 语音设置 */
   | 'voice-settings'
   /** 设置 → 本地语音 */
@@ -104,6 +118,13 @@ export interface HostNavigateRequestDetail {
   target: HostNavigateTarget
   /** 插件市场 / 场景市场里的搜索词，用于直接落到目标条目 */
   query?: string
+  /**
+   * 目标插件的 MCP serverId（plugin-settings 必填）
+   *
+   * 场景拿到的只有 serverId（形如 plugin:design-image-gen），宿主按它换回
+   * pluginKey 再定位配置。query 在这里作为 pluginKey 的兜底。
+   */
+  serverId?: string
 }
 
 export interface HostNavigateResultDetail {

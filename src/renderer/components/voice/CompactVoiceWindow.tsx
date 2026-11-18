@@ -69,7 +69,7 @@ function CompactVoiceWindowImpl({
       animate={{ opacity: 1, scale: 1, x: 0 }}
       exit={{ opacity: 0, scale: 0.8, x: 50 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
-      className={`fixed z-50 flex flex-col items-center bg-surface/90 backdrop-blur-xl border border-border/50 rounded-2xl shadow-2xl overflow-hidden ${
+      className={`fixed z-50 flex flex-col items-center bg-popover backdrop-blur-xl border border-border/50 rounded-2xl shadow-2xl overflow-hidden ${
         isDragging ? 'cursor-grabbing' : ''
       }`}
       style={{

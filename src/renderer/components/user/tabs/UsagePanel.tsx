@@ -41,7 +41,7 @@ const providerLabels: Record<string, { zh: string; en: string }> = {
   GOOGLE: { zh: 'Google', en: 'Google' },
   DEEPSEEK: { zh: 'DeepSeek', en: 'DeepSeek' },
   ZHIPU: { zh: '智谱', en: 'Zhipu' },
-  QWEN: { zh: '通义千问', en: 'Qwen' },
+  QWEN: { zh: '阿里云百炼', en: 'Alibaba Cloud Model Studio' },
   BAIDU: { zh: '百度', en: 'Baidu' },
 }
 

@@ -365,7 +365,7 @@ export function CloudSettings({ language }: { language: Language }) {
 
       {showUpgrade && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={handleCloseUpgrade}>
-          <div className="bg-surface border border-border rounded-2xl p-6 max-w-md w-full mx-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-popover border border-border rounded-2xl p-6 max-w-md w-full mx-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-text-primary">
                 {t('settings.upgradeplan2', language as Language)}

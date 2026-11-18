@@ -284,7 +284,7 @@ const TerminalPanel = memo(function TerminalPanel() {
                 {contextMenu.visible && contextMenu.termId && (
                     <div
                         ref={contextMenuRef}
-                        className="fixed z-[200] min-w-[200px] bg-surface border border-border rounded-md shadow-xl py-1 text-xs select-none"
+                        className="fixed z-[200] min-w-[200px] bg-popover border border-border rounded-md shadow-xl py-1 text-xs select-none"
                         style={{ top: contextMenuPos.y, left: contextMenuPos.x }}
                         onClick={e => e.stopPropagation()}
                     >

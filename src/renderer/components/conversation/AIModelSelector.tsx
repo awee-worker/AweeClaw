@@ -66,7 +66,7 @@ function TruncatedText({ text, className = '', delay = 80 }: { text: string; cla
       {tip &&
         createPortal(
           <div
-            className="fixed z-[9999] px-2.5 py-1 text-[12px] font-medium text-text-primary bg-surface-active/95 backdrop-blur-md border border-border rounded-lg shadow-xl pointer-events-none whitespace-nowrap select-none"
+      className="fixed z-[9999] px-2.5 py-1 text-[12px] font-medium text-text-primary bg-popover backdrop-blur-md border border-border rounded-lg shadow-xl pointer-events-none whitespace-nowrap select-none"
             style={{
               top: tip.top,
               left: tip.left,

@@ -266,7 +266,7 @@ export function SymbolBreadcrumbs({ filePath, language }: SymbolBreadcrumbsProps
         <div
           data-symbol-dropdown="true"
           onKeyDown={handleDropdownKeyDown}
-          className="fixed z-[9999] no-drag bg-surface border border-border-subtle rounded-lg shadow-2xl overflow-hidden flex flex-col"
+      className="fixed z-[9999] no-drag bg-popover border border-border-subtle rounded-lg shadow-2xl overflow-hidden flex flex-col"
           style={{
             left: Math.max(8, Math.min(anchorRect.left, window.innerWidth - 400)),
             top: Math.min(anchorRect.top + 2, window.innerHeight - 40),
