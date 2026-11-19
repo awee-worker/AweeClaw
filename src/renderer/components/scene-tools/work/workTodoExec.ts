@@ -8,9 +8,33 @@
  * 只在点击时标记执行中而不收敛，条目就会永远停在「AI 执行中」——用户手动停止
  * 会话、执行报错、达到轮次上限都属于这种情况。
  */
+import type { ToolExecutionContext } from '@shared/protocols/modelGateway'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { closeOverlaysForChat } from '@renderer/utils/chatOverlays'
 import { useTodoStore, type WorkTodoItem } from '../stores'
+
+/**
+ * 给 work-todo 的写入补上执行会话。
+ *
+ * 条目被置为 executing 后，这一轮会话结束时要靠 executingThreadId 把执行态收回来
+ * （见 resolveThreadWorkTodos）。AI 通过 scene_tools_update 直接把条目改成 executing
+ * 时，patch 里没有这个字段，条目就会永远停在「AI 执行中」——用户既等不到结果，
+ * 也没法重新执行。
+ *
+ * 退出执行态时一并清掉会话记录，避免下一轮把上一条执行会话的残留当成自己的。
+ */
+export function stampWorkTodoExecution(
+  toolId: string,
+  patch: Record<string, unknown>,
+  context?: ToolExecutionContext,
+): Record<string, unknown> {
+  if (toolId !== 'work-todo' || patch.status === undefined) return patch
+  if (patch.status === 'executing') {
+    const threadId = context?.threadId ?? useAgentStore.getState().currentThreadId ?? undefined
+    return { ...patch, executingThreadId: threadId }
+  }
+  return { ...patch, executingThreadId: undefined }
+}
 
 /**
  * 让 AI 执行该任务。
@@ -20,6 +44,12 @@ import { useTodoStore, type WorkTodoItem } from '../stores'
  * 表现为点了「执行」却毫无反应、条目一直停在执行中。
  */
 export function executeWorkTodo(item: WorkTodoItem): void {
+  // 已经在执行的任务不再二次下发：重复执行会再发一轮 prompt，并把 executingThreadId
+  // 覆写成当前会话——若用户此时切到了别的会话，原会话结束时就匹配不上，条目漏收敛。
+  // 按钮在执行中已禁用，这里是数据层的兜底，防止其它入口绕过。
+  const current = useTodoStore.getState().items.find((i) => i.id === item.id)
+  if (current?.status === 'executing') return
+
   const agent = useAgentStore.getState()
 
   // 优先复用当前会话；没有可用会话时新建一个并激活，保证 AI 有地方执行
@@ -53,7 +83,13 @@ export function executeWorkTodo(item: WorkTodoItem): void {
 }
 
 /**
- * 会话一轮结束时，收敛由该会话发起执行的任务状态。
+ * 会话一轮结束时，收敛「执行中」的任务状态。
+ *
+ * 两类条目都要处理：
+ * - 记着执行会话（executingThreadId === threadId）的，按本轮结束原因收敛；
+ * - 没有执行会话记录的，说明归属不明（历史数据，或 AI 通过 scene_tools_update
+ *   直接把条目改成执行中），一律退回待办。不能标完成：它可能一步都没做，
+ *   而「永远执行中」既没有进度也点不动，比退回待办更糟。
  *
  * @param threadId 本轮结束的会话 id
  * @param settled  这一轮是否正常收尾；收尾则标记完成，否则退回待办让用户可以重新执行
@@ -61,11 +97,19 @@ export function executeWorkTodo(item: WorkTodoItem): void {
 export function resolveThreadWorkTodos(threadId: string, settled: boolean): void {
   const store = useTodoStore.getState()
   for (const item of store.items) {
-    if (item.status !== 'executing' || item.executingThreadId !== threadId) continue
-    store.update(item.id, {
-      status: settled ? 'done' : 'pending',
-      executedAt: settled ? Date.now() : undefined,
-      executingThreadId: undefined,
-    })
+    if (item.status !== 'executing') continue
+
+    if (item.executingThreadId === threadId) {
+      store.update(item.id, {
+        status: settled ? 'done' : 'pending',
+        executedAt: settled ? Date.now() : undefined,
+        executingThreadId: undefined,
+      })
+      continue
+    }
+
+    if (!item.executingThreadId) {
+      store.update(item.id, { status: 'pending', executingThreadId: undefined })
+    }
   }
 }

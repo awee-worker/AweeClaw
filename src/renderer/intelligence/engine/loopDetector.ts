@@ -5,6 +5,7 @@ import { useAgentStore } from '../state/IntelligenceStore'
 import { useStore } from '@store'
 import { toolManager, initializeToolProviders, setToolLoadingContext, initializeTools } from '@intelligence/toolkit'
 import { isExternalAgentToolsExposed } from '@intelligence/toolkit/externalAgentToolsGate'
+import { listBackgroundCommandsNeedingAttention } from '@intelligence/toolkit/backgroundCommands'
 import { getAgentConfig, READ_TOOLS } from '@intelligence/utils/intelligenceConfig'
 import { LoopDetector } from '@intelligence/utils/CycleDetector'
 import { getReadOnlyTools, isFileEditTool } from '@configuration/toolDefinitions'
@@ -681,6 +682,14 @@ export async function executeAgentCycle(
    */
   let planStageNudged = false
   /**
+   * 收尾续做提示是否已用掉。
+   *
+   * 模型准备收尾时，如果会话待办里还有没做完的条目，提醒它判断一次「要不要给用户
+   * 一个继续入口」。只提示一次，且判断依据必须是待办清单这个客观事实 —— 不让模型
+   * 凭空猜「还有什么事没做」，否则会凭空造出一堆不存在的工作。
+   */
+  let continuationNudged = false
+  /**
    * 执行期专家切换记录
    *
    * 一轮任务可能经过多个工种，但切换必须收敛：
@@ -872,6 +881,28 @@ export async function executeAgentCycle(
     }
 
     threadStore.setStreamState({ waitPhase: 'waiting_model', iterationIndex: iteration })
+
+    // 后台命令提醒：耗时命令转后台后 AI 会继续做别的事，不提醒就很容易忘到会话结束 ——
+    // 既不读结果，也不知道它是否失败。仍在运行的按间隔提醒，已结束但没读过的必提醒。
+    const pendingBackgroundCommands = listBackgroundCommandsNeedingAttention(threadId)
+    if (pendingBackgroundCommands.length > 0 && !context.abortSignal?.aborted) {
+      const { language } = useStore.getState()
+      const lines = pendingBackgroundCommands
+        .map((c) => {
+          const seconds = Math.max(0, Math.round(((c.finishedAt ?? Date.now()) - c.startedAt) / 1000))
+          const head = `- terminal_id="${c.terminalId}"`
+          return c.status === 'running'
+            ? `${head} 运行中 ${seconds}s：${c.command.slice(0, 100)}`
+            : `${head} 已结束（${c.status}${c.exitCode !== null ? `，退出码 ${c.exitCode}` : ''}），结果还没读过：${c.command.slice(0, 100)}`
+        })
+        .join('\n')
+      llmMessages.push({
+        role: 'user',
+        content: language === 'zh'
+          ? `【后台命令提醒】以下命令在后台执行，不要忘记它们：\n${lines}\n\n用 read_terminal_output（terminal_id 如上）读取状态与结果：\n- 仍在运行 → 可以继续做别的事，稍后再读；不要重复下发同一条命令\n- 已结束 → 先读结果再决定下一步；失败就排查原因，不要盲目重跑\n- 确认不再需要 → 用 stop_terminal 结束它`
+          : `【Background command reminder】These commands run in the background — keep them in mind:\n${lines}\n\nCall read_terminal_output (terminal_id as above) to read status and result:\n- Still running → keep doing other work and check again later; never re-issue the same command\n- Finished → read the result first, then decide; if it failed, diagnose instead of blindly retrying\n- No longer needed → stop it with stop_terminal`,
+      })
+    }
 
     // 中途自查：预算过半 / 四分之三时各提醒一次，让模型有机会主动承认「走不通」，
     // 而不是把步数磕到上限才吐一个错误。提醒直接拼在本次请求里，不多花一轮。
@@ -1337,6 +1368,36 @@ export async function executeAgentCycle(
             content: language === 'zh'
               ? '【计划阶段硬性要求】你还未创建任务计划。本轮处于「任务计划模式 / 计划阶段」，不允许以纯文字方案收尾，也不能直接动手执行。\n请立即调用 `create_task_plan`：把任务拆成可执行子任务（每个子任务含标题、说明、必要时含依赖与建议角色），然后停下等待用户确认。\n注意：计划内容必须通过该工具提交，不要只在回复文字里复述计划。'
               : '【Plan stage requirement】No task plan has been created yet. This turn is in Task Plan mode — you may not finish with a text-only proposal, and you may not start executing.\nCall `create_task_plan` now: break the work into executable subtasks (title, description, dependencies and suggested role where relevant), then stop and wait for the user to confirm.\nSubmit the plan through the tool — do not merely restate it in prose.',
+          })
+          shouldContinue = true
+          continue
+        }
+      }
+
+      // 收尾续做判断：模型准备收尾，但会话待办里还有未完成条目。
+      // 依据是待办清单这个客观事实，而不是让模型凭记忆复述剩余工作 —— 后者极易
+      // 漏项或编造。只提示一次；模型本轮已调用过 offer_continuation 时不再打扰。
+      if (!planStageActive && !continuationNudged && !context.abortSignal?.aborted) {
+        const openTodos = (useAgentStore.getState().getTodos(threadId) || [])
+          .filter((t) => t.status === 'pending' || t.status === 'in_progress')
+        const alreadyOffered = llmMessages.some((m) => {
+          if (m.role !== 'assistant') return false
+          const assistantMsg = m as AssistantMessage
+          return assistantMsg.toolCalls?.some((tc) => tc.name === 'offer_continuation') ?? false
+        })
+
+        if (openTodos.length > 0 && !alreadyOffered) {
+          continuationNudged = true
+          const { language } = useStore.getState()
+          logger.agent.info(
+            `[Loop] Continuation check: ${openTodos.length} open todo(s) remain at closing`,
+          )
+          const list = openTodos.map((t) => `- [${t.status}] ${t.content}`).join('\n')
+          llmMessages.push({
+            role: 'user',
+            content: language === 'zh'
+              ? `【收尾检查】你的任务清单里还有未完成的条目：\n${list}\n\n请判断：这些是否属于「用户还会继续要做」的实质工作？\n- 是 → 调用 offer_continuation，把剩余项按执行顺序写入 remaining（只列真正没做的，绝不能包含已完成的条目）\n- 否（只是可忽略的琐碎收尾，或你已确认无需再做）→ 直接文字收尾，不要为了走流程而调用工具\n不要凭空编造清单之外的剩余事项。`
+              : `【Closing check】Your todo list still has unfinished items:\n${list}\n\nDecide: is any of this real work the user will still want done?\n- Yes → call offer_continuation and put the remaining items into \`remaining\` in execution order (only genuinely undone ones; never include completed work)\n- No (trivial leftovers, or already confirmed unnecessary) → just finish with text; do not call the tool for the sake of it\nNever invent remaining items that are not in the list.`,
           })
           shouldContinue = true
           continue

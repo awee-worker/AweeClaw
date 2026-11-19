@@ -25,7 +25,16 @@ interface FakeHubItem {
   sourceId?: string
 }
 
-const agentState: { threads: Record<string, { id: string; todos?: FakeTodo[] }> } = {
+interface FakeMountedTask {
+  objective?: string
+  pendingSteps?: unknown[]
+  summary?: string
+  mountedAt: number
+}
+
+const agentState: {
+  threads: Record<string, { id: string; todos?: FakeTodo[]; mountedTask?: FakeMountedTask }>
+} = {
   threads: {},
 }
 
@@ -111,7 +120,7 @@ beforeEach(() => {
 /* ------------------------------------------------------------------ */
 
 describe('collectFromThread · 采集范围', () => {
-  it('只采集 pending / in_progress，跳过 verifying 与 completed', () => {
+  it('只采集 pending，跳过 in_progress / verifying / completed', () => {
     setThread('t1', [
       todo('未开始的任务', 'pending'),
       todo('正在做的任务', 'in_progress'),
@@ -121,7 +130,28 @@ describe('collectFromThread · 采集范围', () => {
 
     collectFromThread('t1')
 
-    expect(addedTitles()).toEqual(['未开始的任务', '正在做的任务'])
+    expect(addedTitles()).toEqual(['未开始的任务'])
+  })
+
+  it('正在执行的任务不得进入待办（AI 明明在做，却显示成一条打不完的待办）', () => {
+    setThread('t-progress', [todo('重构订单模块', 'in_progress')])
+
+    collectFromThread('t-progress')
+
+    expect(hubState.add).not.toHaveBeenCalled()
+  })
+
+  it('includeConversationTodos=false 时跳过会话清单，但仍采集挂载任务', () => {
+    setThread('t-mounted', [todo('会话中途停止时还没开始做的事', 'pending')])
+    agentState.threads['t-mounted'].mountedTask = {
+      objective: '继续跑完历史数据导入',
+      pendingSteps: [1, 2],
+      mountedAt: 1700000000000,
+    }
+
+    collectFromThread('t-mounted', { includeConversationTodos: false })
+
+    expect(addedTitles()).toEqual(['继续跑完历史数据导入'])
   })
 
   it('采集条目带会话来源与去重键', () => {

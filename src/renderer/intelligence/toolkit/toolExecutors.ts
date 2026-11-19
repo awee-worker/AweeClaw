@@ -55,12 +55,22 @@ import {
     matchesLongRunningCommand,
     matchesBroadScanCommand,
     resolveCommandTimeout,
+    resolveStallTimeout,
+    isDetachableLongCommand,
     MAX_EXPLICIT_TIMEOUT_MS,
 } from './commandExecutor'
+import {
+    registerBackgroundCommand,
+    completeBackgroundCommand,
+    getBackgroundCommand,
+    markBackgroundCommandReported,
+    toBackgroundStatus,
+} from './backgroundCommands'
 import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
 import { notifyWorkspaceTreeChange } from './workspaceTreeNotifier'
 import { terminalManager } from '@services/TerminalAdapter'
+import type { CommandResult } from '@services/TerminalAdapter'
 import { isDangerousCommand, matchDangerousCommand } from '@shared/configuration/dangerousCommands'
 import { tryRunCommandInSandbox } from './sandboxCommandRoute'
 import {
@@ -3136,6 +3146,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 供超时诊断使用：命中全盘扫描时可给出针对性的改写建议
         const isBroadScan = matchesBroadScanCommand(command, ctx.workspacePath || undefined)
 
+        // 停滞阈值：安装/构建这类命令安静几分钟是常态，按命令类型给足静默空间，
+        // 避免「本该跑完的命令」因为暂时没有输出被误判成卡死。
+        const stallTimeout = resolveStallTimeout(command, timeout)
+
         // ── 沙箱路由（可选，默认关闭） ──────────────────────────────
         // 策略为 `off`（默认）时主进程回 `handled:false`，下面这行等于空操作，
         // 命令照旧走宿主终端路径 —— 这是「off 状态下行为与改造前完全一致」的落点。
@@ -3265,9 +3279,13 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             const threadIdForStream = ctx.threadId
             let lastFlushedLength = 0
             let flushTimer: ReturnType<typeof setTimeout> | null = null
+            // 命令转入后台后停止向工具卡片推流：卡片已经以「执行中」收尾，
+            // 再推只会让一次已经结束的工具调用反复刷新。
+            let streamingActive = true
             const STREAM_FLUSH_INTERVAL_MS = 150
 
             const flushPartialOutput = (partialOutput: string) => {
+                if (!streamingActive) return
                 if (!toolCallIdForStream || !threadIdForStream) return
                 // 只在有新内容时更新，避免重复刷新
                 if (partialOutput.length <= lastFlushedLength) return
@@ -3294,19 +3312,99 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             // 终端执行路径：与中止信号竞争
             // 即使 abortActiveAgentCommands() 已经调用 finalize，raceWithAbort 作为兜底
             // 确保极端情况下（如 finalize 失败）也能及时返回
-            let commandResult
-            const racedResult = await raceWithAbort(
-                terminalManager.executeCommandWithOutput(
-                    termId,
-                    command,
-                    timeout,
-                    resolvedCwd || undefined,
-                    onPartialOutput,
-                )
+            //
+            // 长耗时命令（安装 / 构建 / 测试 / 系统装包）不在这一轮里死等：
+            // 先给一个宽限期，期间跑完就照常返回结果（快命令不受影响）；
+            // 超过宽限期仍在跑，就把它交给后台，本轮先返回终端 ID，AI 可以继续做别的事，
+            // 之后用 read_terminal_output 取状态与结果。
+            const DETACH_GRACE_MS = 15_000
+            const mayDetach = !isLongRunningProcess && isDetachableLongCommand(command)
+            const executionPromise = terminalManager.executeCommandWithOutput(
+                termId,
+                command,
+                timeout,
+                resolvedCwd || undefined,
+                onPartialOutput,
+                stallTimeout,
             )
+            const DETACH_SIGNAL = { __detach: true as const }
+            const raceTarget: Promise<CommandResult | { __detach: true }> = mayDetach
+                ? Promise.race([
+                    executionPromise,
+                    new Promise<{ __detach: true }>((resolve) => {
+                        const graceTimer = setTimeout(() => resolve(DETACH_SIGNAL), DETACH_GRACE_MS)
+                        void executionPromise.finally(() => clearTimeout(graceTimer))
+                    }),
+                ])
+                : executionPromise
+
+            let commandResult
+            const racedResult = await raceWithAbort(raceTarget)
 
             try {
-                if ('__aborted' in racedResult) {
+                if ('__detach' in racedResult) {
+                    // 转入后台：停止流式预览（后台输出不再往已结束的工具卡片里推），
+                    // 登记到后台命令表，并解除本线程的终端绑定 ——
+                    // 不解除绑定的话，下一次 run_command 会复用这台终端并 Ctrl+C 打断它。
+                    streamingActive = false
+                    if (flushTimer) {
+                        clearTimeout(flushTimer)
+                        flushTimer = null
+                    }
+                    const tail = terminalManager.getOutputPreview(termId, 12, 800) || ''
+                    registerBackgroundCommand({
+                        key: termId,
+                        terminalId: termId,
+                        command,
+                        cwd: resolvedCwd || undefined,
+                        threadId: ctx.threadId ?? undefined,
+                        startedAt: Date.now(),
+                        status: 'running',
+                        exitCode: null,
+                        outputTail: tail,
+                        reported: false,
+                    })
+                    terminalManager.releaseAgentTerminal(termOwner)
+                    // 后台结算：命令结束时落状态，供 read_terminal_output 汇报
+                    void executionPromise.then(
+                        (result) => completeBackgroundCommand(termId, {
+                            status: toBackgroundStatus(result.finalStatus),
+                            exitCode: result.exitCode,
+                            outputTail: (result.output || result.partialOutput || '').trim().slice(-800),
+                        }),
+                        (err) => completeBackgroundCommand(termId, {
+                            status: 'failed',
+                            exitCode: null,
+                            outputTail: (err instanceof Error ? err.message : String(err)).slice(-800),
+                        }),
+                    )
+
+                    return {
+                        success: true,
+                        callFailed: false,
+                        result: [
+                            `[命令已转入后台执行]`,
+                            `命令: ${command}`,
+                            `终端 ID: ${termId}`,
+                            '',
+                            `这条命令预计耗时较长，已超过 ${Math.round(DETACH_GRACE_MS / 1000)} 秒的等待宽限期，因此没有阻塞本轮。`,
+                            '你现在可以继续做其他事情（读文件、改代码、准备下一步），但不要忘记它还在跑：',
+                            `- 用 read_terminal_output（terminal_id="${termId}"）查看进度；该工具会返回 running / completed / failed 与退出码`,
+                            `- 命令显示 completed 之前，不要执行依赖它的命令（例如安装没结束就跑构建）`,
+                            `- 不要重复下发同一条命令，会造成重复安装 / 端口占用`,
+                            `- 确认卡住或不再需要时，用 stop_terminal（terminal_id="${termId}"）结束它`,
+                            tail ? `\n当前最后输出：\n${tail}` : '',
+                        ].filter(Boolean).join('\n'),
+                        meta: {
+                            command,
+                            cwd: resolvedCwd,
+                            terminalId: termId,
+                            finalStatus: 'running',
+                            isBackground: true,
+                            detachAfterGraceMs: DETACH_GRACE_MS,
+                        },
+                    }
+                } else if ('__aborted' in racedResult) {
                     // 中止触发：尽力获取已捕获的部分输出
                     let partialSnapshot = ''
                     try {
@@ -4041,12 +4139,55 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         const linesCount = (args.lines as number) || 100
 
         try {
+            // 后台命令先取登记状态：AI 最需要的是「跑完没有、退出码多少」，
+            // 只有文本没有状态时，它无法判断该继续等还是该往下走。
+            const pending = getBackgroundCommand(terminalId)
+            const commandState = terminalManager.getTerminalCommandState(terminalId)
+            const session = commandState.current || commandState.last
+            const status: string = pending
+                ? pending.status
+                : (session?.status ?? 'unknown')
+            const exitCode = pending?.exitCode ?? session?.exitCode ?? null
+            const durationMs = pending
+                ? (pending.finishedAt ?? Date.now()) - pending.startedAt
+                : (session ? (session.endedAt ?? Date.now()) - session.startedAt : 0)
+
+            const statusLine = (() => {
+                const seconds = Math.max(0, Math.round(durationMs / 1000))
+                switch (status) {
+                    case 'running':
+                        return `[状态] 仍在执行中（已运行 ${seconds}s）。这不是最终结果：可以继续做别的事，稍后再读一次。`
+                    case 'completed':
+                        return `[状态] 已结束，退出码 ${exitCode ?? 0}（成功）。`
+                    case 'failed':
+                        return `[状态] 已结束，退出码 ${exitCode ?? '未知'}（失败）。`
+                    case 'timed_out':
+                        return `[状态] 已终止：超时或长时间无输出被判定为卡住。`
+                    case 'cancelled':
+                    case 'interrupted':
+                        return `[状态] 已中断，未拿到正常退出码。`
+                    case 'shell_exited':
+                        return `[状态] 承载命令的 shell 已退出，结果不可信。`
+                    default:
+                        return ''
+                }
+            })()
+
+            // 已结束的后台命令读一次就算「报告过」，主循环不再重复提醒；
+            // 仍在运行的保持未报告，提醒会继续出现，直到命令结束或被读取。
+            if (pending && pending.status !== 'running') {
+                markBackgroundCommandReported(terminalId)
+            }
+
             const lines = terminalManager.getOutputBuffer(terminalId)
 
             if (!lines || lines.length === 0) {
                 return {
                     success: true,
-                    result: '[Empty buffer. Either the terminal was closed, invalid, or it has not produced output yet]'
+                    result: [statusLine, '[Empty buffer. Either the terminal was closed, invalid, or it has not produced output yet]']
+                        .filter(Boolean)
+                        .join('\n'),
+                    meta: { terminalId, status, exitCode },
                 }
             }
 
@@ -4059,8 +4200,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             return {
                 success: true,
-                result: cleanOutput || '[Terminal produced no printable output]',
-                meta: { terminalId }
+                result: [statusLine, cleanOutput || '[Terminal produced no printable output]']
+                    .filter(Boolean)
+                    .join('\n\n'),
+                meta: { terminalId, status, exitCode }
             }
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error)

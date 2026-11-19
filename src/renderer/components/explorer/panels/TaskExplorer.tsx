@@ -169,12 +169,21 @@ function TaskRow({
                 }
             </button>
             <span className={`text-[11px] flex-1 truncate ${task.status === 'done' ? 'line-through text-text-muted' : 'text-text-primary'}`}>{task.text}</span>
-            {/* AI 执行按钮 */}
+            {/* AI 执行按钮：执行中禁用，避免重复下发 prompt 并改写执行会话 */}
             {task.status !== 'done' && (
                 <button
                     onClick={() => onExecute(task)}
-                    title={language === 'zh' ? '让AI执行此任务' : 'Let AI execute'}
-                    className={`flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${task.status === 'executing' ? 'text-accent' : 'text-text-muted hover:text-violet-400'}`}
+                    disabled={task.status === 'executing'}
+                    title={
+                        task.status === 'executing'
+                            ? (language === 'zh' ? 'AI 正在执行此任务' : 'AI is working on this task')
+                            : (language === 'zh' ? '让AI执行此任务' : 'Let AI execute')
+                    }
+                    className={`flex-shrink-0 transition-opacity ${
+                        task.status === 'executing'
+                            ? 'opacity-100 text-accent cursor-default'
+                            : 'opacity-0 group-hover:opacity-100 text-text-muted hover:text-violet-400'
+                    }`}
                 >
                     {task.status === 'executing'
                         ? <Loader2 className="w-3 h-3 animate-spin" />

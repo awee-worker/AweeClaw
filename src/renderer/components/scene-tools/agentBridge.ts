@@ -10,6 +10,7 @@
 
 import type { ToolDefinition, ToolExecutor } from '@shared/protocols/modelGateway'
 import { toolRegistry } from '@intelligence/toolkit/toolRegistry'
+import { stampWorkTodoExecution } from './work/workTodoExec'
 import {
   useContactStore,
   useTodoStore,
@@ -414,13 +415,13 @@ const EXECUTORS: Record<string, ToolExecutor> = {
   },
 
   /** 新增条目 */
-  scene_tools_add: async (args) => {
+  scene_tools_add: async (args, context) => {
     const ds = getDS(String(args.tool ?? ''))
     if (!ds) return failResult(`未知工具 "${args.tool}"`)
     if (!ds.add) return failResult(`工具 "${ds.name}" 不支持新增`)
     const item = (args.item as Record<string, unknown>) || {}
     if (typeof item !== 'object' || Array.isArray(item)) return failResult('item 必须为对象')
-    const res = ds.add(item)
+    const res = ds.add(stampWorkTodoExecution(ds.id, item, context))
     if (!res.ok) return failResult(res.error || '新增失败')
     const data = ds.read()
     notifySceneToolUI(ds)
@@ -436,14 +437,14 @@ const EXECUTORS: Record<string, ToolExecutor> = {
   },
 
   /** 更新条目 */
-  scene_tools_update: async (args) => {
+  scene_tools_update: async (args, context) => {
     const ds = getDS(String(args.tool ?? ''))
     if (!ds) return failResult(`未知工具 "${args.tool}"`)
     if (!ds.update) return failResult(`工具 "${ds.name}" 不支持更新`)
     const id = String(args.id ?? '')
     if (!id) return failResult('缺少 id')
     const patch = (args.patch as Record<string, unknown>) || {}
-    const res = ds.update(id, patch)
+    const res = ds.update(id, stampWorkTodoExecution(ds.id, patch, context))
     if (!res.ok) return failResult(res.error || '更新失败')
     notifySceneToolUI(ds)
     pushEvent({

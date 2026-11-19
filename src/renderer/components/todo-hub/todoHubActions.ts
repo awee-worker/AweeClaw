@@ -40,31 +40,42 @@ export const TODO_SOURCE_META: Record<TodoSourceType, SourceMeta> = {
 /**
  * 从会话收集「未完成的任务」与「挂载任务」。
  *
- * 会话执行过程中，AI 通过 todo_write 建立的待办清单里未完成的条目、
- * 以及用户主动停止会话后挂载的任务，都会进入待办中心。
+ * 采集口径只认「AI 规划了、但还没开始做」的条目（status === 'pending'）：
+ * - in_progress 表示 AI 正在执行，把它当待办会让用户看到一条「明明在做」的待办，
+ *   而且它永远不会被收尾（reconcile 明确禁止把 in_progress 判为完成）；
+ * - verifying 表示已经做完、正在过验证门，同样不属于待办。
+ * 已完成的条目本来就被排除在外，因此这里不会再出现「AI 做完了还进待办」的情况。
+ *
+ * @param options.includeConversationTodos 是否采集会话待办清单。
+ *        会话中途停止 / 报错 / 等待用户输入的轮次传 false：那些任务还有下文，
+ *        补录成待办只会制造噪音；挂载任务不受此开关影响，始终采集。
  */
-export function collectFromThread(threadId: string): void {
+export function collectFromThread(
+  threadId: string,
+  options?: { includeConversationTodos?: boolean },
+): void {
   const thread = useAgentStore.getState().threads[threadId]
   if (!thread) return
 
   const { add } = useTodoHubStore.getState()
   const sourceLabel = getThreadDisplayTitle(thread, 'New Chat')
+  const includeConversationTodos = options?.includeConversationTodos !== false
 
-  // 1) 未完成的会话待办清单
-  //    只采集真正待做的条目：verifying 表示任务已经做完、正在过验证门，
-  //    把它当待办会让刚被 AI 做掉的任务重新以「待办」冒出来。
-  for (const todo of thread.todos ?? []) {
-    if (todo.status !== 'pending' && todo.status !== 'in_progress') continue
-    add({
-      title: todo.content,
-      detail: todo.activeForm && todo.activeForm !== todo.content ? todo.activeForm : undefined,
-      status: 'pending',
-      priority: 'medium',
-      sourceType: 'conversation',
-      sourceId: threadId,
-      sourceLabel,
-      dedupeKey: `conv:${threadId}:${todo.content}`,
-    })
+  // 1) 未开始的会话待办清单：只收 pending，正在做和已做完的都不进待办中心
+  if (includeConversationTodos) {
+    for (const todo of thread.todos ?? []) {
+      if (todo.status !== 'pending') continue
+      add({
+        title: todo.content,
+        detail: todo.activeForm && todo.activeForm !== todo.content ? todo.activeForm : undefined,
+        status: 'pending',
+        priority: 'medium',
+        sourceType: 'conversation',
+        sourceId: threadId,
+        sourceLabel,
+        dedupeKey: `conv:${threadId}:${todo.content}`,
+      })
+    }
   }
 
   // 2) 挂载任务：同一会话可能先后挂载多次，去重键带上挂载时间，

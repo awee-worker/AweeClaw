@@ -1501,6 +1501,9 @@ export class TerminalManagerClass {
    * 命令过程对用户可见（在终端面板里显示），同时将 stdout 作为字符串返回给 AI。
    *
    * @param cwd 可选工作目录。若提供，用 Push-Location/popd（PS）或子 shell（Unix）临时切换目录。
+   * @param onPartialOutput 执行过程中的输出回调（上层用于流式展示）
+   * @param stallTimeoutMs 无输出停滞阈值。安装/构建这类命令安静几分钟是常态，
+   *        由调用方按命令类型给出；缺省沿用 STALL_TIMEOUT_MS。
    */
   async executeCommandWithOutput(
     termId: string,
@@ -1508,6 +1511,7 @@ export class TerminalManagerClass {
     timeoutMs: number,
     cwd?: string,
     onPartialOutput?: (partialOutput: string) => void,
+    stallTimeoutMs: number = STALL_TIMEOUT_MS,
   ): Promise<CommandResult> {
     /**
      * 同一终端上的命令必须串行
@@ -1841,7 +1845,7 @@ export class TerminalManagerClass {
           timedOut: true,
           // 停滞提示必须自己带出来：上层只看到 timedOut，无法区分「跑太久」与「卡死」
           output: reason === 'stalled'
-            ? `${visible}${visible ? '\n\n' : ''}[已连续 ${Math.round(STALL_TIMEOUT_MS / 1000)} 秒没有任何输出，判定为卡住并已终止]`
+            ? `${visible}${visible ? '\n\n' : ''}[已连续 ${Math.round(stallTimeoutMs / 1000)} 秒没有任何输出，判定为卡住并已终止]`
             : visible,
           partialOutput: visible,
         })
@@ -1874,7 +1878,7 @@ export class TerminalManagerClass {
           stallTimer = null
           if (settled) return
           abortHungCommand('stalled')
-        }, STALL_TIMEOUT_MS)
+        }, stallTimeoutMs)
       }
 
       // timeoutMs = 0 表示不设总时长上限，此时完全依赖上面的停滞检测兜底

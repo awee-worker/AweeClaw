@@ -12,6 +12,7 @@
  */
 import { useEffect } from 'react'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
+import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { collectFromThread, reconcileThreadTodos, resolveThreadTodos, settleConversationTodos } from './todoHubActions'
 import { resolveThreadWorkTodos } from '@components/scene-tools/work/workTodoExec'
 
@@ -28,15 +29,25 @@ const SETTLED_LOOP_END_REASONS = new Set(['complete', 'tool_requested_stop'])
 
 export function TodoHubCollector() {
   useEffect(() => {
-    // 1) 会话每轮执行结束：汇入未完成任务；并收敛执行中的条目状态。
+    // 1) 会话每轮执行结束：收敛执行中的条目；正常收尾时补录 AI 计划的未执行任务。
     //    无论以何种原因结束都要收敛，否则用户手动停止会话后条目会一直显示执行中。
     //    Planner 子任务（带 planTaskId）单独结束，不代表整体收尾，跳过。
     const unsubLoop = EventBus.on('loop:end', (event) => {
       const threadId = event.threadId
       if (!threadId) return
-      collectFromThread(threadId)
+
+      const settled = SETTLED_LOOP_END_REASONS.has(event.reason)
+
       if (!event.planTaskId) {
-        const settled = SETTLED_LOOP_END_REASONS.has(event.reason)
+        // 待办只收「AI 计划过、但一行都没开始做」的条目，且只在正常收尾时补录：
+        // 中途停止 / 报错 / 等用户输入的轮次，任务还有下文（用户会接着让 AI 做），
+        // 提前灌进待办中心只会制造一堆打不完的噪音条目。
+        // 挂载任务是例外——它本身就是「用户主动停下、留待以后做」的产物，始终采集。
+        const hasMountedTask = Boolean(useAgentStore.getState().threads[threadId]?.mountedTask)
+        if (settled || hasMountedTask) {
+          collectFromThread(threadId, { includeConversationTodos: settled })
+        }
+
         resolveThreadTodos(threadId, settled)
         resolveThreadWorkTodos(threadId, settled)
         // 正常收尾且会话清单已全部完成 ⇒ 该会话遗留的待办都是做完的任务，一并收尾。

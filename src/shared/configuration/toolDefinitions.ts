@@ -520,13 +520,18 @@ Common mistakes to avoid:
         detailedDescription: `Execute shell commands in workspace.
 - Requires user approval
 - Use cwd parameter instead of cd commands
-- Commands are aborted automatically when they exceed their timeout (see below). If a command legitimately needs to run longer, use is_background=true.
-Timeout policy:
+Timeout policy (applies when you omit \`timeout\`):
 - Regular commands: 120s
 - Broad filesystem scans (e.g. \`find /\`, \`grep -r x /\`, \`du -sh /\`): 60s — avoid them; scope the search to the workspace (e.g. \`find . -name ...\`) or use search_files instead
 - Install / build / test commands: 10 minutes
 - System package installs (brew / winget / choco / apt / dnf / pacman, including absolute-path calls like \`/opt/homebrew/bin/brew install ffmpeg\`): 30 minutes
-- An explicit \`timeout\` parameter (seconds, 0 = no limit) overrides the above, capped at 30 minutes
+- An explicit \`timeout\` (seconds) overrides the above, capped at 30 minutes; \`timeout=0\` removes the total-duration cap (stall detection still applies)
+
+Long commands (auto-detach):
+- Install / build / test / system-package commands that exceed a 15s grace period are detached instead of blocking the turn. The call returns immediately with a terminal ID.
+- After a detach you can keep working, but you must come back: call read_terminal_output(terminal_id) — it reports running / completed / failed plus the exit code.
+- Never re-issue a detached command (duplicate installs, port conflicts). Do not run anything that depends on it before it reports completed.
+
 For long-running servers or watch tasks:
 - Set is_background=true to run in a UI terminal panel
 - The command returns a terminal ID immediately
@@ -559,7 +564,13 @@ For long-running servers or watch tasks:
         parameters: {
             command: { type: 'string', description: 'Shell command', required: true },
             cwd: { type: 'string', description: 'Working directory relative to workspace root (e.g., "packages/engine", NOT "./packages/engine")', },
-            timeout: { type: 'number', description: 'Timeout seconds (0 = no limit).', default: 0 },
+            timeout: {
+                type: 'number',
+                // 这里刻意不设 default：一旦设了 default，zod 就会把该值注入 args.timeout，
+                // 执行器会把它当成「调用方显式声明」，从而绕过下面整套分层超时策略
+                // （2 分钟 / 10 分钟 / 30 分钟全部失效，实际只剩停滞检测兜底）。
+                description: 'Timeout seconds. Omit to use the layered policy; pass 0 to disable the total-duration cap (stall detection still applies).',
+            },
             is_background: { type: 'boolean', description: 'Run in background as a visible UI terminal. Required for long-running processes or watchers.', default: false },
         },
     },
@@ -990,10 +1001,20 @@ An annotated tag is the minimum sufficient guarantee: its message participates i
     read_terminal_output: {
         name: 'read_terminal_output',
         displayName: 'Read Terminal',
-        description: 'Read the output buffer of a background UI terminal.',
-        detailedDescription: `Get the recent output lines of a running terminal.
-- Use the terminal ID returned from a background run_command
-- By default returns the last 100 lines`,
+        description: 'Read the output buffer and execution state of a background terminal.',
+        detailedDescription: `Get the current state and recent output of a terminal that runs a command.
+
+Returns a status line first, then the output:
+- running — still executing (includes elapsed time). Keep doing other work and read again later.
+- completed — finished, with the exit code (0 = success).
+- failed — finished with a non-zero exit code.
+- timed_out / cancelled / interrupted / shell_exited — terminated without a clean exit.
+
+Use the terminal ID returned by run_command (both is_background=true and auto-detached long commands).`,
+        criticalRules: [
+            'A "running" status is NOT a result — never treat it as success and never re-issue the command',
+            'Read this before acting on anything that depends on the command having finished',
+        ],
         category: 'terminal',
         approvalType: 'none',
         parallel: true,

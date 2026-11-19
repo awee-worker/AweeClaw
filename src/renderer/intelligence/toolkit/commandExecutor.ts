@@ -252,6 +252,57 @@ export function resolveCommandTimeout(
   return DEFAULT_TIMEOUT_MS
 }
 
+/* ------------------------------------------------------------------ */
+/* 停滞检测：连续无输出多久判定「卡住」                                 */
+/* ------------------------------------------------------------------ */
+
+/** 普通命令的无输出停滞阈值（3 分钟） */
+export const STALL_TIMEOUT_MS = 180000
+
+/** 安装 / 构建 / 测试类命令的无输出停滞阈值（10 分钟） */
+export const EXTENDED_STALL_TIMEOUT_MS = 600000
+
+/** 系统包管理器安装的无输出停滞阈值（15 分钟，brew 编译期可能长时间静默） */
+export const SYSTEM_INSTALL_STALL_TIMEOUT_MS = 900000
+
+/** 显式不限时（timeout=0）时的停滞阈值（30 分钟） */
+export const UNLIMITED_STALL_TIMEOUT_MS = 1800000
+
+/**
+ * 无输出停滞阈值（分层策略）
+ *
+ * 停滞检测是「命令没有总时长上限」时唯一的安全网：一条命令连续多久没有产生任何
+ * 新输出，就可以判定它不是在做计算，而是卡住了（等 stdin、网络请求无超时、子进程死锁）。
+ *
+ * 阈值必须跟着命令类型走，否则会误杀正常命令：
+ * - npm install 的下载阶段、brew 编译依赖、pip 解大包，安静几分钟是常态；
+ * - 统一用 3 分钟会把它们在中途砍掉，用户看到的就是「一条本该跑完的命令被莫名终止」。
+ *
+ * @param command   待执行的命令
+ * @param timeoutMs 本次命令解析出的总时长上限（0 = 不限时）
+ */
+export function resolveStallTimeout(command: string, timeoutMs = 0): number {
+  const cmd = command.trim()
+  if (matchesSystemPackageInstall(cmd)) return SYSTEM_INSTALL_STALL_TIMEOUT_MS
+  if (matchesExtendedTimeoutCommand(cmd)) return EXTENDED_STALL_TIMEOUT_MS
+  // 不限时的命令只受停滞检测约束，给足静默空间，避免把「长时间无输出的计算」误判成卡死
+  if (timeoutMs === 0) return UNLIMITED_STALL_TIMEOUT_MS
+  return STALL_TIMEOUT_MS
+}
+
+/**
+ * 命令是否属于「耗时长但一定会结束」的一类（安装 / 构建 / 测试 / 系统装包）
+ *
+ * 这类命令不该让 AI 阻塞等待：转入后台执行、先把控制权还给 AI，
+ * 由 AI 用 read_terminal_output 轮询结果，期间可以做别的事。
+ *
+ * 常驻服务（dev server / watch 等）不走这条判断——它们本来就走 is_background 通道。
+ */
+export function isDetachableLongCommand(command: string): boolean {
+  const cmd = command.trim()
+  return matchesSystemPackageInstall(cmd) || matchesExtendedTimeoutCommand(cmd)
+}
+
 export function getInteractiveTerminalBackend(
   _platform: NodeJS.Platform = currentPlatform,
 ): InteractiveTerminalBackend {
