@@ -21,6 +21,9 @@ import {
   Check,
   ExternalLink,
   Maximize2,
+  Video as VideoIcon,
+  Music,
+  AlertCircle,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -33,6 +36,7 @@ import { useStore } from '@store'
 import { themeManager } from '../../config/themeDefinition'
 import { t, type Language } from '@renderer/i18n'
 import { openLinkSmart, openLocalFileInEditor } from '@utils/linkRouter'
+import { toRenderableMediaUrl } from '@utils/localMediaUrl'
 
 /** 复制成功状态保持时间（毫秒） */
 const COPY_RESET_DELAY = 2000
@@ -73,6 +77,10 @@ const RichContentItem = memo(function RichContentItem({
   switch (item.type) {
     case 'image':
       return <ImageContent item={item} />
+    case 'video':
+      return <MediaContent item={item} kind="video" />
+    case 'audio':
+      return <MediaContent item={item} kind="audio" />
     case 'code':
       return <CodeContent item={item} maxHeight={maxHeight} />
     case 'json':
@@ -267,6 +275,106 @@ function ImageContent({ item }: { item: ToolRichContent }) {
       </ContentCard>
       {modal}
     </>
+  )
+}
+
+// =================== 视频 / 音频内容 ===================
+
+/**
+ * 媒体内容（视频 / 音频）
+ *
+ * 三种状态必须都画出来：加载中（浏览器原生 loading 不显示，这里用骨架占位）、
+ * 正常播放、加载失败（本地文件被删 / 协议读不到 / 编码不支持）。
+ * 失败时不静默留白，给一个「用系统程序打开」的出口。
+ */
+function MediaContent({ item, kind }: { item: ToolRichContent; kind: 'video' | 'audio' }) {
+  const [loadFailed, setLoadFailed] = useState(false)
+
+  const src = useMemo(() => {
+    const fallbackMime = kind === 'video' ? 'video/mp4' : 'audio/mpeg'
+    const raw = item.uri
+      ? item.uri
+      : item.data
+        ? (item.data.startsWith('data:')
+            ? item.data
+            : `data:${item.mimeType || fallbackMime};base64,${item.data}`)
+        : ''
+    return toRenderableMediaUrl(raw)
+  }, [item.uri, item.data, item.mimeType, kind])
+
+  const localPath = useMemo(() => {
+    const raw = (item.uri || '').trim()
+    return raw && !/^(data:|blob:|https?:)/i.test(raw) ? raw.replace(/^file:\/\//, '') : ''
+  }, [item.uri])
+
+  if (!src) {
+    return (
+      <ContentCard title={item.title || (kind === 'video' ? '视频' : '音频')} icon={kind === 'video' ? VideoIcon : Music}>
+        <div className="flex items-center gap-1.5 text-text-muted py-1">
+          <AlertCircle className="w-3 h-3" aria-hidden />
+          <span>{item.uri ? `${item.uri}（无法解析）` : '无媒体数据'}</span>
+        </div>
+      </ContentCard>
+    )
+  }
+
+  if (loadFailed) {
+    return (
+      <ContentCard
+        title={item.title || (kind === 'video' ? '视频' : '音频')}
+        icon={kind === 'video' ? VideoIcon : Music}
+      >
+        <div className="py-3 flex flex-col items-center gap-1.5 text-text-muted">
+          <AlertCircle className="w-4 h-4" aria-hidden />
+          <span>{kind === 'video' ? '视频无法播放' : '音频无法播放'}</span>
+          {localPath && (
+            <button
+              onClick={() => void openLocalFileInEditor(localPath)}
+              className="mt-1 px-2 py-1 rounded-md text-[12px] text-accent hover:bg-accent/10 transition-colors"
+            >
+              用系统程序打开
+            </button>
+          )}
+        </div>
+      </ContentCard>
+    )
+  }
+
+  return (
+    <ContentCard
+      title={item.title || (kind === 'video' ? '视频' : '音频')}
+      icon={kind === 'video' ? VideoIcon : Music}
+      noPadding
+      actions={
+        localPath ? (
+          <button
+            onClick={() => void openLocalFileInEditor(localPath)}
+            className="p-1.5 rounded-lg hover:bg-surface-elevated text-text-muted hover:text-text-primary transition-colors"
+            aria-label="用系统程序打开"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </button>
+        ) : undefined
+      }
+    >
+      {kind === 'video' ? (
+        <video
+          src={src}
+          controls
+          preload="metadata"
+          className="w-full max-h-72 rounded bg-black/40"
+          onError={() => setLoadFailed(true)}
+        />
+      ) : (
+        <audio
+          src={src}
+          controls
+          preload="metadata"
+          className="w-full"
+          onError={() => setLoadFailed(true)}
+        />
+      )}
+    </ContentCard>
   )
 }
 

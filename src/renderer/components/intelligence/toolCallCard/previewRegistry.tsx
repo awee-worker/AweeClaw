@@ -563,7 +563,12 @@ function renderGeneric(ctx: PreviewContext): React.ReactNode {
   const { args, toolCall, isRunning, isStreaming, language, onCopyResult } = ctx
   const filteredArgs = Object.fromEntries(Object.entries(args).filter(([key]) => !key.startsWith('_')))
   const hasArgs = Object.keys(filteredArgs).length > 0
-  const hasRichContent = !!toolCall.richContent && toolCall.richContent.length > 0
+  // 图片 / 视频 / 音频由会话流里的产物卡片直接展示：工具卡内再渲染一份，同一张图
+  // 会在一屏里出现两次。这里只保留文本类富内容，媒体交给 ArtifactCardStrip。
+  const displayRichContent = (toolCall.richContent ?? []).filter(
+    (item) => item.type !== 'image' && item.type !== 'video' && item.type !== 'audio',
+  )
+  const hasRichContent = displayRichContent.length > 0
 
   return (
     <div className="space-y-1 mt-1 text-[12px]">
@@ -578,10 +583,10 @@ function renderGeneric(ctx: PreviewContext): React.ReactNode {
           </ExpandablePreviewContainer>
         </>
       )}
-      {hasRichContent && toolCall.richContent && (
+      {hasRichContent && (
         <ExpandablePreviewContainer language={language}>
           <div className="p-2">
-            <RichContentRenderer content={toolCall.richContent} maxHeight="max-h-full" />
+            <RichContentRenderer content={displayRichContent} maxHeight="max-h-full" />
           </div>
         </ExpandablePreviewContainer>
       )}

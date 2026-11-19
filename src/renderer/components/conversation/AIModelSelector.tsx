@@ -206,8 +206,15 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
   }, [isOpen, activeTab, isAuthenticated, fetchCloudModels])
 
   // 构建本地模型列表（与角色模型选择器同源，见 availableModels.ts）
+  //
+  // 只保留能承担对话的模型：图像生成 / 视频生成 / 嵌入 / 语音这类模型不接受
+  // messages 结构，选它们对话只会换来一句与服务端字段校验相关的报错，
+  // 对用户没有任何指导意义。按能力标签过滤比按模型名猜测可靠。
   const localModels = useMemo<FlatModel[]>(
-    () => buildEnabledLocalModels(providerConfigs, llmConfig.apiKey),
+    () =>
+      buildEnabledLocalModels(providerConfigs, llmConfig.apiKey).filter(
+        m => m.capabilities?.includes('llm') === true,
+      ),
     [providerConfigs, llmConfig.apiKey],
   )
 
@@ -219,8 +226,11 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
     return localModels
   }, [activeTab, cloudModels, localModels])
 
+  // 当前选中的模型可能不在候选列表里（例如历史上选中过生图模型，或服务商已停用）。
+  // 此时不回退到列表首项——那会把按钮显示成"另一个模型"，与实际配置不符。
+  // 改为返回 null，由调用处回退到 llmConfig.model 直接展示配置值。
   const currentModel = useMemo(() => {
-    return allModels.find(m => m.providerId === llmConfig.provider && m.id === llmConfig.model) || allModels[0] || null
+    return allModels.find(m => m.providerId === llmConfig.provider && m.id === llmConfig.model) || null
   }, [allModels, llmConfig.provider, llmConfig.model])
 
   // Tab 切换：调用 setCloudMode 同步云端字段

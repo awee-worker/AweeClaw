@@ -10,6 +10,7 @@ import { CommitProbe } from '@intelligence/diagnostics/CommitProbe'
 import { buildAssistantGroups, toolGroupKey } from './assistantGrouping'
 import { reuseToolCallsIfUnchanged } from './toolCallsArrayReuse'
 import ToolCallGroup from '../../ToolCallGroup'
+import { ArtifactCardStrip } from '../artifacts/ArtifactCardStrip'
 import { TodoListPanel } from '../../TodoListPanel'
 import { renderPart } from '../parts/PartRendererRegistry'
 import type { PartRenderContext, AssistantGroupItem } from '../types'
@@ -163,6 +164,9 @@ function AssistantMessageContentViewBase({ parts, hideTodoList, previewToolCalls
               onOpenDiff={ctx.onOpenDiff}
               messageId={ctx.messageId}
             />
+            {/* 生成物就地成卡：工具卡默认折叠，图片 / 视频 / 文档若只留在卡片内部
+                用户要点开才知道跑出了什么。这里紧跟产出它的那组调用，顺序与执行一致。 */}
+            <ArtifactCardStrip toolCalls={group.toolCalls} />
           </div>
         )
       })}

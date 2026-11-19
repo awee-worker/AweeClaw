@@ -1,4 +1,5 @@
 import type { ApiProtocol, OpenAICompatibilityProfile } from '@configuration/aiProviders'
+import type { ModelCapabilityHint, ModelCapabilityHintPayload } from '@configuration/modelCapabilityHints'
 
 export type ModelCapability =
   | 'llm'
@@ -84,12 +85,34 @@ export const CAPABILITY_META: Record<ModelCapability, { label: { en: string; zh:
   'world-model': { label: { en: 'World Model', zh: '世界模型' }, color: 'text-sky-400', bgColor: 'bg-sky-400/10 border-sky-400/20' },
 }
 
-export function inferCapabilities(modelName: string): ModelCapability[] {
+/** 单模态模型：能力唯一，命中后不再叠加对话相关标签 */
+const EXCLUSIVE_CAPABILITY_GROUPS: ModelCapability[][] = [
+  ['embedding'],
+  ['world-model'],
+  ['3d-gen'],
+  ['video-gen'],
+  ['image-gen'],
+  // 语音组：audio 是兜底项，命中更具体的 asr / tts 时不再保留
+  ['asr', 'tts', 'audio'],
+]
+
+/**
+ * 仅按模型名推断能力。
+ *
+ * 服务商没有给出任何元数据时的兜底路径，也是 inferCapabilities 的基础层。
+ */
+function inferCapabilitiesByName(modelName: string): ModelCapability[] {
   const name = modelName.toLowerCase()
   const caps: ModelCapability[] = []
 
-  const isEmbedding = /\bembed\b|\bembedding\b/i.test(name)
-  const isImageGen = /\bdall\b|\bstable\b|\bdiffus\b|\bsdxl\b|\bimage.gen\b/i.test(name)
+  const isEmbedding = /\bembed\b|\bembedding\b|\bbge\b|\bgte\b|\bm3e\b|\bnomic-embed\b|\bjina-embed\b/i.test(name)
+  // 图像生成：命名风格跨度很大，除了老牌 dall/stable/sdxl，还要覆盖
+  // gpt-image / qwen-image / wan2.7-image / seedream / flux / kolors 这类主流命名，
+  // 否则用户配好的图像模型在插件里筛不出来（下拉空着，看着像没配）
+  const isImageGen =
+    /\bdall\b|\bstable\b|\bdiffus\b|\bsdxl\b|\bimage.gen\b|\bimagen\b|\bflux\b|\bkolors\b|\bseedream\b|\bgpt-image\b|\bqwen-image\b|\bwan[\d._-]*image\b|\bwanx[\d._-]*image\b|\bhunyuan-image\b|\bideogram\b|\brecraft\b|\bmidjourney\b|\bniji\b|\bhidream\b|\bjanus\b/i.test(
+      name,
+    )
   const isAudio = /\btts\b|\bstt\b|\bwhisper\b|\baudio\b|\bspeech\b/i.test(name)
   // 语音识别 / 语音合成：比通用 audio 更具体，命中时优先落到对应标签
   const isAsr = /\basr\b|\bstt\b|\bwhisper\b|\btranscrib|\bspeech-to-text\b|\bsensevoice\b|\bfunasr\b|\bparaformer\b/i.test(name)
@@ -104,7 +127,7 @@ export function inferCapabilities(modelName: string): ModelCapability[] {
     /\bworld[-_ ]?model\b|\bgenie\b|\bcosmos\b|\bworldlabs\b|\bdecart\b|\bmarble\b|\bdreamer\b/i.test(name)
   // 视频生成：主流服务商的模型命名基本都会带上这几个词根
   const isVideoGen =
-    /\bseedance\b|\bsora\b|\bkling\b|\bkeling\b|\bveo\b|\bhailuo\b|\bcogvideo\b|\bwanx?2?\.[0-9]-?t2v\b|\bt2v\b|\bi2v\b|\btext-to-video\b|\bvideo-gen\b|\bpika\b|\bvidu\b|\brunway\b|\bminimax-video\b/i.test(
+    /\bseedance\b|\bsora\b|\bkling\b|\bkeling\b|\bveo\b|\bhailuo\b|\bcogvideo\b|\bwanx?[\d._-]*(?:t2v|i2v|video)\b|\bwan[\d._-]+-?(?:t2v|i2v)\b|\bt2v\b|\bi2v\b|\btext-to-video\b|\bvideo-gen\b|\bpika\b|\bvidu\b|\brunway\b|\bminimax-video\b|\bseedance\b/i.test(
       name,
     )
 
@@ -144,11 +167,13 @@ export function inferCapabilities(modelName: string): ModelCapability[] {
 
   caps.push('llm')
 
-  if (/\bvision\b|\bvl\b|\bv2$\|\b4v\b|\bmultimodal\b/i.test(name) || /\bglm-4v\b/i.test(name)) {
+  if (/\bvision\b|\bvl\b|\b4v\b|\bmultimodal\b/i.test(name) || /\bglm-4v\b/i.test(name)) {
     caps.push('vision')
   }
 
-  if (/\btool\b|\bfunction\b/i.test(name) === false) {
+  // 主流对话模型普遍声明了 function calling，名称层面没有反证时按支持处理；
+  // 服务商元数据明确说不支持时会在 inferCapabilities 里被剔除
+  if (!/\bbase\b|\bcompletion-only\b|\bdavinci\b/i.test(name)) {
     caps.push('tool-calling')
   }
 
@@ -157,6 +182,59 @@ export function inferCapabilities(modelName: string): ModelCapability[] {
   }
 
   if (/\bcoder\b|\bcode\b|\bcodeqwen\b|\bcodellama\b/i.test(name)) {
+    caps.push('code')
+  }
+
+  return caps
+}
+
+/**
+ * 推断模型能力标签。
+ *
+ * 优先使用服务商 `/models` 返回的元数据（`hint`），只有元数据缺失或不足以判断的
+ * 维度才回落到模型名。这样同一批模型在不同服务商下都能得到合理的标签，
+ * 也不会出现「全都是 LLM + 工具」的默认结果。
+ *
+ * @param modelName 模型 id
+ * @param hint 服务商元数据提炼出的线索，可为单条线索数组或完整载荷
+ */
+export function inferCapabilities(
+  modelName: string,
+  hint?: ModelCapabilityHintPayload | ModelCapabilityHint[] | null,
+): ModelCapability[] {
+  const payload: ModelCapabilityHintPayload | undefined = Array.isArray(hint)
+    ? { capabilities: hint }
+    : hint ?? undefined
+
+  const hinted = new Set<ModelCapability>(payload?.capabilities ?? [])
+  const byName = inferCapabilitiesByName(modelName)
+
+  // 单模态模型：元数据命中即定论，不再叠加名称推断的结果
+  for (const group of EXCLUSIVE_CAPABILITY_GROUPS) {
+    const hits = group.filter(cap => hinted.has(cap) || byName.includes(cap))
+    if (hits.length === 0) continue
+    // 语音组里 audio 只是兜底，已经有 asr / tts 时不必再带上
+    return hits.length > 1 && hits.includes('audio') ? hits.filter(cap => cap !== 'audio') : hits
+  }
+
+  const caps: ModelCapability[] = ['llm']
+
+  if (hinted.has('vision') || byName.includes('vision')) {
+    caps.push('vision')
+  }
+
+  // supportsTools 是明确声明（true 支持 / false 不支持），优先级高于名称推断
+  const wantsToolCalling =
+    payload?.supportsTools ?? (hinted.has('tool-calling') || byName.includes('tool-calling'))
+  if (wantsToolCalling) {
+    caps.push('tool-calling')
+  }
+
+  if (hinted.has('reasoning') || byName.includes('reasoning')) {
+    caps.push('reasoning')
+  }
+
+  if (hinted.has('code') || byName.includes('code')) {
     caps.push('code')
   }
 

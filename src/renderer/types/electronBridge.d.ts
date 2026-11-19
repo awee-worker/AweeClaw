@@ -4,6 +4,8 @@
  * 通用类型直接从 @protocols 导入使用，这里只定义 Electron 专用类型
  */
 
+import type { ModelCapabilityHintPayload } from '@configuration/modelCapabilityHints'
+
 /**
  * 语音模型配置（自定义模式，STT + TTS 合并存储但分别启用）
  * 与本地 SQLite voice_model_config 表对应（已解密、字段已规范化）
@@ -2393,6 +2395,8 @@ export interface ElectronAPI {
   fetchModels: (provider: string, apiKey: string, baseUrl?: string, protocol?: string) => Promise<{
     success: boolean
     models?: string[]
+    /** 服务商返回的模型元数据提炼出的能力线索，键为模型 id */
+    hints?: Record<string, ModelCapabilityHintPayload>
     error?: string
   }>
 

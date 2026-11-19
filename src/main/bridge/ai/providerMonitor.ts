@@ -17,6 +17,7 @@ import {
     resolveProviderTransport,
 } from '@shared/configuration/providerTransport'
 import type { ProviderTransport } from '@shared/configuration/providerTransport'
+import { extractModelCapabilityHints } from '@shared/configuration/modelCapabilityHints'
 import { createModel, resolveHeaderPlaceholders } from '../../modules/ai-provider/modelRegistry'
 import { parseModelCatalogPayload } from '../../modules/ai-provider/modelCatalogSync'
 import { generateText } from 'ai'
@@ -339,9 +340,12 @@ export function registerHealthCheckHandlers() {
             const models = parseModelCatalogPayload(data, activeProtocol)
                 .filter(Boolean)
                 .sort()
+            // 服务商返回的元数据（模态、参数清单、能力字段）一并交给渲染层，
+            // 添加模型时据此推断标签，而不是只按模型名猜
+            const hints = extractModelCapabilityHints(data)
             logger.ipc.info(`[HealthMonitor] Successfully fetched ${models.length} models`)
             guard.recordCall('healthCheck:fetchModels', true)
-            return { success: true, models }
+            return { success: true, models, hints }
         } catch (err) {
             const error = toAppError(err)
             logger.ipc.error(`[HealthMonitor] Fetch models failed:`, error.message)

@@ -363,6 +363,10 @@ export interface ToolExecutionResult {
 export type ToolRichContentType =
     | 'text'
     | 'image'
+    /** 视频产物：data 为 base64，或 uri 指向本地 / 远程视频文件 */
+    | 'video'
+    /** 音频产物：data 为 base64，或 uri 指向本地 / 远程音频文件 */
+    | 'audio'
     | 'code'
     | 'json'
     | 'markdown'

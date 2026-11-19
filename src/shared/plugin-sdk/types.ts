@@ -247,8 +247,26 @@ export interface PluginConfigField {
    * - textarea：多行文本
    * - code：代码编辑器（等宽字体，支持语法高亮占位）
    * - action：按钮触发动作（如获取模型列表、测试连接）
+   * - model-picker：从用户已配置的服务商模型里选一个，值为 `providerId::modelId`
    */
-  type: 'text' | 'password' | 'number' | 'boolean' | 'select' | 'multiselect' | 'textarea' | 'code' | 'action'
+  type:
+    | 'text'
+    | 'password'
+    | 'number'
+    | 'boolean'
+    | 'select'
+    | 'multiselect'
+    | 'textarea'
+    | 'code'
+    | 'action'
+    | 'model-picker'
+  /**
+   * model-picker 专属：按能力标签过滤候选模型。
+   *
+   * 取值与 ModelCapability 一致（如 'image-gen' / 'video-gen'）。
+   * 只列出用户已启用且已填凭证的服务商下、带该标签的模型。
+   */
+  capabilityFilter?: string[]
   /** 是否必填 */
   required: boolean
   /** 默认值 */

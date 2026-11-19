@@ -17,7 +17,7 @@ import { createPortal } from 'react-dom'
 import { Eye, EyeOff, Loader2, Search, X } from 'lucide-react'
 import { type Language } from '@renderer/i18n/i18nSetup'
 import { useStore } from '@store'
-
+import { buildEnabledLocalModels } from '@renderer/components/conversation/availableModels'
 // ─── 类型定义 ──────────────────────────────────────────────────────────────
 
 /** 单个配置字段定义（来自 manifest.configSchema.fields） */
@@ -33,8 +33,22 @@ export interface PluginConfigField {
    * - textarea：多行文本
    * - code：代码编辑器（等宽字体）
    * - action：按钮触发动作（如获取模型列表、测试连接）
+   * - action：按钮触发动作（如获取模型列表、测试连接）
+   * - model-picker：从用户已配置的服务商模型里选一个，值为 `providerId::modelId`
    */
-  type: 'text' | 'password' | 'number' | 'boolean' | 'select' | 'multiselect' | 'textarea' | 'code' | 'action'
+  type:
+    | 'text'
+    | 'password'
+    | 'number'
+    | 'boolean'
+    | 'select'
+    | 'multiselect'
+    | 'textarea'
+    | 'code'
+    | 'action'
+    | 'model-picker'
+  /** model-picker 专属：按能力标签过滤候选模型（如 ['image-gen']） */
+  capabilityFilter?: string[]
   required?: boolean
   secret?: boolean
   defaultValue?: string
@@ -207,6 +221,31 @@ const PluginConfigForm = forwardRef<PluginConfigFormHandle, Props>(function Plug
     query: string
     isPreset: boolean
   } | null>(null)
+
+  // model-picker 字段的候选模型：取用户已启用且已填凭证的服务商下的模型
+  const providerConfigs = useStore((s) => s.providerConfigs)
+  const enabledModels = useMemo(
+    () => buildEnabledLocalModels(providerConfigs, ''),
+    [providerConfigs],
+  )
+  /**
+   * 按字段的能力过滤条件筛出候选模型
+   *
+   * 未声明 capabilityFilter 时返回全部；模型的能力标签优先取用户配置，
+   * 没配过的回退到按模型名推断（见 availableModels.resolveCapabilities）。
+   *
+   * 能力标签是可选元数据：用户没勾、名字也推断不出时，硬过滤会让下拉变空，
+   * 看起来像「插件没配置项」。此时放宽为全部已启用模型，并标记 relaxed，
+   * 由渲染处提示用户去补标签。
+   */
+  const candidatesFor = (f: PluginConfigField): { list: typeof enabledModels; relaxed: boolean } => {
+    const filter = f.capabilityFilter
+    if (!filter || filter.length === 0) return { list: enabledModels, relaxed: false }
+    const matched = enabledModels.filter((m) => filter.some((c) => m.capabilities?.includes(c as never)))
+    return matched.length > 0
+      ? { list: matched, relaxed: false }
+      : { list: enabledModels, relaxed: true }
+  }
 
   // 字段标签/描述本地化
   const labelOf = (f: PluginConfigField): string =>
@@ -419,6 +458,41 @@ const PluginConfigForm = forwardRef<PluginConfigFormHandle, Props>(function Plug
                   </option>
                 ))}
               </select>
+            ) : field.type === 'model-picker' ? (
+              (() => {
+                const { list: candidates, relaxed } = candidatesFor(field)
+                return (
+                  <div className="space-y-1.5">
+                    <select
+                      value={v}
+                      disabled={disabled}
+                      onChange={(e) => updateField(field.key, e.target.value)}
+                      className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                    >
+                      <option value="">{isZh ? '— 未选择 —' : '— Not selected —'}</option>
+                      {candidates.map((m) => (
+                        <option key={`${m.providerId}::${m.id}`} value={`${m.providerId}::${m.id}`}>
+                          {m.providerName} · {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    {candidates.length === 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        {isZh
+                          ? '没有找到可用的模型。请先到「设置 → 模型服务」启用服务商、填写 API 密钥，并给要用的模型勾选对应能力标签。'
+                          : 'No usable model found. Enable a provider, fill in its API key, and tag the model with the required capability in Settings → Model Services.'}
+                      </p>
+                    )}
+                    {relaxed && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        {isZh
+                          ? '没有任何模型带该能力标签，这里先列出全部已启用的模型；建议到「设置 → 模型服务」给要用的模型补上标签，列表才会只显示适用的模型。'
+                          : 'No model carries the required capability tag, so all enabled models are listed. Tag the model in Settings → Model Services to narrow this list.'}
+                      </p>
+                    )}
+                  </div>
+                )
+              })()
             ) : field.type === 'action' ? (
               <button
                 type="button"

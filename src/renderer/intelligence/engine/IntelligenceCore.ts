@@ -66,7 +66,7 @@ import {
   endAgentTaskPowerGuard,
 } from '@renderer/services/powerGuard'
 import { enterAgentBusy, exitAgentBusy } from '@renderer/services/renderBudget'
-
+import { routeImageModelSelection } from './imageModelRouting'
 
 /**
  * 规则层无候选时的模型兜底角色选择（角色匹配第三级）
@@ -220,6 +220,28 @@ export class AgentClass {
       throw new Error('Missing API key')
     }
 
+    // ===== 图像生成模型改道 =====
+    // 用户可能把图像生成模型（如 wan2.7-image）选成了对话模型。这类模型只产出图片，
+    // 不接受 system 角色与字符串 content，直接对话会被服务端按 messages 结构拒绝，
+    // 报出一句对用户毫无指导意义的字段校验错误。这里在请求发出前换回可用的对话
+    // 模型，并把生图意图写进本轮说明，由对话模型调用 generate_image 完成。
+    const imageModelRouting = routeImageModelSelection(
+      config,
+      useStore.getState().providerConfigs,
+      ((useStore.getState().language as 'zh' | 'en') || 'zh'),
+    )
+    if (imageModelRouting.error) {
+      this.showError(imageModelRouting.error)
+      throw new Error(imageModelRouting.error)
+    }
+    const runConfig = imageModelRouting.config
+    // 说明挂到下面的 agentContext 上：它在 prepareExecution 之后才声明，
+    // 这里先暂存，避免在声明前引用同一变量
+    const imageRoutingNotice = imageModelRouting.notice
+    if (imageRoutingNotice) {
+      logger.agent.info('[Agent] 检测到图像生成模型，本轮已改道至对话模型')
+    }
+
     const abortController = new AbortController()
     const requestId = executionOptions?.requestId || crypto.randomUUID()
     const contextItems = threadId
@@ -247,8 +269,8 @@ export class AgentClass {
     let persistSuspended = false
     let taskRegistered = false
     let harnessSpan: Span | null = null
-    // 本轮需要静默附加给模型的说明（断点续接 / 上下文衔接），不进入用户气泡文本
-    let agentContext: string | undefined
+    // 本轮需要静默附加给模型的说明（断点续接 / 上下文衔接 / 图像模型改道），不进入用户气泡文本
+    let agentContext: string | undefined = imageRoutingNotice
 
     try {
       // 断点续接附加（致命问题 #1）：
@@ -464,7 +486,7 @@ export class AgentClass {
 
           await continueMultiAgent(
             multiAgentTask,
-            config,
+            runConfig,
             workspacePath,
             threadId,
             assistantId,
@@ -490,7 +512,7 @@ export class AgentClass {
 
         await executeMultiAgent(
           multiAgentTask,
-          config,
+          runConfig,
           workspacePath,
           threadId,
           assistantId,
@@ -509,7 +531,7 @@ export class AgentClass {
       // - 简单对话（打招呼/闲聊）路由到轻量模型，降低 token 消耗与延迟
       // - 中等/复杂任务保留用户主模型，确保能力充足
       // 多 Agent 协作路径已在上方提前返回，此处仅处理单 Agent
-      const routingDecision = modelRouter.route(config, complexityResult, userQueryText)
+      const routingDecision = modelRouter.route(runConfig, complexityResult, userQueryText)
       const effectiveConfig = routingDecision.config
       if (routingDecision.swapped) {
         logger.agent.info(
@@ -583,7 +605,7 @@ export class AgentClass {
       // 循环里再按阶段取值 —— 执行阶段保持主模型，规划入口与总结允许降级。
       // 解析结果由 runLoop 内部按阶段缓存，不会在一轮内反复切换。
       const modelResolver: ModelResolver = (phase) => {
-        const decision = modelRouter.resolveForPhase(config, phase, complexityResult)
+        const decision = modelRouter.resolveForPhase(runConfig, phase, complexityResult)
         if (decision.swapped) {
           logger.agent.info(
             `[Agent] Phase "${phase}" routed: ${decision.originalModel} → ${decision.routedModel}`

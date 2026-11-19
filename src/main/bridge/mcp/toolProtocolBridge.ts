@@ -16,6 +16,7 @@ import { safeIpcHandle } from '../core/ipcGuard'
 import { logger } from '@shared/toolkit/LogEngine'
 import { mcpManager, mcpRegistry } from '../../modules/tool-protocol'
 import { SettingsDb } from '../../modules/settings-db/SettingsDb'
+import { getPluginInstaller } from '../../modules/plugin-sdk/PluginInstaller'
 import type {
   McpToolCallRequest,
   McpResourceReadRequest,
@@ -46,6 +47,41 @@ interface HostModelCredential {
 }
 
 /**
+ * 插件配置里表示「用哪个生成模型」的字段名
+ *
+ * 生成型插件（文生图、文生视频等）在安装时让用户从已配置的模型里选一个，
+ * 字段值是 `providerId::modelId`。调用方（会话工具链）不感知这个选择，
+ * 因此当工具参数里没带 __hostModelRef 时，由这里读插件配置补齐。
+ */
+const PLUGIN_MODEL_CONFIG_KEYS = ['video_model', 'image_model'] as const
+
+/**
+ * 从插件配置反推模型引用
+ *
+ * serverId 形如 `plugin:design-image-gen`，去掉前缀即插件 key。
+ * 读不到配置、字段为空或格式不对时返回 undefined，保持原有行为不变。
+ */
+function inferModelRefFromPluginConfig(serverId: string | undefined): Record<string, unknown> | undefined {
+  if (!serverId || !serverId.startsWith('plugin:')) return undefined
+  const pluginKey = serverId.slice('plugin:'.length)
+  try {
+    const saved = getPluginInstaller().getPluginConfig(pluginKey)
+    for (const configKey of PLUGIN_MODEL_CONFIG_KEYS) {
+      const raw = saved?.[configKey]
+      if (typeof raw !== 'string' || !raw.trim()) continue
+      const [providerId, ...rest] = raw.split('::')
+      const model = rest.join('::').trim()
+      if (!providerId?.trim() || !model) continue
+      return { providerId: providerId.trim(), model }
+    }
+    return undefined
+  } catch (err) {
+    logger.mcp.warn('[MCP] 读取插件模型配置失败:', err)
+    return undefined
+  }
+}
+
+/**
  * 按调用方指定的 modelRef 解析服务商凭证
  *
  * - 未指定 modelRef 时原样返回，不影响任何既有插件调用
@@ -54,9 +90,11 @@ interface HostModelCredential {
  */
 async function resolveHostModelCredential(
   rawArgs: Record<string, unknown> | undefined,
+  serverId?: string,
 ): Promise<{ args: Record<string, unknown>; injected?: HostModelCredential & { available: boolean; reason?: string } }> {
   const args = rawArgs ?? {}
-  const ref = args[HOST_MODEL_REF_KEY]
+  // 调用方显式指定的优先；没有时用插件配置里选的生成模型补齐
+  const ref = args[HOST_MODEL_REF_KEY] ?? inferModelRefFromPluginConfig(serverId)
   if (!ref || typeof ref !== 'object') return { args }
 
   const nextArgs = { ...args }
@@ -166,7 +204,7 @@ export function registerMcpHandlers(_getMainWindow: () => BrowserWindow | null):
 
   // 调用工具
   safeIpcHandle('mcp:callTool', async (_, request: McpToolCallRequest) => {
-    const { args, injected } = await resolveHostModelCredential(request.arguments)
+    const { args, injected } = await resolveHostModelCredential(request.arguments, request.serverId)
     if (injected) {
       logger.mcp.info(
         `[MCP] 注入模型凭据 server=${request.serverId} tool=${request.toolName} ` +

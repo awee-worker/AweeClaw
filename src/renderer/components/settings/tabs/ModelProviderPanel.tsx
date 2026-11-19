@@ -26,6 +26,7 @@ import { ActionButton, TextField, DropdownSelector, ToggleSwitch } from '@compon
 import { ProviderIcon } from '@components/ui/ProviderIcon'
 import { ProviderSettingsProps } from '../preferencesTypes'
 import { isCustomProvider, inferCapabilities, type ModelConfig, type ModelGenerationParams } from '@renderer/types/modelProvider'
+import type { ModelCapabilityHintPayload } from '@configuration/modelCapabilityHints'
 import type { LLMConfig } from '@shared/configuration/providerTypes'
 import { ModelCardGrid } from './ModelCardGrid'
 import { useStore } from '@store'
@@ -327,13 +328,16 @@ const FetchModelsButton = memo(function FetchModelsButton({
   protocol?: string;
   language: 'en' | 'zh';
   existingModels?: string[];
-  onModelsFetched: (models: string[], providerId?: string) => void;
+  onModelsFetched: (models: string[], providerId?: string, hints?: Record<string, ModelCapabilityHintPayload>) => void;
   onModelRemoved?: (model: string, providerId?: string) => void;
   onBatchRemoved?: (models: string[], providerId?: string) => void;
 }) {
   const [fetching, setFetching] = useState(false)
   const [showList, setShowList] = useState(false)
   const [fetchedModels, setFetchedModels] = useState<string[]>([])
+  // 与 fetchedModels 同步保存的能力线索：模型列表与线索必须来自同一次拉取，
+  // 否则用户换服务商后可能出现「A 的线索配 B 的模型」
+  const [fetchedHints, setFetchedHints] = useState<Record<string, ModelCapabilityHintPayload>>({})
   const [searchQuery, setSearchQuery] = useState('')
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 })
   // 拉取结果 + 已添加列表在「拉取那一刻」的归属服务商快照：
@@ -368,6 +372,7 @@ const FetchModelsButton = memo(function FetchModelsButton({
         // 绑定归属服务商：后续「添加 / 移除」都以这次拉取的服务商为准
         setFetchTarget({ provider, existingModels })
         setFetchedModels(result.models)
+        setFetchedHints(result.hints ?? {})
         setShowList(true)
         if (result.models.length === 0) {
           toast.info(t('provider.noModelsFound', language as Language))
@@ -428,6 +433,16 @@ const FetchModelsButton = memo(function FetchModelsButton({
   const targetProvider = fetchTarget?.provider ?? provider
   const targetExistingModels = fetchTarget?.existingModels ?? existingModels
 
+  // 只带出这批模型自己的线索，避免把整份 hints 反复往下传
+  const pickHints = (models: string[]) => {
+    const picked: Record<string, ModelCapabilityHintPayload> = {}
+    for (const model of models) {
+      const hint = fetchedHints[model]
+      if (hint) picked[model] = hint
+    }
+    return picked
+  }
+
   const dropdownMenu = showList && fetchedModels.length > 0 && createPortal(
     <div
       id="fetch-models-portal"
@@ -459,7 +474,7 @@ const FetchModelsButton = memo(function FetchModelsButton({
             <button
               onClick={() => {
                 const toAdd = filteredModels.filter(m => !targetExistingModels.includes(m))
-                if (toAdd.length > 0) onModelsFetched(toAdd, targetProvider)
+                if (toAdd.length > 0) onModelsFetched(toAdd, targetProvider, pickHints(toAdd))
               }}
               className="text-[10px] text-accent hover:text-accent-hover px-1.5 py-0.5 rounded hover:bg-accent/10 transition-colors"
             >
@@ -487,7 +502,7 @@ const FetchModelsButton = memo(function FetchModelsButton({
                 if (isAdded) {
                   onModelRemoved?.(model, targetProvider)
                 } else {
-                  onModelsFetched([model], targetProvider)
+                  onModelsFetched([model], targetProvider, pickHints([model]))
                 }
               }}
               className={`w-full text-left px-3 py-1.5 text-[12px] rounded-lg transition-all flex items-center justify-between group mb-0.5 ${isAdded
@@ -523,7 +538,7 @@ const FetchModelsButton = memo(function FetchModelsButton({
           onClick={() => {
             const toAdd = fetchedModels.filter(m => !targetExistingModels.includes(m))
             if (toAdd.length > 0) {
-              onModelsFetched(toAdd, targetProvider)
+              onModelsFetched(toAdd, targetProvider, pickHints(toAdd))
             }
             setShowList(false)
           }}
@@ -563,7 +578,7 @@ function AddProviderDialog({
   onCancel
 }: {
   language: 'en' | 'zh'
-  onSave: (config: { displayName: string; baseUrl: string; apiKey: string; protocol: string; model: string; customModels: string[] }) => void
+  onSave: (config: { displayName: string; baseUrl: string; apiKey: string; protocol: string; model: string; customModels: string[]; hints?: Record<string, ModelCapabilityHintPayload> }) => void
   onCancel: () => void
 }) {
   const [displayName, setDisplayName] = useState('')
@@ -572,6 +587,8 @@ function AddProviderDialog({
   const [protocol, setProtocol] = useState('openai')
   const [model, setModel] = useState('')
   const [customModels, setCustomModels] = useState<string[]>([])
+  // 本弹窗内「获取模型」拿到的能力线索，保存时一并交给上层推断标签
+  const [fetchedHints, setFetchedHints] = useState<Record<string, ModelCapabilityHintPayload>>({})
 
   const handleSubmit = () => {
     if (!displayName.trim() || !baseUrl.trim()) {
@@ -584,11 +601,15 @@ function AddProviderDialog({
       apiKey,
       protocol,
       model: model.trim() || customModels[0] || '',
-      customModels: [...new Set([...customModels, ...(model ? [model] : [])])]
+      customModels: [...new Set([...customModels, ...(model ? [model] : [])])],
+      hints: fetchedHints,
     })
   }
 
-  const handleFetchModels = (models: string[]) => {
+  const handleFetchModels = (models: string[], _providerId?: string, hints?: Record<string, ModelCapabilityHintPayload>) => {
+    if (hints && Object.keys(hints).length > 0) {
+      setFetchedHints(prev => ({ ...prev, ...hints }))
+    }
     const newModels = models.filter(m => !customModels.includes(m))
     if (newModels.length > 0) {
       setCustomModels([...customModels, ...newModels])
@@ -1031,7 +1052,7 @@ export function ModelProviderPanel({
   }
 
   // 批量添加模型
-  const handleBatchAddModels = useCallback((models: string[], displayName?: string, providerId?: string) => {
+  const handleBatchAddModels = useCallback((models: string[], displayName?: string, providerId?: string, hints?: Record<string, ModelCapabilityHintPayload>) => {
     if (models.length === 0) return
 
     // 落点服务商由调用方指定（例如「获取模型」弹窗绑定的服务商），缺省才回落到当前选中项，
@@ -1051,8 +1072,10 @@ export function ModelProviderPanel({
       const existing = updatedModelConfigs[m]
       updatedModelConfigs[m] = {
         ...(existing || {}),
-        // 能力为空时按模型名推断，避免落到列表里没有任何能力标签
-        capabilities: existing?.capabilities?.length ? existing.capabilities : inferCapabilities(m),
+        // 能力为空时推断标签：「获取模型」带回的服务商元数据优先，没元数据才回落到模型名
+        capabilities: existing?.capabilities?.length
+          ? existing.capabilities
+          : inferCapabilities(m, hints?.[m]),
         enabled: true,
       }
     }
@@ -1267,7 +1290,7 @@ export function ModelProviderPanel({
   }
 
   // 添加自定义 Provider（只更新本地状态）
-  const handleAddCustomProvider = (config: { displayName: string; baseUrl: string; apiKey: string; protocol: string; model: string; customModels: string[] }) => {
+  const handleAddCustomProvider = (config: { displayName: string; baseUrl: string; apiKey: string; protocol: string; model: string; customModels: string[]; hints?: Record<string, ModelCapabilityHintPayload> }) => {
     const id = `custom-${Date.now()}`
     const customModels = config.customModels?.length
       ? config.customModels
@@ -1278,7 +1301,8 @@ export function ModelProviderPanel({
     const modelConfigs: Record<string, ModelConfig> = {}
     for (const modelName of customModels) {
       modelConfigs[modelName] = {
-        capabilities: inferCapabilities(modelName),
+        // 「获取模型」带回的服务商元数据优先，没有元数据时再按模型名推断
+        capabilities: inferCapabilities(modelName, config.hints?.[modelName]),
         enabled: true,
       }
     }
@@ -1757,8 +1781,8 @@ export function ModelProviderPanel({
                   protocol={isCustomSelected ? selectedCustomConfig?.protocol : localConfig.protocol}
                   language={language}
                   existingModels={availableModels}
-                  onModelsFetched={(models, providerId) => {
-                    handleBatchAddModels(models, undefined, providerId)
+                  onModelsFetched={(models, providerId, hints) => {
+                    handleBatchAddModels(models, undefined, providerId, hints)
                   }}
                   onModelRemoved={(m, providerId) => handleRemoveModel(m, providerId)}
                   onBatchRemoved={(models, providerId) => handleBatchRemoveModels(models, providerId)}
