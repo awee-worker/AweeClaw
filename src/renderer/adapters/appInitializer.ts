@@ -40,6 +40,7 @@ import {
 } from './workspaceLoader'
 import { initializeHarness } from '@intelligence/harness'
 import { setupAgentRuntime } from '@intelligence/engine/runtimeInitializer'
+import { previewAutoClose } from '../preview/previewAutoClose'
 import { measureTextTokens } from '@shared/toolkit/tokenEstimator'
 
 export interface InitResult {
@@ -475,6 +476,10 @@ export async function initializeApp(
     } catch (e) {
       logger.system.warn('[Init] AgentRuntime initialization failed:', e)
     }
+
+    // 预览失效守卫：服务被停、页面被删之后自动收起已经打不开的标签页。
+    // 幂等且首个预览标签页出现前不产生任何轮询，放在这里即可。
+    previewAutoClose.start()
 
     // 新建任务窗口：工作空间恢复完成后直接落到新建任务页（空会话 + 聊天区），
     // 与顶部「新任务」入口是同一套状态。没有工作空间时留在欢迎页，

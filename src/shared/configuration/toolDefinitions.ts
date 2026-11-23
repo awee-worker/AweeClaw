@@ -2112,6 +2112,57 @@ waterfall (url / type / duration / size / status), read from the page's own Perf
         },
     },
 
+    close_preview: {
+        name: 'close_preview',
+        displayName: 'Close Preview',
+        description: 'Close preview tabs in AweeClaw\'s built-in browser. Use it when a preview is no longer needed, when the page it showed has been replaced or removed, or when the user asks you to close it — you can close the tab yourself instead of telling them to click "×".',
+        detailedDescription: `Close one or all preview tabs opened by open_preview / browser tools.
+
+Choosing the target:
+- session_id : exact preview session id (returned by open_preview in its meta).
+- url        : partial match against a tab's address or title, e.g. "5173" matches
+               http://localhost:5173/. Use this when you did not keep the session id.
+- all        : pass true to close every preview tab at once.
+Omitting all three closes the most recently active preview tab.
+
+Notes:
+- Closing a preview tab is the normal way to end a preview; do NOT tell the user to
+  click "×" themselves, and do NOT try to close it via the system browser.
+- A preview whose target disappeared (dev server stopped, page file deleted) is also
+  closed automatically — this tool is for closing one that is still working.
+- Only preview tabs are affected; ordinary editor tabs are untouched.`,
+        examples: [
+            'close_preview  ← closes the most recently active preview tab',
+            'close_preview url="5173"',
+            'close_preview session_id="0f2c..."',
+            'close_preview all=true  ← closes every preview tab',
+        ],
+        criticalRules: [
+            'Use this tool to close a preview yourself — never tell the user to click the "×" button',
+            'Pass at most one selector; `all` wins over `session_id` and `url`',
+            'Closing is safe and reversible: the page can be reopened with open_preview',
+        ],
+        category: 'interaction',
+        approvalType: 'none',
+        parallel: false,
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            session_id: {
+                type: 'string',
+                description: 'Exact preview session id to close.',
+            },
+            url: {
+                type: 'string',
+                description: 'Preview tab to close, matched against its URL or title (partial match is enough, e.g. "5173").',
+            },
+            all: {
+                type: 'boolean',
+                description: 'Close every preview tab. Takes priority over session_id / url.',
+            },
+        },
+    },
+
     knowledge_search: {
         name: 'knowledge_search',
         displayName: 'Knowledge Search',

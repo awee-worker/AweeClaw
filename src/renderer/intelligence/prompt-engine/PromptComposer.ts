@@ -12,6 +12,7 @@ import { WorkMode } from '@/renderer/modes/workModeTypes'
 import { modeRegistry } from '../capabilities/mode/WorkModeRegistry'
 import type { ModeDescriptor } from '../capabilities/mode/WorkModeDescriptor'
 import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
+import { getReadableDomainTags, SHARED_DOMAIN_TAG } from '@protocols/sceneModeProtocol'
 import type { SceneModeProfile } from '../capabilities/sceneMode/SceneModeDescriptor'
 import { useRoleLibraryStore } from '@/renderer/modes/roleLibraryStore'
 import { resolveSceneRole, type RoleMatchResult } from '../capabilities/role/sceneRoleMatcher'
@@ -421,6 +422,7 @@ const PAGE_PREVIEW_GUIDE = `## Page Preview (MANDATORY for pages you build)
 - NEVER open a local HTML file with the system browser (\`open\` / \`start\` / \`xdg-open\`), and NEVER start a temporary static server (\`python3 -m http.server\`, \`npx serve\`) just to look at a static page: the built-in preview already serves the page over a loopback address, with relative CSS/JS/image references working.
 - Use \`open_preview path="<file or folder>"\` for a static page; use \`open_preview url="http://localhost:<port>"\` only when the project really needs a dev server (bundler, HMR, API routes).
 - BROWSER EXCLUSIVITY: never show the same page in both the built-in browser and the system browser. Once open_preview has opened the page, do NOT run \`open\` / \`start\` / \`xdg-open\` (including dev-server \`--open\` flags) for it. If the system browser genuinely becomes necessary, close the built-in preview tab first — one browser at a time.
+- To close a preview tab, call \`close_preview\` (\`close_preview url="5173"\` for a specific one, \`close_preview all=true\` for every tab). NEVER tell the user that the built-in browser "has no close API" and ask them to click the "×" themselves — you have the tool.
 - To preview a page as it looks on a phone, pass \`device="iphone-16"\` (or another preset id) to \`open_preview\`, or switch later with \`browser_set_device\`.
 - Do not report a page as done before you have opened it for the user.`
 
@@ -579,13 +581,15 @@ ${rules.content}`
 }
 
 function buildKnowledge(entries: KnowledgeEntry[]): string | null {
-  const { memoryDomainTag } = useSceneModeStore.getState().getActiveProfile()
+  const { id: sceneModeId } = useSceneModeStore.getState().getActiveProfile()
+  // 办公与代码开发共享工作域，其余场景各自隔离
+  const readableTags = getReadableDomainTags(sceneModeId)
   const enabled = entries.filter(e => {
     if (!e.enabled) return false
-    // 域隔离：当前域 + 共享域 + 无 tag 旧数据（向后兼容）
+    // 域隔离：可读域（工作域组 / 本场景域 + 共享域）+ 无 tag 旧数据（向后兼容）
     return e.tags.length === 0
-      || e.tags.includes(memoryDomainTag)
-      || e.tags.includes('domain:shared')
+      || e.tags.includes(SHARED_DOMAIN_TAG)
+      || readableTags.some(tag => e.tags.includes(tag))
   })
   if (enabled.length === 0) return null
 
@@ -614,13 +618,15 @@ function buildLongTermMemory(
   tokenBudget: number = 1500,
   foldCount?: Record<string, number>,
 ): string | null {
-  const { memoryDomainTag } = useSceneModeStore.getState().getActiveProfile()
+  const { id: sceneModeId } = useSceneModeStore.getState().getActiveProfile()
+  // 办公与代码开发共享工作域，其余场景各自隔离
+  const readableTags = getReadableDomainTags(sceneModeId)
   const enabled = entries.filter(e => {
     if (!e.enabled || !e.content.trim()) return false
-    // 域隔离：当前域 + 共享域 + 无 tag 旧数据（向后兼容）
+    // 域隔离：可读域（工作域组 / 本场景域 + 共享域）+ 无 tag 旧数据（向后兼容）
     return e.tags.length === 0
-      || e.tags.includes(memoryDomainTag)
-      || e.tags.includes('domain:shared')
+      || e.tags.includes(SHARED_DOMAIN_TAG)
+      || readableTags.some(tag => e.tags.includes(tag))
   })
   if (enabled.length === 0) return null
 
@@ -759,7 +765,7 @@ function buildSceneModeDirectives(profile: SceneModeProfile, installedSkillNames
   const parts: string[] = [
     `## ${profile.displayNameZh}场景模式`,
     `当前处于「${profile.displayNameZh}」场景模式，请遵循该模式的人设与边界。`,
-    `记忆域约束：仅读写「${profile.memoryDomainTag}」与「domain:shared」共享域的记忆与知识，避免跨域污染。`,
+    `记忆域约束：可读写「${getReadableDomainTags(profile.id).join('」「')}」；新写入的记忆归入本场景域「${profile.memoryDomainTag}」，避免跨域污染。`,
   ]
   if (profile.modeSkills.length > 0) {
     // 模式技能是「模式声明」而非「已安装清单」：不标注安装状态的话，

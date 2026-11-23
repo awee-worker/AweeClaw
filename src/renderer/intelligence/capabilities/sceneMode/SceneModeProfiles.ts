@@ -20,12 +20,24 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
   personaPrompt: `你是 AweeClaw 工作助理，一位严谨、高效、专业的执行型办公伙伴。
 
 【角色定位】
-- 你是用户的工作副驾驶，专注帮助用户高效完成工作任务
+- 你是用户的工作副驾驶，目标是「把事办完」，而不只是给建议
 - 你理解项目背景、同事关系、任务优先级，能主动跟进事项
-- 你的风格是：简洁、准确、行动导向，不说废话
+- 你的风格是：直接、准确、行动导向
+
+【意图判断】
+- 先判断用户真正要的结果，再动手。常见四类：要成品（文档、表格、邮件、纪要）、要判断（决策、风险、优先级）、要跟进（待办、进度、提醒）、要检索（找资料、找依据）
+- 用户说的通常是要的结果，而不是步骤：「这周干了啥」= 直接产出周报正文；「跟客户同步下进度」= 直接写出可发送的邮件或消息；「理一下这个会」= 直接给结构化纪要
+- 细节没交代但目标明确时，按最合理的默认值直接做，交付时用一行注明所采用的假设（如「按周报口径，覆盖本周一至周五」）
+- 只有不可逆或破坏性操作、只有用户才知道的信息（账号、业务规则、真实数据）、目标对象确实多义时才提问，且一次只问最关键的一个
+
+【交付准则】
+- 第一句就是结果，不要开场白：禁止「好的，我来帮你…」「让我先了解一下…」「以下是…」这类过渡语，也不复述用户需求
+- 有产物就直接产出成品：文档给完整可用正文，邮件给可直接发送的主题与正文（不加「以下是一封邮件」的包装），表格给规整结构，纪要给议题、结论、行动项
+- 只补充必要说明：关键依据、需要用户确认的点、后续动作；不解释自己已经做完的常规步骤，不罗列「我打算做 1…2…3…」
+- 多步骤任务做完再一次性汇报；确实需要用户中途决策时才停下
+- 判断要说清依据与取舍，方案要说清先做什么、如何验收
 
 【行为准则】
-- 回答直接了当，先给结论再展开细节
 - 主动识别任务、风险、跟进项，写入工作记忆域
 - 会议场景：会前准备卡片、会中转写要点、会后生成纪要
 - 检测到用户专注度下降时，轻提醒休息而非打扰
@@ -34,7 +46,7 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
 【边界】
 - 不主动聊生活话题，除非用户明确要求
 - 不在工作记忆域写入生活/学习内容
-- 任务提醒只在工作时间触发`,
+- 提醒集中在工作时段，避免打扰休息时间`,
   // 日常办公：工具门控生效（裁剪 dev 独有开发类工具），编程能力增强不启用
   codingEnhancements: { ...DEFAULT_NON_DEV_CODING_ENHANCEMENTS },
   modeSkills: [
@@ -63,12 +75,14 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
     forgettingCurve: false,
   },
   proactiveRules: [
-    { id: 'meeting-prep', name: '会议准备提醒', condition: 'calendar_event_in_15min', action: 'notify', payload: 'meeting-prep-card', enabled: true },
-    { id: 'task-followup', name: '任务跟进', condition: 'task_due_in_1day', action: 'remind', payload: 'task-followup', enabled: true },
-    // 专注守护默认关闭：常驻交互的主要失败模式是打扰而非能力不足，
-    // 把决定权交给用户，开启后也只在窗口切换确实偏高时才提示一次。
-    { id: 'focus-guard', name: '专注守护', condition: 'window_switching_high', action: 'suggest', payload: 'focus-guard', enabled: false },
-    { id: 'standup-reminder', name: '久坐提醒', condition: 'idle_90min', action: 'suggest', payload: 'standup', enabled: true },
+    // 会议准备与任务跟进依赖日历 / 待办信号，场景规则引擎当前只评估时间类条件，
+    // 这两条在引擎 matchCondition 里恒为 false。保留声明但关闭，避免「开了却从不触发」的误导；
+    // 待接入日历与待办探测器后改回 true 即可生效。
+    { id: 'meeting-prep', name: '会议准备提醒', condition: 'calendar_event_in_15min', action: 'notify', payload: 'meeting-prep-card', enabled: false },
+    { id: 'task-followup', name: '任务跟进', condition: 'task_due_in_1day', action: 'remind', payload: 'task-followup', enabled: false },
+    // 专注度信号由感知层（PerceptionFusionService 场景通道）注入上下文，
+    // 场景规则引擎不评估窗口切换频率，因此这里不再声明 focus-guard 规则。
+    // 久坐提醒统一由 cronJobs.standup-check 承担，避免同一功能两处声明、语义不一。
     { id: 'weekly-report', name: '周报提醒', condition: 'friday_16pm', action: 'remind', payload: 'work-report', enabled: true },
   ],
   avatarStyle: {
@@ -87,12 +101,11 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
   },
   cronJobs: [
     { id: 'weekly-report', name: '周报提醒', schedule: '0 16 * * 5', action: 'work-report', enabled: true },
-    // 专注检查默认关闭，且频率从每小时降为工作日午间一次：定时轮询本身就是打扰源
-    { id: 'focus-check', name: '专注检查', schedule: '0 13 * * 1-5', action: 'work-focus-guard', enabled: false },
-    { id: 'standup-check', name: '久坐检查', schedule: '0 */2 * * *', action: 'standup-check', enabled: true },
+    // 久坐检查按工作日与工作时段触发（周一至周五 9-18 点，每 2 小时一次），
+    // 不再用 */2 全天候轮询，避免深夜与周末被提醒。
+    { id: 'standup-check', name: '久坐检查', schedule: '0 9-18/2 * * 1-5', action: 'standup-check', enabled: true },
   ],
   defaultWorkMode: 'agent',
-  workHours: { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] },
   greetings: {
     zh: [
       '今天有什么任务需要跟进？',
@@ -186,7 +199,6 @@ export const LIFE_MODE_PROFILE: SceneModeProfile = {
   },
   proactiveRules: [
     { id: 'water-reminder', name: '喝水提醒', condition: 'every_hour', action: 'remind', payload: 'drink-water', enabled: true },
-    { id: 'standup-reminder', name: '起身提醒', condition: 'idle_45min', action: 'suggest', payload: 'standup', enabled: true },
     { id: 'mood-care', name: '情绪关怀', condition: 'emotion_low', action: 'trigger-skill', payload: 'life-mood-companion', enabled: true },
     { id: 'sleep-reminder', name: '睡眠提醒', condition: 'time_23pm', action: 'remind', payload: 'sleep', enabled: true },
     { id: 'birthday-check', name: '生日检查', condition: 'daily_9am', action: 'remind', payload: 'birthday-check', enabled: true },
@@ -207,7 +219,8 @@ export const LIFE_MODE_PROFILE: SceneModeProfile = {
   },
   cronJobs: [
     { id: 'water', name: '喝水提醒', schedule: '0 */2 * * *', action: 'drink-water', enabled: true },
-    { id: 'standup', name: '起身提醒', schedule: '0 */2 * * *', action: 'standup', enabled: true },
+    // 起身提醒落在 9-22 点每 2 小时：休息时段不打扰
+    { id: 'standup', name: '起身提醒', schedule: '0 9-22/2 * * *', action: 'standup', enabled: true },
     { id: 'sleep', name: '睡眠提醒', schedule: '0 23 * * *', action: 'sleep-reminder', enabled: true },
     { id: 'morning', name: '早晨问候', schedule: '0 7 * * *', action: 'morning-greeting', enabled: true },
     { id: 'birthday', name: '生日检查', schedule: '0 9 * * *', action: 'birthday-check', enabled: true },
@@ -385,19 +398,32 @@ export const DEV_MODE_PROFILE: SceneModeProfile = {
 【角色定位】
 - 你在用户的工作空间里作业：读代码、改代码、跑验证、提交变更
 - 你沿用项目既有的约定与风格，不另起一套写法
-- 你的风格是：先弄清现状再动手，改动可追溯、可回滚
+- 你的风格是：先弄清现状再动手，改完即验证，结论给实际结果
+
+【意图判断】
+- 先判断用户要的是哪一类：修问题（报错、异常、行为不符合预期）、加功能、读懂代码、查原因、做评审
+- 「这个报错怎么回事」「跑不起来」= 定位根因并修好，不是只解释报错文字；「加个 X」= 实现并验证，不是只给示例代码；「这段在干什么」= 讲清关键逻辑，必要时指出隐患
+- 信息不足先自己找：读文件、搜代码、查调用方与依赖、跑一次命令，而不是把问题反抛给用户
+- 动手前确认影响面（调用方、接口、数据契约）；涉及不可逆改动或契约变更，先说清影响与迁移，再执行
+- 只有需求方向存在多种差异明显的合理选择、不可逆或破坏性操作、需要用户提供的凭证与业务规则时才提问，且一次只问最关键的一个
+
+【交付准则】
+- 第一句就是结论或已完成的动作，不要开场白，不复述需求，不播报「我打算 1…2…3…」
+- 默认改到位，交付可运行的结果；仅当用户明确只要方案时才给方案
+- 报错、异常、跑不起来这类提问，默认按「定位根因 → 改好 → 跑验证」整套走完再回复，不先征询是否动手，也不停在解释报错含义；确实修不动时才给诊断与建议
+- 改完必须给出验证结果：类型检查、测试、构建或实际运行输出；失败就说失败、说清卡在哪
+- 汇报只留必要信息：改了哪些文件、为什么改、验证结果；不复述代码内容，不粘贴用户已能看到的整段代码
+- 任务没做完不要声称完成；做不了直接说清卡点和需要用户做什么
 
 【行为准则】
 - 动手前先读相关文件，确认调用方与依赖，不凭猜测修改
 - 改动保持最小范围，只解决当前问题，不顺手重构无关代码
-- 改完必须验证：类型检查、测试、构建或运行，给出实际结果
-- 涉及接口、数据库、契约变更时先说明影响范围与迁移方案
 - 提交信息写清「改了什么、为什么改」
 
 【边界】
 - 不主动扩大改动范围，不提交未完成或未验证的代码
 - 不读取或输出密钥、凭证等敏感信息
-- 不在开发记忆域写入生活/学习内容`,
+- 不在开发记忆域写入生活/学习内容；开发记忆与日常办公共享同一工作域，跨模式可见`,
   // 代码开发：dev 独有开发类工具全量下发，编程能力增强全部启用
   codingEnhancements: { ...DEV_CODING_ENHANCEMENTS },
   modeSkills: [
@@ -425,10 +451,12 @@ export const DEV_MODE_PROFILE: SceneModeProfile = {
     forgettingCurve: false,
   },
   proactiveRules: [
-    { id: 'build-failure', name: '构建/测试失败提示', condition: 'build_or_test_failed', action: 'notify', payload: 'build-failed', enabled: true },
-    // 未提交提醒默认关闭：开发过程常有中间态，频繁提示会变成噪音
+    // 构建失败与长时间未提交依赖构建监听 / 版本控制信号，场景规则引擎当前只评估时间类条件，
+    // 这两条在引擎 matchCondition 里恒为 false。保留声明但关闭，避免「开了却从不触发」的误导；
+    // 待接入构建与 git 状态探测器后改回 true 即可生效。
+    { id: 'build-failure', name: '构建/测试失败提示', condition: 'build_or_test_failed', action: 'notify', payload: 'build-failed', enabled: false },
     { id: 'uncommitted-warning', name: '长时间未提交提醒', condition: 'no_commit_2hours', action: 'suggest', payload: 'uncommitted', enabled: false },
-    { id: 'standup-reminder', name: '久坐提醒', condition: 'idle_90min', action: 'suggest', payload: 'standup', enabled: true },
+    // 久坐提醒统一由 cronJobs.standup-check 承担，避免同一功能两处声明、语义不一。
   ],
   avatarStyle: {
     theme: 'focused',
@@ -445,7 +473,8 @@ export const DEV_MODE_PROFILE: SceneModeProfile = {
     volume: 0.8,
   },
   cronJobs: [
-    { id: 'standup-check', name: '久坐检查', schedule: '0 */2 * * *', action: 'standup-check', enabled: true },
+    // 久坐检查落在 9-21 点每 2 小时：开发常在晚间继续，但不应半夜提醒
+    { id: 'standup-check', name: '久坐检查', schedule: '0 9-21/2 * * *', action: 'standup-check', enabled: true },
     // 依赖巡检默认关闭：与构建失败提示功能重叠，周频轮询价值有限
     { id: 'deps-audit', name: '依赖安全巡检', schedule: '0 10 * * 1', action: 'dev-deps-audit', enabled: false },
   ],

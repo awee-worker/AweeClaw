@@ -128,14 +128,6 @@ export interface SceneCronJob {
   enabled: boolean
 }
 
-/** 工作时间配置（仅工作模式有效） */
-export interface WorkHoursConfig {
-  start: string
-  end: string
-  /** 生效日期（0=周日, 1-6=周一到周六） */
-  days: number[]
-}
-
 /** 问候时段（用于时段问候动态选择） */
 export type TimePeriod = 'morning' | 'noon' | 'afternoon' | 'evening' | 'night'
 
@@ -186,9 +178,6 @@ export interface SceneModeProfile {
 
   /** 推荐的默认 WorkMode（推理深度） */
   defaultWorkMode: WorkMode
-
-  /** 工作时间配置（仅工作模式有效） */
-  workHours?: WorkHoursConfig
 
   /** 空对话态问候语（多句轮换，UI1） */
   greetings?: {

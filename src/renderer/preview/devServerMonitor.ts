@@ -11,6 +11,8 @@
  */
 
 import { api } from '@renderer/adapters/electronBridge'
+import type { PreviewSession } from '@shared/protocols/previewProtocol'
+import { normalizeFilePath } from '@shared/toolkit/pathHelper'
 import { previewSessionService } from './previewSessionManager'
 
 /** 探活节拍 */
@@ -70,6 +72,16 @@ class DevServerMonitor {
     await this.tick()
   }
 
+  /**
+   * 立即探活一轮，并要求单次失败即下定论
+   *
+   * 主动停止进程（stop_terminal / Ctrl+C）后调用：这次不可达是确定的结果，
+   * 不是在构建或重启，没必要再攒够两次失败才承认服务已经停了。
+   */
+  async probeNowStrict(): Promise<void> {
+    await this.tick(true)
+  }
+
   private ensureTimer(): void {
     if (this.timer) return
     this.timer = setInterval(() => void this.tick(), PROBE_INTERVAL_MS)
@@ -82,7 +94,7 @@ class DevServerMonitor {
     this.timer = null
   }
 
-  private async tick(): Promise<void> {
+  private async tick(strict = false): Promise<void> {
     if (this.probing) return
     this.probing = true
 
@@ -93,18 +105,20 @@ class DevServerMonitor {
       await Promise.all(
         sessions
           .filter((session) => isLocalPreviewUrl(session.url))
-          .map((session) => this.probeSession(session.id, session.url)),
+          .map((session) => this.probeSession(session, strict)),
       )
     } finally {
       this.probing = false
     }
   }
 
-  private async probeSession(sessionId: string, url: string): Promise<void> {
+  private async probeSession(session: PreviewSession, strict: boolean): Promise<void> {
+    const sessionId = session.id
+    const url = session.url
     const previous = this.statuses.get(sessionId)
-    const alive = await this.isAlive(url)
+    const verdict = await this.checkTarget(session)
 
-    if (alive) {
+    if (verdict.alive) {
       this.failures.delete(sessionId)
       this.setStatus({ sessionId, url, state: 'alive', checkedAt: Date.now() })
 
@@ -119,8 +133,9 @@ class DevServerMonitor {
     this.failures.set(sessionId, failures)
 
     // 首次探活就失败：没有「之前是活的」可对比（例如重启后恢复出来的标签页），
-    // 直接给结论，不必让用户等满两拍才看到「服务未启动」
-    const threshold = previous ? FAILURE_THRESHOLD : 1
+    // 直接给结论，不必让用户等满两拍才看到「服务未启动」。
+    // strict 用于主动停止进程后的复核：那一次不可达是确定结果，不需要再攒次数。
+    const threshold = strict || !previous ? 1 : FAILURE_THRESHOLD
     if (failures < threshold) return
 
     this.setStatus({
@@ -128,8 +143,70 @@ class DevServerMonitor {
       url,
       state: 'down',
       checkedAt: Date.now(),
-      error: '本地服务无响应',
+      error: verdict.error || '本地服务无响应',
     })
+  }
+
+  /**
+   * 判断一次预览是否仍然有效
+   *
+   * 本地静态页面走磁盘核对：静态服务在页面文件被删之后照样回 404 正文，
+   * 而 404 在内容读取里同样算「读到了东西」——探活读不出服务与页面的差别。
+   * 服务类预览（dev server）仍按连通性判断。
+   */
+  private async checkTarget(session: PreviewSession): Promise<{ alive: boolean; error?: string }> {
+    const localTarget = session.localPath || session.previewRoot
+    if (localTarget) {
+      if (!(await this.exists(localTarget))) {
+        return {
+          alive: false,
+          error: session.localPath ? '预览的页面已被删除' : '预览目录已不存在',
+        }
+      }
+
+      // 目录预览还要核对当前地址对应的页面文件：目录还在、index.html 被删掉时
+      // 上面那一步是查不出来的，而那正是「AI 删掉页面」最常见的样子
+      const pageFile = this.resolveLocalPageFile(session)
+      if (pageFile && !(await this.exists(pageFile))) {
+        return { alive: false, error: '预览的页面已被删除' }
+      }
+      return { alive: true }
+    }
+
+    const alive = await this.isAlive(session.url)
+    return { alive, error: alive ? undefined : '本地服务无响应' }
+  }
+
+  /** 目标路径是否仍然存在（目录或可预览的页面文件） */
+  private async exists(target: string): Promise<boolean> {
+    try {
+      const resolved = await api.preview.resolveLocalUrl(target)
+      return Boolean(resolved?.success)
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * 由预览地址反推它在预览根目录下的页面文件
+   *
+   * 只认页面类扩展名：地址落在别的资源上（图片/接口）时无法据此判断页面是否被删，
+   * 交给目录存在性那一步即可，避免误判成失效。
+   */
+  private resolveLocalPageFile(session: PreviewSession): string | null {
+    if (!session.previewRoot) return null
+
+    let pathname: string
+    try {
+      pathname = decodeURIComponent(new URL(session.url).pathname)
+    } catch {
+      return null
+    }
+
+    const relative = !pathname || pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '')
+    if (!/\.(html?|svg)$/i.test(relative)) return null
+
+    return `${normalizeFilePath(session.previewRoot)}/${relative}`
   }
 
   /** 地址是否可达（只关心连通性，不关心返回内容） */
@@ -141,6 +218,7 @@ class DevServerMonitor {
       return false
     }
   }
+
 
   /** 记录状态并通知订阅者（状态未变化时不通知，避免每拍都触发重渲染） */
   private setStatus(status: PreviewServerStatus): void {

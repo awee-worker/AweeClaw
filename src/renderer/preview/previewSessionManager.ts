@@ -6,6 +6,7 @@ import { api } from '@renderer/adapters/electronBridge'
 import { devServerDiscoveryService } from './devServerLocator'
 import { recordPreview } from './previewHistory'
 import { logger } from '@renderer/toolkit/LogEngine'
+import { normalizeFilePath, pathHasPrefix } from '@shared/toolkit/pathHelper'
 
 interface PreviewSessionState {
   sessions: PreviewSession[]
@@ -138,6 +139,13 @@ export class PreviewSessionService {
       /** 静态预览的根目录（本地文件预览才有，用于目录变化后自动刷新） */
       previewRoot?: string
       /**
+       * 本地文件预览的原始目标（页面文件或其所在目录的绝对路径）
+       *
+       * 目录还在、页面文件被删的场景用 previewRoot 判断不出来，这里单独保留，
+       * 供失效判定与「删除后立即收起标签页」使用。
+       */
+      localPath?: string
+      /**
        * 建会话时就确定的设备档位
        *
        * 打开即带设备档的场景（open_preview 的 device 参数）必须走这里，不能先建
@@ -193,6 +201,7 @@ export class PreviewSessionService {
       workspaceRoot: options.workspaceRoot,
       candidateId: options.candidateId,
       previewRoot: options.previewRoot,
+      localPath: options.localPath,
       // 设备档位随会话一起落定：首帧就是最终形态，不存在「先铺满再缩放」
       ...resolveDeviceFields({
         deviceId: options.deviceId,
@@ -241,6 +250,7 @@ export class PreviewSessionService {
       workspaceRoot: preview.workspaceRoot,
       candidateId: preview.candidateId,
       previewRoot: preview.previewRoot,
+      localPath: preview.localPath,
     }
 
     this.sessions.set(session.id, session)
@@ -432,6 +442,58 @@ export class PreviewSessionService {
   }
 
   /**
+   * 关闭单个预览标签页
+   *
+   * 与 closeAllSessions 同一条通道（openFiles 的标准移除），区别只在于作用范围。
+   * 会话与映射一并清掉：留着已关闭的会话，探活还会一直盯着它，标签页重建后
+   * 也可能命中一个本该消失的旧会话。
+   *
+   * @returns 是否真的关掉了一个会话
+   */
+  closeSession(sessionId: string, reason?: string): boolean {
+    const session = this.sessions.get(sessionId)
+    if (!session) return false
+
+    this.sessions.delete(sessionId)
+    if (this.sessionByUrl.get(session.url) === sessionId) {
+      this.sessionByUrl.delete(session.url)
+    }
+    this.guestReporters.delete(sessionId)
+    this.rebuildState()
+    this.emit()
+
+    useStore.getState().closeFiles([buildPreviewDocumentPath(sessionId)])
+    logger.system.info('[PreviewSession] closed preview tab', {
+      sessionId,
+      url: session.url,
+      reason: reason || 'unspecified',
+    })
+    return true
+  }
+
+  /**
+   * 关闭所有依赖某个文件 / 目录的预览标签页
+   *
+   * 页面被删除后标签页只剩空白，继续留着没有意义。命中口径是「预览目标落在该路径内」，
+   * 因此删除一个目录时，目录下打开的各个页面会一起收掉。
+   *
+   * @returns 实际关闭的标签页数量
+   */
+  closeSessionsUnderPath(targetPath: string, reason?: string): number {
+    if (!targetPath) return 0
+
+    const deleted = normalizeFilePath(targetPath)
+    const hits = [...this.sessions.values()].filter((session) => {
+      // 原始目标优先：目录还在、页面文件被删的场景只有它能命中
+      const scope = session.localPath || session.previewRoot
+      return scope ? pathHasPrefix(normalizeFilePath(scope), deleted) : false
+    })
+
+    hits.forEach((session) => this.closeSession(session.id, reason))
+    return hits.length
+  }
+
+  /**
    * 复用已有会话时补应用本次请求的设备档
    *
    * 同一地址再次打开不会再走建会话分支，若不在这里补一次，`open_preview` 带的
@@ -460,6 +522,7 @@ export class PreviewSessionService {
         workspaceRoot: session.workspaceRoot,
         candidateId: session.candidateId,
         previewRoot: session.previewRoot,
+        localPath: session.localPath,
       },
       { activate },
     )

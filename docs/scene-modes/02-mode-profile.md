@@ -159,13 +159,6 @@ export interface SceneModeProfile {
 
   /** 推荐的默认 WorkMode（推理深度） */
   defaultWorkMode: WorkMode
-
-  /** 工作时间配置（仅工作模式有效） */
-  workHours?: {
-    start: string  // "09:00"
-    end: string    // "18:00"
-    days: number[] // [1,2,3,4,5] 周一到周五
-  }
 }
 ```
 
@@ -186,9 +179,9 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
   description: '严谨的执行型助理 — 提效、聚焦、减负',
   icon: 'Briefcase',
   personaPrompt: `你是 AweeClaw 工作助理，一位严谨、高效、专业的执行型办公伙伴。
-你的风格是：简洁、准确、行动导向，不说废话。
-回答直接了当，先给结论再展开细节。主动识别任务、风险、跟进项。
-不主动聊生活话题，不在线工作记忆域写入生活/学习内容。`,
+// 完整人设（角色定位 / 意图判断 / 交付准则 / 行为准则 / 边界）以
+// src/renderer/intelligence/capabilities/sceneMode/SceneModeProfiles.ts
+// 的 WORK_MODE_PROFILE / DEV_MODE_PROFILE 为准，此处仅示意字段位置。`,
   modeSkills: [
     'office-doc', 'office-email', 'office-meeting',
     'office-schedule', 'office-task', 'office-data',
@@ -209,10 +202,10 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
     forgettingCurve: false,
   },
   proactiveRules: [
-    { id: 'meeting-prep', name: '会议准备提醒', condition: 'calendar_event_in_15min', action: 'notify', payload: 'meeting-prep-card', enabled: true },
-    { id: 'task-followup', name: '任务跟进', condition: 'task_due_in_1day', action: 'remind', payload: 'task-followup', enabled: true },
-    { id: 'focus-guard', name: '专注守护', condition: 'window_switching_high', action: 'suggest', payload: 'focus-guard', enabled: true },
-    { id: 'standup-reminder', name: '久坐提醒', condition: 'idle_90min', action: 'suggest', payload: 'standup', enabled: true },
+    // 会议准备与任务跟进依赖日历 / 待办信号，场景规则引擎只评估时间类条件，
+    // 这两条在引擎里恒为 false，故关闭声明；接入对应探测器后改回 true 即可生效。
+    { id: 'meeting-prep', name: '会议准备提醒', condition: 'calendar_event_in_15min', action: 'notify', payload: 'meeting-prep-card', enabled: false },
+    { id: 'task-followup', name: '任务跟进', condition: 'task_due_in_1day', action: 'remind', payload: 'task-followup', enabled: false },
     { id: 'weekly-report', name: '周报提醒', condition: 'friday_16pm', action: 'remind', payload: 'work-report', enabled: true },
   ],
   avatarStyle: {
@@ -231,11 +224,10 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
   },
   cronJobs: [
     { id: 'weekly-report', name: '周报提醒', schedule: '0 16 * * 5', action: 'work-report', enabled: true },
-    { id: 'focus-check', name: '专注检查', schedule: '*/5 * * * *', action: 'work-focus-guard', enabled: true },
-    { id: 'standup-check', name: '久坐检查', schedule: '*/15 * * * *', action: 'standup-check', enabled: true },
+    // 久坐检查按工作日与工作时段触发（周一至周五 9-18 点每 2 小时）
+    { id: 'standup-check', name: '久坐检查', schedule: '0 9-18/2 * * 1-5', action: 'standup-check', enabled: true },
   ],
   defaultWorkMode: 'agent',
-  workHours: { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] },
 }
 
 /** 生活模式 Profile */

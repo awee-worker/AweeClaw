@@ -123,6 +123,8 @@ const CODE_TOOL_PACK: ToolPack = {
     'open_preview',
     // 预览页面健康自检（控制台错误 / 加载失败 / 白屏）
     'inspect_preview',
+    // 关闭预览标签页（AI 自行收起，不必让用户手点 ×）
+    'close_preview',
   ],
   optionalTools: [
     'uiux_search',

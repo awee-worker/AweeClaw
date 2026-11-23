@@ -269,7 +269,14 @@ ChatInputSkeleton.displayName = 'ChatInputSkeleton'
  * 包含：消息列表（用户/AI 交替）+ 底部输入框。
  */
 export const ChatSkeleton = memo(() => (
-  <div className="h-full flex flex-col bg-background-chat">
+  /*
+   * 用 absolute inset-0 而不是 h-full 铺满：inline 形态下 ChatPart 的内容区是
+   * 「由子元素撑开」的块级盒，flex-1 不生效、父高度是 auto，百分比高度解析不出
+   * 100%，骨架只占内容自然高度。绝对定位贴住最近的定位祖先（inline 取外框的
+   * relative，drawer 取内容区的 relative，modal 取 fixed 外框），与真实 ChatPanel
+   * 的 absolute inset-0 保持同一套铺满方式。
+   */
+  <div className="absolute inset-0 flex flex-col bg-background-chat">
     {/* 消息列表区：严格匹配真实容器结构 */}
     <div className="flex-1 overflow-hidden">
       <div className="max-w-[800px] mx-auto w-full px-4 py-2 flex flex-col gap-1">

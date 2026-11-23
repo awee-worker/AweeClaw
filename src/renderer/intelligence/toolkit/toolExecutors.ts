@@ -88,6 +88,7 @@ import { resolveAgentLanguage, pickLocalizedText, translateAgentText } from '@in
 import { guardWriteFile, buildLineEditsFromDiff, applyLineEdits, resolvePathKind, type PathKind } from './fileWritePolicy'
 import { openBuiltinPreview } from '@renderer/preview/openBuiltinPreview'
 import { previewSessionService } from '@renderer/preview/previewSessionManager'
+import { devServerMonitor } from '@renderer/preview/devServerMonitor'
 import type {
     PreviewContentSummary,
     PreviewHealthLevel,
@@ -2899,6 +2900,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         const success = await api.file.delete(path)
         if (success) {
             notifyComposerChange({ filePath: path, workspacePath: ctx.workspacePath || '', oldContent: null, newContent: null, changeType: 'delete', linesAdded: 0, linesRemoved: 0 })
+            // 预览指向的页面/目录刚被删掉：标签页已无法渲染任何东西，直接收掉，
+            // 不必等探活节拍慢慢发现
+            previewSessionService.closeSessionsUnderPath(path, 'source-deleted')
         }
         return { success, result: success ? 'Deleted successfully' : 'Failed to delete' }
     },
@@ -4265,6 +4269,12 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             terminalManager.writeToTerminal(terminalId, dataToSend)
 
+            // Ctrl+C 常常就是在停预览依赖的 dev server：按严格口径复核一次，
+            // 服务确实没了就由预览守卫收起已经打不开的标签页
+            if (isCtrl && input.trim().toLowerCase() === 'c') {
+                void devServerMonitor.probeNowStrict()
+            }
+
             return {
                 success: true,
                 result: `Successfully sent ${isCtrl ? 'Ctrl+' + input.toUpperCase() : 'input'} to terminal ${terminalId}`,
@@ -4281,6 +4291,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
         try {
             terminalManager.closeTerminal(terminalId)
+            // 被停掉的很可能正是预览依赖的 dev server：立即按严格口径探活一轮，
+            // 由预览守卫决定是否收起已经打不开的标签页
+            void devServerMonitor.probeNowStrict()
             return {
                 success: true,
                 result: `Terminal ${terminalId} stopped and closed successfully.`,
@@ -5431,6 +5444,62 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 result: '',
                 error: `inspect_preview failed: ${toAppError(err).message}`,
             }
+        }
+    },
+
+    /**
+     * 关闭内置浏览器的预览标签页
+     *
+     * 预览的收尾本就该由 AI 自己完成：让用户去标签栏点「×」是把机械操作推回给
+     * 用户。这里按会话定位后走与手动关闭同一条通道（closeSession → closeFiles），
+     * 行为完全一致，不会留下已关闭会话让探活继续盯着。
+     */
+    async close_preview(args, _ctx) {
+        const sessionId = typeof args.session_id === 'string' ? args.session_id.trim() : ''
+        const urlHint = typeof args.url === 'string' ? args.url.trim() : ''
+        const closeAll = args.all === true
+
+        if (closeAll) {
+            const closed = previewSessionService.closeAllSessions('tool-request')
+            return closed > 0
+                ? {
+                    success: true,
+                    result: `已关闭全部 ${closed} 个预览标签页。`,
+                    meta: { closed, scope: 'all' },
+                }
+                : {
+                    success: true,
+                    result: '当前没有预览标签页，无需关闭。',
+                    meta: { closed: 0, scope: 'all' },
+                }
+        }
+
+        const session = resolvePreviewSession(sessionId, urlHint)
+        if (!session) {
+            return {
+                success: false,
+                result: '',
+                error: urlHint
+                    ? `没有匹配「${urlHint}」的预览标签页，当前也没有可关闭的预览。`
+                    : '当前没有预览标签页，无需关闭。',
+            }
+        }
+
+        const title = session.title || session.url
+        const closed = previewSessionService.closeSession(session.id, 'tool-request')
+        if (!closed) {
+            // 会话刚被别处关掉（例如目标消失触发了自动收起），结果与关闭成功等价
+            return {
+                success: true,
+                result: `预览「${title}」已经不在打开状态。`,
+                meta: { sessionId: session.id, closed: 0 },
+            }
+        }
+
+        return {
+            success: true,
+            result: `已关闭预览标签页「${title}」。需要时可以用 open_preview 重新打开。`,
+            meta: { sessionId: session.id, url: session.url, closed: 1 },
         }
     },
 

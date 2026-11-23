@@ -189,6 +189,8 @@ const CORE_TOOLS: string[] = [
   'open_preview',
   // 预览页面健康自检（控制台错误 / 加载失败 / 白屏）
   'inspect_preview',
+  // 关闭预览标签页
+  'close_preview',
   // 定时任务
   'schedule',
   // Skill 按需加载
@@ -511,7 +513,7 @@ export const CAPABILITY_GROUPS: CapabilityGroupConfig[] = [
     name: '伴侣与交互',
     nameEn: 'Companion & Interaction',
     // open_preview：内置浏览器预览，属「在应用内与用户交互」的能力，与伴侣控制同组
-    tools: ['companion_control', 'open_preview', 'inspect_preview', 'uiux_search', 'uiux_recommend'],
+    tools: ['companion_control', 'open_preview', 'inspect_preview', 'close_preview', 'uiux_search', 'uiux_recommend'],
   },
 ]
 

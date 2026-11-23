@@ -69,6 +69,9 @@ function ModeProfileCard({ profile, isCurrent, onSelect }: {
   const [expanded, setExpanded] = useState(false)
   const Icon = MODE_ICONS[profile.id] ?? Briefcase
   const color = MODE_COLORS[profile.id] ?? '#3b82f6'
+  // 启用数量显式展示：默认配置里存在「已声明但未启用」的规则，
+  // 只列名称会让用户以为全部生效（历史上就出现过「开了却从不触发」的误判）。
+  const enabledRuleCount = profile.proactiveRules.filter((rule) => rule.enabled).length
 
   return (
     <div
@@ -146,9 +149,25 @@ function ModeProfileCard({ profile, isCurrent, onSelect }: {
               </div>
               <div className="space-y-1">
                 {profile.cronJobs.map((job) => (
-                  <div key={job.id} className="text-xs text-text-muted flex items-center gap-2">
+                  <div
+                    key={job.id}
+                    className={`text-xs flex items-center gap-2 ${
+                      job.enabled ? 'text-text-muted' : 'text-text-muted/50'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                        job.enabled ? 'bg-accent' : 'border border-border'
+                      }`}
+                      aria-hidden="true"
+                    />
                     <code className="bg-surface-hover px-1 rounded">{job.schedule}</code>
                     <span>{job.name}</span>
+                    {!job.enabled && (
+                      <span className="text-[10px] px-1 py-0.5 rounded bg-surface-hover text-text-muted/70 flex-shrink-0">
+                        未启用
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -159,16 +178,39 @@ function ModeProfileCard({ profile, isCurrent, onSelect }: {
           {profile.proactiveRules.length > 0 && (
             <div>
               <div className="text-xs font-medium text-text-muted mb-1">
-                主动行为规则（{profile.proactiveRules.length}）
+                主动行为规则（{profile.proactiveRules.length} 条，{enabledRuleCount} 条启用）
               </div>
               <div className="space-y-1">
                 {profile.proactiveRules.map((rule) => (
-                  <div key={rule.id} className="text-xs text-text-muted">
-                    <span className="font-medium">{rule.name}</span>
-                    <span className="ml-2 text-text-muted/70">{rule.condition}</span>
+                  <div
+                    key={rule.id}
+                    className={`text-xs flex items-start gap-1.5 ${
+                      rule.enabled ? 'text-text-muted' : 'text-text-muted/50'
+                    }`}
+                  >
+                    <span
+                      className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                        rule.enabled ? 'bg-accent' : 'border border-border'
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0">
+                      <span className="font-medium">{rule.name}</span>
+                      {!rule.enabled && (
+                        <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-surface-hover text-text-muted/70">
+                          未启用
+                        </span>
+                      )}
+                      <span className="ml-2 text-text-muted/70 break-all">{rule.condition}</span>
+                    </span>
                   </div>
                 ))}
               </div>
+              {enabledRuleCount < profile.proactiveRules.length && (
+                <div className="text-[10px] text-text-muted/70 mt-1">
+                  未启用的规则依赖尚未接入的信号源，当前不会触发
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -29,7 +29,7 @@ const CORE_SAMPLE = [
   'web_search', 'read_url', 'image_search', 'video_search',
   // 文档与交互
   'extract_document', 'ask_user', 'remember', 'knowledge_search',
-  'companion_control', 'open_preview', 'inspect_preview',
+  'companion_control', 'open_preview', 'inspect_preview', 'close_preview',
   // 任务与规划（此前仅专家模式可用）
   'todo_write', 'offer_continuation', 'schedule', 'apply_skill',
   'create_task_plan', 'update_task_plan', 'start_task_execution',

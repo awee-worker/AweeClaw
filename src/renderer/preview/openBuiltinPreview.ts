@@ -165,7 +165,7 @@ export async function openBuiltinPreview(
         if (input.preferSiteTab && openInSiteBrowserTab(resolved.url, title)) {
             return { success: true, url: resolved.url, title, rootDir: resolved.rootDir, openedIn: 'site-browser' }
         }
-        const session = await activatePreview(resolved.url, title, resolved.rootDir, input.device)
+        const session = await activatePreview(resolved.url, title, resolved.rootDir, input.device, rawPath)
         const ready = await waitForSessionReady(session.id)
         return { success: true, url: resolved.url, title, sessionId: session.id, rootDir: resolved.rootDir, ready, openedIn: 'preview-tab' }
     } catch (err) {
@@ -177,7 +177,13 @@ export async function openBuiltinPreview(
 }
 
 /** 打开（或复用）预览标签页并激活，返回对应会话（调用方据此等待页面就绪） */
-async function activatePreview(url: string, title: string, rootDir?: string, device?: string): Promise<PreviewSession> {
+async function activatePreview(
+    url: string,
+    title: string,
+    rootDir?: string,
+    device?: string,
+    localPath?: string,
+): Promise<PreviewSession> {
     // 侧边栏的收起交给 useFocusChromeCollapse：它按「浏览器专注」的模式在绘制前
     // 与标签页激活落在同一次提交里，并保留打开前的面板快照。
     // 这里手动 setActiveSidePanel(null) 会把打开前的侧栏状态抹掉，关闭浏览器后无法恢复。
@@ -186,6 +192,8 @@ async function activatePreview(url: string, title: string, rootDir?: string, dev
         source: 'manual',
         activate: true,
         previewRoot: rootDir,
+        // 原始目标随会话保存：目标被删除时据此收起标签页
+        localPath,
         // 设备档随会话一起下发：首帧就是设备框形态，不会先按铺满渲染一轮再缩回去
         deviceId: device,
     })

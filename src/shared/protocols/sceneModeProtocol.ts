@@ -46,3 +46,24 @@ export function getDomainTag(mode: SceneMode | string): string {
   }
   return SHARED_DOMAIN_TAG
 }
+
+/**
+ * 工作域组：日常办公与代码开发共享同一批记忆。
+ *
+ * 这两者本是一条工作流的不同阶段（定方案 → 写代码 → 写周报）。
+ * 按场景切成互不可见，会让上下文断在模式切换处：
+ * 办公模式记下的项目背景，切到代码开发就读不到。
+ * 生活与学习仍各自独立，隔离的本意是防止生活/学习内容污染工作上下文。
+ */
+const WORK_DOMAIN_GROUP: readonly string[] = [SCENE_MODE_DOMAIN_TAG.work, SCENE_MODE_DOMAIN_TAG.dev]
+
+/**
+ * 获取某场景可读取的记忆域 tag 集合（含共享域）。
+ *
+ * 写入仍使用当前场景自身的域标签，只有读侧按域组放开。
+ */
+export function getReadableDomainTags(mode: SceneMode | string): string[] {
+  if (!isValidSceneMode(mode)) return [SHARED_DOMAIN_TAG]
+  if (mode === 'work' || mode === 'dev') return [...WORK_DOMAIN_GROUP, SHARED_DOMAIN_TAG]
+  return [SCENE_MODE_DOMAIN_TAG[mode], SHARED_DOMAIN_TAG]
+}

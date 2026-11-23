@@ -8,7 +8,7 @@
  * 在每个节拍中评估规则条件并生成提案。
  *
  * 规则 ID 规范：`scene:{mode}:{ruleId}`
- * 例如：scene:work:focus-guard、scene:life:water-remind
+ * 例如：scene:work:weekly-report、scene:life:water
  *
  * @see {@link file:///Volumes/MacData/Ai/aweeclaw/aweeclaw-client/docs/scene-modes/04-d-implementation.md} D-步骤4 设计
  */

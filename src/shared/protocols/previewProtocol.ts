@@ -156,6 +156,14 @@ export interface PreviewSession {
   /** 静态预览的根目录（运行时态；本地文件预览才有，供自动刷新登记用） */
   previewRoot?: string
   /**
+   * 本地文件预览的原始目标（页面文件或其所在目录的绝对路径）
+   *
+   * 与 previewRoot 的区别：打开单个页面文件时 previewRoot 指向它的父目录，
+   * 「目录还在、页面文件被删」这种情况用 previewRoot 判断不出来。保留原始目标
+   * 才能在目标消失时判定这次预览已经失效。
+   */
+  localPath?: string
+  /**
    * 设备模拟档位 id（运行时态，不持久化）
    *
    * 缺省 / 'desktop' 表示桌面（不施加约束）；其余为 DEVICE_PRESETS 的档位 id，
@@ -348,6 +356,8 @@ export interface OpenPreviewMetadata {
    * 运行期），只能凭目录重新解析。
    */
   previewRoot?: string
+  /** 本地文件预览的原始目标（页面文件或目录），重启后据此判断预览是否仍然有效 */
+  localPath?: string
 }
 
 export function buildPreviewDocumentPath(sessionId: string): string {
