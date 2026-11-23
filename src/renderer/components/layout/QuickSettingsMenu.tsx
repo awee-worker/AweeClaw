@@ -679,7 +679,7 @@ function StandbyToggle({ language }: { language: Language }) {
 
   // 平台不具备防锁屏能力时置灰，原因挂在 title 上，菜单宽度放不下完整说明
   const disabled = loading || busy || !supported
-  const label = language === 'zh' ? '远程待命' : 'Remote standby'
+  const label = language === 'zh' ? '防止自动锁屏' : 'Prevent auto-lock'
   const hint = errorMsg
     ? errorMsg
     : !supported

@@ -47,7 +47,7 @@ import { useStore } from '@store'
 import { composerService } from '../runtime/composerEngine'
 import { agentStorePlanBridge, agentStoreTodoBridge } from '../state/intelligenceBridge'
 import { useAgentStore } from '../state/IntelligenceStore'
-import { filterCompletedContinuationItems } from '@intelligence/utils/continuationItems'
+import { filterCompletedContinuationItems, normalizeContinuationItem } from '@intelligence/utils/continuationItems'
 import { buildFileChangeDescriptor } from '@intelligence/utils/fileMutationHelper'
 import { EventBus } from '../engine/EventDispatcher'
 import {
@@ -5678,14 +5678,37 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         const threadId = ctx?.threadId ?? undefined
 
         const currentTodos: Array<{ content: string; status: string; activeForm: string }> = useAgentStore.getState().getTodos(threadId) || []
-        const newContents = new Set(todos.map(t => t.content.trim()))
+
+        // 合并新旧清单时按归一化文案比对，而不是原文字符串：模型重述清单时常把
+        // 同一件事的空白、标点改一改，「样式改了」和「样式改了。」会各占一条，
+        // 已完成的旧条目被当成新条目留在清单里，续做栏就会把做完的事再报一遍。
+        const merged: Array<{ content: string; status: string; activeForm: string }> = []
+        const usedKeys = new Set<string>()
+        for (const todo of todos) {
+            const key = normalizeContinuationItem(todo.content)
+            // 同一件事在本次清单里出现两次时只保留第一条
+            if (key && usedKeys.has(key)) continue
+            const previous = currentTodos.find(t => normalizeContinuationItem(t.content) === key)
+            // 同一件事旧清单里已经完成、新清单又把它写回未完成：以完成态为准。
+            // 一条任务在清单里不可能既是已完成又是待执行，保留旧状态可以避免续做栏
+            // 把做完的事重新提给用户；确需重做时模型会改写描述或先清空清单。
+            if (key && previous && previous.status === 'completed' && todo.status !== 'completed') {
+                merged.push(previous)
+            } else {
+                merged.push(todo)
+            }
+            if (key) usedKeys.add(key)
+        }
+
+        // 新清单没提到的已完成条目仍然保留，避免模型精简清单时丢掉完成记录
         const lostCompleted = currentTodos.filter(
-            (t: { content: string; status: string; activeForm: string }) => t.status === 'completed' && !newContents.has(t.content.trim())
+            (t: { content: string; status: string; activeForm: string }) =>
+                t.status === 'completed' && !usedKeys.has(normalizeContinuationItem(t.content)),
         )
-        const merged = [...lostCompleted, ...todos]
+        const finalTodos = [...lostCompleted, ...merged]
 
         store.setTodos(
-            merged.map(t => ({
+            finalTodos.map(t => ({
                 content: t.content,
                 status: t.status as 'pending' | 'in_progress' | 'verifying' | 'completed',
                 activeForm: t.activeForm,
@@ -5693,12 +5716,12 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             threadId,
         )
 
-        const completed = merged.filter(t => t.status === 'completed').length
-        const inProgress = merged.find(t => t.status === 'in_progress')
-        const allCompleted = merged.every(t => t.status === 'completed')
+        const completed = finalTodos.filter(t => t.status === 'completed').length
+        const inProgress = finalTodos.find(t => t.status === 'in_progress')
+        const allCompleted = finalTodos.every(t => t.status === 'completed')
         const summary = allCompleted
-            ? `All ${merged.length} tasks completed.`
-            : `Task list updated (${completed}/${merged.length} completed)` +
+            ? `All ${finalTodos.length} tasks completed.`
+            : `Task list updated (${completed}/${finalTodos.length} completed)` +
               (inProgress ? `. Currently: ${inProgress.activeForm}` : '')
         return { success: true, result: summary }
     },

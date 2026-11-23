@@ -1379,7 +1379,7 @@ export async function executeAgentCycle(
       // 漏项或编造。只提示一次；模型本轮已调用过 offer_continuation 时不再打扰。
       if (!planStageActive && !continuationNudged && !context.abortSignal?.aborted) {
         const openTodos = (useAgentStore.getState().getTodos(threadId) || [])
-          .filter((t) => t.status === 'pending' || t.status === 'in_progress')
+          .filter((t) => t.status !== 'completed')
         const alreadyOffered = llmMessages.some((m) => {
           if (m.role !== 'assistant') return false
           const assistantMsg = m as AssistantMessage
@@ -1396,8 +1396,8 @@ export async function executeAgentCycle(
           llmMessages.push({
             role: 'user',
             content: language === 'zh'
-              ? `【收尾检查】你的任务清单里还有未完成的条目：\n${list}\n\n请判断：这些是否属于「用户还会继续要做」的实质工作？\n- 是 → 调用 offer_continuation，把剩余项按执行顺序写入 remaining（只列真正没做的，绝不能包含已完成的条目）\n- 否（只是可忽略的琐碎收尾，或你已确认无需再做）→ 直接文字收尾，不要为了走流程而调用工具\n不要凭空编造清单之外的剩余事项。`
-              : `【Closing check】Your todo list still has unfinished items:\n${list}\n\nDecide: is any of this real work the user will still want done?\n- Yes → call offer_continuation and put the remaining items into \`remaining\` in execution order (only genuinely undone ones; never include completed work)\n- No (trivial leftovers, or already confirmed unnecessary) → just finish with text; do not call the tool for the sake of it\nNever invent remaining items that are not in the list.`,
+              ? `【收尾检查】你的任务清单里还有未完成的条目：\n${list}\n\n请判断：这些是否属于「用户还会继续要做」的实质工作？\n- 是 → 调用 offer_continuation，把剩余项按执行顺序写入 remaining。要求：只列清单中状态不是 completed 的条目，并逐条照抄清单原文，不要改写措辞、不要合并或拆分类似条目——改写后的文案与清单对不上，前端就无法判断哪条其实已经做完。\n- 否（只是可忽略的琐碎收尾，或你已确认无需再做）→ 直接文字收尾，不要为了走流程而调用工具\n不要凭空编造清单之外的剩余事项。`
+              : `【Closing check】Your todo list still has unfinished items:\n${list}\n\nDecide: is any of this real work the user will still want done?\n- Yes → call offer_continuation and put the remaining items into \`remaining\` in execution order. Only include entries whose status is not completed, and copy each entry verbatim from the list: do not reword, merge or split similar entries — a reworded item no longer matches the list, so the client cannot tell which ones are already done.\n- No (trivial leftovers, or already confirmed unnecessary) → just finish with text; do not call the tool for the sake of it\nNever invent remaining items that are not in the list.`,
           })
           shouldContinue = true
           continue

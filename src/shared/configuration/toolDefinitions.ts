@@ -1465,6 +1465,7 @@ WHEN NOT TO USE:
 RULES:
 - \`remaining\` must list the concrete unfinished items, in execution order, one per entry — never a vague "continue the rest".
 - Do not include already-completed work in \`remaining\`.
+- When a todo list exists for this conversation, copy each unfinished entry verbatim from it (same wording, not reworded or merged): the client matches \`remaining\` against the real todo statuses, and a reworded item can no longer be recognised as already done.
 - Call it at most once per turn. After calling, stop and wait for the user.`,
         examples: [
             'offer_continuation summary="接口已完成，前端页面还没接" remaining=["编写登录页表单组件","对接 /api/login 并处理错误态","补充表单校验的单元测试"]',
@@ -1474,6 +1475,7 @@ RULES:
             'Only call when part of the request is genuinely unfinished',
             'List the concrete remaining items in execution order — never a vague restatement',
             'Do not include already-completed work in remaining',
+            'Copy unfinished todo entries verbatim instead of rewording them',
             'Call at most once per turn, then stop and wait for the user',
             'Waiting for a required choice or missing info → use ask_user instead',
         ],

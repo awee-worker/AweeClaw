@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   normalizeContinuationItem,
   isSameContinuationItem,
+  dedupeContinuationItems,
   filterCompletedContinuationItems,
+  pickUncompletedTodos,
 } from '../continuationItems'
 
 describe('normalizeContinuationItem', () => {
@@ -92,5 +94,96 @@ describe('filterCompletedContinuationItems', () => {
 
   it('清单中未出现在待办里的事项不会被误删', () => {
     expect(filterCompletedContinuationItems(['补充文档说明'], todos)).toEqual(['补充文档说明'])
+  })
+})
+
+describe('dedupeContinuationItems', () => {
+  it('归一化后重复的条目只保留首次出现的那条', () => {
+    expect(
+      dedupeContinuationItems(['导出结果包', ' 导出结果包 ', '导出结果包。', '生成对比报表']),
+    ).toEqual(['导出结果包', '生成对比报表'])
+  })
+
+  it('丢弃空白条目', () => {
+    expect(dedupeContinuationItems(['', '   ', '导出结果包'])).toEqual(['导出结果包'])
+  })
+
+  it('大小写与标点不同视为同一条', () => {
+    expect(dedupeContinuationItems(['Fix the login page', 'fix the login page.'])).toEqual([
+      'Fix the login page',
+    ])
+  })
+})
+
+describe('pickUncompletedTodos', () => {
+  it('剔除已完成的待办', () => {
+    expect(
+      pickUncompletedTodos([
+        { content: '生成对比报表', status: 'completed', activeForm: '生成对比报表' },
+        { content: '编写登录页', status: 'in_progress', activeForm: '正在编写登录页' },
+        { content: '补充单元测试', status: 'pending', activeForm: '补充单元测试' },
+      ]).map(t => t.content),
+    ).toEqual(['编写登录页', '补充单元测试'])
+  })
+
+  it('同一件事同时存在已完成与未完成副本时，按已完成处理', () => {
+    expect(
+      pickUncompletedTodos([
+        { content: '导出结果包', status: 'completed', activeForm: '导出结果包' },
+        { content: ' 导出结果包。', status: 'pending', activeForm: '导出结果包' },
+        { content: '补充说明文档', status: 'pending', activeForm: '补充说明文档' },
+      ]).map(t => t.content),
+    ).toEqual(['补充说明文档'])
+  })
+
+  it('内容完全重复的未完成条目只保留一条', () => {
+    expect(
+      pickUncompletedTodos([
+        { content: '补充单元测试', status: 'pending', activeForm: '补充单元测试' },
+        { content: '补充单元测试。', status: 'pending', activeForm: '补充单元测试' },
+      ]).length,
+    ).toBe(1)
+  })
+
+  it('verifying 属于未完成，需要保留', () => {
+    expect(
+      pickUncompletedTodos([
+        { content: '编写登录页', status: 'verifying', activeForm: '验证登录页' },
+      ]).map(t => t.content),
+    ).toEqual(['编写登录页'])
+  })
+
+  it('全部已完成时返回空数组（调用方据此不显示续做栏）', () => {
+    expect(
+      pickUncompletedTodos([
+        { content: '导出结果包', status: 'completed', activeForm: '导出结果包' },
+      ]),
+    ).toEqual([])
+  })
+
+  it('空内容条目不参与展示', () => {
+    expect(
+      pickUncompletedTodos([
+        { content: '   ', status: 'pending', activeForm: '空' },
+        { content: '导出结果包', status: 'pending', activeForm: '导出结果包' },
+      ]).map(t => t.content),
+    ).toEqual(['导出结果包'])
+  })
+
+  it('措辞明显不同的未完成条目不会被误删', () => {
+    expect(
+      pickUncompletedTodos([
+        { content: '编写登录页', status: 'completed', activeForm: '编写登录页' },
+        { content: '编写登录页样式', status: 'pending', activeForm: '编写登录页样式' },
+      ]).map(t => t.content),
+    ).toEqual(['编写登录页样式'])
+  })
+
+  it('按 labelOf 指定的字段做比对', () => {
+    const items = [
+      { title: '导出结果包', status: 'completed' },
+      { title: ' 导出结果包。', status: 'pending' },
+    ]
+    expect(pickUncompletedTodos(items, t => t.title)).toEqual([])
   })
 })
