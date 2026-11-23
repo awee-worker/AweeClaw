@@ -347,6 +347,56 @@ export function AgentProfilePanel({
                                             className="bg-background/50 border-border text-xs h-9"
                                         />
                                     </div>
+                            </div>
+                        </div>
+
+                            {/* 并行执行 */}
+                            <div className="space-y-3 pt-4 border-t border-border/30">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-accent" />
+                                    <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('app.parallelism', language as Language)}</label>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[11px] font-medium text-text-muted">{t('app.filewriteconcurrency', language as Language)}</label>
+                                        <TextField
+                                            type="number"
+                                            value={agentConfig.dynamicConcurrency?.fileWriteConcurrency ?? DEFAULT_AGENT_CONFIG.dynamicConcurrency.fileWriteConcurrency ?? 4}
+                                            onChange={(e) => setAgentConfig({
+                                                ...agentConfig,
+                                                dynamicConcurrency: {
+                                                    ...(agentConfig.dynamicConcurrency ?? DEFAULT_AGENT_CONFIG.dynamicConcurrency),
+                                                    // 上限与执行层 resolveFileWriteConcurrency 保持一致
+                                                    fileWriteConcurrency: Math.max(1, Math.min(16, parseInt(e.target.value) || 4)),
+                                                },
+                                            })}
+                                            min={1}
+                                            max={16}
+                                            className="bg-background/50 border-border text-xs h-9"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[11px] font-medium text-text-muted">{t('app.commandconcurrency', language as Language)}</label>
+                                        <TextField
+                                            type="number"
+                                            value={agentConfig.dynamicConcurrency?.commandConcurrency ?? DEFAULT_AGENT_CONFIG.dynamicConcurrency.commandConcurrency ?? 3}
+                                            onChange={(e) => setAgentConfig({
+                                                ...agentConfig,
+                                                dynamicConcurrency: {
+                                                    ...(agentConfig.dynamicConcurrency ?? DEFAULT_AGENT_CONFIG.dynamicConcurrency),
+                                                    // 上限与执行层 resolveCommandConcurrency 保持一致
+                                                    commandConcurrency: Math.max(1, Math.min(8, parseInt(e.target.value) || 3)),
+                                                },
+                                            })}
+                                            min={1}
+                                            max={8}
+                                            className="bg-background/50 border-border text-xs h-9"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[11px]">
+                                    <AlertOctagon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                    <p>{t('app.parallelismhint', language as Language)}</p>
                                 </div>
                             </div>
 

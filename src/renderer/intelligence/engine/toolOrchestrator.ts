@@ -14,7 +14,7 @@ import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { toolManager } from '../toolkit/providers'
 import { notifyWorkspaceTreeChange } from '../toolkit/workspaceTreeNotifier'
-import { getToolApprovalType, isFileEditTool, isWriteTool, needsFileSnapshot } from '@configuration/toolDefinitions'
+import { getToolApprovalType, isApprovalParallelTool, isFileEditTool, isWriteTool, needsFileSnapshot } from '@configuration/toolDefinitions'
 import { pathStartsWith, joinPath, normalizePath } from '@shared/toolkit/pathHelper'
 import { redactResult, redactArgs } from '@shared/toolkit/redact'
 import { buildToolPathPolicy } from '../toolkit/toolPathPolicy'
@@ -721,6 +721,32 @@ function resolveDynamicConcurrency(): number {
 }
 
 /**
+ * 文件写入并发上限
+ *
+ * 写工具放开并行后，同一时刻几十个写事务一起落盘并无收益：
+ * 磁盘 IO 与紧随其后的 lint 校验会互相拖慢。这里单给一个上限，
+ * 缺省取 dynamicConcurrency.fileWriteConcurrency（4）。
+ * 路径冲突的写入由 fileWriteLock 串行化，与这个上限无关。
+ */
+function resolveFileWriteConcurrency(): number {
+  const configured = getAgentConfig().dynamicConcurrency?.fileWriteConcurrency
+  const value = typeof configured === 'number' && Number.isFinite(configured) ? configured : 4
+  return Math.max(1, Math.min(Math.floor(value), 16))
+}
+
+/**
+ * 命令并发上限
+ *
+ * 每条命令独占一个 Agent 终端，并发数直接等于同时存在的终端数，
+ * 因此上限比文件写入更保守，缺省 3。
+ */
+function resolveCommandConcurrency(): number {
+  const configured = getAgentConfig().dynamicConcurrency?.commandConcurrency
+  const value = typeof configured === 'number' && Number.isFinite(configured) ? configured : 3
+  return Math.max(1, Math.min(Math.floor(value), 8))
+}
+
+/**
  * 分析工具依赖关系（支持显式声明）
  */
 function resolveToolDependencyGraph(toolCalls: ToolCall[]): Map<string, Set<string>> {
@@ -1340,6 +1366,8 @@ async function orchestrateToolBatchInternal(
 
     const concurrency = resolveDynamicConcurrency()
     const limit = pLimit(concurrency)
+    // 写工具走独立上限：读写混在一批时，读可以开很高，写没必要跟着堆
+    const writeLimit = pLimit(resolveFileWriteConcurrency())
 
     // 记录当前并行批次；遇到非并行工具时会先 flush。
 
@@ -1425,7 +1453,9 @@ async function orchestrateToolBatchInternal(
           }
         }
 
-        return batch.parallel ? limit(run) : run()
+        return batch.parallel
+          ? (isWriteTool(tc.name) ? writeLimit(run) : limit(run))
+          : run()
       })()
       directPromiseMap.set(tc.id, promise)
 
@@ -1600,8 +1630,14 @@ async function orchestrateToolBatchInternal(
         assistantId: context.assistantId ?? context.currentAssistantId ?? undefined,
       })
 
-      for (const tc of approvedTools) {
-        if (abortSignal?.aborted) break
+      // 审批通过后的执行。
+      //
+      // 只有「声明了 allowParallelExecution」且「没有未落定依赖」的调用才并行：
+      // - 有依赖的调用必须等上游落定，否则会读到旧状态；
+      // - run_command 并行时每条命令独占一个 Agent 终端（见 toolExecutors 的
+      //   termOwner），不会出现两条命令抢同一个 shell 的 stdin。
+      const runApproved = async (tc: ToolCall): Promise<void> => {
+        if (abortSignal?.aborted) return
         const result = await invokeToolInvocation(tc, context, store, abortSignal)
         results.push(result)
         pending.delete(tc.id)
@@ -1610,6 +1646,28 @@ async function orchestrateToolBatchInternal(
         } else {
           completed.add(tc.id)
         }
+      }
+
+      const parallelizable = approvedTools.filter(tc =>
+        isApprovalParallelTool(tc.name) && (deps.get(tc.id)?.size ?? 0) === 0
+      )
+      const serialOnly = approvedTools.filter(tc => !parallelizable.includes(tc))
+
+      for (const tc of serialOnly) {
+        if (abortSignal?.aborted) break
+        await runApproved(tc)
+      }
+
+      if (parallelizable.length > 0 && !abortSignal?.aborted) {
+        const commandConcurrency = resolveCommandConcurrency()
+        const approvalLimit = pLimit(commandConcurrency)
+        logger.agent.info(
+          `[Tools] Executing ${parallelizable.length} approved calls in parallel ` +
+          `(limit ${commandConcurrency}): ${parallelizable.map(tc => tc.name).join(', ')}`,
+        )
+        await Promise.allSettled(
+          parallelizable.map(tc => approvalLimit(() => runApproved(tc))),
+        )
       }
     }
   }

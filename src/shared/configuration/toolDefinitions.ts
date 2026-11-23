@@ -43,7 +43,22 @@ export interface ToolConfig {
     commonErrors?: Array<{ error: string; solution: string }>
     category: ToolCategory
     approvalType: ToolApprovalType
+    /**
+     * 是否允许与其他工具调用并行。
+     *
+     * 注意语义边界：只读工具置 true 后会被 getReadOnlyTools() 收集，
+     * 进而影响循环检测对「只读轮次」的判定。需要并行但仍需审批的工具
+     * （如 run_command）不要用它，改用 allowParallelExecution。
+     */
     parallel: boolean
+    /**
+     * 是否允许在执行阶段与其他同批调用同时跑。
+     *
+     * 与 parallel 的区别：它只作用于「已通过审批」之后的执行阶段，
+     * 不参与只读工具归集，也不会让工具进入免审批的直连批次。
+     * 用于 run_command 这类「必须先审批、但审批通过后彼此独立」的工具。
+     */
+    allowParallelExecution?: boolean
     concurrencyMode?: import('@protocols/modelGateway').ToolConcurrencyMode
     resourceScope?: string[]
     resultSemantics?: import('@protocols/modelGateway').ToolResultSemantics
@@ -374,8 +389,10 @@ ON FAILURE:
         }).passthrough(),
         category: 'write',
         approvalType: 'none',
-        parallel: false,
-        concurrencyMode: 'serialized',
+        // 编辑不同文件彼此无关，可并行；同一文件的先后修改由依赖图与
+        // fileWriteLock 按路径互斥保证，不依赖批次串行。
+        parallel: true,
+        concurrencyMode: 'parallel-safe',
         resourceScope: ['filesystem:write'],
         resultSemantics: 'file-write',
         retryPolicy: { maxAttempts: 1 },
@@ -432,8 +449,9 @@ So for a few-line change, use edit_file up front — even though you *can* produ
         ],
         category: 'write',
         approvalType: 'none',
-        parallel: false,
-        concurrencyMode: 'serialized',
+        // 写不同文件可并行；同路径的覆盖由 fileWriteLock 串行化
+        parallel: true,
+        concurrencyMode: 'parallel-safe',
         resourceScope: ['filesystem:write'],
         resultSemantics: 'file-write',
         retryPolicy: { maxAttempts: 1 },
@@ -472,8 +490,9 @@ Common mistakes to avoid:
         ],
         category: 'write',
         approvalType: 'none',
-        parallel: false,
-        concurrencyMode: 'serialized',
+        // 创建不同路径可并行；目录锁覆盖其下路径，与目录内写入互斥
+        parallel: true,
+        concurrencyMode: 'parallel-safe',
         resourceScope: ['filesystem:write'],
         resultSemantics: 'file-write',
         retryPolicy: { maxAttempts: 1 },
@@ -553,7 +572,11 @@ For long-running servers or watch tasks:
         ],
         category: 'terminal',
         approvalType: 'terminal',
+        // 保持 parallel: false —— 命令不能进入免审批的直连批次，
+        // 也不能被 getReadOnlyTools() 当成只读工具。审批通过后的并行由
+        // allowParallelExecution 单独表达，执行层据此给每条命令分配独立终端。
         parallel: false,
+        allowParallelExecution: true,
         concurrencyMode: 'approval-gated',
         resourceScope: ['process:command'],
         resultSemantics: 'command',
@@ -3257,6 +3280,17 @@ export function getApprovalRequiredTools(): string[] {
 /** 检查工具是否可并行执行 */
 export function isParallelTool(toolName: string): boolean {
     return TOOL_CONFIGS[toolName]?.parallel ?? false
+}
+
+/**
+ * 检查工具在「审批通过后」可否与其他同批调用并行执行。
+ *
+ * 与 isParallelTool 的分工：isParallelTool 决定免审批批次的切分，
+ * 本函数只服务于审批后的执行阶段。需要审批但彼此独立的工具
+ * （run_command 是最典型的一个）走这里。
+ */
+export function isApprovalParallelTool(toolName: string): boolean {
+    return TOOL_CONFIGS[toolName]?.allowParallelExecution === true
 }
 
 /** 获取可并行执行的工具列表 */

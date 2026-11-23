@@ -1153,8 +1153,16 @@ export class TerminalManagerClass {
    */
   abortActiveAgentCommands(ownerKey?: string): void {
     // 只回收归属该占用方（会话线程）的终端；未指定时按旧行为处理全部 Agent 终端
-    const owns = (terminalId: string): boolean =>
-      ownerKey === undefined || this.agentTerminalOwners.get(terminalId) === ownerKey
+    //
+    // 占用方有两种形态：会话线程 ID，以及并行命令使用的「线程ID::toolCallId」。
+    // 后者是为多条命令并行跑而拆出来的独立终端，回收时必须按线程前缀一并命中，
+    // 否则点停止后这些终端里的进程会留到会话结束后继续占 CPU。
+    const owns = (terminalId: string): boolean => {
+      if (ownerKey === undefined) return true
+      const owner = this.agentTerminalOwners.get(terminalId)
+      if (owner === undefined) return false
+      return owner === ownerKey || owner.startsWith(`${ownerKey}::`)
+    }
 
     // 1. 中断活跃命令并结束其执行 Promise
     for (const [termId, execution] of this.activeExecutions.entries()) {

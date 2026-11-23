@@ -3207,7 +3207,16 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             // 获取或复用本线程的 Agent 终端（初始 cwd 用工作空间根目录，避免反复改变终端目录）
             // 第三参是占用方：同一会话跨 tool call 复用，不同会话各用各的，
             // 否则并行执行时后发起的命令会去抢占并打断前一条会话正在跑的命令
-            const termOwner = ctx.threadId ?? undefined
+            // 占用方按「线程 + 本次工具调用」区分。
+            //
+            // 同一线程内并行执行多条命令时，若这些命令共用一个占用方，
+            // 后发起的那条会把前一条判定为「终端被占用」并 Ctrl+C 中断它，
+            // 表现为命令互相打断、输出错乱。加上 toolCallId 后每条命令独占
+            // 一个 Agent 终端；会话结束时 abortActiveAgentCommands 按线程前缀
+            // 匹配，仍能一次回收本线程的全部并发终端。
+            const termOwner = ctx.toolCallId
+                ? `${ctx.threadId ?? 'agent'}::${ctx.toolCallId}`
+                : (ctx.threadId ?? undefined)
             // 不要退化成 '/'：主进程会校验终端目录是否位于工作空间内，
             // 传根目录必然被拒（「终端只能在工作空间内创建」），命令根本不会启动。
             // 传空串让主进程回落到工作空间根目录。

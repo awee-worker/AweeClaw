@@ -86,7 +86,12 @@ export function resolveAgentConfig(): AgentRuntimeConfig {
         },
 
         // 动态并发控制
-        dynamicConcurrency: DEFAULT_AGENT_CONFIG.dynamicConcurrency,
+        // 此前这里直接取默认值，用户在 agentConfig 里调整的并发参数一律被覆盖，
+        // 并发上限形同不可配置。改为逐字段合并：缺省用默认档，显式配置则生效。
+        dynamicConcurrency: {
+            ...DEFAULT_AGENT_CONFIG.dynamicConcurrency,
+            ...(agentConfig.dynamicConcurrency ?? {}),
+        },
 
         // 模式后处理钩子
         modePostProcessHooks: DEFAULT_AGENT_CONFIG.modePostProcessHooks,

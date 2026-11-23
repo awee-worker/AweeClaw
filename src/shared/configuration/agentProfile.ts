@@ -146,6 +146,10 @@ export interface AgentRuntimeConfig {
     minConcurrency: number
     maxConcurrency: number
     cpuMultiplier: number  // CPU 核心数的倍数
+    /** 单轮内文件写入类工具的最大并发数（缺省 4） */
+    fileWriteConcurrency?: number
+    /** 单轮内 shell 命令审批通过后的最大并发数（缺省 3） */
+    commandConcurrency?: number
   }
 
   // 上下文压缩
@@ -219,6 +223,12 @@ export const DEFAULT_AGENT_CONFIG: AgentRuntimeConfig = {
     minConcurrency: 4,
     maxConcurrency: 16,
     cpuMultiplier: 2,
+    // 文件写入并发：默认 4。写操作受 fileWriteLock 按路径互斥，
+    // 同文件不会打架，4 路足以覆盖常见的多文件改造，又不会把磁盘打满。
+    fileWriteConcurrency: 4,
+    // 命令并发：默认 3。每条命令独占一个 Agent 终端，
+    // 上限过低等于没并行，过高会让编译类命令互相抢 CPU。
+    commandConcurrency: 3,
   },
   toolDependencies: {
     edit_file: {

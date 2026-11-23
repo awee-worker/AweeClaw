@@ -89,6 +89,10 @@ export interface AgentConfig {
     minConcurrency: number
     maxConcurrency: number
     cpuMultiplier: number
+    /** 单轮内文件写入类工具（edit_file / write_file / create_file_or_folder）的最大并发数 */
+    fileWriteConcurrency?: number
+    /** 单轮内 shell 命令（run_command）审批通过后的最大并发数 */
+    commandConcurrency?: number
   }
   modePostProcessHooks?: Record<string, unknown>
   toolDependencies?: Record<string, unknown>
