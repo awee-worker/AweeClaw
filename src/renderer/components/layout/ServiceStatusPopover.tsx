@@ -22,13 +22,45 @@ import type { PreviewServerCandidate, PreviewServerStatus } from '@shared/protoc
 import { t, type Language } from '@renderer/i18n'
 
 interface RunningService {
-  terminalId: string
+  /** 该服务关联的全部后台终端：同一地址被多个终端重复输出时一并记录，结束时一起回收 */
+  terminalIds: string[]
   command: string
   url: string
   label: string
   status: PreviewServerStatus
   candidateId: string
   workspaceRoot?: string
+}
+
+/** 回环地址的等价写法，统一按 localhost 展示与合并 */
+const HOST_ALIASES = new Set(['127.0.0.1', '0.0.0.0', '::1', '[::1]'])
+
+/**
+ * 归一化服务地址，作为「是否同一个服务」的判定依据
+ *
+ * 同一个 dev server 会以多种写法出现：localhost 与 127.0.0.1、默认端口省略、
+ * 末尾斜杠、带 query / hash / 子路径，以及被多个终端重复输出。这些都指向同一个
+ * 监听端口，因此只按 host:port 判定：一个端口只保留一条记录。
+ */
+function toServiceKey(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl)
+    const hostname = parsed.hostname.toLowerCase()
+    const host = HOST_ALIASES.has(hostname) ? 'localhost' : hostname
+    const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80')
+    return `${host}:${port}`
+  } catch {
+    return rawUrl.replace(/\/+$/, '').toLowerCase()
+  }
+}
+
+/** 地址是否为站点根（无子路径）：合并时优先用它作为该服务的访问入口 */
+function isRootUrl(rawUrl: string): boolean {
+  try {
+    return new URL(rawUrl).pathname.replace(/\/+$/, '') === ''
+  } catch {
+    return false
+  }
 }
 
 /** 后台会话是否仍在运行：detached 是 run_command(is_background) 的常态，running 兜底瞬时状态 */
@@ -66,20 +98,41 @@ export default function ServiceStatusPopover({ language }: { language: Language 
 
   const services = useMemo<RunningService[]>(() => {
     const liveTerminalIds = new Set(termState.terminals.map((terminal) => terminal.id))
-    const seen = new Set<string>()
-    const result: RunningService[] = []
+    // 按归一化服务地址合并：同一端点的多种写法 / 多个终端重复输出，只保留一条
+    const merged = new Map<string, RunningService>()
 
     for (const candidate of candidates) {
       const terminalId = candidate.terminalId
-      if (!terminalId || seen.has(candidate.id)) continue
+      if (!terminalId) continue
       if (!liveTerminalIds.has(terminalId)) continue
 
       const session = pickBackgroundSession(termState.commandInfoByTerminal[terminalId])
       if (!session) continue
 
-      seen.add(candidate.id)
-      result.push({
-        terminalId,
+      const key = toServiceKey(candidate.url)
+      const existing = merged.get(key)
+      if (existing) {
+        // 同一端口的重复登记：只保留一条，记住全部终端以便「结束」时一起回收
+        if (!existing.terminalIds.includes(terminalId)) {
+          existing.terminalIds.push(terminalId)
+        }
+
+        // 展示用的地址按「可访问 > 站点根」优先，避免入口停在某个子路径上
+        const preferNew =
+          (existing.status !== 'ready' && candidate.status === 'ready') ||
+          (candidate.status === existing.status && isRootUrl(candidate.url) && !isRootUrl(existing.url))
+        if (preferNew) {
+          existing.url = candidate.url
+          existing.label = candidate.label || candidate.title || existing.label
+          existing.status = candidate.status
+          existing.candidateId = candidate.id
+          existing.workspaceRoot = candidate.workspaceRoot
+        }
+        continue
+      }
+
+      merged.set(key, {
+        terminalIds: [terminalId],
         command: session.command,
         url: candidate.url,
         label: candidate.label || candidate.title || candidate.url,
@@ -89,7 +142,7 @@ export default function ServiceStatusPopover({ language }: { language: Language 
       })
     }
 
-    return result
+    return [...merged.values()]
   }, [candidates, termState])
 
   const handleOpenService = useCallback((service: RunningService) => {
@@ -103,8 +156,12 @@ export default function ServiceStatusPopover({ language }: { language: Language 
   }, [])
 
   const handleStopService = useCallback((service: RunningService) => {
-    terminalManager.closeTerminal(service.terminalId)
+    // 合并后的条目可能对应多个终端，逐一关闭，避免残留进程仍占用该端口
+    for (const terminalId of service.terminalIds) {
+      terminalManager.closeTerminal(terminalId)
+    }
   }, [])
+
 
   // 没有在跑的服务时不占位，避免顶部图标长期存在造成干扰
   if (services.length === 0) return null
