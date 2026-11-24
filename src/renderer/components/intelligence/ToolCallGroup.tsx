@@ -38,6 +38,7 @@ import {
   groupToolsByStatus,
   type ToolGroupStatus,
 } from './toolGroupStats'
+import { groupAdjacentFileTools } from './toolCallCard/fileToolMerge'
 
 /** 工具分组信息 */
 interface ToolGroup {
@@ -98,11 +99,13 @@ export interface ToolCallCardOptions {
  *
  * @param tc 工具调用
  * @param opts 渲染选项
+ * @param mergedToolCalls 被折叠进这张卡片的相邻同文件写入（按调用顺序）
  * @returns React 节点
  */
 export function renderToolCallCard(
   tc: ToolCall,
   opts: ToolCallCardOptions,
+  mergedToolCalls?: ToolCall[],
 ): ReactNode {
   const isPending = tc.id === opts.pendingToolId
   // 等待确认的状态表达与操作入口分开：集合里的卡片都显示「待确认」，
@@ -115,6 +118,7 @@ export function renderToolCallCard(
       <FileChangeCard
         key={tc.id}
         toolCall={tc}
+        mergedToolCalls={mergedToolCalls}
         isAwaitingApproval={isAwaiting}
         onApprove={isPending ? opts.onApproveTool : undefined}
         onReject={isPending ? opts.onRejectTool : undefined}
@@ -268,18 +272,37 @@ function ToolCallGroup({
     messageId,
   }
 
+  /**
+   * 相邻同文件写入折扇
+   *
+   * AI 分段写同一个文件时会连续产生多条写入调用，每条各占一张卡片，界面上就是
+   * 「正在创建 index.js」重复堆了几行、每行挂着自己的 +N。这里把它们折成一条，
+   * 写入次数与 diff 增量由卡片自己汇总。
+   */
+  const displayItems = useMemo(
+    () => groupAdjacentFileTools(toolCalls, (tc) => approvalIdSet.has(tc.id)),
+    [toolCalls, approvalIdSet],
+  )
+
+  // 分组、计数、组头显隐都按折扇后的条目算：否则会出现「已完成 (3)」却只看到
+  // 一张卡片的对不上，用户会以为有工具被吞了
+  const displayTools = useMemo(
+    () => displayItems.map((item) => item.lead),
+    [displayItems],
+  )
+
   // 按状态分组：恒为单组，卡片顺序就是调用顺序；这里只补上组头所需的图标与配色
   const groups = useMemo(
-    () => groupToolsByStatus(toolCalls).map((group) => ({ ...group, ...GROUP_VISUALS[group.status] })),
-    [toolCalls],
+    () => groupToolsByStatus(displayTools).map((group) => ({ ...group, ...GROUP_VISUALS[group.status] })),
+    [displayTools],
   )
 
   // P1-C 组级进度：批量执行时统计已完成/总数，显示在「进行中」组头
   const doneCount = useMemo(
-    () => toolCalls.filter((tc) => tc.status === 'success').length,
-    [toolCalls],
+    () => displayTools.filter((tc) => tc.status === 'success').length,
+    [displayTools],
   )
-  const totalCount = toolCalls.length
+  const totalCount = displayTools.length
 
   // 默认展开所有分组，避免分组头闪烁和用户需要手动展开查看结果
   // 用户反馈：多个相同工具分组显示时分组头会闪烁，默认展开体验更好
@@ -422,15 +445,17 @@ function ToolCallGroup({
                  单工具无分组头时不缩进，与正文直接对齐。
                  每个卡片包裹层使用 layout containment 隔离内部 reflow，
                  并添加淡入动画掩盖新增卡片时的瞬时高度跳变。 */}
-             {(!isCollapsed || group.tools.length === 1 || hasApproval) && (
+             {(!isCollapsed || displayItems.length === 1 || hasApproval) && (
                <div className={`space-y-2 ${showHeader ? 'pl-5' : ''}`}>
-                {group.tools.map((tc) => (
+                {/* key 取组内第一条调用的 id：合并期间代表卡片会被后来的调用顶替，
+                    用 lead.id 作 key 会让卡片被卸载重建并重播入场动画 */}
+                {displayItems.map((item) => (
                   <div
-                    key={tc.id}
+                    key={item.key}
                     style={{ contain: 'layout style' }}
                     className="tool-card-appear"
                   >
-                    {renderToolCallCard(tc, opts)}
+                    {renderToolCallCard(item.lead, opts, item.merged)}
                   </div>
                 ))}
               </div>

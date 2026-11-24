@@ -15,6 +15,7 @@ import { streamingEditService } from '@intelligence/runtime/streamingEditor'
 import { resolveStreamingEditFilePath } from '@intelligence/runtime/editPreviewStreamer'
 import { useToolCardExpansion } from '@hooks'
 import InlineDiffPreview, { getApproxLineDeltaStats, getDiffStats } from './InlineDiffPreview'
+import { resolveMergedBaseOldContent } from './toolCallCard/fileToolMerge'
 import { getFileName, joinPath } from '@shared/toolkit/pathHelper'
 import { ExpandablePreviewContainer } from './ToolCallCard'
 import { useStore } from '@store'
@@ -27,6 +28,8 @@ import { toast } from '@components/foundation/NotificationProvider'
 
 interface FileChangeCardProps {
   toolCall: ToolCall
+  /** 被折扇进这张卡片的相邻同文件写入（按调用顺序，不含本卡片） */
+  mergedToolCalls?: ToolCall[]
   isAwaitingApproval?: boolean
   onApprove?: () => void
   onReject?: () => void
@@ -369,6 +372,7 @@ function useFileOpenHandler(opts: {
 
 function FileChangeCard({
   toolCall,
+  mergedToolCalls,
   isAwaitingApproval,
   onApprove,
   onReject,
@@ -421,10 +425,12 @@ function FileChangeCard({
     return unsubscribe
   }, [resolvedStreamingFilePath, isRunning, isStreaming])
 
-  const oldContent = useMemo(
-    () => resolveOldContent(meta, args, isActive, toolCall.name),
-    [meta, args, isActive, toolCall.name],
-  )
+  // 合并卡片以整组写入的起点作为 diff 基准：徽章上的 +N 才是这次连续写入的总增量
+  const oldContent = useMemo(() => {
+    const mergedBase = resolveMergedBaseOldContent(mergedToolCalls)
+    if (mergedBase !== null) return mergedBase
+    return resolveOldContent(meta, args, isActive, toolCall.name)
+  }, [mergedToolCalls, meta, args, isActive, toolCall.name])
 
   const newContent = useMemo(
     () => resolveNewContent(meta, args, streamingContent, isActive),
@@ -479,6 +485,8 @@ function FileChangeCard({
 
   // edit_file 卡片显示编辑语义；write_file / create 等显示创建语义
   const isEditTool = toolCall.name === 'edit_file'
+  /** 这张卡片代表的连续写入次数（1 = 未合并） */
+  const mergedCount = 1 + (mergedToolCalls?.length ?? 0)
   const fileActionLabel = isEditTool
     ? (isSuccess ? t('tool.status.fileEdited', language as any) : t('tool.status.fileEditing', language as any))
     : (isSuccess ? t('tool.status.fileCreated', language as any) : t('tool.status.fileCreating', language as any))
@@ -498,6 +506,16 @@ function FileChangeCard({
       >
         {getFileName(filePath)}
       </span>
+      {/* 连续写入合并标记：同一文件的多步写入只留一张卡片，这里说明折叠了几次 */}
+      {mergedCount > 1 && (
+        <span
+          className="shrink-0 text-[10px] font-mono leading-4 px-1.5 rounded bg-text-primary/[0.06] text-text-muted border border-border"
+          title={t('tool.status.mergedCalls', language as any, { count: mergedCount })}
+          aria-label={t('tool.status.mergedCalls', language as any, { count: mergedCount })}
+        >
+          ×{mergedCount}
+        </span>
+      )}
     </div>
   ) : isActive ? (
     <span className="font-medium text-[12px] italic">{t('tool.status.editingEllipsis', language as any)}</span>

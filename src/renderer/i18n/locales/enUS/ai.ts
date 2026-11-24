@@ -162,6 +162,7 @@ export const en = {
   'tool.status.fileEditing': 'Editing',
   'tool.status.fileEdited': 'Edited',
   'tool.status.fileWriting': 'Writing...',
+  'tool.status.mergedCalls': 'Merged {count} writes to the same file',
   'tool.status.deleting': 'Deleting {target}...',
   'tool.status.deleted': 'Deleted {target}',
   'tool.status.deleteFailed': 'Failed to delete {target}',

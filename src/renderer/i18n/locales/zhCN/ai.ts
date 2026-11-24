@@ -163,6 +163,7 @@ export const zh = {
   'tool.status.fileEditing': '正在编辑',
   'tool.status.fileEdited': '已编辑',
   'tool.status.fileWriting': '正在写入...',
+  'tool.status.mergedCalls': '已合并 {count} 次同文件写入',
   'tool.status.deleting': '正在删除 {target}...',
   'tool.status.deleted': '已删除 {target}',
   'tool.status.deleteFailed': '删除失败：{target}',
