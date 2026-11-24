@@ -585,13 +585,13 @@ function ContinueTaskCard({ content, onSelect, disabled, obsolete }: Interactive
   if (obsolete && settled === null) {
     return (
       <div className="my-0.5 rounded-xl border border-border/40 bg-text-primary/[0.02] overflow-hidden">
-        <div className="flex items-center gap-2.5 px-3 py-2">
+        <div className="flex items-start gap-2.5 px-2.5 py-2 sm:px-3">
           <ListChecks className="w-4 h-4 shrink-0 text-text-muted/70" />
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-medium text-text-muted">
+            <div className="text-[11px] font-medium leading-4 text-text-muted whitespace-nowrap truncate">
               {t('continue.card.pending', language, { count: remaining.length })}
             </div>
-            <p className="mt-0.5 text-xs text-text-muted/70">
+            <p className="mt-1 text-xs leading-5 text-text-muted/70 break-words">
               {t('continue.card.obsolete', language)}
             </p>
           </div>
@@ -608,82 +608,105 @@ function ContinueTaskCard({ content, onSelect, disabled, obsolete }: Interactive
 
   return (
     <div className="my-0.5 rounded-xl border border-accent/25 bg-accent/[0.05] overflow-hidden">
-      <div className="flex items-start gap-2.5 px-3 py-2.5">
+      <div className="flex items-start gap-2.5 px-2.5 py-2.5 sm:px-3">
         <ListChecks className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
 
         <div className="flex-1 min-w-0">
-          <div className="text-[11px] font-medium text-accent">
+          {/* 标题单独一行、不拆字；窄容器下数量文案整块省去省略号而不是逐字换行 */}
+          <div className="text-[11px] font-medium leading-4 text-accent whitespace-nowrap truncate">
             {t('continue.card.pending', language, { count: remaining.length })}
           </div>
           {content.continuation?.summary && (
             <p
-              className={`mt-0.5 text-xs text-text-secondary break-words ${expanded ? '' : 'line-clamp-3'}`}
+              className={`mt-1 text-xs leading-5 text-text-secondary break-words ${expanded ? '' : 'line-clamp-3'}`}
               title={content.continuation.summary}
             >
               {content.continuation.summary}
             </p>
           )}
           {remaining.length > 0 && (
-            <ol
-              className={`mt-1.5 space-y-0.5 ${collapsible && expanded ? 'max-h-48 overflow-y-auto pr-1' : ''}`}
+            <motion.div
+              key={expanded ? 'expanded' : 'collapsed'}
+              initial={{ opacity: 0, y: -2 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.14, ease: 'easeOut' }}
             >
-              {visibleItems.map((item, index) => (
-                <li key={`${index}-${item}`} className="flex gap-1.5 text-xs text-text-secondary">
-                  <span className="shrink-0 text-text-muted tabular-nums">{index + 1}.</span>
-                  <span className="min-w-0 break-words">{item}</span>
-                </li>
-              ))}
-            </ol>
+              <ol
+                className={`mt-1.5 space-y-0.5 ${
+                  collapsible && expanded
+                    ? 'max-h-48 overflow-y-auto rounded-lg border border-accent/10 bg-text-primary/[0.03] p-1.5'
+                    : ''
+                }`}
+              >
+                {visibleItems.map((item, index) => (
+                  <li
+                    key={`${index}-${item}`}
+                    className="flex gap-2 rounded-md px-1 py-0.5 text-xs leading-5 text-text-secondary transition-colors hover:bg-accent/[0.06]"
+                  >
+                    <span className="mt-[2px] flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent/12 text-[10px] font-medium tabular-nums text-accent">
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0 break-words">{item}</span>
+                  </li>
+                ))}
+              </ol>
+            </motion.div>
           )}
-          {collapsible && (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              className="mt-1.5 flex items-center gap-1 text-[11px] text-accent/90 hover:text-accent transition-colors"
-            >
-              {expanded ? (
-                <>
-                  <ChevronUp className="w-3 h-3" />
-                  {t('continue.card.collapse', language)}
-                </>
+
+          {/* 操作行独占一行：展开在左，主操作在右，窄容器下整块换行不挤压正文 */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {collapsible && (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-1 text-[11px] text-accent/90 transition-colors hover:bg-accent/10 hover:text-accent"
+              >
+                {expanded ? (
+                  <>
+                    <ChevronUp className="w-3 h-3" />
+                    {t('continue.card.collapse', language)}
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3 h-3" />
+                    {t('continue.card.expand', language, { count: hiddenCount })}
+                  </>
+                )}
+              </button>
+            )}
+
+            <div className="ml-auto flex flex-wrap items-center gap-1.5">
+              {settled === 'continue' ? (
+                <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-accent">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {t('continue.card.progressed', language)}
+                </span>
+              ) : settled === 'skip' ? (
+                <span className="whitespace-nowrap text-xs text-text-muted">
+                  {t('continue.card.declined', language)}
+                </span>
               ) : (
                 <>
-                  <ChevronDown className="w-3 h-3" />
-                  {t('continue.card.expand', language, { count: hiddenCount })}
+                  <button
+                    onClick={() => pick('skip')}
+                    disabled={disabled}
+                    className="h-7 shrink-0 whitespace-nowrap rounded-lg px-2.5 text-xs text-text-muted transition-colors hover:bg-text-primary/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {t('continue.card.skip', language)}
+                  </button>
+                  <button
+                    onClick={() => pick('continue')}
+                    disabled={disabled}
+                    className="flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-accent/12 px-2.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    {t('continue.card.continue', language)}
+                  </button>
                 </>
               )}
-            </button>
-          )}
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div className="flex items-center gap-2 px-3 pb-2.5 pl-[34px]">
-        {settled === 'continue' ? (
-          <span className="flex items-center gap-1.5 text-xs text-accent">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            {t('continue.card.progressed', language)}
-          </span>
-        ) : settled === 'skip' ? (
-          <span className="text-xs text-text-muted">{t('continue.card.declined', language)}</span>
-        ) : (
-          <>
-            <button
-              onClick={() => pick('skip')}
-              disabled={disabled}
-              className="h-7 px-2.5 rounded-lg text-text-muted hover:bg-text-primary/[0.04] text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {t('continue.card.skip', language)}
-            </button>
-            <button
-              onClick={() => pick('continue')}
-              disabled={disabled}
-              className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-accent/12 hover:bg-accent/20 text-accent text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Play className="w-3.5 h-3.5" />
-              {t('continue.card.continue', language)}
-            </button>
-          </>
-        )}
       </div>
     </div>
   )

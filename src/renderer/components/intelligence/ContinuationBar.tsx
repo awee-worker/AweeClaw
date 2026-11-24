@@ -105,20 +105,57 @@ function ContinuationBarBase() {
           transition={{ duration: 0.18 }}
           className="mx-1 mb-2 rounded-xl border border-accent/25 bg-accent/[0.06] overflow-hidden"
         >
-          <div className="flex items-center gap-2.5 px-3 py-2">
+          <div className="flex items-start gap-2 px-2.5 py-2 sm:px-3">
             <ListChecks className="w-4 h-4 shrink-0 text-accent" />
 
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 text-[11px] font-medium text-accent">
-                <span>{t('continue.bar.title', language)}</span>
-                <span className="px-1.5 py-0.5 rounded-full bg-accent/12 text-accent/90 text-[10px] font-normal">
+              {/* 标题行：标题与数量徽标各自不拆字，窄容器下整块换行而不是把每段文字压断 */}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-medium leading-4 text-accent">
+                <span className="min-w-0 truncate">
+                  {t('continue.bar.title', language)}
+                </span>
+                <span className="px-1.5 py-px rounded-full bg-accent/12 text-accent/90 text-[10px] font-normal whitespace-nowrap tabular-nums">
                   {t('continue.bar.pending', language, { count: pendingItems.length })}
                 </span>
+              </div>
+
+              {expandedList ? (
+                <motion.div
+                  key="expanded"
+                  initial={{ opacity: 0, y: -2 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.14, ease: 'easeOut' }}
+                >
+                  <ol className="mt-1.5 max-h-44 space-y-0.5 overflow-y-auto rounded-lg border border-accent/10 bg-text-primary/[0.03] p-1.5">
+                    {pendingItems.map((item, index) => (
+                      <li
+                        key={`${index}-${item}`}
+                        className="flex gap-2 rounded-md px-1 py-0.5 text-xs leading-5 text-text-secondary transition-colors hover:bg-accent/[0.06]"
+                      >
+                        <span className="mt-[2px] flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent/12 text-[10px] font-medium tabular-nums text-accent">
+                          {index + 1}
+                        </span>
+                        <span className="min-w-0 break-words">{item}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </motion.div>
+              ) : (
+                <p
+                  className="mt-1 text-xs leading-5 text-text-secondary line-clamp-2 break-words"
+                  title={pendingItems[0]}
+                >
+                  {pendingItems[0]}
+                </p>
+              )}
+
+              {/* 操作行：展开 / 跳过 / 继续 独占一行，窄容器时换行也不会挤压标题文字 */}
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {collapsible && (
                   <button
                     type="button"
                     onClick={() => setExpanded(v => !v)}
-                    className="flex items-center gap-0.5 text-[10px] font-normal text-accent/90 hover:text-accent transition-colors"
+                    className="flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-1 text-[11px] text-accent/90 transition-colors hover:bg-accent/10 hover:text-accent"
                   >
                     {expanded ? (
                       <>
@@ -133,41 +170,23 @@ function ContinuationBarBase() {
                     )}
                   </button>
                 )}
+
+                <div className="ml-auto flex items-center gap-1.5">
+                  <button
+                    onClick={() => setDismissed(true)}
+                    className="h-7 shrink-0 whitespace-nowrap rounded-lg px-2.5 text-xs text-text-muted transition-colors hover:bg-text-primary/[0.04]"
+                  >
+                    {t('continue.bar.skip', language)}
+                  </button>
+                  <button
+                    onClick={handleContinue}
+                    className="flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-accent/12 px-2.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    {t('continue.bar.continue', language)}
+                  </button>
+                </div>
               </div>
-
-              {expandedList ? (
-                <ol className="mt-1 space-y-0.5 max-h-44 overflow-y-auto pr-1">
-                  {pendingItems.map((item, index) => (
-                    <li key={`${index}-${item}`} className="flex gap-1.5 text-xs text-text-secondary">
-                      <span className="shrink-0 text-text-muted tabular-nums">{index + 1}.</span>
-                      <span className="min-w-0 break-words">{item}</span>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p
-                  className="mt-0.5 text-xs text-text-secondary line-clamp-2 break-words"
-                  title={pendingItems[0]}
-                >
-                  {pendingItems[0]}
-                </p>
-              )}
-            </div>
-
-            <div className="shrink-0 flex items-center gap-1.5">
-              <button
-                onClick={() => setDismissed(true)}
-                className="h-7 px-2.5 rounded-lg text-text-muted hover:bg-text-primary/[0.04] text-xs transition-colors"
-              >
-                {t('continue.bar.skip', language)}
-              </button>
-              <button
-                onClick={handleContinue}
-                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-accent/12 hover:bg-accent/20 text-accent text-xs font-medium transition-colors"
-              >
-                <Play className="w-3.5 h-3.5" />
-                {t('continue.bar.continue', language)}
-              </button>
             </div>
           </div>
         </motion.div>
