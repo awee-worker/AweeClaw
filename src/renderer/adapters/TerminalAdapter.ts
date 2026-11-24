@@ -379,6 +379,14 @@ export class TerminalManagerClass {
 
   // PTY 状态
   private ptyReady = new Map<string, boolean>();
+  /**
+   * 终端创建失败的原因
+   *
+   * 创建失败时主进程只回一个 error 字符串，而终端实例已经进了 state.terminals。
+   * 若不把原因留住，后续写入命令只会落在一个不存在的终端上（主进程静默丢弃），
+   * 上层看到的唯一现象就是「命令一直没有输出、最后超时」——完全查不到根因。
+   */
+  private ptyErrors = new Map<string, string>();
   private pendingPtyCreation = new Map<string, Promise<boolean>>();
 
   // 派生状态缓存
@@ -799,6 +807,7 @@ export class TerminalManagerClass {
       const result = await api.terminal.create({ id, cwd, shell, backend, remote, minimalPrompt });
       if (!result?.success) {
         const errorMsg = result?.error || "Unknown error";
+        this.ptyErrors.set(id, errorMsg);
         logger.system.error(
           `[TerminalManager] Failed to create PTY for ${id}:`,
           errorMsg,
@@ -1120,6 +1129,7 @@ export class TerminalManagerClass {
 
     this.outputBuffers.delete(id);
     this.ptyReady.delete(id);
+    this.ptyErrors.delete(id);
     this.clearCommandState(id)
     api.terminal.kill(id);
 
@@ -1355,6 +1365,21 @@ export class TerminalManagerClass {
       shell,
       isAgent: true,
     }).then(id => {
+      /**
+       * 终端建不起来时绝不能再把 id 交出去。
+       *
+       * createTerminal 只把失败记为 ptyReady=false 就返回（终端实例已进 state），
+       * 调用方拿到 id 后照样往里写命令 —— 主进程 terminals 表里没有这台终端，
+       * 写入被静默丢弃，命令没有任何输出也没有任何报错，直到上层等到超时。
+       * 那正是「命令全都超时、且查不到原因」的成因。这里改为立即抛出带原因的
+       * 错误，让 run_command 第一时间失败并说明真实原因。
+       */
+      if (this.ptyReady.get(id) === false) {
+        const reason = this.ptyErrors.get(id) || '未知原因'
+        this.closeTerminal(id)
+        this.agentTerminalCreating.delete(ownerKey)
+        throw new Error(`终端创建失败：${reason}`)
+      }
       this.agentTerminalIds.set(ownerKey, id)
       this.agentTerminalOwners.set(id, ownerKey)
       this.cleanupIdleAgentTerminals()
@@ -1530,6 +1555,28 @@ export class TerminalManagerClass {
      * 这里不打断前一条，等它结算完再继续；前一条自身有超时兜底，
      * 额外的截至时间只为避免状态异常时无限等待。
      */
+    if (this.ptyReady.get(termId) === false) {
+      // 终端没建起来时立即失败。此时写入会被主进程静默丢弃，
+      // 继续等下去只会得到「命令无输出 + 超时」这种查不到根因的结论。
+      const reason = this.ptyErrors.get(termId) || '终端未就绪'
+      logger.agent.error(
+        `[TerminalManager] Refuse to run command on a failed terminal ${termId}: ${reason}`,
+      )
+      return {
+        success: false,
+        finalStatus: 'failed',
+        output: '',
+        partialOutput: '',
+        exitCode: null,
+        timedOut: false,
+        durationMs: 0,
+        terminalId: termId,
+        commandSessionId: crypto.randomUUID(),
+        terminationReason: 'error_detected',
+        sentinelMatched: false,
+      }
+    }
+
     if (this.activeExecutions.has(termId)) {
       logger.agent.warn(
         `[TerminalManager] Terminal ${termId} is busy, queueing command: ${summarizeCommand(command)}`,

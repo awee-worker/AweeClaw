@@ -1225,8 +1225,18 @@ export function registerSecureTerminalHandlers(
      */
     let actualBackend: TerminalBackend = effectiveBackend
 
+    /**
+     * node-pty 是否真的可用。
+     *
+     * 不可用时降级到 pipe 而不是直接报错：直接失败会让渲染层拿到一台
+     * 「创建失败但已登记」的终端，后续写入全部落空，命令没有任何输出也没有
+     * 任何报错，最终只表现为「一直执行到超时」。降级后命令至少能真正执行，
+     * 代价只是失去行编辑与光标控制。
+     */
+    const ptyUsable = effectiveBackend === 'pty' && !!pty
     if (effectiveBackend === 'pty' && !pty) {
-      return { success: false, error: 'node-pty not available' }
+      actualBackend = 'pipe'
+      logger.security.warn('[Terminal] node-pty unavailable, degraded to pipe backend')
     }
 
     if (terminals.size >= MAX_TERMINALS && !terminals.has(id)) {
@@ -1284,7 +1294,7 @@ export function registerSecureTerminalHandlers(
          * pipe 用 `-l`：stdin 是管道而非 TTY，没有行编辑层，启用交互模式
          * 只会让提示符污染输出，因此不带 `-i`。
          */
-        shellArgs = effectiveBackend === 'pipe' ? ['-l'] : ['-il']
+        shellArgs = ptyUsable ? ['-il'] : ['-l']
       } else {
         shellPath = process.env.SHELL || '/bin/bash'
       }
@@ -1320,7 +1330,7 @@ export function registerSecureTerminalHandlers(
 
       // AI 终端压制提示符：交互式 shell 的提示符字符会混进命令输出，
       // 用最小 zsh 环境把 PROMPT 清空，保留行编辑能力但不留提示符痕迹。
-      if (effectiveBackend === 'pty' && minimalPrompt && !isWindows) {
+      if (ptyUsable && minimalPrompt && !isWindows) {
         const zshHome = ensureMinimalZshHome()
         if (zshHome) {
           terminalEnv.ZDOTDIR = zshHome
@@ -1352,7 +1362,7 @@ export function registerSecureTerminalHandlers(
           logger.security.error(`[Terminal] Remote SSH spawn failed: ${errorMsg}`, err)
           return { success: false, error: `Failed to connect remote shell: ${errorMsg}` }
         }
-      } else if (effectiveBackend === 'pipe') {
+      } else if (!ptyUsable) {
         const child = spawn(shellPath, shellArgs, {
           cwd: targetCwd,
           env: terminalEnv,
