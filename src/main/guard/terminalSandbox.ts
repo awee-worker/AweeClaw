@@ -808,8 +808,33 @@ export function registerSecureTerminalHandlers(
 
   // ============ Interactive Terminal with node-pty ============
 
-  const MAX_TERMINALS = 10 // 最大终端数量限制
+  /**
+   * 终端表的兜底护栏（不是并发上限）。
+   *
+   * 真正的回收责任在渲染层：命令执行结束后释放终端租约，空闲的 Agent 终端只保留
+   * 一个很小的池子，后续命令复用它们。此前这里是 10 且硬性拒绝创建，同一轮会话里
+   * 命令一多就会直接报「Maximum number of terminals (10) reached」，把正常作业卡死。
+   * 现在超限不再拒绝，而是回收最早创建的那几台，新终端总能建起来；数值只用来
+   * 防止真正的泄漏把 shell 进程堆到不可收拾。
+   */
+  const MAX_TERMINALS = 64
   let pty: any = null
+
+  /** 超出护栏时回收最早创建的终端（Map 按插入顺序迭代，最前面的就是最旧的） */
+  function evictOldestTerminals(count: number): void {
+    let removed = 0
+    for (const [termId, proc] of terminals) {
+      if (removed >= count) break
+      killPtyReliably(proc)
+      terminals.delete(termId)
+      removed++
+    }
+    if (removed > 0) {
+      logger.security.warn(
+        `[Terminal] Evicted ${removed} oldest terminal(s) to stay under the ${MAX_TERMINALS} guard`,
+      )
+    }
+  }
 
   // Try to load node-pty
   try {
@@ -1239,8 +1264,10 @@ export function registerSecureTerminalHandlers(
       logger.security.warn('[Terminal] node-pty unavailable, degraded to pipe backend')
     }
 
-    if (terminals.size >= MAX_TERMINALS && !terminals.has(id)) {
-      return { success: false, error: `Maximum number of terminals (${MAX_TERMINALS}) reached` }
+    // 超限不拒绝创建：回收最早创建的终端腾位置，让命令总能跑起来。
+    // 并发的终端数量由调用方（渲染层）自行控制，这里只做泄漏兜底。
+    if (!terminals.has(id) && terminals.size >= MAX_TERMINALS) {
+      evictOldestTerminals(terminals.size - MAX_TERMINALS + 1)
     }
 
     const targetCwd = (cwd && cwd.trim()) || workspace?.roots?.[0] || process.cwd()

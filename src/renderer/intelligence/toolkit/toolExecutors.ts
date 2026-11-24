@@ -3442,6 +3442,13 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                     const threadStore = store.forThread(threadIdForStream)
                     threadStore.clearToolStreamingPreview(toolCallIdForStream)
                 }
+                // 释放本占用方的终端租约：终端回到空闲池，下一次 run_command 直接复用。
+                // 占用方按「线程 + 本次工具调用」区分，不释放的话每条命令都会留下
+                // 一条永不回收的绑定，终端只能越建越多，最终撞上终端数量上限。
+                // 后台/中止路径同样适用：那两条路径要么已显式释放，要么终端已被关闭。
+                if (!('__detach' in racedResult)) {
+                    terminalManager.releaseAgentTerminal(termOwner)
+                }
             }
 
             const displayOutput = (commandResult.output || commandResult.partialOutput || '').trim()

@@ -1353,6 +1353,15 @@ export class TerminalManagerClass {
       }
     }
 
+    // 空闲池复用：占用方没有租约时，接管一台空闲 Agent 终端而不是新建。
+    // 命令执行结束会释放租约（见 run_command 的收尾），终端因此回到可复用池；
+    // 少了这一步，每条命令都会新开一台终端，同一轮会话命令一多就撞上主进程的
+    // 终端数量上限，报「Maximum number of terminals reached」。
+    const pooledId = this.acquireIdleAgentTerminal(ownerKey)
+    if (pooledId) {
+      return pooledId
+    }
+
     // 并发锁：防止同一占用方快速连续调用时创建多个 Agent 终端
     const creating = this.agentTerminalCreating.get(ownerKey)
     if (creating) {
@@ -1402,6 +1411,79 @@ export class TerminalManagerClass {
    */
   releaseAgentTerminal(ownerKey: string = DEFAULT_AGENT_TERMINAL_OWNER) {
     this.agentTerminalIds.delete(ownerKey)
+    // 释放后立刻回收多余的空闲终端：只留下可复用池里的少量终端，
+    // 其余关闭，避免「命令跑完终端还在」把主进程终端表一点点撑满。
+    this.cleanupIdleAgentTerminals()
+  }
+
+  /**
+   * 从空闲池中接管一台可复用的 Agent 终端。
+   *
+   * 租约（agentTerminalIds 的条目）在命令执行结束后由调用方释放，终端随之回到
+   * 可复用池。这里挑选同线程遗留的空闲终端优先，其次任意空闲终端，取最早创建的，
+   * 避免反复新建终端把主进程的终端表撑满。
+   */
+  private acquireIdleAgentTerminal(ownerKey: string): string | null {
+    const leasedIds = new Set(this.agentTerminalIds.values())
+    const threadKey = ownerKey.split('::')[0]
+
+    const candidate = this.state.terminals
+      .filter(terminal => terminal.isAgent)
+      .filter(terminal => !leasedIds.has(terminal.id))
+      .filter(terminal => this.isAgentTerminalIdle(terminal.id))
+      .sort((a, b) => {
+        const aSameThread = (this.agentTerminalOwners.get(a.id) || '').split('::')[0] === threadKey ? 0 : 1
+        const bSameThread = (this.agentTerminalOwners.get(b.id) || '').split('::')[0] === threadKey ? 0 : 1
+        if (aSameThread !== bSameThread) return aSameThread - bSameThread
+        return a.createdAt - b.createdAt
+      })[0]
+
+    if (!candidate) return null
+
+    // 复用前把异常收尾的残留进程清掉：
+    // 上一条命令超时/中断时终端里可能还挂着未被杀死的进程，直接写入新命令
+    // 会落在被占用的 stdin 上，表现为「新命令没有任何输出、一直等到超时」。
+    const lastStatus = this.lastCommandSessions.get(candidate.id)?.status
+    if (
+      lastStatus === 'timed_out' ||
+      lastStatus === 'interrupted' ||
+      lastStatus === 'failed' ||
+      lastStatus === 'cancelled'
+    ) {
+      this.interruptStaleAgentCommand(candidate.id)
+      if (!this.isAgentTerminalIdle(candidate.id)) {
+        return null
+      }
+    }
+
+    for (const [owner, id] of [...this.agentTerminalIds.entries()]) {
+      if (id === candidate.id) this.agentTerminalIds.delete(owner)
+    }
+    this.agentTerminalIds.set(ownerKey, candidate.id)
+    this.agentTerminalOwners.set(candidate.id, ownerKey)
+
+    logger.agent.info(
+      `[TerminalManager] Reused idle agent terminal ${candidate.id} for ${ownerKey}`,
+    )
+    return candidate.id
+  }
+
+  /** 终端是否处于「空闲可复用」状态：无在跑命令、无后台长进程、shell 仍然存活 */
+  private isAgentTerminalIdle(terminalId: string): boolean {
+    if (!this.state.terminals.some(t => t.id === terminalId)) return false
+    if (this.ptyReady.get(terminalId) === false) return false
+    if (this.activeExecutions.has(terminalId)) return false
+
+    const info = this.getTerminalCommandState(terminalId)
+    const currentStatus = info.current?.status
+    const lastStatus = info.last?.status
+    if (currentStatus === 'queued' || currentStatus === 'running' || currentStatus === 'detached') {
+      return false
+    }
+    if (lastStatus === 'detached' || lastStatus === 'shell_exited') {
+      return false
+    }
+    return true
   }
 
   /**
