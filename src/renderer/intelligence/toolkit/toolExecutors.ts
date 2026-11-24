@@ -3257,7 +3257,8 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                     : effectiveCommand
                 // 先发送 \r 确保光标在行首（复用终端时上次输出可能残留光标位置），
                 // 再写入命令并执行。避免命令从非行首位置开始显示导致排版错乱。
-                terminalManager.writeToTerminal(termId, `\r${bgCmd}\r`)
+                // 分片写入：启动命令可能很长（带一串环境变量），一次性灌进 PTY 会被输入队列截断
+                terminalManager.writeToTerminalChunked(termId, `\r${bgCmd}\r`)
 
                 const detachedSession = terminalManager.recordDetachedCommand(
                     termId,

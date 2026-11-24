@@ -208,6 +208,34 @@ const MAX_COMMAND_OUTPUT_CHARS = 120_000
 const MAX_RAW_SENTINEL_BUFFER_CHARS = 24_000
 
 /**
+ * 单次写入 PTY 的最大字符数
+ *
+ * PTY master 到 shell 之间是一段有限的输入队列，一次性灌入超过队列容量的数据会
+ * 被行规程丢弃或重排：命令被截断成「引号未闭合」、token 被吃掉、字符重复，
+ * shell 报语法错误后 END sentinel 永不输出，工具只能等到超时。人工在系统终端里
+ * 逐字输入或分段粘贴永远撞不上这个上限，所以同一条命令「手动跑很快、AI 跑超时」。
+ *
+ * 512 字符远小于队列容量，切片后每条命令只多出几个毫秒的写入间隔。
+ */
+const TERMINAL_WRITE_CHUNK_CHARS = 512
+
+/** 分片写入的块间隔（ms）：给 shell 留出消费输入队列的时间 */
+const TERMINAL_WRITE_CHUNK_DELAY_MS = 12
+
+/**
+ * PTY 单行输入的安全长度上限（字符）
+ *
+ * 实测边界：同样的命令包装成 317 字符可以正常执行并返回哨兵，1317 字符则被
+ * 行规程截断——该行被提前提交执行，剩余字节变成后续输入，END 哨兵永远不输出，
+ * 上层只能等到超时（表现为「AI 跑 120 秒超时、手动在终端里敲却很快」）。
+ * macOS 的 MAX_CANON 就是 1KB，其余平台的行缓冲也在同一量级。
+ *
+ * 分片写入并不能绕开它：限制在行长而不是写入速率。超过阈值必须落盘成脚本，
+ * 再用一条远低于上限的短命令去执行。
+ */
+const PTY_SAFE_LINE_CHARS = 800
+
+/**
  * 命令「无输出停滞」判定阈值（ms）
  *
  * 一条命令连续这么久没有产生任何新输出，基本可以判定它不是在计算，而是卡住了：
@@ -1228,6 +1256,42 @@ export class TerminalManagerClass {
     api.terminal.write(id, data);
   }
 
+  /**
+   * 分片写入终端
+   *
+   * 一次性写入整条命令时，超过 PTY 输入队列容量的部分会被行规程丢弃或重排，
+   * 命令因此残缺（引号未闭合、token 被吃掉、字符重复），shell 语法错误后
+   * END sentinel 永不输出，最终只能靠超时收场 —— 而同样的命令在系统终端里
+   * 由人逐字/分段输入，永远撞不上这个上限。
+   *
+   * 这里按 code point 切片、块间留出 shell 消费队列的间隙。切片用 Array.from
+   * 而不是按 UTF-16 code unit，避免把代理对（emoji、部分生僻字）切成半个字符。
+   */
+  writeToTerminalChunked(
+    id: string,
+    data: string,
+    chunkSize: number = TERMINAL_WRITE_CHUNK_CHARS,
+    delayMs: number = TERMINAL_WRITE_CHUNK_DELAY_MS,
+  ) {
+    if (data.length <= chunkSize) {
+      this.writeToTerminal(id, data);
+      return;
+    }
+
+    const points = Array.from(data);
+    let cursor = 0;
+    const writeNext = () => {
+      if (cursor >= points.length) return;
+      const chunk = points.slice(cursor, cursor + chunkSize).join('');
+      cursor += chunkSize;
+      this.writeToTerminal(id, chunk);
+      if (cursor < points.length) {
+        setTimeout(writeNext, delayMs);
+      }
+    };
+    writeNext();
+  }
+
   getOutputBuffer(id: string): string[] {
     return this.outputBuffers.get(id)?.toArray() || [];
   }
@@ -2232,7 +2296,7 @@ export class TerminalManagerClass {
       // 命令会一直停在输入缓冲里不执行，直到下一条写入把它补全 —— 表现为
       // 「命令没有任何输出、等到超时」。两者必须按后端区分。
       const lineTerminator = backend === 'pipe' ? '\n' : '\r'
-      const wrapped = `${fakeEchoCmd}; ${mainCommand}${lineTerminator}`
+      const commandBody = `${fakeEchoCmd}; ${mainCommand}`
 
       this.updateCurrentCommandSession(termId, (session) => ({
         ...session,
@@ -2240,10 +2304,60 @@ export class TerminalManagerClass {
       }))
       writeAtMs = Date.now()
       logger.agent.info(
-        `[Terminal] command written at +${writeAtMs - startedAt}ms terminal=${termId} :: ${summarizeCommand(command)}`,
+        `[Terminal] command written at +${writeAtMs - startedAt}ms terminal=${termId} payload=${commandBody.length} :: ${summarizeCommand(command)}`,
       )
-      this.writeToTerminal(termId, wrapped)
+      // 长命令必须落盘执行：见 PTY_SAFE_LINE_CHARS 的说明
+      void this.deliverCommandBody(termId, commandBody, lineTerminator, cwd, isWindows, sentinelId)
     })
+  }
+
+  /**
+   * 把一条命令送进终端
+   *
+   * 两条路径：
+   *  - 短命令：原样写入（分片，避免大块数据压满 PTY 输入队列）
+   *  - 长命令：先落盘成脚本，再执行 `sh <脚本>`。PTY 单行输入上限约 1KB，
+   *    超限的行会被行规程截断执行，END 哨兵因此永不输出，工具只能等到超时。
+   *    落盘失败时退回原样写入，保证功能不因写文件失败而丢失。
+   */
+  private async deliverCommandBody(
+    termId: string,
+    commandBody: string,
+    lineTerminator: string,
+    cwd: string | undefined,
+    isWindows: boolean,
+    sentinelId: string,
+  ): Promise<void> {
+    let payload = `${commandBody}${lineTerminator}`
+
+    if (!isWindows && commandBody.length > PTY_SAFE_LINE_CHARS) {
+      try {
+        let scriptDir = cwd ? `${cwd.replace(/\/+$/, '')}/.aweeclaw/temp` : ''
+        if (!scriptDir) {
+          // 没有 cwd 时退到应用临时目录：这条路径下同样不能把长命令直接灌进 PTY
+          const tempDir = await api.settings.getTempDir()
+          if (tempDir) scriptDir = `${String(tempDir).replace(/\/+$/, '')}/aweeclaw-cmd`
+        }
+        if (scriptDir) {
+          await api.file.ensureDir(scriptDir)
+          const scriptPath = `${scriptDir}/aweeclaw-cmd-${sentinelId}.sh`
+          const written = await api.file.write(scriptPath, `${commandBody}\n`)
+          if (written !== false) {
+            // 脚本跑完即删：临时脚本没有保留价值，留着只会堆积
+            payload = `sh "${scriptPath}"; rm -f "${scriptPath}"${lineTerminator}`
+            logger.agent.info(
+              `[Terminal] long command persisted to script (${commandBody.length} chars → ${scriptPath})`,
+            )
+          }
+        }
+      } catch (err) {
+        logger.agent.warn(
+          `[Terminal] persist long command failed, falling back to direct write: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
+
+    this.writeToTerminalChunked(termId, payload)
   }
 
   cleanup() {

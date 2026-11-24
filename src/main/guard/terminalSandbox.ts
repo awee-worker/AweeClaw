@@ -61,6 +61,19 @@ const TERMINAL_DATA_FLUSH_DELAY_MS = 30
 /** 单批聚合的数据量上限（字符）：超过立即刷出，避免单条 IPC 过大或大输出被延迟 */
 const TERMINAL_DATA_FLUSH_CHARS = 32 * 1024
 
+/**
+ * 单次写入 PTY 的最大字符数
+ *
+ * PTY master 到 shell 之间是一段有限的输入队列。一次性写入超过队列容量的数据，
+ * 超出部分会被行规程丢弃或重排：命令被截断成「引号未闭合」、token 被吃掉、
+ * 字符重复，shell 报语法错误后哨兵永不输出，上层只能等到超时。
+ * 键盘输入与 Ctrl+C 都是短数据，走原路径不受影响。
+ */
+const TERMINAL_INPUT_CHUNK_CHARS = 512
+
+/** 分片写入的块间隔（ms）：给 shell 留出消费输入队列的时间 */
+const TERMINAL_INPUT_CHUNK_DELAY_MS = 12
+
 interface SecureShellRequest {
   command: string
   args?: string[]
@@ -1544,20 +1557,47 @@ export function registerSecureTerminalHandlers(
 
   /**
    * Write input to terminal
+   *
+   * 大块输入必须分片：PTY master 到 shell 之间的输入队列容量有限，
+   * 一次性写入超长数据会被行规程丢弃或重排（命令被截断成引号未闭合、
+   * 字符重复），shell 报错后哨兵永不输出，上层只能等到超时。
+   * 键盘输入、Ctrl+C 等短数据仍按原样一次写入，不引入任何延迟。
    */
   safeIpcHandle('terminal:input', async (_, { id, data }: { id: string; data: string }) => {
     const ptyProcess = terminals.get(id)
-    if (ptyProcess) {
-      try {
+    if (!ptyProcess) return
+
+    try {
+      if (data.length <= TERMINAL_INPUT_CHUNK_CHARS) {
         ptyProcess.write(data)
 
         // 对于 Ctrl+C，添加日志以便调试
         if (data === '\x03' || data === String.fromCharCode(3)) {
           logger.security.debug(`[Terminal] Ctrl+C sent to terminal ${id}`)
         }
-      } catch (err) {
-        logger.security.error(`[Terminal] Write error (id: ${id}):`, err)
+        return
       }
+
+      const points = Array.from(data)
+      let cursor = 0
+      const writeNext = (): void => {
+        const target = terminals.get(id)
+        if (!target) return
+        const chunk = points.slice(cursor, cursor + TERMINAL_INPUT_CHUNK_CHARS).join('')
+        cursor += TERMINAL_INPUT_CHUNK_CHARS
+        try {
+          target.write(chunk)
+        } catch (err) {
+          logger.security.error(`[Terminal] Write error (id: ${id}):`, err)
+          return
+        }
+        if (cursor < points.length) {
+          setTimeout(writeNext, TERMINAL_INPUT_CHUNK_DELAY_MS)
+        }
+      }
+      writeNext()
+    } catch (err) {
+      logger.security.error(`[Terminal] Write error (id: ${id}):`, err)
     }
   })
 
