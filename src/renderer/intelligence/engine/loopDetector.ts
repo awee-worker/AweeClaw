@@ -283,6 +283,42 @@ const MAX_LOOP_ITERATIONS = 200
  */
 const MAX_LINT_AUTO_FIX_ROUNDS = 3
 
+/**
+ * 收尾建议话术的扫描窗口（字符）
+ *
+ * 只看正文末尾：正文中段出现「后续可以…」属于正常叙述，收尾阶段才出现在结尾处，
+ * 用它作为「模型把该做的工作降级成建议」的信号来源。
+ */
+const CLOSING_SUGGESTION_SCAN_CHARS = 600
+
+/**
+ * 收尾时常见的「建议的下一步」句式
+ *
+ * 命中的是模型「停手并把活儿交回给用户」的典型表达。这里只做触发信号，不做语义
+ * 判定——是否真的属于本次需求，交给模型在下一轮自查（见收尾处的需求闭环提示）。
+ */
+const CLOSING_SUGGESTION_PATTERNS: readonly RegExp[] = [
+  /建议的?下一步/,
+  /下一步(?:的)?(?:建议|可以|可|推荐)/,
+  /后续(?:可以|可|建议|还能?)/,
+  /接下来(?:可以|可|建议|我们?可以)/,
+  /如果(?:你|您)?(?:需要|想要|愿意)[，,、\s]{0,4}我(?:可以|来|帮)/,
+  /如需(?:要)?[^\n。！？]{0,10}我(?:可以|来|帮)/,
+  /要不要我(?:继续|帮你|接着)/,
+  /\bnext steps?\b/i,
+  /\brecommended next\b/i,
+  /\byou (?:could|can|may) (?:also|then|next)\b/i,
+  /\bi can (?:also|then|next)\b/i,
+  /\bwould you like me to\b/i,
+]
+
+/** 正文尾部是否出现「把活儿写成建议」的话术 */
+function looksLikeClosingSuggestion(text: string): boolean {
+  const tail = text.trim()
+  if (!tail) return false
+  return CLOSING_SUGGESTION_PATTERNS.some((pattern) => pattern.test(tail))
+}
+
 async function invokeModelCall(
   config: LLMConfig,
   messages: LLMMessage[],
@@ -689,6 +725,14 @@ export async function executeAgentCycle(
    * 凭空猜「还有什么事没做」，否则会凭空造出一堆不存在的工作。
    */
   let continuationNudged = false
+  /**
+   * 需求闭环自查是否已用掉。
+   *
+   * 模型准备用「建议的下一步 / 后续可以…」收尾时，先让它对照本次用户请求判断一遍：
+   * 属于需求就继续做，超出需求的才留作建议。只触发一次——第二轮仍写成建议，
+   * 说明它确实认为这些不在本次范围内，再拦就是死循环。
+   */
+  let requirementClosureNudged = false
   /**
    * 执行期专家切换记录
    *
@@ -1376,14 +1420,20 @@ export async function executeAgentCycle(
 
       // 收尾续做判断：模型准备收尾，但会话待办里还有未完成条目。
       // 依据是待办清单这个客观事实，而不是让模型凭记忆复述剩余工作 —— 后者极易
-      // 漏项或编造。只提示一次；模型本轮已调用过 offer_continuation 时不再打扰。
+      // 漏项或编造。只提示一次；模型本轮已调用过 offer_continuation / ask_user 时不再打扰。
+      //
+      // 判定顺序固定为「先继续做，再谈续接」：待办里没做完的事，通常就是用户本次
+      // 要交付的东西，直接收尾（哪怕补一张续接卡）等于把该做的工作推回给用户。
+      // 只有模型确认这些事确实超出本次需求、或必须由用户决策时，才转成续接入口。
       if (!planStageActive && !continuationNudged && !context.abortSignal?.aborted) {
         const openTodos = (useAgentStore.getState().getTodos(threadId) || [])
           .filter((t) => t.status !== 'completed')
         const alreadyOffered = llmMessages.some((m) => {
           if (m.role !== 'assistant') return false
           const assistantMsg = m as AssistantMessage
-          return assistantMsg.toolCalls?.some((tc) => tc.name === 'offer_continuation') ?? false
+          return assistantMsg.toolCalls?.some(
+            (tc) => tc.name === 'offer_continuation' || tc.name === 'ask_user',
+          ) ?? false
         })
 
         if (openTodos.length > 0 && !alreadyOffered) {
@@ -1396,8 +1446,42 @@ export async function executeAgentCycle(
           llmMessages.push({
             role: 'user',
             content: language === 'zh'
-              ? `【收尾检查】你的任务清单里还有未完成的条目：\n${list}\n\n请判断：这些是否属于「用户还会继续要做」的实质工作？\n- 是 → 调用 offer_continuation，把剩余项按执行顺序写入 remaining。要求：只列清单中状态不是 completed 的条目，并逐条照抄清单原文，不要改写措辞、不要合并或拆分类似条目——改写后的文案与清单对不上，前端就无法判断哪条其实已经做完。\n- 否（只是可忽略的琐碎收尾，或你已确认无需再做）→ 直接文字收尾，不要为了走流程而调用工具\n不要凭空编造清单之外的剩余事项。`
-              : `【Closing check】Your todo list still has unfinished items:\n${list}\n\nDecide: is any of this real work the user will still want done?\n- Yes → call offer_continuation and put the remaining items into \`remaining\` in execution order. Only include entries whose status is not completed, and copy each entry verbatim from the list: do not reword, merge or split similar entries — a reworded item no longer matches the list, so the client cannot tell which ones are already done.\n- No (trivial leftovers, or already confirmed unnecessary) → just finish with text; do not call the tool for the sake of it\nNever invent remaining items that are not in the list.`,
+              ? `【收尾检查】你的任务清单里还有未完成的条目：\n${list}\n\n请逐条判断这些事项的归属：\n- 属于本次用户需求（或是完成该需求必须的步骤：接通、验证、清理、补测试等）→ 不要转成续接卡，立刻继续调用工具把它们做完，然后再收尾；\n- 需要用户决策或只有用户能提供的信息 → 调用 ask_user；\n- 确实超出本次需求的可选增强 → 才调用 offer_continuation，把剩余项按执行顺序写入 remaining。此时只列状态不是 completed 的条目，并逐条照抄清单原文，不要改写措辞、不要合并或拆分类似条目——改写后的文案与清单对不上，前端就无法判断哪条其实已经做完。\n若清单里的事项都已完成，直接文字收尾，不要为了走流程而调用工具。不要凭空编造清单之外的剩余事项。`
+              : `【Closing check】Your todo list still has unfinished items:\n${list}\n\nDecide what each of them actually is:\n- Part of THIS request (or a step required to finish it: wiring up, verification, cleanup, tests) → do NOT turn it into a continuation card; keep working with tools until it is done, then close;\n- Needs a user decision, or information only the user has → call ask_user;\n- Genuinely outside this request (optional enhancement) → only then call offer_continuation, putting the remaining items into \`remaining\` in execution order. Include only entries whose status is not completed, and copy each entry verbatim from the list: do not reword, merge or split similar entries — a reworded item no longer matches the list, so the client cannot tell which ones are already done.\nIf every item is actually done, just finish with text; do not call the tool for the sake of it. Never invent remaining items that are not in the list.`,
+          })
+          shouldContinue = true
+          continue
+        }
+      }
+
+      // 需求闭环判断：模型打算用「建议的下一步 / 后续可以…」收尾。
+      // 这类收尾语的典型失败，是把用户本次要的东西降级成建议——"建议下一步接入接口"，
+      // 而接入接口本来就是这次需求的一部分。命中收尾建议话术后，先让模型对照本次
+      // 请求自查一遍：属于需求就继续做，确属需求之外的才保留为建议。
+      // 只触发一次；预算已用尽的收尾轮不触发（那一轮不允许再调工具，触发也是空转）。
+      if (
+        !planStageActive
+        && !requirementClosureNudged
+        && !isFinalRound
+        && !context.abortSignal?.aborted
+        && looksLikeClosingSuggestion((result.content || '').slice(-CLOSING_SUGGESTION_SCAN_CHARS))
+      ) {
+        const deferredToUser = llmMessages.some((m) => {
+          if (m.role !== 'assistant') return false
+          const assistantMsg = m as AssistantMessage
+          return assistantMsg.toolCalls?.some(
+            (tc) => tc.name === 'offer_continuation' || tc.name === 'ask_user',
+          ) ?? false
+        })
+        if (!deferredToUser) {
+          requirementClosureNudged = true
+          const { language } = useStore.getState()
+          logger.agent.info('[Loop] Closing suggestion detected, checking it against the original request')
+          llmMessages.push({
+            role: 'user',
+            content: language === 'zh'
+              ? '【需求闭环】你准备用「建议的下一步 / 后续可以…」收尾。给出建议前，先把这些事项逐条对照本次用户请求：\n- 属于本次要求，或是完成它必须的步骤（接通、验证、清理、补测试等）→ 不要写成建议，立刻调用工具做完，再收尾；\n- 只有确实超出本次需求的可选增强，或必须由用户决定／提供信息的事项（用 ask_user），才可以作为建议列出。\n若你已确认本次需求全部完成、剩下的事项都确属需求之外，直接给出收尾结论即可，不必再解释这条规则。'
+              : '【Requirement closure】You are about to close with "suggested next steps / you could also…". Before writing those lines, check each item against THIS request:\n- Part of what the user asked for, or a step required to finish it (wiring up, verification, cleanup, tests) → do not write it as a suggestion; run the tools now, finish it, then close;\n- Only items genuinely outside this request (optional enhancements), or that need the user\'s decision / information you do not have (use ask_user), may stay as suggestions.\nIf everything the user asked for is done and the leftovers really are outside the request, just give the closing summary — no need to explain this rule.',
           })
           shouldContinue = true
           continue

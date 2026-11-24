@@ -219,6 +219,7 @@ If you end a turn while part of the user's request is still **not done** — you
 - Do NOT include already-completed work
 - Do NOT use it when the task is actually finished, or when you are waiting for a decision/information (use \`ask_user\` for that)
 - Do NOT call it mid-task while you are still working in the same turn
+- Do NOT use it to hand back work that belongs to THIS request — if an item is part of what the user asked for (or a step required to deliver it), keep executing it in this turn instead of listing it as a suggestion
 
 ### Task Execution Flow
 1. **Understand**: Read relevant files and search codebase to understand context

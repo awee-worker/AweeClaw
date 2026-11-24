@@ -125,7 +125,9 @@ function reportPlanOutcome(planId: string, outcome: 'completed' | 'failed', deta
     lines.push(
       '',
       '请以主 Agent 身份向用户做一次统筹汇报：说明整体交付物与产出位置、关键结论、' +
-      '失败或跳过项的原因与影响、以及下一步建议。直接面向用户输出，不要复述原始子任务日志。',
+      '失败或跳过项的原因与影响。直接面向用户输出，不要复述原始子任务日志。' +
+      '若还有属于本次用户需求的工作没做完，不要把它写成「下一步建议」，直接继续执行做完再汇报；' +
+      '只有在全部需求已交付的前提下，才可补充「下一步建议」，且只列本次需求之外的可选项。',
     )
 
     void dispatchContinuation(threadId, 0, lines.join('\n'))

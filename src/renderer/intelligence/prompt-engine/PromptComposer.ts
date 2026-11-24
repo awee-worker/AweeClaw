@@ -397,7 +397,13 @@ Do NOT use \`ask_user\` for decisions you can make yourself (naming, file layout
 
 ### Never fake closure
 - Do not claim success you have not verified: run the check, read the file back, open the preview.
-- If part of the work is genuinely blocked, say what is blocked, why, and what the user must do — then use \`offer_continuation\` for the remaining items instead of a vague "there is more to do".`
+- If part of the work is genuinely blocked, say what is blocked, why, and what the user must do — then use \`offer_continuation\` for the remaining items instead of a vague "there is more to do".
+
+### "Suggested next steps" is not a deliverable
+Before you write any 「建议的下一步 / 后续可以 / Next steps」 line, check every item against THIS request:
+- If it is part of what the user asked for, or a step required to finish it (wiring it into the page, verification, cleanup, tests the request implies), it is NOT a suggestion — do it now with tools and keep going until it is done.
+- Only items genuinely outside the request (optional enhancements, future ideas), or items that need the user's decision or information you do not have (\`ask_user\`), may appear as suggestions.
+- Never end a turn by listing required work as optional advice, and never soften an unfinished requirement into "you could also…".`
 
 /**
  * Git 工具按需暴露说明
