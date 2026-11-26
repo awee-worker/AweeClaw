@@ -3,7 +3,7 @@ import { StartNode } from './StartNode'
 import { AgentTaskNode, AgentGroupNode, SubWorkflowNode } from './AgentNodes'
 import { UserInputNode, UserApprovalNode, FormCollectorNode } from './InteractionNodes'
 import { ConditionNode, SwitchCaseNode, LoopNode, ParallelNode, MergeNode } from './FlowNodes'
-import { ToolCallNode, McpServiceNode, CodeRunnerNode, HttpRequestNode } from './ToolNodes'
+import { ToolCallNode, SkillNode, McpServiceNode, CodeRunnerNode, HttpRequestNode } from './ToolNodes'
 import { VariableSetNode, DataTransformNode, KnowledgeQueryNode } from './DataNodes'
 import { DelayNode, WebhookTriggerNode, EventWaitNode } from './ControlNodes'
 import { TextOutputNode, FileOutputNode, NotificationNode } from './OutputNodes'
@@ -36,6 +36,7 @@ export const nodeTypeComponents: Record<string, React.ComponentType<WorkflowNode
   parallel: ParallelNode as React.ComponentType<WorkflowNodeProps>,
   merge: MergeNode as React.ComponentType<WorkflowNodeProps>,
   tool_call: ToolCallNode as React.ComponentType<WorkflowNodeProps>,
+  skill: SkillNode as React.ComponentType<WorkflowNodeProps>,
   mcp_service: McpServiceNode as React.ComponentType<WorkflowNodeProps>,
   code_runner: CodeRunnerNode as React.ComponentType<WorkflowNodeProps>,
   http_request: HttpRequestNode as React.ComponentType<WorkflowNodeProps>,

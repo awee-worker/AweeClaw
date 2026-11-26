@@ -1,9 +1,10 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Clock, CheckCircle2, XCircle, Trash2, RotateCcw, Workflow } from 'lucide-react'
 import {
   loadWorkflowHistoryV2,
   deleteWorkflowRunV2,
   clearWorkflowHistoryV2,
+  onWorkflowHistoryReady,
 } from '@shared/configuration/workflows/runHistoryV2'
 import type { WorkflowRunV2, WorkflowRunStatusV2 } from '@shared/protocols/workflowV2'
 import { t, type Language } from '@renderer/i18n'
@@ -15,21 +16,21 @@ interface WorkflowHistoryV2Props {
 }
 
 const STATUS_COLORS: Record<WorkflowRunStatusV2, string> = {
-  pending: 'text-gray-400',
+  pending: 'text-text-muted',
   running: 'text-blue-400',
   paused: 'text-amber-400',
   completed: 'text-green-400',
   failed: 'text-red-400',
-  cancelled: 'text-gray-400',
+  cancelled: 'text-text-muted',
 }
 
 const STATUS_BG: Record<WorkflowRunStatusV2, string> = {
-  pending: 'bg-gray-500/10',
+  pending: 'bg-text-muted/10',
   running: 'bg-blue-500/10',
   paused: 'bg-amber-500/10',
   completed: 'bg-green-500/10',
   failed: 'bg-red-500/10',
-  cancelled: 'bg-gray-500/10',
+  cancelled: 'bg-text-muted/10',
 }
 
 const STATUS_ICONS: Record<WorkflowRunStatusV2, React.ComponentType<{ className?: string }>> = {
@@ -43,6 +44,15 @@ const STATUS_ICONS: Record<WorkflowRunStatusV2, React.ComponentType<{ className?
 
 export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }: WorkflowHistoryV2Props) {
   const [history, setHistory] = useState<WorkflowRunV2[]>(() => loadWorkflowHistoryV2())
+
+  // SQLite 就绪后刷新：首屏可能拿到 localStorage 兜底数据
+  useEffect(
+    () =>
+      onWorkflowHistoryReady(() => {
+        setHistory(loadWorkflowHistoryV2())
+      }),
+    [],
+  )
 
   const handleDelete = useCallback((runId: string) => {
     deleteWorkflowRunV2(runId)
@@ -82,7 +92,7 @@ export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }:
 
   if (history.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
+      <div className="flex flex-col items-center justify-center py-16 text-text-muted">
         <Clock className="w-10 h-10 mb-3 opacity-30" />
         <p className="text-xs">
           {t('wf.noexecutionhistory', language as Language)}
@@ -93,13 +103,13 @@ export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }:
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-        <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <h3 className="text-xs font-semibold text-text-primary">
           {t('wf.executionhistory', language as Language)}
         </h3>
         <button
           onClick={handleClearAll}
-          className="text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors"
+          className="text-[10px] text-text-muted hover:text-red-400 transition-colors"
         >
           {t('wf.clearall', language as Language)}
         </button>
@@ -116,7 +126,7 @@ export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }:
           return (
             <div
               key={run.id}
-              className="group p-3 rounded-lg border border-[var(--border)] bg-[var(--background)] hover:bg-[var(--accent)]/5 transition-colors"
+              className="group p-3 rounded-lg border border-border bg-background hover:bg-accent/5 transition-colors"
             >
               <div className="flex items-start gap-3">
                 <div className={`p-1.5 rounded-lg ${STATUS_BG[run.status]}`}>
@@ -124,7 +134,7 @@ export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }:
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-[var(--text-primary)] truncate">
+                    <span className="text-xs font-medium text-text-primary truncate">
                       {wfName}
                     </span>
                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${STATUS_COLORS[run.status]} ${STATUS_BG[run.status]}`}>
@@ -132,14 +142,14 @@ export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }:
                     </span>
                   </div>
                   <div className="flex items-center gap-3 mt-1">
-                    <span className="text-[10px] text-[var(--text-muted)]">
+                    <span className="text-[10px] text-text-muted">
                       {formatTime(run.startedAt)}
                     </span>
-                    <span className="text-[10px] text-[var(--text-muted)]">
+                    <span className="text-[10px] text-text-muted">
                       {run.nodeResults.length} {t('wf.nodes', language as Language)}
                     </span>
                     {run.completedAt && (
-                      <span className="text-[10px] text-[var(--text-muted)]">
+                      <span className="text-[10px] text-text-muted">
                         {duration < 1000 ? `${duration}ms` : `${(duration / 1000).toFixed(1)}s`}
                       </span>
                     )}
@@ -155,13 +165,13 @@ export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }:
                         <span
                           key={nr.nodeId}
                           className={`w-1.5 h-1.5 rounded-full ${
-                            nr.status === 'success' ? 'bg-green-400' : nr.status === 'failed' ? 'bg-red-400' : 'bg-gray-400'
+                            nr.status === 'success' ? 'bg-green-400' : nr.status === 'failed' ? 'bg-red-400' : 'bg-surface-muted'
                           }`}
                           title={`${nr.nodeName}: ${nr.status}`}
                         />
                       ))}
                       {run.nodeResults.length > 8 && (
-                        <span className="text-[9px] text-[var(--text-muted)]">
+                        <span className="text-[9px] text-text-muted">
                           +{run.nodeResults.length - 8}
                         </span>
                       )}
@@ -171,21 +181,21 @@ export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }:
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => onOpenWorkflow(run.workflowId)}
-                    className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                    className="p-1 rounded text-text-muted hover:text-accent hover:bg-accent/10 transition-colors"
                     title={t('wf.openworkflow', language as Language)}
                   >
                     <Workflow className="w-3 h-3" />
                   </button>
                   <button
                     onClick={() => onRerun(run.workflowId)}
-                    className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                    className="p-1 rounded text-text-muted hover:text-accent hover:bg-accent/10 transition-colors"
                     title={t('wf.rerun', language as Language)}
                   >
                     <RotateCcw className="w-3 h-3" />
                   </button>
                   <button
                     onClick={() => handleDelete(run.id)}
-                    className="p-1 rounded text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    className="p-1 rounded text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
                     title={t('wf.delete', language as Language)}
                   >
                     <Trash2 className="w-3 h-3" />

@@ -37,7 +37,7 @@ export function ConditionBuilder({ data, onChange, language }: ConditionBuilderP
     <Section title={t('wf.conditionrules', language as Language)}>
       <div className="space-y-2">
         {conditions.map((cond, index) => (
-          <div key={cond.id} className="p-2 rounded-md border border-[var(--border)] bg-[var(--background)]/50 space-y-1.5">
+          <div key={cond.id} className="p-2 rounded-md border border-border bg-background/50 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                 cond.targetHandle === 'then'
@@ -50,7 +50,7 @@ export function ConditionBuilder({ data, onChange, language }: ConditionBuilderP
               </span>
               <button
                 onClick={() => removeCondition(index)}
-                className="text-[10px] text-[var(--text-muted)] hover:text-red-400"
+                className="text-[10px] text-text-muted hover:text-red-400"
               >
                 ✕
               </button>
@@ -60,12 +60,12 @@ export function ConditionBuilder({ data, onChange, language }: ConditionBuilderP
               value={cond.variable}
               onChange={(e) => updateCondition(index, { variable: e.target.value })}
               placeholder={t('wf.variable', language as Language)}
-              className="w-full px-2 py-1 text-[11px] rounded border border-[var(--border)] bg-[var(--background)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+              className="w-full px-2 py-1 text-[11px] rounded border border-border bg-background text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <select
               value={cond.operator}
               onChange={(e) => updateCondition(index, { operator: e.target.value as ConditionOperator })}
-              className="w-full px-2 py-1 text-[11px] rounded border border-[var(--border)] bg-[var(--background)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+              className="w-full px-2 py-1 text-[11px] rounded border border-border bg-background text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
             >
               {CONDITION_OPERATORS.map(op => (
                 <option key={op.value} value={op.value}>
@@ -79,14 +79,14 @@ export function ConditionBuilder({ data, onChange, language }: ConditionBuilderP
                 value={String(cond.value ?? '')}
                 onChange={(e) => updateCondition(index, { value: e.target.value })}
                 placeholder={t('wf.value', language as Language)}
-                className="w-full px-2 py-1 text-[11px] rounded border border-[var(--border)] bg-[var(--background)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                className="w-full px-2 py-1 text-[11px] rounded border border-border bg-background text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
               />
             )}
           </div>
         ))}
         <button
           onClick={addCondition}
-          className="w-full py-1.5 text-[11px] text-[var(--accent)] border border-dashed border-[var(--accent)]/30 rounded-md hover:bg-[var(--accent)]/5 transition-colors"
+          className="w-full py-1.5 text-[11px] text-accent border border-dashed border-accent/30 rounded-md hover:bg-accent/5 transition-colors"
         >
           + {t('wf.addcondition', language as Language)}
         </button>

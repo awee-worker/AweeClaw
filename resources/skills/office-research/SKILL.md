@@ -1,5 +1,6 @@
 ---
 name: office-research
+nameZh: 资料调研
 description: 资料查阅与信息调研——明确问题、多渠道检索、交叉验证来源，输出带出处的可用结论。
 sceneMode: work
 keywords: 调研,资料,查资料,检索,信息搜集,背景调查,竞品,对比,来源,核实

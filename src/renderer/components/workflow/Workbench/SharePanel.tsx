@@ -193,29 +193,29 @@ export default function SharePanel({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-[520px] max-h-[75vh] bg-[var(--background)] border border-[var(--border)] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)]/60">
+      <div className="w-[520px] max-h-[75vh] bg-background border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border/60">
           <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-[var(--accent)]" />
-            <span className="text-sm font-semibold text-[var(--text-primary)]">
+            <Users className="w-4 h-4 text-accent" />
+            <span className="text-sm font-semibold text-text-primary">
               {t('app.sharepermissions', language as Language)}
             </span>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-[var(--border)]/30 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            className="p-1.5 rounded-lg hover:bg-border/30 text-text-muted hover:text-text-primary transition-colors"
           >
             <XCircle className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="flex border-b border-[var(--border)]/20">
+        <div className="flex border-b border-border/20">
           <button
             onClick={() => setActiveTab('users')}
             className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
               activeTab === 'users'
-                ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                ? 'text-accent border-b-2 border-accent'
+                : 'text-text-muted hover:text-text-primary'
             }`}
           >
             <Users className="w-3.5 h-3.5 inline mr-1.5 -mt-px" />
@@ -225,8 +225,8 @@ export default function SharePanel({
             onClick={() => setActiveTab('teams')}
             className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
               activeTab === 'teams'
-                ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                ? 'text-accent border-b-2 border-accent'
+                : 'text-text-muted hover:text-text-primary'
             }`}
           >
             <Building2 className="w-3.5 h-3.5 inline mr-1.5 -mt-px" />
@@ -236,26 +236,26 @@ export default function SharePanel({
 
         {activeTab === 'users' && (
           <>
-            <div className="p-5 border-b border-[var(--border)]/20">
-              <label className="block text-xs font-medium text-[var(--text-muted)] mb-2">
+            <div className="p-5 border-b border-border/20">
+              <label className="block text-xs font-medium text-text-muted mb-2">
                 {t('app.addmemberbyemail', language as Language)}
               </label>
               <div className="flex gap-2">
                 <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)]/50" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted/50" />
                   <input
                     type="text"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleGrant()}
                     placeholder={t('app.enteruseremail', language as Language)}
-                    className="w-full h-9 pl-9 pr-3 text-sm bg-[var(--border)]/5 border border-[var(--border)]/30 rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)]/40 focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/20 transition-colors"
+                    className="w-full h-9 pl-9 pr-3 text-sm bg-border/5 border border-border/30 rounded-lg text-text-primary placeholder:text-text-muted/40 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
                   />
                 </div>
                 <select
                   value={selectedRole}
                   onChange={(e) => setSelectedRole(e.target.value)}
-                  className="h-9 px-3 text-sm bg-[var(--border)]/5 border border-[var(--border)]/30 rounded-lg text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/50 cursor-pointer"
+                  className="h-9 px-3 text-sm bg-border/5 border border-border/30 rounded-lg text-text-primary focus:outline-none focus:border-accent/50 cursor-pointer"
                 >
                   {ROLE_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -266,7 +266,7 @@ export default function SharePanel({
                 <button
                   onClick={handleGrant}
                   disabled={submitting || !email.trim()}
-                  className="flex items-center gap-1 h-9 px-4 text-xs font-semibold rounded-lg bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  className="flex items-center gap-1 h-9 px-4 text-xs font-semibold rounded-lg bg-accent text-white hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   {t('app.add', language as Language)}
@@ -283,16 +283,16 @@ export default function SharePanel({
 
         {activeTab === 'teams' && (
           <>
-            <div className="p-5 border-b border-[var(--border)]/20">
-              <label className="block text-xs font-medium text-[var(--text-muted)] mb-2">
+            <div className="p-5 border-b border-border/20">
+              <label className="block text-xs font-medium text-text-muted mb-2">
                 {t('app.shareworkflowwitha', language as Language)}
               </label>
               {teamsLoading ? (
                 <div className="flex items-center justify-center py-3">
-                  <RefreshCw className="w-4 h-4 text-[var(--accent)] animate-spin" />
+                  <RefreshCw className="w-4 h-4 text-accent animate-spin" />
                 </div>
               ) : teams.length === 0 ? (
-                <div className="text-xs text-[var(--text-muted)]/60 py-2">
+                <div className="text-xs text-text-muted/60 py-2">
                   {t('app.youhavenoteams', language as Language)}
                 </div>
               ) : (
@@ -300,7 +300,7 @@ export default function SharePanel({
                   <select
                     value={selectedTeamId}
                     onChange={(e) => setSelectedTeamId(e.target.value)}
-                    className="flex-1 h-9 px-3 text-sm bg-[var(--border)]/5 border border-[var(--border)]/30 rounded-lg text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/50 cursor-pointer"
+                    className="flex-1 h-9 px-3 text-sm bg-border/5 border border-border/30 rounded-lg text-text-primary focus:outline-none focus:border-accent/50 cursor-pointer"
                   >
                     {teams.map((team) => (
                       <option key={team.id} value={team.id}>
@@ -311,7 +311,7 @@ export default function SharePanel({
                   <select
                     value={teamRole}
                     onChange={(e) => setTeamRole(e.target.value)}
-                    className="h-9 px-3 text-sm bg-[var(--border)]/5 border border-[var(--border)]/30 rounded-lg text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/50 cursor-pointer"
+                    className="h-9 px-3 text-sm bg-border/5 border border-border/30 rounded-lg text-text-primary focus:outline-none focus:border-accent/50 cursor-pointer"
                   >
                     {ROLE_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
@@ -322,7 +322,7 @@ export default function SharePanel({
                   <button
                     onClick={handleGrantTeam}
                     disabled={submitting || !selectedTeamId}
-                    className="flex items-center gap-1 h-9 px-4 text-xs font-semibold rounded-lg bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    className="flex items-center gap-1 h-9 px-4 text-xs font-semibold rounded-lg bg-accent text-white hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     {t('app.share', language as Language)}
@@ -338,18 +338,18 @@ export default function SharePanel({
           </>
         )}
 
-        <div className="px-5 py-3 border-t border-[var(--border)]/20 bg-[var(--border)]/5">
-          <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]/70">
+        <div className="px-5 py-3 border-t border-border/20 bg-border/5">
+          <div className="flex items-center gap-2 text-[11px] text-text-muted/70">
             <div className="flex items-center gap-1">
               <Eye className="w-3 h-3" />
               {t('app.viewerread', language as Language)}
             </div>
-            <span className="text-[var(--border)]/50">|</span>
+            <span className="text-border/50">|</span>
             <div className="flex items-center gap-1">
               <Edit3 className="w-3 h-3" />
               {t('app.editoredit', language as Language)}
             </div>
-            <span className="text-[var(--border)]/50">|</span>
+            <span className="text-border/50">|</span>
             <div className="flex items-center gap-1">
               <Shield className="w-3 h-3" />
               {t('app.adminfullshare', language as Language)}
@@ -389,14 +389,14 @@ export default function SharePanel({
     if (loading) {
       return (
         <div className="flex items-center justify-center py-12">
-          <RefreshCw className="w-5 h-5 text-[var(--accent)] animate-spin" />
+          <RefreshCw className="w-5 h-5 text-accent animate-spin" />
         </div>
       );
     }
 
     if (list.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)]">
+        <div className="flex flex-col items-center justify-center py-12 text-text-muted">
           <Users className="w-8 h-8 opacity-20 mb-2" />
           <span className="text-xs">
             {t('app.notsharedwithanyone', language as Language)}
@@ -415,19 +415,19 @@ export default function SharePanel({
           return (
             <div
               key={perm.id}
-              className="flex items-center gap-3 p-3 rounded-xl bg-[var(--border)]/5 hover:bg-[var(--border)]/10 transition-colors group"
+              className="flex items-center gap-3 p-3 rounded-xl bg-border/5 hover:bg-border/10 transition-colors group"
             >
-              <div className="w-8 h-8 rounded-full bg-[var(--accent)]/10 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-[var(--accent)]">
+              <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                <span className="text-xs font-bold text-accent">
                   {(name[0] || '?').toUpperCase()}
                 </span>
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-[var(--text-primary)] truncate">
+                <div className="text-sm font-medium text-text-primary truncate">
                   {name}
                 </div>
-                <div className="text-[11px] text-[var(--text-muted)]/60">
+                <div className="text-[11px] text-text-muted/60">
                   {perm.user?.email || ''}
                 </div>
               </div>
@@ -435,7 +435,7 @@ export default function SharePanel({
               <select
                 value={perm.role}
                 onChange={(e) => handleRoleChange(perm.id, e.target.value, name)}
-                className="h-7 px-2 text-xs bg-transparent border border-[var(--border)]/30 rounded-md text-[var(--text-primary)] cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                className="h-7 px-2 text-xs bg-transparent border border-border/30 rounded-md text-text-primary cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 {ROLE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -445,7 +445,7 @@ export default function SharePanel({
               </select>
 
               <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] font-medium">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent font-medium">
                   <RoleIcon className="w-2.5 h-2.5 inline mr-0.5 -mt-px" />
                   {language === 'zh'
                     ? ROLE_OPTIONS.find((o) => o.value === perm.role)?.labelZh
@@ -453,7 +453,7 @@ export default function SharePanel({
                 </span>
                 <button
                   onClick={() => handleRevoke(perm.id, name)}
-                  className="p-1 rounded-md hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                  className="p-1 rounded-md hover:bg-red-500/10 text-text-muted hover:text-red-400 transition-colors"
                   title={t('app.revoke', language as Language)}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -470,14 +470,14 @@ export default function SharePanel({
     if (loading) {
       return (
         <div className="flex items-center justify-center py-12">
-          <RefreshCw className="w-5 h-5 text-[var(--accent)] animate-spin" />
+          <RefreshCw className="w-5 h-5 text-accent animate-spin" />
         </div>
       );
     }
 
     if (list.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)]">
+        <div className="flex flex-col items-center justify-center py-12 text-text-muted">
           <Building2 className="w-8 h-8 opacity-20 mb-2" />
           <span className="text-xs">
             {t('app.notsharedwithany', language as Language)}
@@ -496,17 +496,17 @@ export default function SharePanel({
           return (
             <div
               key={perm.id}
-              className="flex items-center gap-3 p-3 rounded-xl bg-[var(--border)]/5 hover:bg-[var(--border)]/10 transition-colors group"
+              className="flex items-center gap-3 p-3 rounded-xl bg-border/5 hover:bg-border/10 transition-colors group"
             >
               <div className="w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center flex-shrink-0">
                 <Building2 className="w-4 h-4 text-purple-500" />
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-[var(--text-primary)] truncate">
+                <div className="text-sm font-medium text-text-primary truncate">
                   {name}
                 </div>
-                <div className="text-[11px] text-[var(--text-muted)]/60">
+                <div className="text-[11px] text-text-muted/60">
                   {t('app.teamshare', language as Language)}
                 </div>
               </div>
@@ -514,7 +514,7 @@ export default function SharePanel({
               <select
                 value={perm.role}
                 onChange={(e) => handleRoleChange(perm.id, e.target.value, name)}
-                className="h-7 px-2 text-xs bg-transparent border border-[var(--border)]/30 rounded-md text-[var(--text-primary)] cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                className="h-7 px-2 text-xs bg-transparent border border-border/30 rounded-md text-text-primary cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 {ROLE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -532,7 +532,7 @@ export default function SharePanel({
                 </span>
                 <button
                   onClick={() => handleRevoke(perm.id, name)}
-                  className="p-1 rounded-md hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                  className="p-1 rounded-md hover:bg-red-500/10 text-text-muted hover:text-red-400 transition-colors"
                   title={t('app.revoke2', language as Language)}
                 >
                   <Trash2 className="w-3.5 h-3.5" />

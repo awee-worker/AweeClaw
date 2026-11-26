@@ -1,5 +1,6 @@
 ---
 name: office-task
+nameZh: 任务拆解
 description: 任务拆解与跟进——把模糊的目标拆成可执行、可分配、可验收的步骤，并跟踪到闭环。
 sceneMode: work
 keywords: 任务拆解,待办,分工,跟进,执行计划,里程碑,进度,闭环,落实,拆解需求

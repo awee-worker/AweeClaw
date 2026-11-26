@@ -158,10 +158,10 @@ export const DefaultEdge = memo(function DefaultEdge({
             }}
           >
             <button
-              className="flex items-center justify-center w-5 h-5 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-400 hover:bg-purple-50 transition-all cursor-pointer"
+              className="flex items-center justify-center w-5 h-5 rounded-full bg-background-secondary border border-border shadow-sm hover:shadow-md hover:border-purple-400 hover:bg-accent/10 transition-all cursor-pointer"
               title="插入节点"
             >
-              <Plus className="w-3 h-3 text-gray-400 hover:text-purple-500" />
+              <Plus className="w-3 h-3 text-text-muted hover:text-purple-500" />
             </button>
           </div>
         </EdgeLabelRenderer>

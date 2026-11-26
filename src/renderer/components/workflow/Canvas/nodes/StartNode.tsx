@@ -47,10 +47,10 @@ function genQuestionId(): string {
 }
 
 const INPUT_CLASS =
-  'nodrag no-wheel w-full h-7 px-2 text-[11px] rounded-md border border-gray-200 bg-white text-gray-700 placeholder:text-gray-350 focus:outline-none focus:ring-1.5 focus:ring-green-400/30 focus:border-green-400 transition-all'
+  'nodrag no-wheel w-full h-7 px-2 text-[11px] rounded-md border border-border bg-background-secondary text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1.5 focus:ring-green-400/30 focus:border-green-400 transition-all'
 
 const SELECT_CLASS =
-  'nodrag no-wheel w-full h-7 px-2 text-[11px] rounded-md border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-1.5 focus:ring-green-400/30 focus:border-green-400 transition-all'
+  'nodrag no-wheel w-full h-7 px-2 text-[11px] rounded-md border border-border bg-background-secondary text-text-primary focus:outline-none focus:ring-1.5 focus:ring-green-400/30 focus:border-green-400 transition-all'
 
 export const StartNode = memo(function StartNode({
   id,
@@ -160,7 +160,7 @@ export const StartNode = memo(function StartNode({
   return (
     <div
       className={[
-        'relative rounded-2xl border bg-white shadow-sm transition-all duration-200',
+        'relative rounded-2xl border bg-background-secondary shadow-sm transition-all duration-200',
         'min-w-[270px] max-w-[290px]',
         selected ? 'shadow-md' : 'hover:shadow-md',
       ].join(' ')}
@@ -194,12 +194,12 @@ export const StartNode = memo(function StartNode({
               if (e.key === 'Escape') setEditing(false)
             }}
             onClick={e => e.stopPropagation()}
-            className="h-6 px-1.5 text-[12px] font-semibold rounded border border-green-300 bg-white text-gray-800 outline-none focus:ring-1.5 focus:ring-green-400/30 flex-1 min-w-0"
+            className="h-6 px-1.5 text-[12px] font-semibold rounded border border-green-300 bg-background-secondary text-text-primary outline-none focus:ring-1.5 focus:ring-green-400/30 flex-1 min-w-0"
           />
         ) : (
           <span
             onClick={handleStartEdit}
-            className="text-[12px] font-semibold text-gray-800 truncate flex-1 cursor-text hover:text-green-600 transition-colors border-b border-dashed border-transparent hover:border-green-300"
+            className="text-[12px] font-semibold text-text-primary truncate flex-1 cursor-text hover:text-green-400 transition-colors border-b border-dashed border-transparent hover:border-green-300"
             title="Click to rename"
           >
             {label}
@@ -207,7 +207,7 @@ export const StartNode = memo(function StartNode({
         )}
         <button
           onClick={handleToggleExpand}
-          className={`w-5 h-5 flex items-center justify-center rounded-md text-gray-350 hover:text-gray-600 hover:bg-gray-100 transition-all flex-shrink-0 ${expanded ? 'rotate-180' : ''}`}
+          className={`w-5 h-5 flex items-center justify-center rounded-md text-text-muted hover:text-text-secondary hover:bg-surface-hover transition-all flex-shrink-0 ${expanded ? 'rotate-180' : ''}`}
         >
           <ChevronDown className="w-3 h-3" />
         </button>
@@ -221,12 +221,12 @@ export const StartNode = memo(function StartNode({
       </div>
 
       {expanded && (
-        <div className="px-4 pb-3 space-y-3 border-t border-gray-100">
+        <div className="px-4 pb-3 space-y-3 border-t border-border-subtle">
           {/* Welcome Guide */}
-          <div className="bg-green-50/70 rounded-xl p-3 border border-green-100/60">
+          <div className="bg-green-500/10/70 rounded-xl p-3 border border-green-500/20/60">
             <div className="flex items-center gap-1.5 mb-1.5">
-              <Rocket className="w-3 h-3 text-green-600" />
-              <span className="text-[10px] font-semibold text-green-700">
+              <Rocket className="w-3 h-3 text-green-400" />
+              <span className="text-[10px] font-semibold text-green-400">
                 欢迎引导
               </span>
             </div>
@@ -235,7 +235,7 @@ export const StartNode = memo(function StartNode({
               onChange={(e) => handleWelcomeChange(e.target.value)}
               placeholder="输入引导词..."
               rows={2}
-              className="nodrag no-wheel w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-green-200 bg-white text-gray-700 placeholder:text-gray-350 focus:outline-none focus:ring-1.5 focus:ring-green-400/30 focus:border-green-400 transition-all resize-none"
+              className="nodrag no-wheel w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-green-200 bg-background-secondary text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1.5 focus:ring-green-400/30 focus:border-green-400 transition-all resize-none"
               onWheel={(e) => e.stopPropagation()}
             />
           </div>
@@ -245,13 +245,13 @@ export const StartNode = memo(function StartNode({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <MessageCircle className="w-3 h-3 text-blue-500" />
-                <span className="text-[10px] font-semibold text-gray-500">
+                <span className="text-[10px] font-semibold text-text-secondary">
                   引导问题
                 </span>
               </div>
               <button
                 onClick={() => setShowAddQ(!showAddQ)}
-                className="flex items-center gap-0.5 text-[10px] text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                className="flex items-center gap-0.5 text-[10px] text-accent hover:text-accent font-medium transition-colors"
               >
                 <span className="text-xs leading-none">+</span>
                 添加
@@ -259,7 +259,7 @@ export const StartNode = memo(function StartNode({
             </div>
 
             {showAddQ && (
-              <div className="bg-gray-50 rounded-lg p-2.5 space-y-1.5 border border-gray-100">
+              <div className="bg-surface rounded-lg p-2.5 space-y-1.5 border border-border-subtle">
                 <input
                   value={newQText}
                   onChange={(e) => setNewQText(e.target.value)}
@@ -287,7 +287,7 @@ export const StartNode = memo(function StartNode({
                       setShowAddQ(false)
                       setNewQText('')
                     }}
-                    className="flex-1 h-7 text-[10px] font-medium rounded-md bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors"
+                    className="flex-1 h-7 text-[10px] font-medium rounded-md bg-surface-active text-text-secondary hover:bg-surface-muted transition-colors"
                   >
                     取消
                   </button>
@@ -300,14 +300,14 @@ export const StartNode = memo(function StartNode({
                 {guideQuestions.map((q) => (
                   <span
                     key={q.id}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-150 text-[10px] text-blue-700 group cursor-default hover:bg-blue-100 transition-colors"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/10 border border-blue-150 text-[10px] text-accent group cursor-default hover:bg-accent/15 transition-colors"
                   >
                     <span className="max-w-[160px] truncate">
                       {q.textZh || q.text}
                     </span>
                     <button
                       onClick={() => handleRemoveQuestion(q.id)}
-                      className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-blue-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                      className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-blue-400 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
                     >
                       <X className="w-2.5 h-2.5" />
                     </button>
@@ -315,7 +315,7 @@ export const StartNode = memo(function StartNode({
                 ))}
               </div>
             ) : (
-              <p className="text-[9px] text-gray-350 italic">
+              <p className="text-[9px] text-text-muted italic">
                 添加引导问题，运行工作流时用户可点击发起会话
               </p>
             )}
@@ -326,7 +326,7 @@ export const StartNode = memo(function StartNode({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Variable className="w-3 h-3 text-purple-500" />
-                <span className="text-[10px] font-semibold text-gray-500">
+                <span className="text-[10px] font-semibold text-text-secondary">
                   自定义全局变量
                   {workflowVars.length > 0
                     ? ` (${workflowVars.length})`
@@ -335,7 +335,7 @@ export const StartNode = memo(function StartNode({
               </div>
               <button
                 onClick={() => setShowAddVar(!showAddVar)}
-                className="flex items-center gap-0.5 text-[10px] text-purple-600 hover:text-purple-700 font-medium transition-colors"
+                className="flex items-center gap-0.5 text-[10px] text-purple-400 hover:text-purple-400 font-medium transition-colors"
               >
                 <span className="text-xs leading-none">+</span>
                 添加
@@ -343,7 +343,7 @@ export const StartNode = memo(function StartNode({
             </div>
 
             {showAddVar && (
-              <div className="bg-gray-50 rounded-lg p-2.5 space-y-1.5 border border-gray-100">
+              <div className="bg-surface rounded-lg p-2.5 space-y-1.5 border border-border-subtle">
                 <input
                   value={newVarName}
                   onChange={(e) => setNewVarName(e.target.value)}
@@ -384,7 +384,7 @@ export const StartNode = memo(function StartNode({
                       setNewVarName('')
                       setNewVarDefault('')
                     }}
-                    className="flex-1 h-7 text-[10px] font-medium rounded-md bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors"
+                    className="flex-1 h-7 text-[10px] font-medium rounded-md bg-surface-active text-text-secondary hover:bg-surface-muted transition-colors"
                   >
                     取消
                   </button>
@@ -400,23 +400,23 @@ export const StartNode = memo(function StartNode({
                 {workflowVars.map((v) => (
                   <div
                     key={v.name}
-                    className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-purple-50/50 border border-purple-100/50 group"
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/10/50 border border-purple-500/20/50 group"
                   >
-                    <span className="text-[10px] font-mono font-semibold text-purple-600 truncate flex-1">
+                    <span className="text-[10px] font-mono font-semibold text-purple-400 truncate flex-1">
                       {v.name}
                     </span>
-                    <span className="text-[9px] text-purple-400 bg-purple-100 px-1 rounded flex-shrink-0">
+                    <span className="text-[9px] text-purple-400 bg-accent/15 px-1 rounded flex-shrink-0">
                       {v.type}
                     </span>
                     {v.defaultValue !== undefined &&
                       v.defaultValue !== '' && (
-                        <span className="text-[9px] text-gray-400 truncate max-w-[50px] flex-shrink-0">
+                        <span className="text-[9px] text-text-muted truncate max-w-[50px] flex-shrink-0">
                           = {String(v.defaultValue)}
                         </span>
                       )}
                     <button
                       onClick={() => handleRemoveVariable(v.name)}
-                      className="w-4 h-4 flex items-center justify-center rounded text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                      className="w-4 h-4 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
                     >
                       <Trash2 className="w-2.5 h-2.5" />
                     </button>
@@ -426,7 +426,7 @@ export const StartNode = memo(function StartNode({
             )}
 
             {workflowVars.length === 0 && !showAddVar && (
-              <p className="text-[9px] text-gray-350 italic">
+              <p className="text-[9px] text-text-muted italic">
                 添加变量供整个工作流引用，节点中可通过 {' {'}
                 变量名{'}'} 引用
               </p>
@@ -450,12 +450,12 @@ export const StartNode = memo(function StartNode({
                   <circle cx="12" cy="12" r="3" />
                   <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
                 </svg>
-                <span className="text-[10px] font-semibold text-gray-500">
+                <span className="text-[10px] font-semibold text-text-secondary">
                   系统变量 ({SYSTEM_VARIABLES.length} 个)
                 </span>
               </div>
               <ChevronDown
-                className={`w-3 h-3 text-gray-350 group-hover:text-gray-500 transition-transform ${showSysVars ? 'rotate-180' : ''}`}
+                className={`w-3 h-3 text-text-muted group-hover:text-text-secondary transition-transform ${showSysVars ? 'rotate-180' : ''}`}
               />
             </button>
 
@@ -467,15 +467,15 @@ export const StartNode = memo(function StartNode({
                 {SYSTEM_VARIABLES.map((sv) => (
                   <div
                     key={sv.key}
-                    className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50/50 border border-amber-100/40 group hover:bg-amber-50/80 transition-colors"
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-500/10/50 border border-amber-500/20/40 group hover:bg-amber-500/10/80 transition-colors"
                   >
-                    <code className="text-[9px] font-mono text-amber-700 bg-amber-100/60 px-1 rounded flex-shrink-0">
+                    <code className="text-[9px] font-mono text-amber-400 bg-amber-500/15/60 px-1 rounded flex-shrink-0">
                       {sv.key}
                     </code>
-                    <span className="text-[9px] text-gray-500 truncate flex-1">
+                    <span className="text-[9px] text-text-secondary truncate flex-1">
                       {sv.labelZh}
                     </span>
-                    <span className="text-[8px] text-amber-400 bg-amber-100 px-1 rounded flex-shrink-0">
+                    <span className="text-[8px] text-amber-400 bg-amber-500/15 px-1 rounded flex-shrink-0">
                       {sv.type}
                     </span>
                     <button
@@ -483,7 +483,7 @@ export const StartNode = memo(function StartNode({
                         e.stopPropagation()
                         handleCopySysVar(sv.key)
                       }}
-                      className="w-4 h-4 flex items-center justify-center rounded text-amber-400 hover:text-amber-600 hover:bg-amber-200/60 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                      className="w-4 h-4 flex items-center justify-center rounded text-amber-400 hover:text-amber-400 hover:bg-amber-200/60 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
                       title={`复制 ${sv.key}`}
                     >
                       {copiedKey === sv.key ? (
@@ -502,12 +502,12 @@ export const StartNode = memo(function StartNode({
                 {SYSTEM_VARIABLES.slice(0, 3).map((sv) => (
                   <span
                     key={sv.key}
-                    className="text-[8.5px] text-amber-600 bg-amber-50/70 px-1.5 py-0.5 rounded border border-amber-100/50"
+                    className="text-[8.5px] text-amber-400 bg-amber-500/10/70 px-1.5 py-0.5 rounded border border-amber-500/20/50"
                   >
                     {sv.key}
                   </span>
                 ))}
-                <span className="text-[8.5px] text-gray-350 px-1.5 py-0.5">
+                <span className="text-[8.5px] text-text-muted px-1.5 py-0.5">
                   +{SYSTEM_VARIABLES.length - 3} 个
                 </span>
               </div>

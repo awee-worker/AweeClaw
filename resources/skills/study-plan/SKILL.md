@@ -1,5 +1,6 @@
 ---
 name: study-plan
+nameZh: 学习计划
 description: 学习计划制定——目标拆解、进度安排与复习节奏的设计方法。
 sceneMode: study
 keywords: 学习计划,规划,进度,复习,目标,备考,学习安排,时间分配,习惯

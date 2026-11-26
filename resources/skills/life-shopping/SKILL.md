@@ -1,5 +1,6 @@
 ---
 name: life-shopping
+nameZh: 消费决策
 description: 消费决策——先厘清真实需求与预算，再比较选项与隐性成本，避开常见消费陷阱。
 sceneMode: life
 keywords: 购物,消费,买什么,比价,选购,预算,避坑,性价比,退货,大件

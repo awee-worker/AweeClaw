@@ -1,5 +1,6 @@
 ---
 name: office-doc
+nameZh: 办公文档写作
 description: 办公文档写作规范——通知、报告、方案、总结等常见文体的结构、措辞与排版要求。
 sceneMode: work
 keywords: 文档,公文,通知,公告,报告,方案,总结,述职,写作,措辞,排版,Word

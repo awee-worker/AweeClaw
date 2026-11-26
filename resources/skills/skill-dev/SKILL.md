@@ -1,5 +1,6 @@
 ---
 name: skill-dev
+nameZh: 技能开发
 description: 编写 SKILL.md 技能的规范——目录结构、frontmatter 字段、触发设计、指令组织、场景归属与验证。
 sceneMode: dev
 keywords: Skill开发,技能开发,SKILL.md,编写技能,技能规范,提示词模板,技能市场,技能发布

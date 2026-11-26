@@ -1,5 +1,6 @@
 ---
 name: life-recipe
+nameZh: 家常菜谱
 description: 家常菜谱与做法——按现有食材和口味给出可操作的菜谱，写明用量、火候与替代方案。
 sceneMode: life
 keywords: 菜谱,做饭,家常菜,食谱,晚餐,食材,烹饪,火候,做法,早餐,备菜

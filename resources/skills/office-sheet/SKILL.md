@@ -1,5 +1,6 @@
 ---
 name: office-sheet
+nameZh: 表格处理
 description: 表格处理规范——数据录入、公式使用、数据清洗与透视汇总的常见做法。
 sceneMode: work
 keywords: Excel,表格,电子表格,公式,函数,数据清洗,透视表,汇总,筛选,排序

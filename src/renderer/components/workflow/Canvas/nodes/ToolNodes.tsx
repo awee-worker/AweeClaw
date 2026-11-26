@@ -4,7 +4,7 @@ import type { NodeData } from './NodeShared'
 import { getNodeColor, getNodeLabel, NodeBody, NodeInfoRow, NodeControlBar, HeaderTargetHandle, SourceHandleWithPicker, StackedSourceHandles, NodeHeader, toggleNodeExpand, emitUpdate } from './NodeShared'
 import { NodeInlineEditor } from './NodeInlineEditor'
 
-const expandBaseClass = 'relative rounded-2xl border bg-white shadow-sm transition-all duration-200 group min-w-[220px]'
+const expandBaseClass = 'relative rounded-2xl border bg-background-secondary shadow-sm transition-all duration-200 group min-w-[220px]'
 
 export const ToolCallNode = memo(function ToolCallNode({ id, data, selected }: WorkflowNodeProps) {
   const nodeData = data as NodeData
@@ -96,6 +96,43 @@ export const CodeRunnerNode = memo(function CodeRunnerNode({ id, data, selected 
       ) : (
         <NodeBody>
           {nodeData.codeLanguage && <NodeInfoRow label="lang" value={nodeData.codeLanguage} color={color} />}
+          {nodeData.outputVar && <NodeInfoRow label="output" value={nodeData.outputVar} />}
+        </NodeBody>
+      )}
+    </div>
+  )
+})
+
+
+/**
+ * 技能节点。
+ *
+ * 与工具节点的区别在于它不执行动作，而是把 SKILL.md 正文（指令/规范）
+ * 作为输出交给下游——技能本质是一段可复用的领域约束。
+ */
+export const SkillNode = memo(function SkillNode({ id, data, selected }: WorkflowNodeProps) {
+  const nodeData = data as NodeData
+  const color = getNodeColor('skill')
+  const label = (nodeData._customLabel as string) || nodeData.label || getNodeLabel('skill')
+  const expanded = !!nodeData._expanded
+  const handleToggleExpand = useCallback(() => toggleNodeExpand(id, !!nodeData._expanded), [id, nodeData._expanded])
+  const handleRename = useCallback((newName: string) => { emitUpdate(id, { _customLabel: newName }) }, [id])
+
+  return (
+    <div
+      className={[expandBaseClass, expanded ? 'max-w-[400px]' : 'max-w-[260px]', selected ? 'shadow-md' : 'hover:shadow-md'].join(' ')}
+      style={{ borderColor: selected ? color : '#e5e7eb', boxShadow: selected ? `0 0 0 3px ${color}18` : undefined }}
+    >
+      <NodeControlBar nodeId={id} />
+      <NodeHeader nodeType="skill" label={label} color={color} selected={!!selected} expanded={expanded} onToggleExpand={handleToggleExpand} onRename={handleRename}
+        targetHandle={<HeaderTargetHandle id="in" nodeType="skill" connected={nodeData._connectedTargetHandleIds?.includes('in') || false} />}
+        sourceHandle={<SourceHandleWithPicker nodeId={id} nodeType="skill" handleId="out" connected={nodeData._connectedSourceHandleIds?.includes('out') || false} />}
+      />
+      {expanded ? (
+        <NodeInlineEditor nodeId={id} nodeType="skill" data={nodeData} />
+      ) : (
+        <NodeBody>
+          {nodeData.skillName && <NodeInfoRow label="skill" value={nodeData.skillName} color={color} />}
           {nodeData.outputVar && <NodeInfoRow label="output" value={nodeData.outputVar} />}
         </NodeBody>
       )}

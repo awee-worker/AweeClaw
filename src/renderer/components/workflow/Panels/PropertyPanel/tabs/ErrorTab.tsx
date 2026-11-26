@@ -48,7 +48,7 @@ export function ErrorTab({ data, onChange, language }: ErrorTabProps) {
                 min={0}
                 className={INPUT_CLASS}
               />
-              <span className="text-[10px] text-[var(--text-muted)]">ms</span>
+              <span className="text-[10px] text-text-muted">ms</span>
             </div>
           </Section>
         </>

@@ -1,5 +1,6 @@
 ---
 name: life-home
+nameZh: 居家打理
 description: 居家生活打理——整理收纳、清洁保养与生活小窍门，按空间和频次给出可执行的清单。
 sceneMode: life
 keywords: 收纳,整理,家居,清洁,家务,打扫,保养,断舍离,空间,生活窍门

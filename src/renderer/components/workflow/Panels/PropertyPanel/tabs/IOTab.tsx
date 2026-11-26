@@ -40,7 +40,7 @@ export function IOTab({ nodeType, data, onChange, language }: TabProps) {
           placeholder="result"
           className={INPUT_CLASS}
         />
-        <p className="mt-1 text-[10px] text-gray-400">
+        <p className="mt-1 text-[10px] text-text-muted">
           {t('wf.laternodescanreferencethis', language as Language)}
         </p>
       </Section>

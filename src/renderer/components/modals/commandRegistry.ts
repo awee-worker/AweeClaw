@@ -27,6 +27,7 @@ import {
   PanelRight,
   type LucideIcon,
 } from 'lucide-react'
+import { WORKFLOW_ENTRY_ENABLED } from '../../config/featureVisibility'
 
 /** 命令定义 */
 export interface CommandDefinition {
@@ -227,7 +228,9 @@ const STATIC_COMMANDS: CommandDefinition[] = [
 
 /** 动态命令定义（需要根据上下文动态生成 label） */
 function buildDynamicCommands(ctx: CommandContext): CommandDefinition[] {
-  return STATIC_COMMANDS.map((cmd) => {
+  return STATIC_COMMANDS.filter(
+    (cmd) => WORKFLOW_ENTRY_ENABLED || cmd.id !== 'open-workflow',
+  ).map((cmd) => {
     const dynamic: CommandDefinition = { ...cmd }
 
     switch (cmd.id) {

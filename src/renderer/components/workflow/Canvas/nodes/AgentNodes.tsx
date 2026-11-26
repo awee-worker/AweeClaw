@@ -16,7 +16,7 @@ export const AgentTaskNode = memo(function AgentTaskNode({ id, data, selected }:
   return (
     <div
       className={[
-        'relative rounded-2xl border bg-white shadow-sm transition-all duration-200 group',
+        'relative rounded-2xl border bg-background-secondary shadow-sm transition-all duration-200 group',
         'min-w-[220px]',
         expanded ? 'max-w-[400px]' : 'max-w-[260px]',
         selected ? 'shadow-md' : 'hover:shadow-md',
@@ -55,7 +55,7 @@ export const AgentGroupNode = memo(function AgentGroupNode({ id, data, selected 
 
   return (
     <div
-      className={['relative rounded-2xl border bg-white shadow-sm transition-all duration-200 group', 'min-w-[220px]', expanded ? 'max-w-[400px]' : 'max-w-[260px]', selected ? 'shadow-md' : 'hover:shadow-md'].join(' ')}
+      className={['relative rounded-2xl border bg-background-secondary shadow-sm transition-all duration-200 group', 'min-w-[220px]', expanded ? 'max-w-[400px]' : 'max-w-[260px]', selected ? 'shadow-md' : 'hover:shadow-md'].join(' ')}
       style={{ borderColor: selected ? color : '#e5e7eb', boxShadow: selected ? `0 0 0 3px ${color}18` : undefined }}
     >
       <NodeControlBar nodeId={id} />
@@ -86,7 +86,7 @@ export const SubWorkflowNode = memo(function SubWorkflowNode({ id, data, selecte
 
   return (
     <div
-      className={['relative rounded-2xl border bg-white shadow-sm transition-all duration-200 group', 'min-w-[220px]', expanded ? 'max-w-[400px]' : 'max-w-[260px]', selected ? 'shadow-md' : 'hover:shadow-md'].join(' ')}
+      className={['relative rounded-2xl border bg-background-secondary shadow-sm transition-all duration-200 group', 'min-w-[220px]', expanded ? 'max-w-[400px]' : 'max-w-[260px]', selected ? 'shadow-md' : 'hover:shadow-md'].join(' ')}
       style={{ borderColor: selected ? color : '#e5e7eb', boxShadow: selected ? `0 0 0 3px ${color}18` : undefined }}
     >
       <NodeControlBar nodeId={id} />

@@ -23,7 +23,7 @@ export function NodeExecutionCard({ node, index, status, record, language, onCli
     <div className="flex flex-col items-center w-full">
       {showConnector && (
         <div className="flex flex-col items-center py-0.5">
-          <div className={`w-px h-3 ${status === 'completed' ? 'bg-green-500/40' : 'bg-[var(--border)]/30'}`} />
+          <div className={`w-px h-3 ${status === 'completed' ? 'bg-green-500/40' : 'bg-border/30'}`} />
         </div>
       )}
 
@@ -35,7 +35,7 @@ export function NodeExecutionCard({ node, index, status, record, language, onCli
               ? 'border-green-500/20 bg-green-500/5'
               : status === 'failed'
                 ? 'border-red-500/20 bg-red-500/5'
-                : 'border-[var(--border)]/30 bg-[var(--background)]/50'
+                : 'border-border/30 bg-background/50'
         }`}
         onClick={() => onClick(node.id)}
       >
@@ -51,10 +51,10 @@ export function NodeExecutionCard({ node, index, status, record, language, onCli
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              <span className="text-xs font-medium text-[var(--text-primary)] truncate">
+              <span className="text-xs font-medium text-text-primary truncate">
                 {language === 'zh' && node.nameZh ? node.nameZh : node.name}
               </span>
-              <NodeIcon className="w-3 h-3 text-[var(--text-muted)]/40" />
+              <NodeIcon className="w-3 h-3 text-text-muted/40" />
             </div>
             {status === 'running' && (
               <p className="text-[10px] text-blue-400/70 mt-0.5">
@@ -66,7 +66,7 @@ export function NodeExecutionCard({ node, index, status, record, language, onCli
               <p className="text-[10px] text-red-400/70 mt-0.5 line-clamp-1">{record.error}</p>
             )}
           </div>
-          <span className="text-[10px] text-[var(--text-muted)]/30 font-mono">#{index + 1}</span>
+          <span className="text-[10px] text-text-muted/30 font-mono">#{index + 1}</span>
         </div>
       </div>
     </div>

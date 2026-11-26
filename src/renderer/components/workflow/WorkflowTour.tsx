@@ -189,7 +189,7 @@ export default function WorkflowTour({ visible, onClose, language }: WorkflowTou
 
       {/* Tooltip card */}
       <div
-        className="absolute bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-5 max-w-sm transition-all duration-300"
+        className="absolute bg-background-secondary rounded-xl shadow-2xl p-5 max-w-sm transition-all duration-300"
         style={{
           pointerEvents: 'auto',
           ...(spotPosition
@@ -217,15 +217,15 @@ export default function WorkflowTour({ visible, onClose, language }: WorkflowTou
         }}
       >
         <div className="flex items-start justify-between mb-3">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{title}</h3>
+          <h3 className="font-semibold text-text-primary text-sm">{title}</h3>
           <button
             onClick={skip}
-            className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 ml-2 flex-shrink-0"
+            className="p-1 rounded-lg hover:bg-surface-hover text-text-muted ml-2 flex-shrink-0"
           >
             <X size={16} />
           </button>
         </div>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">{content}</p>
+        <p className="text-sm text-text-secondary mb-4 leading-relaxed">{content}</p>
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
@@ -233,7 +233,7 @@ export default function WorkflowTour({ visible, onClose, language }: WorkflowTou
               <div
                 key={i}
                 className={`w-2 h-2 rounded-full transition-colors ${
-                  i === step ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+                  i === step ? 'bg-blue-500' : 'bg-surface-muted '
                 }`}
               />
             ))}
@@ -242,7 +242,7 @@ export default function WorkflowTour({ visible, onClose, language }: WorkflowTou
             {step > 0 && (
               <button
                 onClick={prev}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-text-secondary hover:bg-surface-hover "
               >
                 <ChevronLeft size={14} />
                 {t('wf.back', language as Language)}
@@ -259,7 +259,7 @@ export default function WorkflowTour({ visible, onClose, language }: WorkflowTou
         </div>
         <button
           onClick={skip}
-          className="mt-3 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 w-full text-center"
+          className="mt-3 text-xs text-text-muted hover:text-text-secondary w-full text-center"
         >
           {t('wf.skiptour', language as Language)}
         </button>

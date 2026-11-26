@@ -64,31 +64,31 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 bg-black/30" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[600px] max-h-[70vh] flex flex-col overflow-hidden"
+        className="bg-background-secondary rounded-xl shadow-2xl w-[600px] max-h-[70vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border ">
           <div className="flex items-center gap-3">
             <Keyboard size={18} className="text-blue-500" />
-            <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+            <h2 className="font-semibold text-text-primary text-sm">
               {t('wf.helpshortcuts', language as Language)}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400"
+            className="p-1 rounded-lg hover:bg-surface-hover text-text-muted"
           >
             <X size={16} />
           </button>
         </div>
 
-        <div className="flex items-center gap-1 px-5 py-2 border-b border-gray-100 dark:border-gray-750">
+        <div className="flex items-center gap-1 px-5 py-2 border-b border-border-subtle ">
           <button
             onClick={() => setTab('shortcuts')}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               tab === 'shortcuts'
-                ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                ? 'bg-accent/10 text-accent dark:bg-blue-900/30 dark:text-blue-400'
+                : 'text-text-secondary hover:text-text-primary '
             }`}
           >
             {t('wf.shortcuts', language as Language)}
@@ -97,8 +97,8 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
             onClick={() => setTab('nodes')}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               tab === 'nodes'
-                ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                ? 'bg-accent/10 text-accent dark:bg-blue-900/30 dark:text-blue-400'
+                : 'text-text-secondary hover:text-text-primary '
             }`}
           >
             {t('wf.nodereference', language as Language)}
@@ -108,12 +108,12 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
         {tab === 'nodes' && (
           <div className="px-5 py-3">
             <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('wf.searchnodes', language as Language)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-surface text-text-primary focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -124,7 +124,7 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
             <div className="space-y-4">
               {(['general', 'canvas', 'nodes'] as const).map((category) => (
                 <div key={category}>
-                  <h3 className="text-xs font-semibold text-gray-400 uppercase mb-2">
+                  <h3 className="text-xs font-semibold text-text-muted uppercase mb-2">
                     {category === 'general' ? (t('wf.general', language as Language)) : ''}
                     {category === 'canvas' ? (t('wf.canvas', language as Language)) : ''}
                     {category === 'nodes' ? (t('wf.nodeoperations', language as Language)) : ''}
@@ -133,12 +133,12 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
                     {SHORTCUTS.filter((s) => s.category === category).map((s) => (
                       <div
                         key={s.key}
-                        className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                        className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-surface "
                       >
-                        <span className="text-xs text-gray-600 dark:text-gray-400">
+                        <span className="text-xs text-text-secondary ">
                           {language === 'zh' ? s.descZh : s.descEn}
                         </span>
-                        <kbd className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+                        <kbd className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-surface-hover text-text-secondary border border-border ">
                           {isMac ? s.macKey : s.key}
                         </kbd>
                       </div>
@@ -156,7 +156,7 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
                 : NODE_CATEGORIES
               ).map((category) => (
                 <div key={category.key}>
-                  <h3 className="text-xs font-semibold text-gray-400 uppercase mb-2">
+                  <h3 className="text-xs font-semibold text-text-muted uppercase mb-2">
                     {language === 'zh' ? category.labelZh : category.labelEn}
                   </h3>
                   <div className="space-y-1">
@@ -165,19 +165,19 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
                       return (
                         <div
                           key={type}
-                          className="flex items-start gap-3 py-2 px-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                          className="flex items-start gap-3 py-2 px-2 rounded-md hover:bg-surface "
                         >
                           <div className="flex-shrink-0 w-16 pt-0.5">
-                            <span className="text-xs font-medium text-gray-800 dark:text-gray-200">
+                            <span className="text-xs font-medium text-text-primary ">
                               {language === 'zh' ? info.zh : info.en}
                             </span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                            <p className="text-xs text-text-secondary leading-relaxed">
                               {language === 'zh' ? info.descZh : info.descEn}
                             </p>
                           </div>
-                          <code className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-mono">
+                          <code className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-surface-hover text-text-secondary font-mono">
                             {type}
                           </code>
                         </div>
@@ -190,8 +190,8 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
           )}
         </div>
 
-        <div className="px-5 py-2 border-t border-gray-100 dark:border-gray-750 text-center">
-          <p className="text-[10px] text-gray-400">
+        <div className="px-5 py-2 border-t border-border-subtle text-center">
+          <p className="text-[10px] text-text-muted">
             {t('wf.presstotogglethispanel', language as Language)}
           </p>
         </div>

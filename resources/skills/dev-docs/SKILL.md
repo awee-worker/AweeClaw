@@ -1,5 +1,6 @@
 ---
 name: dev-docs
+nameZh: 技术文档
 description: 技术文档撰写规范——文档分类、结构组织、接口说明、示例编写、版本与变更记录。
 sceneMode: dev
 keywords: 开发文档,技术文档,API文档,README,接口文档,使用说明,变更记录,CHANGELOG,文档撰写

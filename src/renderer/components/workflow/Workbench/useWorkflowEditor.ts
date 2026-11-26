@@ -25,6 +25,9 @@ import { validateWorkflow } from '../shared/validation'
 import { applyDagreLayout } from '../Canvas/layout'
 import { useUndoRedo } from '../shared/useUndoRedo'
 import { saveWorkflowDefinition } from '@shared/configuration/workflows/workflowPersistenceV2'
+import { templateClientAPI } from '@shared/configuration/workflows/templateClientAPI'
+import type { WorkflowTemplateEntry } from '@shared/configuration/workflows/templateClientAPI'
+import { workflowClientAPI } from '@shared/configuration/workflows/workflowClientAPI'
 
 export interface WorkflowEditorState {
   workflow: WorkflowDefinitionV2 | null
@@ -58,6 +61,8 @@ export interface WorkflowEditorActions {
   handleRedo: () => void
   handleSelectWorkflow: (wf: WorkflowDefinitionV2) => void
   handleCreateNew: () => void
+  /** 从模板实例化一个工作流并载入编辑器；失败时抛出，由调用方提示 */
+  handleUseTemplate: (template: WorkflowTemplateEntry) => Promise<void>
 }
 
 export function useWorkflowEditor(initialWorkflow?: WorkflowDefinition | WorkflowDefinitionV2 | null) {
@@ -520,6 +525,26 @@ export function useWorkflowEditor(initialWorkflow?: WorkflowDefinition | Workflo
     setIsModified(false)
   }, [])
 
+  /**
+   * 从模板实例化工作流并载入编辑器。
+   *
+   * 走服务端 instantiate 而不是在客户端新建空白工作流再拷贝字段：
+   * 建工作流与模板计数必须在同一事务里完成，客户端拼装会破坏这个约束。
+   */
+  const handleUseTemplate = useCallback(
+    async (template: WorkflowTemplateEntry) => {
+      const created = await templateClientAPI.instantiate(template.id)
+      const wf = await workflowClientAPI.get(created.id)
+      if (!wf) {
+        throw new Error(`Template ${template.id} instantiate returned no workflow`)
+      }
+      setWorkflow(wf)
+      setSelectedNodeId(null)
+      setIsModified(false)
+    },
+    [],
+  )
+
   useEffect(() => {
     const handleAddVar = (e: Event) => {
       handleAddWorkflowVariable((e as CustomEvent).detail)
@@ -592,5 +617,6 @@ export function useWorkflowEditor(initialWorkflow?: WorkflowDefinition | Workflo
     handleRedo,
     handleSelectWorkflow,
     handleCreateNew,
+    handleUseTemplate,
   }
 }

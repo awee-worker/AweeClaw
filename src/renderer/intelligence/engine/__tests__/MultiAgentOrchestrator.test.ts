@@ -12,7 +12,7 @@ import {
   MultiAgentOrchestrator,
   TaskDecomposer,
   ConsensusEngine,
-  WorkflowEngine,
+  AgentChainEngine,
   agentRegistry,
   messageBus,
   type AgentProfile,
@@ -363,7 +363,7 @@ describe('MultiAgentOrchestrator', () => {
   // ============================================================
   describe('工作流引擎', () => {
     it('应该支持顺序执行', async () => {
-      const workflow = new WorkflowEngine()
+      const workflow = new AgentChainEngine()
       const executionOrder: string[] = []
 
       const executor = async (agentId: string, task: string) => {
@@ -390,7 +390,7 @@ describe('MultiAgentOrchestrator', () => {
     })
 
     it('应该支持并行节点', async () => {
-      const workflow = new WorkflowEngine()
+      const workflow = new AgentChainEngine()
       const executionLog: Array<{ agentId: string; start: number; end: number }> = []
 
       const executor = async (agentId: string, task: string) => {
@@ -430,7 +430,7 @@ describe('MultiAgentOrchestrator', () => {
     })
 
     it('应该检测循环依赖', async () => {
-      const workflow = new WorkflowEngine()
+      const workflow = new AgentChainEngine()
 
       workflow.registerNode({
         id: 'a', type: 'task', agentId: 'arch-1', task: { description: '' }, next: 'b',

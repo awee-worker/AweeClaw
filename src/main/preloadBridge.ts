@@ -39,6 +39,7 @@ import { contextBridge } from 'electron'
 import { createAppLifecycleApi } from './preload/api/appLifecycle'
 import { createFileOpsApi } from './preload/api/fileOps'
 import { createStorageApi } from './preload/api/storage'
+import { createWorkflowDbApi } from './preload/api/workflowDb'
 import { createAiApi } from './preload/api/ai'
 import { createAgentApi } from './preload/api/agent'
 import { createTerminalApi } from './preload/api/terminal'
@@ -103,6 +104,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ...createAppLifecycleApi(),
   ...createFileOpsApi(),
   ...createStorageApi(),
+  ...createWorkflowDbApi(),
   ...createAiApi(),
   agent: createAgentApi(),
   ...createTerminalApi(),

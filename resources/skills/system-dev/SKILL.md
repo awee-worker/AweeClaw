@@ -1,5 +1,6 @@
 ---
 name: system-dev
+nameZh: 服务端开发
 description: 服务端与系统开发规范——接口设计、分层结构、数据持久化、事务与并发、错误处理与可观测性。
 sceneMode: dev
 keywords: 系统开发,后端开发,服务端,接口设计,API,数据库,微服务,并发,事务,性能优化

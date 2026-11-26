@@ -11,6 +11,14 @@ import { BUILTIN_AGENT_ROLES } from '@shared/protocols/workflow'
 import { BUILTIN_PROVIDERS } from '@shared/configuration/aiProviders'
 import { backendApi, getServerUrl } from '@services/backendApi'
 import { getNodeLabel } from '../../shared/nodeTypes'
+import {
+  useInstalledSkills,
+  useLocalTools,
+  useMcpServers,
+  useMcpTools,
+  useWorkflowOptions,
+  withCurrentOption,
+} from './useNodeOptions'
 import { t, type Language } from '@renderer/i18n'
 
 interface InlineEditorProps {
@@ -21,13 +29,13 @@ interface InlineEditorProps {
 }
 
 const INPUT_CLASS =
-  'nodrag no-wheel w-full h-7 px-2 text-[11px] rounded-md border border-gray-200 bg-white text-gray-700 placeholder:text-gray-350 focus:outline-none focus:ring-1.5 focus:ring-blue-400/30 focus:border-blue-400 transition-all'
+  'nodrag no-wheel w-full h-7 px-2 text-[11px] rounded-md border border-border bg-background-secondary text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1.5 focus:ring-blue-400/30 focus:border-blue-400 transition-all'
 
 const TEXTAREA_CLASS =
-  'nodrag no-wheel w-full px-2 py-1.5 text-[11px] rounded-md border border-gray-200 bg-white text-gray-700 placeholder:text-gray-350 focus:outline-none focus:ring-1.5 focus:ring-blue-400/30 focus:border-blue-400 transition-all resize-none'
+  'nodrag no-wheel w-full px-2 py-1.5 text-[11px] rounded-md border border-border bg-background-secondary text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1.5 focus:ring-blue-400/30 focus:border-blue-400 transition-all resize-none'
 
 const SELECT_CLASS =
-  'nodrag no-wheel w-full h-7 px-2 text-[11px] rounded-md border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-1.5 focus:ring-blue-400/30 focus:border-blue-400 transition-all'
+  'nodrag no-wheel w-full h-7 px-2 text-[11px] rounded-md border border-border bg-background-secondary text-text-primary focus:outline-none focus:ring-1.5 focus:ring-blue-400/30 focus:border-blue-400 transition-all'
 
 const NODE_LABELS: Record<string, { en: string; zh: string }> = {
   systemPrompt: { en: 'System Prompt', zh: '系统提示词' },
@@ -170,7 +178,7 @@ function nodeT(key: string, lang: 'en' | 'zh' = 'zh'): string {
 
 function FieldLabel({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <label className={`block text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5 ${className}`}>
+    <label className={`block text-[9px] font-semibold text-text-muted uppercase tracking-wider mb-0.5 ${className}`}>
       {children}
     </label>
   )
@@ -204,6 +212,10 @@ const NODE_OUTPUT_VARIABLES: Record<string, Array<{ key: string; label: { en: st
   ],
   tool_call: [
     { key: 'output', label: { en: 'Result', zh: '结果' } },
+    { key: 'outputVar', label: { en: 'Output Var', zh: '输出变量' } },
+  ],
+  skill: [
+    { key: 'output', label: { en: 'Skill Content', zh: '技能内容' } },
     { key: 'outputVar', label: { en: 'Output Var', zh: '输出变量' } },
   ],
   mcp_service: [
@@ -303,26 +315,26 @@ function VariableInserter({
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="nodrag no-wheel inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] text-purple-500 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 transition-colors"
+        className="nodrag no-wheel inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] text-purple-500 bg-accent/10 border border-purple-200 rounded hover:bg-accent/15 transition-colors"
       >
         <Variable className="w-2.5 h-2.5" />
         {l === 'zh' ? '插入变量' : 'Insert Var'}
       </button>
 
       {isOpen && (
-        <div className="nodrag no-wheel absolute left-0 top-full mt-1 z-50 min-w-[180px] bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
-          <div className="p-1.5 border-b border-gray-100">
-            <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
+        <div className="nodrag no-wheel absolute left-0 top-full mt-1 z-50 min-w-[180px] bg-background-secondary border border-border rounded-lg shadow-lg overflow-hidden">
+          <div className="p-1.5 border-b border-border-subtle">
+            <span className="text-[9px] font-semibold text-text-muted uppercase tracking-wider">
               {l === 'zh' ? '上游节点' : 'Upstream Nodes'}
             </span>
           </div>
           <div className="flex">
-            <div className="min-w-[140px] max-h-[180px] overflow-y-auto border-r border-gray-100">
+            <div className="min-w-[140px] max-h-[180px] overflow-y-auto border-r border-border-subtle">
               {upstreamNodes.map((node) => (
                 <button
                   key={node.id}
                   type="button"
-                  className="w-full text-left px-2.5 py-1.5 text-[10px] hover:bg-purple-50 transition-colors flex items-center justify-between gap-1"
+                  className="w-full text-left px-2.5 py-1.5 text-[10px] hover:bg-accent/10 transition-colors flex items-center justify-between gap-1"
                   style={{ color: hoveredNodeId === node.id ? '#7c3aed' : '#374151' }}
                   onMouseEnter={() => setHoveredNodeId(node.id)}
                   onClick={() => {
@@ -335,21 +347,21 @@ function VariableInserter({
                   }}
                 >
                   <span className="truncate">{node.label}</span>
-                  <ChevronRight className="w-2.5 h-2.5 text-gray-300 flex-shrink-0" />
+                  <ChevronRight className="w-2.5 h-2.5 text-text-muted flex-shrink-0" />
                 </button>
               ))}
             </div>
 
             {hoveredNode && hoveredNode.variables.length > 1 && (
               <div className="min-w-[120px] max-h-[180px] overflow-y-auto">
-                <div className="p-1.5 border-b border-gray-50">
-                  <span className="text-[8px] text-gray-400">{hoveredNode.label}</span>
+                <div className="p-1.5 border-b border-border-subtle">
+                  <span className="text-[8px] text-text-muted">{hoveredNode.label}</span>
                 </div>
                 {hoveredNode.variables.map((v) => (
                   <button
                     key={v.key}
                     type="button"
-                    className="w-full text-left px-2.5 py-1.5 text-[10px] text-gray-600 hover:bg-purple-50 hover:text-purple-600 transition-colors"
+                    className="w-full text-left px-2.5 py-1.5 text-[10px] text-text-secondary hover:bg-accent/10 hover:text-purple-400 transition-colors"
                     onClick={() => {
                       onInsert(`{{${hoveredNode.label}.${v.key}}}`)
                       setIsOpen(false)
@@ -492,8 +504,8 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
               onClick={() => onChange('chatMode', m.id)}
               className={`nodrag flex-1 flex items-center justify-center gap-1 px-1 py-1.5 text-[10px] font-medium rounded-md border transition-all ${
                 chatMode === m.id
-                  ? 'bg-purple-50 border-purple-300 text-purple-700 shadow-sm'
-                  : 'bg-white border-gray-150 text-gray-400 hover:border-gray-300 hover:text-gray-500'
+                  ? 'bg-accent/10 border-purple-300 text-purple-400 shadow-sm'
+                  : 'bg-background-secondary border-border text-text-muted hover:border-border-active hover:text-text-secondary'
               }`}
               title={l === 'zh' ? m.labelZh : m.labelEn}
             >
@@ -536,7 +548,7 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
           ))}
         </select>
         {selectedRole && !isCustomRole && (
-          <p className="mt-1 text-[9px] text-gray-400 leading-tight">
+          <p className="mt-1 text-[9px] text-text-muted leading-tight">
             {l === 'zh' ? selectedRole.descriptionZh : selectedRole.description}
           </p>
         )}
@@ -579,10 +591,10 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       <div>
         <div className="flex items-center justify-between mb-0.5">
           <FieldLabel className="!mb-0">{nodeT('temperature', l)}</FieldLabel>
-          <span className="text-[10px] font-mono font-semibold text-gray-500">{tempVal.toFixed(1)}</span>
+          <span className="text-[10px] font-mono font-semibold text-text-secondary">{tempVal.toFixed(1)}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[9px] text-gray-350 w-5 text-right">0</span>
+          <span className="text-[9px] text-text-muted w-5 text-right">0</span>
           <input
             type="range"
             min="0"
@@ -590,14 +602,14 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
             step="0.05"
             value={tempVal}
             onChange={handleTempChange}
-            className="nodrag no-wheel flex-1 h-1.5 appearance-none bg-gray-200 rounded-full cursor-pointer
+            className="nodrag no-wheel flex-1 h-1.5 appearance-none bg-surface-active rounded-full cursor-pointer
               accent-purple-500
               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5
               [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-500 [&::-webkit-slider-thumb]:shadow-sm
               [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:active:cursor-grabbing
               [&::-webkit-slider-thumb]:transition-shadow [&::-webkit-slider-thumb]:hover:shadow-md"
           />
-          <span className="text-[9px] text-gray-350 w-5">2</span>
+          <span className="text-[9px] text-text-muted w-5">2</span>
         </div>
       </div>
 
@@ -646,8 +658,8 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       </div>
 
       {/* Variable helper */}
-      <div className="p-1.5 bg-gray-50 rounded-md border border-gray-100">
-        <p className="text-[9px] text-gray-400 leading-relaxed">
+      <div className="p-1.5 bg-surface rounded-md border border-border-subtle">
+        <p className="text-[9px] text-text-muted leading-relaxed">
           {l === 'zh'
             ? '💡 变量语法: {{节点名称.变量名}}，如 {{用户输入.output}}'
             : '💡 Variable syntax: {{node_name.variable}}, e.g. {{User Input.output}}'
@@ -722,6 +734,11 @@ function SubWorkflowEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
   )
   const inputMapping = (data.inputMapping as Record<string, string>) || {}
   const inputEntries = Object.entries(inputMapping)
+  const wfOptions = useWorkflowOptions()
+  const currentWf = (data.subWorkflowId as string) || ''
+  const wfList = wfOptions
+    ? withCurrentOption(wfOptions, currentWf, `${currentWf}${language === 'zh' ? '（未找到）' : ' (not found)'}`)
+    : null
 
   const addMapping = useCallback(
     (key: 'inputMapping' | 'outputMapping', current: Record<string, string>) => {
@@ -750,7 +767,24 @@ function SubWorkflowEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
     <div className="space-y-2.5">
       <div>
         <FieldLabel>{nodeT('subWorkflowId', language)}</FieldLabel>
-        <input type="text" value={(data.subWorkflowId as string) || ''} onChange={(e) => onChange('subWorkflowId', e.target.value)} placeholder={t('wf.selectsubworkflow', language as Language)} className={INPUT_CLASS} />
+        {wfList === null ? (
+          <p className="text-[10px] text-text-muted">{language === 'zh' ? '正在读取工作流…' : 'Loading workflows…'}</p>
+        ) : wfList.length === 0 ? (
+          <p className="text-[10px] text-text-muted">
+            {language === 'zh' ? '暂无可调用的工作流' : 'No workflows available'}
+          </p>
+        ) : (
+          <select
+            value={currentWf}
+            onChange={(e) => onChange('subWorkflowId', e.target.value)}
+            className={SELECT_CLASS}
+          >
+            <option value="">{language === 'zh' ? '— 选择工作流 —' : '— Select a workflow —'}</option>
+            {wfList.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        )}
       </div>
       <div>
         <FieldLabel>
@@ -766,7 +800,7 @@ function SubWorkflowEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
                 placeholder="from"
                 className={`${INPUT_CLASS} w-24 h-6 text-[10px]`}
               />
-              <span className="text-[10px] text-gray-350">→</span>
+              <span className="text-[10px] text-text-muted">→</span>
               <input
                 type="text"
                 value={v}
@@ -776,7 +810,7 @@ function SubWorkflowEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
               />
               <button
                 onClick={() => removeMapping('inputMapping', inputMapping, k)}
-                className="w-5 h-5 flex items-center justify-center rounded text-gray-350 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                className="w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-500/10 flex-shrink-0"
               >
                 ×
               </button>
@@ -785,7 +819,7 @@ function SubWorkflowEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
         </div>
         <button
           onClick={() => addMapping('inputMapping', inputMapping)}
-          className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
+          className="mt-1 text-[10px] text-blue-500 hover:text-accent font-medium transition-colors"
         >
           {nodeT('addMapping', language)}
         </button>
@@ -876,7 +910,7 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
               className={`px-1 py-1 text-[10px] font-medium rounded border transition-all ${
                 inputType === tpe
                   ? 'bg-rose-50 border-rose-300 text-rose-700'
-                  : 'bg-white border-gray-150 text-gray-400 hover:border-gray-300'
+                  : 'bg-background-secondary border-border text-text-muted hover:border-border-active'
               }`}
             >
               {INPUT_TYPES[tpe]?.[language] || tpe}
@@ -914,7 +948,7 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
             className={`w-full h-7 text-[10px] font-medium rounded-md border transition-all ${
               required
                 ? 'bg-rose-50 border-rose-300 text-rose-700'
-                : 'bg-white border-gray-150 text-gray-350 hover:border-gray-300'
+                : 'bg-background-secondary border-border text-text-muted hover:border-border-active'
             }`}
           >
             {required ? 'ON' : 'OFF'}
@@ -946,7 +980,7 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
                 />
                 <button
                   onClick={() => removeOption(i)}
-                  className="w-5 h-5 flex items-center justify-center rounded text-gray-350 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                  className="w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-500/10 flex-shrink-0"
                   title={t('wf.remove', language as Language)}
                 >
                   ×
@@ -956,7 +990,7 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
           </div>
           <button
             onClick={addOption}
-            className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
+            className="mt-1 text-[10px] text-blue-500 hover:text-accent font-medium transition-colors"
           >
             + {nodeT('addOption', language)}
           </button>
@@ -971,8 +1005,8 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
               onClick={() => onChange('allowMultipleFiles', !allowMultipleFiles)}
               className={`text-[10px] px-1.5 py-0.5 rounded border transition-all ${
                 allowMultipleFiles
-                  ? 'bg-blue-50 border-blue-200 text-blue-700'
-                  : 'bg-white border-gray-150 text-gray-400'
+                  ? 'bg-accent/10 border-accent/30 text-accent'
+                  : 'bg-background-secondary border-border text-text-muted'
               }`}
             >
               {nodeT('allowMultiple', language)}
@@ -980,7 +1014,7 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
           </div>
 
           <div>
-            <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+            <div className="text-[9px] font-semibold text-text-muted uppercase tracking-wider mb-1">
               {nodeT('allowedTypes', language)}
             </div>
             <div className="flex flex-wrap gap-1">
@@ -990,8 +1024,8 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
                   onClick={() => toggleFileType(ft.value)}
                   className={`px-1.5 py-0.5 text-[10px] rounded border transition-all ${
                     hasFileType(ft.value)
-                      ? 'bg-blue-50 border-blue-200 text-blue-700'
-                      : 'bg-white border-gray-150 text-gray-400 hover:border-gray-300'
+                      ? 'bg-accent/10 border-accent/30 text-accent'
+                      : 'bg-background-secondary border-border text-text-muted hover:border-border-active'
                   }`}
                   title={ft.value}
                 >
@@ -1002,7 +1036,7 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
+            <span className="text-[9px] font-semibold text-text-muted uppercase tracking-wider">
               {nodeT('maxSize', language)}
             </span>
             <input
@@ -1100,7 +1134,7 @@ function UserApprovalEditor({ nodeId, data, language = 'zh' }: InlineEditorProps
               />
               <button
                 onClick={() => removeApprover(i)}
-                className="w-5 h-5 flex items-center justify-center rounded text-gray-350 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                className="w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-500/10 flex-shrink-0"
               >
                 ×
               </button>
@@ -1109,7 +1143,7 @@ function UserApprovalEditor({ nodeId, data, language = 'zh' }: InlineEditorProps
         </div>
         <button
           onClick={addApprover}
-          className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
+          className="mt-1 text-[10px] text-blue-500 hover:text-accent font-medium transition-colors"
         >
           {nodeT('addApprover', language)}
         </button>
@@ -1213,7 +1247,7 @@ function FormCollectorEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
             const fieldOptions = (f.options as Array<{ label: string; value: string }>) || []
             const isRequired = !!(f.required as boolean)
             return (
-              <div key={i} className="border border-gray-150 rounded-lg p-2 space-y-1.5 bg-gray-50/50">
+              <div key={i} className="border border-border rounded-lg p-2 space-y-1.5 bg-surface/50">
                 <div className="flex items-center gap-1">
                   <input
                     type="text"
@@ -1236,7 +1270,7 @@ function FormCollectorEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
                   <button
                     onClick={() => updateField(i, 'required', !isRequired)}
                     className={`px-1 h-6 text-[9px] rounded border transition-all flex-shrink-0 ${
-                      isRequired ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-gray-150 text-gray-350'
+                      isRequired ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-background-secondary border-border text-text-muted'
                     }`}
                     title={nodeT('required', language)}
                   >
@@ -1244,7 +1278,7 @@ function FormCollectorEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
                   </button>
                   <button
                     onClick={() => removeField(i)}
-                    className="w-5 h-5 flex items-center justify-center rounded text-gray-350 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                    className="w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-500/10 flex-shrink-0"
                   >
                     ×
                   </button>
@@ -1257,7 +1291,7 @@ function FormCollectorEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
                   className={`${INPUT_CLASS} h-6 text-[10px]`}
                 />
                 {fieldType === 'select' && (
-                  <div className="space-y-1 pl-1 border-l-2 border-blue-200">
+                  <div className="space-y-1 pl-1 border-l-2 border-accent/30">
                     {fieldOptions.map((opt, oi) => (
                       <div key={oi} className="flex items-center gap-1">
                         <input
@@ -1282,7 +1316,7 @@ function FormCollectorEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
                         />
                         <button
                           onClick={() => updateFieldOptions(i, fieldOptions.filter((_, j) => j !== oi))}
-                          className="text-[9px] text-gray-350 hover:text-red-500"
+                          className="text-[9px] text-text-muted hover:text-red-500"
                         >
                           ×
                         </button>
@@ -1292,7 +1326,7 @@ function FormCollectorEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
                       onClick={() =>
                         updateFieldOptions(i, [...fieldOptions, { label: '', value: '' }])
                       }
-                      className="text-[9px] text-blue-500 hover:text-blue-600"
+                      className="text-[9px] text-blue-500 hover:text-accent"
                     >
                       + opt
                     </button>
@@ -1304,7 +1338,7 @@ function FormCollectorEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
         </div>
         <button
           onClick={addField}
-          className="mt-1.5 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
+          className="mt-1.5 text-[10px] text-blue-500 hover:text-accent font-medium transition-colors"
         >
           {nodeT('addField', language)}
         </button>
@@ -1357,9 +1391,9 @@ function ConditionEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
         </FieldLabel>
         <div className="nodrag no-wheel space-y-1.5 max-h-[200px] overflow-y-auto">
           {conditions.map((c, i) => (
-            <div key={i} className="border border-gray-150 rounded-lg p-2 space-y-1 bg-gray-50/50">
+            <div key={i} className="border border-border rounded-lg p-2 space-y-1 bg-surface/50">
               <div className="flex items-center gap-1">
-                <span className="text-[10px] text-gray-400 w-5 text-right">{i + 1}</span>
+                <span className="text-[10px] text-text-muted w-5 text-right">{i + 1}</span>
                 <input
                   type="text"
                   value={(c.variable as string) || ''}
@@ -1395,7 +1429,7 @@ function ConditionEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
                 />
                 <button
                   onClick={() => removeCondition(i)}
-                  className="w-5 h-5 flex items-center justify-center rounded text-gray-350 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                  className="w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-500/10 flex-shrink-0"
                 >
                   ×
                 </button>
@@ -1405,7 +1439,7 @@ function ConditionEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
         </div>
         <button
           onClick={addCondition}
-          className="mt-1.5 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
+          className="mt-1.5 text-[10px] text-blue-500 hover:text-accent font-medium transition-colors"
         >
           {nodeT('addCondition', language)}
         </button>
@@ -1459,7 +1493,7 @@ function SwitchCaseEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
         <div className="nodrag no-wheel space-y-1 max-h-[180px] overflow-y-auto">
           {cases.map((c, i) => (
             <div key={i} className="flex items-center gap-1">
-              <span className="text-[10px] text-gray-400 w-4 text-right">{i + 1}</span>
+              <span className="text-[10px] text-text-muted w-4 text-right">{i + 1}</span>
               <input
                 type="text"
                 value={(c.label as string) || ''}
@@ -1476,7 +1510,7 @@ function SwitchCaseEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
               />
               <button
                 onClick={() => removeCase(i)}
-                className="w-5 h-5 flex items-center justify-center rounded text-gray-350 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                className="w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-500/10 flex-shrink-0"
               >
                 ×
               </button>
@@ -1485,7 +1519,7 @@ function SwitchCaseEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
         </div>
         <button
           onClick={addCase}
-          className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
+          className="mt-1 text-[10px] text-blue-500 hover:text-accent font-medium transition-colors"
         >
           {nodeT('addCase', language)}
         </button>
@@ -1511,8 +1545,8 @@ function LoopEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
               onClick={() => onChange('loopType', lt)}
               className={`flex-1 px-1.5 py-1 text-[10px] font-medium rounded border transition-all ${
                 loopType === lt
-                  ? 'bg-purple-50 border-purple-300 text-purple-700'
-                  : 'bg-white border-gray-150 text-gray-400 hover:border-gray-300'
+                  ? 'bg-accent/10 border-purple-300 text-purple-400'
+                  : 'bg-background-secondary border-border text-text-muted hover:border-border-active'
               }`}
             >
               {language === 'zh'
@@ -1664,6 +1698,9 @@ function ToolCallEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
     [nodeId],
   )
   const toolArgs = (data.toolArgs as Record<string, unknown>) || {}
+  const tools = useLocalTools()
+  const currentTool = (data.toolName as string) || ''
+  const toolList = tools ? withCurrentOption(tools, currentTool, `${currentTool}${language === 'zh' ? '（未找到）' : ' (not found)'}`) : null
 
   const argEntries = Object.entries(toolArgs)
 
@@ -1687,13 +1724,20 @@ function ToolCallEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
     <div className="space-y-2.5">
       <div>
         <FieldLabel>{nodeT('toolName', language)}</FieldLabel>
-        <input
-          type="text"
-          value={(data.toolName as string) || ''}
-          onChange={(e) => onChange('toolName', e.target.value)}
-          placeholder={t('wf.selecttool', language as Language)}
-          className={INPUT_CLASS}
-        />
+        {toolList === null ? (
+          <p className="text-[10px] text-text-muted">{language === 'zh' ? '正在读取工具…' : 'Loading tools…'}</p>
+        ) : (
+          <select
+            value={currentTool}
+            onChange={(e) => onChange('toolName', e.target.value)}
+            className={SELECT_CLASS}
+          >
+            <option value="">{language === 'zh' ? '— 选择工具 —' : '— Select a tool —'}</option>
+            {toolList.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        )}
       </div>
       <div>
         <FieldLabel>
@@ -1721,7 +1765,7 @@ function ToolCallEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
               />
               <button
                 onClick={() => removeArg(key)}
-                className="w-5 h-5 flex items-center justify-center rounded text-gray-350 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                className="w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-500/10 flex-shrink-0"
               >
                 ×
               </button>
@@ -1730,7 +1774,7 @@ function ToolCallEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
         </div>
         <button
           onClick={() => onChange('toolArgs', { ...toolArgs, [`arg${argEntries.length + 1}`]: '' })}
-          className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
+          className="mt-1 text-[10px] text-blue-500 hover:text-accent font-medium transition-colors"
         >
           + arg
         </button>
@@ -1754,15 +1798,61 @@ function McpServiceEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
     (key: string, value: unknown) => emitUpdate(nodeId, { [key]: value }),
     [nodeId],
   )
+  const servers = useMcpServers()
+  const serverId = (data.mcpServerId as string) || ''
+  const tools = useMcpTools(serverId)
+  const currentTool = (data.mcpToolName as string) || ''
+  const notFound = language === 'zh' ? '（未找到）' : ' (not found)'
+  const serverList = withCurrentOption(servers, serverId, `${serverId}${notFound}`)
+  const toolList = withCurrentOption(tools, currentTool, `${currentTool}${notFound}`)
+
   return (
     <div className="space-y-2.5">
       <div>
         <FieldLabel>{nodeT('mcpServer', language)}</FieldLabel>
-        <input type="text" value={(data.mcpServerId as string) || ''} onChange={(e) => onChange('mcpServerId', e.target.value)} placeholder={t('wf.selectmcpserver', language as Language)} className={INPUT_CLASS} />
+        {servers.length === 0 ? (
+          <p className="text-[10px] text-text-muted">
+            {language === 'zh' ? '没有已配置的 MCP 服务器，请先在设置中添加' : 'No MCP servers configured. Add one in Settings first.'}
+          </p>
+        ) : (
+          <select
+            value={serverId}
+            onChange={(e) => {
+              onChange('mcpServerId', e.target.value)
+              // 换服务器后旧工具名多半不存在，清空避免运行时报错
+              if (e.target.value !== serverId) onChange('mcpToolName', '')
+            }}
+            className={SELECT_CLASS}
+          >
+            <option value="">{language === 'zh' ? '— 选择服务器 —' : '— Select a server —'}</option>
+            {serverList.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        )}
       </div>
       <div>
         <FieldLabel>{nodeT('mcpTool', language)}</FieldLabel>
-        <input type="text" value={(data.mcpToolName as string) || ''} onChange={(e) => onChange('mcpToolName', e.target.value)} placeholder={t('wf.toolname', language as Language)} className={INPUT_CLASS} />
+        <select
+          value={currentTool}
+          onChange={(e) => onChange('mcpToolName', e.target.value)}
+          disabled={!serverId}
+          className={SELECT_CLASS}
+        >
+          <option value="">
+            {language === 'zh'
+              ? (serverId ? '— 选择工具 —' : '请先选择服务器')
+              : (serverId ? '— Select a tool —' : 'Select a server first')}
+          </option>
+          {toolList.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        {serverId && tools.length === 0 && (
+          <p className="mt-1 text-[9px] text-text-muted">
+            {language === 'zh' ? '该服务器尚未上报工具（可能未连接）' : 'This server has not reported any tools (maybe disconnected)'}
+          </p>
+        )}
       </div>
       <div>
         <FieldLabel>{nodeT('outputVar', language)}</FieldLabel>
@@ -1838,7 +1928,7 @@ function CodeRunnerEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
               </select>
               <button
                 onClick={() => removeInput(i)}
-                className="w-5 h-5 flex items-center justify-center rounded text-gray-350 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                className="w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-500/10 flex-shrink-0"
               >
                 ×
               </button>
@@ -1847,7 +1937,7 @@ function CodeRunnerEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
         </div>
         <button
           onClick={addInput}
-          className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
+          className="mt-1 text-[10px] text-blue-500 hover:text-accent font-medium transition-colors"
         >
           + var
         </button>
@@ -1963,7 +2053,7 @@ function HttpRequestEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
               />
               <button
                 onClick={() => removeHeader(key)}
-                className="w-5 h-5 flex items-center justify-center rounded text-gray-350 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                className="w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-500/10 flex-shrink-0"
               >
                 ×
               </button>
@@ -1972,7 +2062,7 @@ function HttpRequestEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
         </div>
         <button
           onClick={() => onChange('httpHeaders', { ...headers, '': '' })}
-          className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
+          className="mt-1 text-[10px] text-blue-500 hover:text-accent font-medium transition-colors"
         >
           + header
         </button>
@@ -2173,7 +2263,7 @@ function DelayEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
         step={100}
         className={INPUT_CLASS}
       />
-      <p className="text-[9px] text-gray-350 mt-0.5">
+      <p className="text-[9px] text-text-muted mt-0.5">
         {t('wf.unitms1000ms1s', language as Language)}
       </p>
     </div>
@@ -2362,7 +2452,7 @@ function NotificationEditor({ nodeId, data, language = 'zh' }: InlineEditorProps
               />
               <button
                 onClick={() => removeRecipient(i)}
-                className="w-5 h-5 flex items-center justify-center rounded text-gray-350 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                className="w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-500/10 flex-shrink-0"
               >
                 ×
               </button>
@@ -2371,10 +2461,67 @@ function NotificationEditor({ nodeId, data, language = 'zh' }: InlineEditorProps
         </div>
         <button
           onClick={addRecipient}
-          className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
+          className="mt-1 text-[10px] text-blue-500 hover:text-accent font-medium transition-colors"
         >
           {nodeT('addRecipient', language)}
         </button>
+      </div>
+    </div>
+  )
+}
+
+/** 技能节点内联编辑器：技能名从已安装列表选择 + 输出变量 */
+function SkillEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
+  const onChange = useCallback(
+    (key: string, value: unknown) => emitUpdate(nodeId, { [key]: value }),
+    [nodeId],
+  )
+  const { options, error } = useInstalledSkills(language === 'en' ? 'en' : 'zh')
+  const current = (data.skillName as string) || ''
+  const list = options ? withCurrentOption(options, current, `${current}${language === 'zh' ? '（未安装）' : ' (not installed)'}`) : null
+  const selected = options?.find((o) => o.value === current)
+
+  return (
+    <div className="space-y-2.5">
+      <div>
+        <FieldLabel>{language === 'zh' ? '技能' : 'Skill'}</FieldLabel>
+        {list === null ? (
+          <p className="text-[10px] text-text-muted">{language === 'zh' ? '正在读取已安装技能…' : 'Loading skills…'}</p>
+        ) : list.length === 0 ? (
+          <p className="text-[10px] text-text-muted">
+            {language === 'zh' ? '没有已安装技能，请先到「插件与技能市场」安装' : 'No skills installed. Install one first.'}
+          </p>
+        ) : (
+          <select
+            value={current}
+            onChange={(e) => onChange('skillName', e.target.value)}
+            className={SELECT_CLASS}
+          >
+            <option value="">{language === 'zh' ? '— 选择技能 —' : '— Select a skill —'}</option>
+            {list.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        )}
+        {error && <p className="mt-1 text-[9px] text-red-400">{language === 'zh' ? `读取失败：${error}` : `Failed: ${error}`}</p>}
+        {current && options && !selected && (
+          <p className="mt-1 text-[9px] text-amber-400">
+            {language === 'zh' ? `「${current}」不在已安装列表中，运行会失败` : `"${current}" is not installed; the run will fail`}
+          </p>
+        )}
+        {selected?.hint && (
+          <p className="mt-1 text-[9px] text-text-muted line-clamp-2">{selected.hint}</p>
+        )}
+      </div>
+      <div>
+        <FieldLabel>{language === 'zh' ? '输出变量' : 'Output var'}</FieldLabel>
+        <input
+          type="text"
+          value={(data.outputVar as string) || ''}
+          onChange={(e) => onChange('outputVar', e.target.value)}
+          placeholder="skillContent"
+          className={INPUT_CLASS}
+        />
       </div>
     </div>
   )
@@ -2393,6 +2540,7 @@ const editorMap: Partial<Record<WorkflowNodeTypeV2, React.ComponentType<InlineEd
   parallel: ParallelEditor,
   merge: MergeEditor,
   tool_call: ToolCallEditor,
+  skill: SkillEditor,
   mcp_service: McpServiceEditor,
   code_runner: CodeRunnerEditor,
   http_request: HttpRequestEditor,
@@ -2414,7 +2562,7 @@ export function NodeInlineEditor({ nodeType, nodeId, data, language: languagePro
   if (!EditorComponent) return null
   return (
     <div className="px-3 pb-2.5">
-      <div className="border-t border-gray-100 pt-2">
+      <div className="border-t border-border-subtle pt-2">
         <EditorComponent nodeId={nodeId} nodeType={nodeType} data={data} language={language} />
       </div>
     </div>

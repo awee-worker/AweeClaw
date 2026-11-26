@@ -17,21 +17,21 @@ interface WorkflowHistoryProps {
 }
 
 const STATUS_COLORS: Record<WorkflowRunStatus, string> = {
-  'pending': 'text-gray-400',
+  'pending': 'text-text-muted',
   'running': 'text-blue-400',
   'paused': 'text-amber-400',
   'completed': 'text-green-400',
   'failed': 'text-red-400',
-  'cancelled': 'text-gray-400',
+  'cancelled': 'text-text-muted',
 }
 
 const STATUS_BG: Record<WorkflowRunStatus, string> = {
-  'pending': 'bg-gray-500/10',
+  'pending': 'bg-text-muted/10',
   'running': 'bg-blue-500/10',
   'paused': 'bg-amber-500/10',
   'completed': 'bg-green-500/10',
   'failed': 'bg-red-500/10',
-  'cancelled': 'bg-gray-500/10',
+  'cancelled': 'bg-text-muted/10',
 }
 
 const STATUS_ICONS: Record<WorkflowRunStatus, React.ComponentType<{ className?: string }>> = {

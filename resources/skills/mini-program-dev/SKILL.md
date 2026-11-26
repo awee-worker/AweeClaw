@@ -1,5 +1,6 @@
 ---
 name: mini-program-dev
+nameZh: 小程序开发
 description: 小程序开发规范——页面与配置结构、rpx 适配、setData 性能、分包加载、权限调用与平台差异。
 sceneMode: dev
 keywords: 小程序,微信小程序,支付宝小程序,wxml,wxss,setData,rpx,分包,页面配置,uni-app

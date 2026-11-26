@@ -4,7 +4,7 @@ import type { NodeData } from './NodeShared'
 import { getNodeColor, getNodeLabel, NodeBody, NodeInfoRow, NodeControlBar, HeaderTargetHandle, SourceHandleWithPicker, StackedSourceHandles, NodeHeader, toggleNodeExpand, emitUpdate } from './NodeShared'
 import { NodeInlineEditor } from './NodeInlineEditor'
 
-const expandBaseClass = 'relative rounded-2xl border bg-white shadow-sm transition-all duration-200 group min-w-[220px]'
+const expandBaseClass = 'relative rounded-2xl border bg-background-secondary shadow-sm transition-all duration-200 group min-w-[220px]'
 
 export const UserInputNode = memo(function UserInputNode({ id, data, selected }: WorkflowNodeProps) {
   const nodeData = data as NodeData
@@ -47,7 +47,7 @@ export const UserInputNode = memo(function UserInputNode({ id, data, selected }:
             <span className="w-5 h-5 flex items-center justify-center rounded text-[9px] font-bold flex-shrink-0" style={{ backgroundColor: `${color}15`, color }}>
               {typeBadge[inputType] || 'T'}
             </span>
-            <span className="text-[10px] text-gray-400 flex-shrink-0 font-medium">
+            <span className="text-[10px] text-text-muted flex-shrink-0 font-medium">
               {{
                 text: 'Text',
                 multiline: 'Multiline',
@@ -68,7 +68,7 @@ export const UserInputNode = memo(function UserInputNode({ id, data, selected }:
             <NodeInfoRow label="opts" value={`${inputOptions.length}`} color={color} />
           ) : null}
           {inputType === 'file' && (
-            <div className="flex items-center gap-1 text-[10px] text-gray-400 min-w-0">
+            <div className="flex items-center gap-1 text-[10px] text-text-muted min-w-0">
               <span className="flex-shrink-0">{allowMultipleFiles ? 'multi' : 'single'}</span>
             </div>
           )}

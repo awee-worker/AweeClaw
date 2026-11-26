@@ -81,18 +81,18 @@ export const NODE_ICONS: Partial<Record<WorkflowNodeTypeV2, React.ComponentType<
 }
 
 export const RUN_STATUS_CONFIG: Record<WorkflowRunV2['status'], { color: string; bg: string; icon: React.ComponentType<{ className?: string }> }> = {
-  pending: { color: 'text-gray-400', bg: 'bg-gray-500/10', icon: Clock },
+  pending: { color: 'text-text-muted', bg: 'bg-text-muted/10', icon: Clock },
   running: { color: 'text-blue-400', bg: 'bg-blue-500/10', icon: Loader2 },
   paused: { color: 'text-amber-400', bg: 'bg-amber-500/10', icon: Pause },
   completed: { color: 'text-green-400', bg: 'bg-green-500/10', icon: CheckCircle2 },
   failed: { color: 'text-red-400', bg: 'bg-red-500/10', icon: XCircle },
-  cancelled: { color: 'text-gray-400', bg: 'bg-gray-500/10', icon: XCircle },
+  cancelled: { color: 'text-text-muted', bg: 'bg-text-muted/10', icon: XCircle },
 }
 
 export const NODE_STATUS_DISPLAY: Record<NodeDisplayStatus, { color: string; bg: string; icon: React.ComponentType<{ className?: string }> }> = {
-  pending: { color: 'text-gray-400', bg: 'bg-gray-500/10', icon: Clock },
+  pending: { color: 'text-text-muted', bg: 'bg-text-muted/10', icon: Clock },
   running: { color: 'text-blue-400', bg: 'bg-blue-500/10', icon: Loader2 },
   completed: { color: 'text-green-400', bg: 'bg-green-500/10', icon: CheckCircle2 },
   failed: { color: 'text-red-400', bg: 'bg-red-500/10', icon: XCircle },
-  waiting: { color: 'text-gray-500/30', bg: 'bg-gray-500/5', icon: Clock },
+  waiting: { color: 'text-text-muted/30', bg: 'bg-text-muted/5', icon: Clock },
 }

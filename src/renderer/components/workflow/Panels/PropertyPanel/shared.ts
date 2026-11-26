@@ -3,33 +3,33 @@ import type { TabId } from './types'
 
 export const INPUT_CLASS = [
   'w-full px-2.5 py-1.5 text-xs rounded-lg',
-  'border border-gray-200 bg-gray-50',
-  'text-gray-700 placeholder:text-gray-400',
-  'focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-white',
+  'border border-border bg-surface',
+  'text-text-primary placeholder:text-text-muted',
+  'focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-background-secondary',
   'transition-all',
 ].join(' ')
 
 export const SELECT_CLASS = [
   'w-full px-2.5 py-1.5 text-xs rounded-lg',
-  'border border-gray-200 bg-gray-50',
-  'text-gray-700',
-  'focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-white',
+  'border border-border bg-surface',
+  'text-text-primary',
+  'focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-background-secondary',
   'transition-all appearance-none cursor-pointer',
 ].join(' ')
 
 export const TEXTAREA_CLASS = [
   'w-full px-2.5 py-1.5 text-xs rounded-lg',
-  'border border-gray-200 bg-gray-50',
-  'text-gray-700 placeholder:text-gray-400',
-  'focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-white',
+  'border border-border bg-surface',
+  'text-text-primary placeholder:text-text-muted',
+  'focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-background-secondary',
   'transition-all resize-none',
 ].join(' ')
 
 export const TEXTAREA_MONO_CLASS = [
   'w-full px-2.5 py-1.5 text-xs rounded-lg',
-  'border border-gray-200 bg-gray-50',
-  'text-gray-700 placeholder:text-gray-400',
-  'focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-white',
+  'border border-border bg-surface',
+  'text-text-primary placeholder:text-text-muted',
+  'focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-background-secondary',
   'transition-all resize-none font-mono',
 ].join(' ')
 

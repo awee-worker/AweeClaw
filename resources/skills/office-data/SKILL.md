@@ -1,5 +1,6 @@
 ---
 name: office-data
+nameZh: 业务数据分析
 description: 业务数据分析规范——从指标口径到结论输出的完整分析路径。
 sceneMode: work
 keywords: 数据分析,指标,报表,同比,环比,趋势,归因,可视化,经营分析,看板

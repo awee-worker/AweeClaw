@@ -136,6 +136,35 @@ export const workflowClientAPI = {
     return mapServerToClient(item);
   },
 
+  /**
+   * 把一次多智能体运行固化成可复用工作流。
+   *
+   * 传 sourceRunId 时服务端按 (authorId, sourceRunId) 幂等去重：
+   * 同一次运行重复点击「存为工作流」只会得到同一条记录。
+   */
+  async createFromExecution(payload: {
+    name: string;
+    nameZh?: string;
+    description?: string;
+    descriptionZh?: string;
+    category?: string;
+    agents: Array<{
+      id: string;
+      name: string;
+      role?: string;
+      systemPrompt?: string;
+      modelId?: string;
+    }>;
+    executionOrder?: string[][];
+    sourceRunId?: string;
+  }): Promise<WorkflowDefinitionV2> {
+    const item = await backendApi.post<Record<string, unknown>>(
+      `${BASE}/from-execution`,
+      payload,
+    );
+    return mapServerToClient(item);
+  },
+
   async update(id: string, data: Partial<WorkflowDefinitionV2>): Promise<WorkflowDefinitionV2> {
     const payload: UpdateWorkflowPayload = {};
     if (data.name !== undefined) payload.name = data.name;

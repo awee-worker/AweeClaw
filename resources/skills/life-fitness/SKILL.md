@@ -1,5 +1,6 @@
 ---
 name: life-fitness
+nameZh: 运动健身
 description: 运动与体能训练——按目标和当前水平安排可执行的训练，写明动作要点、强度与恢复。
 sceneMode: life
 keywords: 健身,运动,锻炼,训练,跑步,力量,减脂,增肌,拉伸,居家训练

@@ -51,7 +51,7 @@ export function UserApprovalSection({ data, onChange, language }: Omit<TabProps,
             min={0}
             className={INPUT_CLASS}
           />
-          <span className="text-[10px] text-[var(--text-muted)]">ms</span>
+          <span className="text-[10px] text-text-muted">ms</span>
         </div>
       </Section>
       <Section title={t('wf.autoaction', language as Language)}>

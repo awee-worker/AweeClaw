@@ -1,5 +1,6 @@
 ---
 name: app-dev
+nameZh: 移动应用开发
 description: 移动应用开发规范——导航结构、状态管理、原生能力调用、跨端一致性、性能与发布流程。
 sceneMode: dev
 keywords: APP开发,移动应用,安卓,iOS,原生开发,跨端,React Native,Flutter,导航,打包发布

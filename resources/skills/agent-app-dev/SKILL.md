@@ -1,5 +1,6 @@
 ---
 name: agent-app-dev
+nameZh: Agent 应用开发
 description: LLM Agent 应用开发规范——工具编排、提示词结构、上下文预算、记忆与状态、失败重试与可观测性。
 sceneMode: dev
 keywords: Agent开发,智能体,LLM应用,工具调用,function calling,ReAct,提示词工程,RAG,多智能体,MCP

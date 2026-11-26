@@ -782,6 +782,12 @@ class SkillService {
         const metadata: Record<string, string> = {
             ...(frontmatter.metadata as Record<string, string> | undefined),
         }
+        // 中文/英文展示名：frontmatter 顶层 nameZh/nameEn 优先，兼容 metadata 内的同名键。
+        // 节点下拉、技能条都按 metadata.nameZh 展示，缺了就只能回退英文技能名，用户认不出是什么技能。
+        const declaredNameZh = typeof frontmatter.nameZh === 'string' ? frontmatter.nameZh : undefined
+        const declaredNameEn = typeof frontmatter.nameEn === 'string' ? frontmatter.nameEn : undefined
+        if (declaredNameZh) metadata.nameZh = declaredNameZh
+        if (declaredNameEn) metadata.nameEn = declaredNameEn
         // 图标：frontmatter 顶层 icon 优先，兼容 metadata.icon；技能条按 metadata.icon 渲染
         const declaredIcon = (typeof frontmatter.icon === 'string' ? frontmatter.icon : undefined)
             || metadata.icon

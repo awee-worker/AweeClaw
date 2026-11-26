@@ -51,25 +51,25 @@ const PropertyPanelInner = function PropertyPanel({
 
   if (!node) {
     return (
-      <aside className="w-80 flex-shrink-0 border-l border-gray-200/80 bg-white flex flex-col items-center justify-center gap-4 select-none">
-        <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center">
-          <Settings2 className="w-6 h-6 text-gray-350" />
+      <aside className="w-80 flex-shrink-0 border-l border-border/80 bg-background-secondary flex flex-col items-center justify-center gap-4 select-none">
+        <div className="w-14 h-14 rounded-2xl bg-surface-hover flex items-center justify-center">
+          <Settings2 className="w-6 h-6 text-text-muted" />
         </div>
         <div className="text-center px-8">
-          <p className="text-sm font-semibold text-gray-500 mb-1.5">
+          <p className="text-sm font-semibold text-text-secondary mb-1.5">
             {t('wf.properties', language as Language)}
           </p>
-          <p className="text-xs text-gray-400 leading-relaxed max-w-[200px]">
+          <p className="text-xs text-text-muted leading-relaxed max-w-[200px]">
             {t('wf.clickanodeonthe', language as Language)}
           </p>
         </div>
         <div className="flex flex-col items-center gap-1.5 mt-2">
           <div className="flex gap-1">
-            <span className="w-1 h-1 rounded-full bg-gray-300" />
-            <span className="w-1 h-1 rounded-full bg-gray-200" />
-            <span className="w-1 h-1 rounded-full bg-gray-200" />
+            <span className="w-1 h-1 rounded-full bg-surface-muted" />
+            <span className="w-1 h-1 rounded-full bg-surface-active" />
+            <span className="w-1 h-1 rounded-full bg-surface-active" />
           </div>
-          <p className="text-[10px] text-gray-350 tracking-wide">
+          <p className="text-[10px] text-text-muted tracking-wide">
             {t('wf.selectanodetostart', language as Language)}
           </p>
         </div>
@@ -82,9 +82,9 @@ const PropertyPanelInner = function PropertyPanel({
   const ActiveTabContent = tabComponents[activeTab]
 
   return (
-    <aside className="w-80 flex-shrink-0 border-l border-gray-200/80 bg-white flex flex-col h-full overflow-hidden select-none">
+    <aside className="w-80 flex-shrink-0 border-l border-border/80 bg-background-secondary flex flex-col h-full overflow-hidden select-none">
       {/* Header */}
-      <div className="px-4 pt-3.5 pb-2.5 border-b border-gray-100">
+      <div className="px-4 pt-3.5 pb-2.5 border-b border-border-subtle">
         <div className="flex items-center gap-2.5 mb-3">
           <div
             className="flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0 shadow-sm"
@@ -104,13 +104,13 @@ const PropertyPanelInner = function PropertyPanel({
           type="text"
           value={node.name}
           onChange={handleNameChange}
-          className="w-full h-9 px-3 text-sm font-medium rounded-lg border border-gray-200 bg-gray-50 text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-white transition-all"
+          className="w-full h-9 px-3 text-sm font-medium rounded-lg border border-border bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-background-secondary transition-all"
           placeholder={t('wf.nodename', language as Language)}
         />
       </div>
 
       {/* Tabs */}
-      <div className="flex px-3 pt-1 gap-0.5 border-b border-gray-100 bg-gray-50/50 overflow-x-auto scrollbar-none">
+      <div className="flex px-3 pt-1 gap-0.5 border-b border-border-subtle bg-surface/50 overflow-x-auto scrollbar-none">
         {availableTabs.map(tabId => {
           const tabInfo = TAB_LABELS[tabId]
           const isActive = activeTab === tabId
@@ -129,8 +129,8 @@ const PropertyPanelInner = function PropertyPanel({
               onClick={() => setActiveTab(tabId)}
               className={`flex items-center gap-1 px-1.5 py-2 text-[11px] font-medium rounded-t-lg transition-all relative flex-shrink-0 whitespace-nowrap ${
                 isActive
-                  ? 'text-gray-700 bg-white shadow-sm'
-                  : 'text-gray-450 hover:text-gray-600 hover:bg-white/60'
+                  ? 'text-text-primary bg-background-secondary shadow-sm'
+                  : 'text-text-secondary hover:text-text-secondary hover:bg-background-secondary/60'
               }`}
               title={language === 'zh' ? tabInfo.zh : tabInfo.en}
             >
@@ -155,10 +155,10 @@ const PropertyPanelInner = function PropertyPanel({
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/30">
+      <div className="px-4 py-3 border-t border-border-subtle bg-surface/30">
         <button
           onClick={() => onDeleteNode(node.id)}
-          className="w-full flex items-center justify-center gap-1.5 h-8 text-xs font-medium text-red-500 rounded-lg border border-red-200 bg-white hover:bg-red-50 hover:border-red-300 active:bg-red-100 transition-all"
+          className="w-full flex items-center justify-center gap-1.5 h-8 text-xs font-medium text-red-500 rounded-lg border border-red-500/30 bg-background-secondary hover:bg-red-500/10 hover:border-red-300 active:bg-red-500/15 transition-all"
         >
           <Trash2 className="w-3 h-3" />
           {t('wf.deletenode', language as Language)}

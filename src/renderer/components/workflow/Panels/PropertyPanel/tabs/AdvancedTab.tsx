@@ -20,7 +20,7 @@ export function AdvancedTab({ nodeType, data, onChange, language }: TabProps) {
             step={1000}
             className={INPUT_CLASS}
           />
-          <span className="text-[10px] text-gray-400 whitespace-nowrap">ms (0 = {t('wf.unlimited', language as Language)})</span>
+          <span className="text-[10px] text-text-muted whitespace-nowrap">ms (0 = {t('wf.unlimited', language as Language)})</span>
         </div>
       </Section>
 
@@ -52,7 +52,7 @@ function RetryPolicyEditor({ data, onChange, language }: Omit<TabProps, 'nodeTyp
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[9px] text-gray-400 mb-0.5 block">
+          <label className="text-[9px] text-text-muted mb-0.5 block">
             {t('wf.maxretries', language as Language)}
           </label>
           <input
@@ -65,7 +65,7 @@ function RetryPolicyEditor({ data, onChange, language }: Omit<TabProps, 'nodeTyp
           />
         </div>
         <div>
-          <label className="text-[9px] text-gray-400 mb-0.5 block">
+          <label className="text-[9px] text-text-muted mb-0.5 block">
             {t('wf.delayms', language as Language)}
           </label>
           <input
@@ -79,7 +79,7 @@ function RetryPolicyEditor({ data, onChange, language }: Omit<TabProps, 'nodeTyp
         </div>
       </div>
       <div>
-        <label className="text-[9px] text-gray-400 mb-0.5 block">
+        <label className="text-[9px] text-text-muted mb-0.5 block">
           {t('wf.backoff', language as Language)}
         </label>
         <div className="flex gap-1.5">
@@ -89,8 +89,8 @@ function RetryPolicyEditor({ data, onChange, language }: Omit<TabProps, 'nodeTyp
               onClick={() => onChange('retryPolicy', { ...rp, backoff: b })}
               className={`flex-1 px-2 py-1 text-[11px] rounded-lg border transition-all ${
                 rp.backoff === b
-                  ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
-                  : 'bg-white border-gray-150 text-gray-500'
+                  ? 'bg-accent/10 border-accent/40 text-accent font-medium'
+                  : 'bg-background-secondary border-border text-text-secondary'
               }`}
             >
               {b === 'fixed' ? (t('wf.fixed', language as Language)) : (t('wf.exp', language as Language))}
@@ -123,8 +123,8 @@ function ErrorHandlerEditor({ data, onChange, language }: Omit<TabProps, 'nodeTy
             onClick={() => onChange('onError', { ...eh, action: a.value as 'retry' | 'skip' | 'abort' | 'goto' })}
             className={`flex-1 px-2 py-1.5 text-[11px] rounded-lg border transition-all ${
               eh.action === a.value
-                ? 'bg-red-50 border-red-300 text-red-700 font-medium'
-                : 'bg-white border-gray-150 text-gray-500'
+                ? 'bg-red-500/10 border-red-300 text-red-400 font-medium'
+                : 'bg-background-secondary border-border text-text-secondary'
             }`}
           >
             {language === 'zh' ? a.zh : a.en}
@@ -134,7 +134,7 @@ function ErrorHandlerEditor({ data, onChange, language }: Omit<TabProps, 'nodeTy
 
       {eh.action === 'goto' && (
         <div>
-          <label className="text-[9px] text-gray-400 mb-0.5 block">
+          <label className="text-[9px] text-text-muted mb-0.5 block">
             {t('wf.targetnodeid', language as Language)}
           </label>
           <input
@@ -150,7 +150,7 @@ function ErrorHandlerEditor({ data, onChange, language }: Omit<TabProps, 'nodeTy
       {eh.action === 'retry' && (
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-[9px] text-gray-400 mb-0.5 block">
+            <label className="text-[9px] text-text-muted mb-0.5 block">
               {t('wf.retrycount', language as Language)}
             </label>
             <input
@@ -163,7 +163,7 @@ function ErrorHandlerEditor({ data, onChange, language }: Omit<TabProps, 'nodeTy
             />
           </div>
           <div>
-            <label className="text-[9px] text-gray-400 mb-0.5 block">
+            <label className="text-[9px] text-text-muted mb-0.5 block">
               {t('wf.delayms2', language as Language)}
             </label>
             <input

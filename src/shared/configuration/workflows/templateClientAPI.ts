@@ -18,6 +18,8 @@ export interface WorkflowTemplateEntry {
   isOfficial: boolean;
   usageCount: number;
   rating: number | null;
+  /** 参与评分的真实人数；rating 是该人数的精确均值 */
+  ratingCount: number;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -82,6 +84,23 @@ export const templateClientAPI = {
 
   async recordUse(id: string): Promise<{ success: boolean }> {
     return backendApi.post<{ success: boolean }>(`${BASE}/${id}/use`, {}) as Promise<{ success: boolean }>;
+  },
+
+  /**
+   * 从模板实例化一个工作流。
+   *
+   * 服务端在单事务内完成「建工作流 + 模板计数」，因此这是「使用模板」的
+   * 唯一正确入口 —— 客户端不要自己拼一个空工作流再逐字段复制模板内容。
+   * 返回的是新建工作流记录，调用方通常拿 id 再去 workflowClientAPI.get 取
+   * 映射后的 V2 结构。
+   */
+  async instantiate(
+    id: string,
+    overrides?: { name?: string; nameZh?: string },
+  ): Promise<{ id: string }> {
+    return backendApi.post<{ id: string }>(`${BASE}/${id}/instantiate`, {
+      body: overrides ?? {},
+    }) as Promise<{ id: string }>;
   },
 };
 

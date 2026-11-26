@@ -4,7 +4,7 @@ import type { NodeData } from './NodeShared'
 import { getNodeColor, getNodeLabel, NodeBody, NodeInfoRow, NodeControlBar, HeaderTargetHandle, NodeHeader, toggleNodeExpand, emitUpdate } from './NodeShared'
 import { NodeInlineEditor } from './NodeInlineEditor'
 
-const expandBaseClass = 'relative rounded-2xl border bg-white shadow-sm transition-all duration-200 group min-w-[220px]'
+const expandBaseClass = 'relative rounded-2xl border bg-background-secondary shadow-sm transition-all duration-200 group min-w-[220px]'
 
 export const TextOutputNode = memo(function TextOutputNode({ id, data, selected }: WorkflowNodeProps) {
   const nodeData = data as NodeData

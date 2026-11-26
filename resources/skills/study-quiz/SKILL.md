@@ -1,5 +1,6 @@
 ---
 name: study-quiz
+nameZh: 习题练习
 description: 习题练习——出题、批改与错题分析，用练习检验掌握程度。
 sceneMode: study
 keywords: 习题,练习,出题,刷题,测验,错题,批改,答案,解析,巩固

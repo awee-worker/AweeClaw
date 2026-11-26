@@ -123,7 +123,7 @@ function RunnerHeader({ statusInfo, StatusIcon, run, language, isRunning, isIdle
   onRerun: () => void
 }) {
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)] bg-[var(--background)]">
+    <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-background">
       <div className="flex items-center gap-2">
         <StatusIcon className={`w-4 h-4 ${statusInfo.color} ${isRunning ? 'animate-spin' : ''}`} />
         <span className={`text-xs font-medium ${statusInfo.color}`}>
@@ -151,7 +151,7 @@ function RunnerHeader({ statusInfo, StatusIcon, run, language, isRunning, isIdle
           </button>
         )}
         {isDone && (
-          <button onClick={onRerun} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20 rounded-lg transition-all">
+          <button onClick={onRerun} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 rounded-lg transition-all">
             <RotateCcw className="w-3 h-3" />{t('wf.rerun', language as Language)}
           </button>
         )}
@@ -167,14 +167,14 @@ function InputSchemaPanel({ workflow, inputValues, onInputChange, language }: {
   language: 'en' | 'zh'
 }) {
   return (
-    <div className="px-4 py-3 border-b border-[var(--border)] bg-[var(--background)]/50">
-      <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-2">
+    <div className="px-4 py-3 border-b border-border bg-background/50">
+      <h4 className="text-xs font-semibold text-text-secondary mb-2">
         {t('wf.inputparameters', language as Language)}
       </h4>
       <div className="space-y-2">
         {Object.entries(workflow.inputSchema!).map(([key, param]) => (
           <div key={key}>
-            <label className="text-[11px] text-[var(--text-muted)] mb-0.5 block">
+            <label className="text-[11px] text-text-muted mb-0.5 block">
               {param.descriptionZh && language === 'zh' ? param.descriptionZh : param.description}
               {param.required && <span className="text-red-400 ml-0.5">*</span>}
             </label>
@@ -183,7 +183,7 @@ function InputSchemaPanel({ workflow, inputValues, onInputChange, language }: {
               value={inputValues[key] ?? (param.default as string) ?? ''}
               onChange={e => onInputChange(prev => ({ ...prev, [key]: e.target.value }))}
               placeholder={(param as any).placeholder || param.description}
-              className="w-full px-2.5 py-1.5 text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg focus:outline-none focus:ring-1 focus:ring-[var(--accent)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+              className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-accent text-text-primary placeholder:text-text-muted"
             />
           </div>
         ))}

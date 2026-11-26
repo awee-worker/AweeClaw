@@ -1,5 +1,6 @@
 ---
 name: daily-dev
+nameZh: 日常编码
 description: 日常编码任务的通用工作流——先读后写、小步修改、改完即验。适用于零散功能调整、缺陷修复与局部重构。
 sceneMode: dev
 keywords: 日常开发,改代码,修bug,改bug,小改动,功能调整,局部重构,修复缺陷,代码修改

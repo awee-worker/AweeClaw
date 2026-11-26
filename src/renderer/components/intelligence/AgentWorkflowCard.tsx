@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo, useCallback, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   CheckCircle2,
@@ -12,8 +12,12 @@ import {
   AlertCircle,
   RotateCcw,
   FolderOpen,
+  GitBranchPlus,
 } from 'lucide-react'
 import type { MultiAgentWorkflowPart, AgentWorkflowNode } from '@intelligence/types/conversationModel'
+import { workflowClientAPI } from '@shared/configuration/workflows/workflowClientAPI'
+import { logger } from '@shared/toolkit/LogEngine'
+import { toast } from '@components/foundation/InlineNotification'
 
 const STATUS_CONFIG: Record<AgentWorkflowNode['status'], { icon: typeof CheckCircle2; colorClass: string; bgClass: string; label: string }> = {
   waiting: { icon: Clock, colorClass: 'text-gray-400', bgClass: 'bg-gray-500/10 border-gray-500/20', label: '等待中' },
@@ -187,7 +191,8 @@ function PlanReviewSection({ part }: { part: MultiAgentWorkflowPart }) {
 
 export const AgentWorkflowCard = memo(function AgentWorkflowCard({ part }: { part: MultiAgentWorkflowPart }) {
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set())
-  const { agents, status, summary, currentAgentId, projectName } = part
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const { agents, status, summary, currentAgentId, projectName, executionOrder, sessionId } = part
   const isPlanning = status === 'planning'
   const isPlanReview = status === 'plan_review'
   const isExecuting = status === 'executing'
@@ -208,6 +213,38 @@ export const AgentWorkflowCard = memo(function AgentWorkflowCard({ part }: { par
       return next
     })
   }
+
+  /**
+   * 把这次协作固化成可复用工作流。
+   *
+   * sourceRunId 传 sessionId：一次协作会话就是一次运行，重复点击只会得到
+   * 同一条工作流（服务端按 authorId + sourceRunId 幂等去重）。
+   */
+  const handleSaveAsWorkflow = useCallback(async () => {
+    if (saveState !== 'idle') return
+    setSaveState('saving')
+    try {
+      await workflowClientAPI.createFromExecution({
+        name: projectName ? `${projectName} · 协作工作流` : '协作工作流',
+        description: summary,
+        category: 'automation',
+        agents: agents.map(a => ({
+          id: a.id,
+          name: a.name,
+          // 卡片上的 description 就是该 Agent 的职责描述，落到工作流节点供编辑时辨识
+          role: a.description,
+        })),
+        executionOrder,
+        sourceRunId: sessionId,
+      })
+      setSaveState('saved')
+      toast.success('已存为工作流，可在工作流工作台打开')
+    } catch (err) {
+      logger.ui.error('[AgentWorkflowCard] save as workflow failed:', err)
+      setSaveState('idle')
+      toast.error('存为工作流失败，请稍后重试')
+    }
+  }, [saveState, projectName, summary, agents, executionOrder, sessionId])
 
   return (
     <div className="my-2 rounded-xl border border-border/50 bg-surface overflow-hidden">
@@ -257,6 +294,35 @@ export const AgentWorkflowCard = memo(function AgentWorkflowCard({ part }: { par
                 />
               ))}
             </div>
+          )}
+          {isCompleted && (
+            <button
+              type="button"
+              onClick={handleSaveAsWorkflow}
+              disabled={saveState !== 'idle'}
+              aria-busy={saveState === 'saving'}
+              title={
+                saveState === 'saved'
+                  ? '已存为工作流，可在工作流工作台查看'
+                  : '把这次协作固化为可复用工作流'
+              }
+              className={`ml-1 flex items-center gap-1 px-2 py-1 rounded-md border text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
+                saveState === 'saved'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 cursor-default'
+                  : 'border-border/50 text-text-secondary hover:bg-text-primary/[0.06] hover:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed'
+              }`}
+            >
+              {saveState === 'saving' ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : saveState === 'saved' ? (
+                <CheckCircle2 className="w-3 h-3" />
+              ) : (
+                <GitBranchPlus className="w-3 h-3" />
+              )}
+              <span>
+                {saveState === 'saving' ? '保存中' : saveState === 'saved' ? '已保存' : '存为工作流'}
+              </span>
+            </button>
           )}
         </div>
       </div>

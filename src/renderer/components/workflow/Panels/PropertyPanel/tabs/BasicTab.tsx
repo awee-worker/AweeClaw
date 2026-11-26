@@ -94,7 +94,7 @@ function AgentTaskBasicSection({ data, onChange, language }: Omit<TabProps, 'nod
         {data.roleId && (() => {
           const role = BUILTIN_AGENT_ROLES.find(r => r.id === data.roleId)
           return role ? (
-            <p className="mt-1.5 text-[10px] leading-relaxed text-blue-600 bg-blue-50 rounded-lg px-2.5 py-1.5">
+            <p className="mt-1.5 text-[10px] leading-relaxed text-accent bg-accent/10 rounded-lg px-2.5 py-1.5">
               {language === 'zh' ? role.descriptionZh : role.description}
             </p>
           ) : null
@@ -112,8 +112,8 @@ function AgentTaskBasicSection({ data, onChange, language }: Omit<TabProps, 'nod
               onClick={() => onChange('chatMode', mode)}
               className={`flex-1 px-2 py-1.5 text-[11px] font-medium rounded-lg border transition-all ${
                  (data.chatMode || 'expert') === mode
-                  ? 'bg-blue-50 border-blue-300 text-blue-700'
-                  : 'bg-white border-gray-150 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+                  ? 'bg-accent/10 border-accent/40 text-accent'
+                  : 'bg-background-secondary border-border text-text-secondary hover:border-border-active hover:bg-surface'
               }`}
             >
               {{ chat: t('wf.chat', language as Language), agent: 'Agent', expert: t('wf.expert', language as Language) }[mode]}
@@ -136,7 +136,7 @@ function AgentTaskBasicSection({ data, onChange, language }: Omit<TabProps, 'nod
             onChange={(e) => onChange('temperature', parseFloat(e.target.value))}
             className="flex-1 h-1.5 accent-blue-500 cursor-pointer"
           />
-          <span className="text-[11px] font-mono font-medium text-gray-500 w-7 text-right">
+          <span className="text-[11px] font-mono font-medium text-text-secondary w-7 text-right">
             {data.temperature ?? 0.7}
           </span>
         </div>
@@ -179,8 +179,8 @@ function AgentGroupBasicSection({ data, onChange, language }: Omit<TabProps, 'no
               onClick={() => onChange('collaborationMode', mode)}
               className={`flex-1 px-2 py-1.5 text-[11px] font-medium rounded-lg border transition-all ${
                 (data.collaborationMode || 'sequential') === mode
-                  ? 'bg-purple-50 border-purple-300 text-purple-700'
-                  : 'bg-white border-gray-150 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+                  ? 'bg-accent/10 border-purple-300 text-purple-400'
+                  : 'bg-background-secondary border-border text-text-secondary hover:border-border-active hover:bg-surface'
               }`}
             >
               {{ sequential: t('wf.seq', language as Language), debate: t('wf.debate', language as Language), voting: t('wf.vote', language as Language) }[mode]}
@@ -211,7 +211,7 @@ function AgentGroupBasicSection({ data, onChange, language }: Omit<TabProps, 'no
               <label
                 key={role.id}
                 className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                  isSelected ? 'bg-purple-50 border border-purple-200' : 'hover:bg-gray-50 border border-transparent'
+                  isSelected ? 'bg-accent/10 border border-purple-200' : 'hover:bg-surface border border-transparent'
                 }`}
               >
                 <input
@@ -243,7 +243,7 @@ function VariableSetBasicSection({ data, onChange, language }: Omit<TabProps, 'n
     >
       <div className="space-y-2">
         <div>
-          <label className="text-[10px] font-medium text-gray-400 mb-0.5 block">
+          <label className="text-[10px] font-medium text-text-muted mb-0.5 block">
             {t('wf.variablename', language as Language)}
           </label>
           <input
@@ -255,7 +255,7 @@ function VariableSetBasicSection({ data, onChange, language }: Omit<TabProps, 'n
           />
         </div>
         <div>
-          <label className="text-[10px] font-medium text-gray-400 mb-0.5 block">
+          <label className="text-[10px] font-medium text-text-muted mb-0.5 block">
             {t('wf.variablevalue', language as Language)}
           </label>
           <input
@@ -293,7 +293,7 @@ function DataTransformBasicSection({ data, onChange, language }: Omit<TabProps, 
         rows={4}
         className={TEXTAREA_MONO_CLASS}
       />
-      <p className="mt-1 text-[10px] text-gray-400">
+      <p className="mt-1 text-[10px] text-text-muted">
         {t('wf.inputavailableviadataresult', language as Language)}
       </p>
     </Section>
@@ -326,25 +326,25 @@ function FormCollectorBasicSection({ data, onChange, language }: Omit<TabProps, 
     >
       <div className="space-y-2">
         {fields.map((field, idx) => (
-          <div key={idx} className="flex items-center gap-1.5 p-2 rounded-lg bg-gray-50 border border-gray-100">
+          <div key={idx} className="flex items-center gap-1.5 p-2 rounded-lg bg-surface border border-border-subtle">
             <input
               type="text"
               value={field.name}
               onChange={(e) => updateField(idx, 'name', e.target.value)}
               placeholder={t('wf.fieldkey', language as Language)}
-              className="w-24 px-1.5 py-1 text-[11px] rounded border border-gray-200 bg-white"
+              className="w-24 px-1.5 py-1 text-[11px] rounded border border-border bg-background-secondary"
             />
             <input
               type="text"
               value={field.label}
               onChange={(e) => updateField(idx, 'label', e.target.value)}
               placeholder={t('wf.label', language as Language)}
-              className="flex-1 px-1.5 py-1 text-[11px] rounded border border-gray-200 bg-white"
+              className="flex-1 px-1.5 py-1 text-[11px] rounded border border-border bg-background-secondary"
             />
             <select
               value={field.type}
               onChange={(e) => updateField(idx, 'type', e.target.value)}
-              className="w-20 px-1 py-1 text-[11px] rounded border border-gray-200 bg-white"
+              className="w-20 px-1 py-1 text-[11px] rounded border border-border bg-background-secondary"
             >
               <option value="text">{t('wf.text', language as Language)}</option>
               <option value="number">{t('wf.num', language as Language)}</option>
@@ -352,7 +352,7 @@ function FormCollectorBasicSection({ data, onChange, language }: Omit<TabProps, 
               <option value="checkbox">{t('wf.chk', language as Language)}</option>
               <option value="textarea">{t('wf.area', language as Language)}</option>
             </select>
-            <label className="flex items-center gap-0.5 text-[10px] text-gray-400">
+            <label className="flex items-center gap-0.5 text-[10px] text-text-muted">
               <input
                 type="checkbox"
                 checked={field.required || false}
@@ -363,7 +363,7 @@ function FormCollectorBasicSection({ data, onChange, language }: Omit<TabProps, 
             </label>
             <button
               onClick={() => removeField(idx)}
-              className="p-0.5 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
+              className="p-0.5 rounded hover:bg-red-500/10 text-text-muted hover:text-red-400 transition-colors"
             >
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -371,7 +371,7 @@ function FormCollectorBasicSection({ data, onChange, language }: Omit<TabProps, 
         ))}
         <button
           onClick={addField}
-          className="w-full py-1.5 text-[11px] font-medium text-blue-500 hover:text-blue-600 border border-dashed border-blue-200 hover:border-blue-300 rounded-lg bg-blue-50/50 hover:bg-blue-50 transition-colors"
+          className="w-full py-1.5 text-[11px] font-medium text-blue-500 hover:text-accent border border-dashed border-accent/30 hover:border-accent/40 rounded-lg bg-accent/5 hover:bg-accent/10 transition-colors"
         >
           + {t('wf.addfield', language as Language)}
         </button>
@@ -461,8 +461,8 @@ function CodeRunnerBasicSection({ data, onChange, language }: Omit<TabProps, 'no
               onClick={() => onChange('codeLanguage', lang)}
               className={`flex-1 px-2 py-1.5 text-[11px] font-medium rounded-lg border transition-all ${
                 (data.codeLanguage || 'javascript') === lang
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                  : 'bg-white border-gray-150 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+                  ? 'bg-emerald-500/10 border-emerald-300 text-emerald-400'
+                  : 'bg-background-secondary border-border text-text-secondary hover:border-border-active hover:bg-surface'
               }`}
             >
               {lang === 'javascript' ? 'JavaScript' : 'Python'}
@@ -534,7 +534,7 @@ function KnowledgeQueryBasicSection({ data, onChange, language }: Omit<TabProps,
               onChange={(e) => onChange('similarityThreshold', parseFloat(e.target.value))}
               className="flex-1 h-1.5 accent-cyan-500"
             />
-            <span className="text-[11px] font-mono text-gray-500 w-7">{data.similarityThreshold ?? 0.7}</span>
+            <span className="text-[11px] font-mono text-text-secondary w-7">{data.similarityThreshold ?? 0.7}</span>
           </div>
         </Section>
       </div>
@@ -574,8 +574,8 @@ function WebhookTriggerBasicSection({ data, onChange, language }: Omit<TabProps,
               onClick={() => onChange('webhookMethod', m)}
               className={`px-3 py-1 text-[11px] font-medium rounded-lg border transition-all ${
                 (data.webhookMethod || 'POST') === m
-                  ? 'bg-red-50 border-red-300 text-red-700'
-                  : 'bg-white border-gray-150 text-gray-500'
+                  ? 'bg-red-500/10 border-red-300 text-red-400'
+                  : 'bg-background-secondary border-border text-text-secondary'
               }`}
             >
               {m}
@@ -587,8 +587,8 @@ function WebhookTriggerBasicSection({ data, onChange, language }: Omit<TabProps,
         title={t('wf.path', language as Language)}
         tip={t('wf.webhookendpointpath', language as Language)}
       >
-        <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 overflow-hidden">
-          <span className="px-2 py-1.5 text-[10px] text-gray-400 bg-gray-100 border-r border-gray-200">
+        <div className="flex items-center rounded-lg border border-border bg-surface overflow-hidden">
+          <span className="px-2 py-1.5 text-[10px] text-text-muted bg-surface-hover border-r border-border">
             /api/webhook
           </span>
           <input
@@ -652,7 +652,7 @@ function SubWorkflowBasicSection({ data, onChange, language }: Omit<TabProps, 'n
         placeholder={t('wf.workflowid', language as Language)}
         className={INPUT_CLASS}
       />
-      <p className="mt-1 text-[10px] text-gray-400">
+      <p className="mt-1 text-[10px] text-text-muted">
         {t('wf.subworkflowrunsindependentlyresultvia', language as Language)}
       </p>
     </Section>

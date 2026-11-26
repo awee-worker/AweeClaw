@@ -34,14 +34,14 @@ export function SwitchCaseBuilder({ data, onChange, language }: SwitchCaseBuilde
     <Section title={t('wf.switchcases', language as Language)}>
       <div className="space-y-2">
         {cases.map((sc, index) => (
-          <div key={sc.id} className="p-2 rounded-md border border-[var(--border)] bg-[var(--background)]/50 space-y-1.5">
+          <div key={sc.id} className="p-2 rounded-md border border-border bg-background/50 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-medium text-[var(--accent)]">
+              <span className="text-[10px] font-medium text-accent">
                 #{index + 1}
               </span>
               <button
                 onClick={() => removeCase(index)}
-                className="text-[10px] text-[var(--text-muted)] hover:text-red-400"
+                className="text-[10px] text-text-muted hover:text-red-400"
               >
                 ✕
               </button>
@@ -51,20 +51,20 @@ export function SwitchCaseBuilder({ data, onChange, language }: SwitchCaseBuilde
               value={sc.label}
               onChange={(e) => updateCase(index, { label: e.target.value })}
               placeholder={t('wf.caselabel', language as Language)}
-              className="w-full px-2 py-1 text-[11px] rounded border border-[var(--border)] bg-[var(--background)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+              className="w-full px-2 py-1 text-[11px] rounded border border-border bg-background text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <input
               type="text"
               value={sc.condition}
               onChange={(e) => updateCase(index, { condition: e.target.value })}
               placeholder={t('wf.conditionexpression', language as Language)}
-              className="w-full px-2 py-1 text-[11px] rounded border border-[var(--border)] bg-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] font-mono"
+              className="w-full px-2 py-1 text-[11px] rounded border border-border bg-text-primary focus:outline-none focus:ring-1 focus:ring-accent font-mono"
             />
           </div>
         ))}
         <button
           onClick={addCase}
-          className="w-full py-1.5 text-[11px] text-[var(--accent)] border border-dashed border-[var(--accent)]/30 rounded-md hover:bg-[var(--accent)]/5 transition-colors"
+          className="w-full py-1.5 text-[11px] text-accent border border-dashed border-accent/30 rounded-md hover:bg-accent/5 transition-colors"
         >
           + {t('wf.addcase', language as Language)}
         </button>

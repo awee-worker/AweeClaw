@@ -30,7 +30,7 @@ const STEP_COLORS: Record<WorkflowStepType, string> = {
   'condition': 'from-amber-500/20 to-amber-600/10 border-amber-500/30',
   'parallel': 'from-teal-500/20 to-teal-600/10 border-teal-500/30',
   'user_input': 'from-rose-500/20 to-rose-600/10 border-rose-500/30',
-  'delay': 'from-gray-500/20 to-gray-600/10 border-gray-500/30',
+  'delay': 'from-text-muted/20 to-text-muted/10 border-text-muted/30',
 }
 
 const STEP_ICON_COLORS: Record<WorkflowStepType, string> = {
@@ -38,7 +38,7 @@ const STEP_ICON_COLORS: Record<WorkflowStepType, string> = {
   'condition': 'text-amber-400',
   'parallel': 'text-teal-400',
   'user_input': 'text-rose-400',
-  'delay': 'text-gray-400',
+  'delay': 'text-text-muted',
 }
 
 export default function WorkflowCanvas({ workflow, onEditNode, language }: WorkflowCanvasProps) {

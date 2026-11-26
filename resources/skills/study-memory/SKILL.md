@@ -1,5 +1,6 @@
 ---
 name: study-memory
+nameZh: 记忆复习
 description: 记忆与复习——用主动回忆和间隔重复代替反复阅读，把知识从短期记住变成长期可用。
 sceneMode: study
 keywords: 记忆,背诵,复习,遗忘,遗忘曲线,记忆卡片,间隔重复,背知识点,巩固

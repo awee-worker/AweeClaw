@@ -2,8 +2,22 @@ import { useState, useCallback, useRef, useMemo } from 'react';
 import { workflowSSEClient, type RunEvent } from '@shared/configuration/workflows/workflowSSEClient';
 import type { WorkflowDefinitionV2 } from '@shared/protocols/workflowV2';
 import type { NodeExecutionRecord, NodeDisplayStatus, WorkflowRunV2 } from './runnerTypes';
+import { startLocalWorkflowRun, type LocalRunHandle } from './localWorkflowRunner';
 
 export type RunStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+
+/**
+ * 执行位置。
+ *
+ * 默认 local：只有渲染进程能访问已安装技能与插件工具（toolManager / skillService），
+ * 后端进程既没有技能目录也没有这份工具注册表。需要后端执行器能力（http_request、
+ * agent_task 等）时再显式传 server。
+ */
+export type ExecutionMode = 'local' | 'server';
+
+export interface UseWorkflowExecutionOptions {
+  mode?: ExecutionMode;
+}
 
 export interface ExecutionState {
   status: RunStatus;
@@ -30,7 +44,12 @@ function mapSSEStatusToNodeStatus(sseStatus: string | undefined): NodeExecutionR
   }
 }
 
-export function useWorkflowExecution(workflow: WorkflowDefinitionV2) {
+export function useWorkflowExecution(
+  workflow: WorkflowDefinitionV2,
+  options: UseWorkflowExecutionOptions = {},
+) {
+  const mode: ExecutionMode = options.mode ?? 'local';
+
   const [state, setState] = useState<ExecutionState>({
     status: 'idle',
     runId: null,
@@ -170,19 +189,37 @@ export function useWorkflowExecution(workflow: WorkflowDefinitionV2) {
     });
   }, []);
 
+  /** 本地执行句柄：仅 local 模式有值，cancel 时优先中断它 */
+  const localRef = useRef<LocalRunHandle | null>(null);
+
+  /** 统一的运行前置：状态归零并置 running。返回 false 表示已在运行。 */
+  const beginRun = useCallback((): boolean => {
+    if (stateRef.current.status === 'running') return false;
+    setState({
+      status: 'running',
+      runId: null,
+      currentNodeId: null,
+      nodeHistory: new Map(),
+      startedAt: Date.now(),
+      completedAt: null,
+      error: null,
+    });
+    return true;
+  }, []);
+
   const start = useCallback(
     (input?: Record<string, unknown>) => {
-      if (stateRef.current.status === 'running') return;
+      if (!beginRun()) return;
 
-      setState({
-        status: 'running',
-        runId: null,
-        currentNodeId: null,
-        nodeHistory: new Map(),
-        startedAt: Date.now(),
-        completedAt: null,
-        error: null,
-      });
+      if (mode === 'local') {
+        // 本地执行：技能与插件工具只有渲染进程能访问
+        localRef.current = startLocalWorkflowRun({
+          workflow,
+          input,
+          emit: handleSSEEvent,
+        });
+        return;
+      }
 
       workflowSSEClient
         .connect('run', {
@@ -208,25 +245,25 @@ export function useWorkflowExecution(workflow: WorkflowDefinitionV2) {
           }));
         });
     },
-    [workflow.id, handleSSEEvent],
+    [beginRun, mode, workflow, handleSSEEvent],
   );
 
   const startTest = useCallback(
     (input?: Record<string, unknown>) => {
-      if (stateRef.current.status === 'running') return;
-
-      setState({
-        status: 'running',
-        runId: null,
-        currentNodeId: null,
-        nodeHistory: new Map(),
-        startedAt: Date.now(),
-        completedAt: null,
-        error: null,
-      });
+      if (!beginRun()) return;
 
       const controller = new AbortController();
       abortRef.current = controller;
+
+      if (mode === 'local') {
+        localRef.current = startLocalWorkflowRun({
+          workflow,
+          input,
+          emit: handleSSEEvent,
+          signal: controller.signal,
+        });
+        return;
+      }
 
       workflowSSEClient
         .connect('test', {
@@ -253,10 +290,12 @@ export function useWorkflowExecution(workflow: WorkflowDefinitionV2) {
           }));
         });
     },
-    [workflow.id, handleSSEEvent],
+    [beginRun, mode, workflow, handleSSEEvent],
   );
 
   const cancel = useCallback(() => {
+    localRef.current?.cancel();
+    localRef.current = null;
     abortRef.current?.abort();
     setState((prev) => ({
       ...prev,

@@ -16,6 +16,9 @@ import WorkflowTour, { isTourCompleted } from '../WorkflowTour'
 import HelpPanel from '../HelpPanel'
 import { useWorkflowEditor } from './useWorkflowEditor'
 import { t, type Language } from '@renderer/i18n'
+import { logger } from '@shared/toolkit/LogEngine'
+import { toast } from '@components/foundation/InlineNotification'
+import type { WorkflowTemplateEntry } from '@shared/configuration/workflows/templateClientAPI'
 
 interface WorkflowWorkbenchInnerProps {
   onClose: () => void
@@ -155,11 +158,18 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
   }, [editor])
 
   const handleUseTemplate = useCallback(
-    (_template: unknown) => {
-      editor.handleCreateNew()
-      setView('editor')
+    async (template: WorkflowTemplateEntry) => {
+      try {
+        await editor.handleUseTemplate(template)
+        setView('editor')
+      } catch (err) {
+        logger.ui.error('[Workbench] failed to instantiate template:', err)
+        toast.error(
+          language === 'zh' ? '使用模板失败，请稍后重试' : 'Failed to use template, please retry',
+        )
+      }
     },
-    [editor],
+    [editor, language],
   )
 
   const handleBack = useCallback(() => {
@@ -177,16 +187,16 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
   }, [view, language, editor.workflow?.name])
 
   return (
-    <div className="relative flex flex-col h-full w-full bg-[var(--background)]">
+    <div className="workflow-shell relative flex flex-col h-full w-full">
 
       <div
-        className={`flex items-center justify-between h-11 px-3 bg-white dark:bg-gray-850 flex-shrink-0 select-none app-drag-region ${isMac ? 'pl-[70px]' : ''}`}
+        className={`flex items-center justify-between h-11 px-3 bg-background-secondary border-b border-border flex-shrink-0 select-none app-drag-region ${isMac ? 'pl-[70px]' : ''}`}
       >
         <div className="flex items-center gap-2 min-w-0 app-no-drag">
           {view !== 'list' && (
             <button
               onClick={handleBack}
-              className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex-shrink-0"
+              className="p-1 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-secondary transition-colors flex-shrink-0"
               title={t('wf.backtolist', language as Language)}
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -195,7 +205,7 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
             </button>
           )}
           {view !== 'list' && (
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+            <span className="text-xs font-medium text-text-secondary truncate">
               {headerTitle}
             </span>
           )}
@@ -203,7 +213,7 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
 
         <button
           onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors app-no-drag"
+          className="p-1.5 rounded-lg hover:bg-red-500/10 dark:hover:bg-red-900/20 text-text-muted hover:text-red-500 transition-colors app-no-drag"
           title={t('wf.closeworkflow', language as Language)}
         >
           <X className="w-4 h-4" />
@@ -242,7 +252,7 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
             />
             <button
               onClick={() => setShowTour(true)}
-              className="ml-2 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-500 transition-colors"
+              className="ml-2 p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-blue-500 transition-colors"
               title={t('wf.guide', language as Language)}
             >
               <HelpCircle size={16} />
@@ -294,7 +304,7 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
             <div className="absolute bottom-4 right-4 z-10 flex gap-2">
               <button
                 onClick={() => setShowVersionPanel(true)}
-                className="p-2 rounded-lg bg-[var(--background)] border border-[var(--border)] shadow-lg hover:bg-[var(--border)]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+                className="p-2 rounded-lg bg-background border border-border shadow-lg hover:bg-border/50 text-text-muted hover:text-text-primary transition-all"
                 title={t('wf.versionhistory', language as Language)}
               >
                 <GitBranch className="w-4 h-4" />
@@ -310,7 +320,7 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
           {showDebugPanel && !showVersionPanel && (
             <button
               onClick={() => setShowVersionPanel(true)}
-              className="absolute bottom-4 right-4 z-10 p-2 rounded-lg bg-[var(--background)] border border-[var(--border)] shadow-lg hover:bg-[var(--border)]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+              className="absolute bottom-4 right-4 z-10 p-2 rounded-lg bg-background border border-border shadow-lg hover:bg-border/50 text-text-muted hover:text-text-primary transition-all"
               title={t('wf.versionhistory2', language as Language)}
             >
               <GitBranch className="w-4 h-4" />

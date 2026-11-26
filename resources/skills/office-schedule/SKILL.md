@@ -1,5 +1,6 @@
 ---
 name: office-schedule
+nameZh: 日程安排
 description: 日程与时间安排——按优先级和精力分配时间块，识别冲突与空档，让一天的安排可执行而不是一张愿望清单。
 sceneMode: work
 keywords: 日程,排期,时间安排,会议邀约,冲突,时间管理,日历,排会,时间块

@@ -17,6 +17,7 @@ import { workspaceManager } from '@services/WorkspaceAdapter'
 import { StorageService } from '@shared/toolkit/StorageService'
 import { toast } from '@components/foundation/NotificationProvider'
 import { useElevatedToastLayer } from '@components/foundation/toastLayerStore'
+import { WORKFLOW_ENTRY_ENABLED } from '../../config/featureVisibility'
 
 interface HubCommand {
   id: string
@@ -356,6 +357,11 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     },
   ]
 
+  // 工作流入口未开放时，从命令中心移除对应命令
+  const visibleCommands = WORKFLOW_ENTRY_ENABLED
+    ? commands
+    : commands.filter((cmd) => cmd.id !== 'open-workflow')
+
   const FILTERS = [
     { id: 'all', labelKey: 'commandHub.filter.all' },
     { id: 'recent', labelKey: 'commandHub.filter.recent', icon: Clock },
@@ -364,7 +370,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     { id: 'View', labelKey: 'commandHub.filter.view' },
   ]
 
-  const filteredCommands = commands.filter(cmd => {
+  const filteredCommands = visibleCommands.filter(cmd => {
     if (activeFilter === 'recent') return recentIds.current.includes(cmd.id)
     if (activeFilter !== 'all') return cmd.category === activeFilter
     if (!query) return true

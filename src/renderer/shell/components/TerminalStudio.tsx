@@ -167,7 +167,7 @@ function getSessionTabContent(session: TerminalManagerState['terminals'][number]
 }
 
 export default function TerminalStudio() {
-  const { workspace, workspacePath, currentTheme, language, setShowWorkflow } = useStore(useShallow(s => ({ workspace: s.workspace, workspacePath: s.workspacePath, currentTheme: s.currentTheme, language: s.language, setShowWorkflow: s.setShowWorkflow })))
+  const { workspace, workspacePath, currentTheme, language, setChatVisible } = useStore(useShallow(s => ({ workspace: s.workspace, workspacePath: s.workspacePath, currentTheme: s.currentTheme, language: s.language, setChatVisible: s.setChatVisible })))
   const setInputPrompt = useAgentStore((state) => state.setInputPrompt)
   const [query, setQuery] = useState('')
   const [availableShells, setAvailableShells] = useState<AvailableShell[]>([])
@@ -388,8 +388,9 @@ export default function TerminalStudio() {
   const sendTerminalOutputToAi = useCallback(() => {
     if (!terminalPreview) return
     setInputPrompt(`${t('shell.pleaseanalyzethefollowingterminal', language as Language)}\n\n\`\`\`\n${terminalPreview}\n\`\`\``)
-    setShowWorkflow(true)
-  }, [language, setInputPrompt, setShowWorkflow, terminalPreview])
+    // 终端输出是喂给 AI 面板的，工作流工作台只承载多智能体编排，不应作为落点
+    setChatVisible(true)
+  }, [language, setChatVisible, setInputPrompt, terminalPreview])
 
   const fitActiveTerminalIfVisible = useCallback(() => {
     if (activeSession?.id && terminalContainerRef.current && terminalContainerRef.current.clientWidth > 0 && terminalContainerRef.current.clientHeight > 0) {

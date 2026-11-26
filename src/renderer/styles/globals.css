@@ -891,3 +891,46 @@ html[data-perf-low='1'] .meter-fill {
     animation: none !important;
   }
 }
+
+/* ------------------------------------------------------------
+   工作流工作台
+
+   工作台铺满整屏，属于「大面积容器」，底色必须与左侧菜单、侧边栏、
+   底栏同源：统一走 --panel-surface。未开壁纸时它等于
+   rgb(var(--background-secondary))，完全不透明；开壁纸时按
+   --wallpaper-surface-factor 降到约 0.18，让壁纸透出。
+
+   此前这里写的是 bg-[var(--background)]，而 --background 是
+   "10 10 12" 这样的空格分隔分量，当成颜色用是非法值，整条声明会被
+   浏览器丢弃 —— 容器没有底色，透明窗口直接透出桌面。
+   ------------------------------------------------------------ */
+.workflow-shell {
+  /* 工作流是铺满整屏的编辑器：内部是密集的节点、画布网格与控制面板，
+     背景透出会直接破坏节点轮廓与网格线的对比度，因此这里不做任何透出。
+
+     不能沿用 --panel-surface：它在壁纸模式下等于
+     rgb(底色 / calc(--panel-alpha × --wallpaper-surface-factor))，
+     0.72 × 0.25 只剩约 18% 不透明度，整块工作台会透出壁纸。 */
+  background-color: rgb(var(--background-secondary));
+
+  /* 作用域内锁死两个透明度系数，让内部所有引用语义色的地方
+     （bg-background-secondary / bg-surface / border-border 等）同样变为实底，
+     否则节点面板、工具栏、属性面板仍会按 0.72 半透。
+     --panel-surface 在根节点已算成具体颜色，子元素改系数不会重算，需一并覆盖。 */
+  --panel-alpha: 1;
+  --wallpaper-surface-factor: 1;
+  --panel-surface: rgb(var(--background-secondary));
+}
+
+/* 工作流的全屏挂载层。
+   工作台自己已经是实底，但这一层若用 bg-background，壁纸模式下只有 0.72
+   不透明度；入场动画期间、以及将来任何边缘间隙都会直接露出壁纸。
+   全屏工作区不存在「透出壁纸」的设计意图，这里一律实底。 */
+.workflow-overlay {
+  background-color: rgb(var(--background-secondary));
+}
+
+/* 工具栏压在画布之上，用一条细线分层，避免与画布网格糊成一片 */
+.workflow-shell .workflow-toolbar {
+  border-bottom: 1px solid rgb(var(--border) / 0.55);
+}

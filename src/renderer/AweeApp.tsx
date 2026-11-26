@@ -577,7 +577,7 @@ function AppContent() {
     <div className="app-canvas h-screen flex bg-background overflow-hidden text-text-primary selection:bg-accent/30 selection:text-white relative">
 
       {showWorkflow && (
-        <div className="fixed inset-0 z-[100] bg-background animate-in fade-in duration-200">
+        <div className="workflow-overlay fixed inset-0 z-[100] animate-in fade-in duration-200">
           <ErrorBoundary>
             <Suspense fallback={<FullScreenLoading />}>
               <WorkflowWorkbench onClose={() => setShowWorkflow(false)} language={language as 'en' | 'zh'} />

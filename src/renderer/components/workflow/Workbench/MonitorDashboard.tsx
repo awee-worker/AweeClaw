@@ -92,7 +92,7 @@ export default function MonitorDashboard({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-[900px] max-h-[80vh] bg-[var(--background)] border border-[var(--border)] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-[900px] max-h-[80vh] bg-background border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         <Header
           language={language}
           loading={loading}
@@ -160,7 +160,7 @@ export default function MonitorDashboard({
                         style={{ height: '100%' }}
                       >
                         <div
-                          className="w-full bg-[var(--accent)]/60 group-hover:bg-[var(--accent)] rounded-t transition-all"
+                          className="w-full bg-accent/60 group-hover:bg-accent rounded-t transition-all"
                           style={{
                             height: `${(h.count / maxHourlyCount) * 100}%`,
                           }}
@@ -168,7 +168,7 @@ export default function MonitorDashboard({
                       </div>
                     ))}
                   </div>
-                  <div className="flex justify-between text-[10px] text-[var(--text-muted)]/50 mt-1">
+                  <div className="flex justify-between text-[10px] text-text-muted/50 mt-1">
                     <span>24h ago</span>
                     <span>{t('app.now', language as Language)}</span>
                   </div>
@@ -184,10 +184,10 @@ export default function MonitorDashboard({
                         key={d.date}
                         className="flex-1 flex flex-col items-center gap-1"
                       >
-                        <span className="text-[10px] text-[var(--text-primary)] font-mono">
+                        <span className="text-[10px] text-text-primary font-mono">
                           {d.successRate}%
                         </span>
-                        <div className="w-full flex-1 bg-[var(--border)]/20 rounded-t relative overflow-hidden">
+                        <div className="w-full flex-1 bg-border/20 rounded-t relative overflow-hidden">
                           <div
                             className={`absolute bottom-0 w-full rounded-t transition-all ${
                               d.successRate >= 90
@@ -199,7 +199,7 @@ export default function MonitorDashboard({
                             style={{ height: `${d.successRate}%` }}
                           />
                         </div>
-                        <span className="text-[10px] text-[var(--text-muted)]/50">
+                        <span className="text-[10px] text-text-muted/50">
                           {d.date.slice(5)}
                         </span>
                       </div>
@@ -233,10 +233,10 @@ function Header({
   onRefresh: () => void
 }) {
   return (
-    <div className="flex items-center justify-between px-6 py-3 border-b border-[var(--border)]/60">
+    <div className="flex items-center justify-between px-6 py-3 border-b border-border/60">
       <div className="flex items-center gap-2">
-        <BarChart3 className="w-4 h-4 text-[var(--accent)]" />
-        <span className="text-sm font-semibold text-[var(--text-primary)]">
+        <BarChart3 className="w-4 h-4 text-accent" />
+        <span className="text-sm font-semibold text-text-primary">
           {t('wf.runmonitor', language as Language)}
         </span>
       </div>
@@ -244,7 +244,7 @@ function Header({
         <button
           onClick={onRefresh}
           disabled={loading}
-          className="p-1.5 rounded-lg hover:bg-[var(--border)]/30 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+          className="p-1.5 rounded-lg hover:bg-border/30 text-text-muted hover:text-text-primary transition-colors"
         >
           <RefreshCw
             className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
@@ -252,7 +252,7 @@ function Header({
         </button>
         <button
           onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-[var(--border)]/30 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+          className="p-1.5 rounded-lg hover:bg-border/30 text-text-muted hover:text-text-primary transition-colors"
         >
           <XCircle className="w-4 h-4" />
         </button>
@@ -283,13 +283,13 @@ function MetricCard({
   }
 
   return (
-    <div className="p-4 rounded-xl bg-[var(--border)]/10 border border-[var(--border)]/20">
+    <div className="p-4 rounded-xl bg-border/10 border border-border/20">
       <div className="flex items-center gap-2 mb-2">
         <span className={colors[accent]}>{icon}</span>
-        <span className="text-xs text-[var(--text-muted)]">{label}</span>
+        <span className="text-xs text-text-muted">{label}</span>
       </div>
       <div className={`text-2xl font-bold ${colors[accent]}`}>{value}</div>
-      <div className="text-[11px] text-[var(--text-muted)]/60 mt-1">{sub}</div>
+      <div className="text-[11px] text-text-muted/60 mt-1">{sub}</div>
     </div>
   )
 }
@@ -304,10 +304,10 @@ function ChartCard({
   children: React.ReactNode
 }) {
   return (
-    <div className="p-4 rounded-xl bg-[var(--border)]/10 border border-[var(--border)]/20">
+    <div className="p-4 rounded-xl bg-border/10 border border-border/20">
       <div className="flex items-center gap-1.5 mb-3">
-        <span className="text-[var(--text-muted)]">{icon}</span>
-        <span className="text-xs font-medium text-[var(--text-muted)]">{title}</span>
+        <span className="text-text-muted">{icon}</span>
+        <span className="text-xs font-medium text-text-muted">{title}</span>
       </div>
       {children}
     </div>
@@ -330,25 +330,25 @@ function NodeStatsSection({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1.5">
-        <Activity className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-        <span className="text-xs font-medium text-[var(--text-muted)]">
+        <Activity className="w-3.5 h-3.5 text-text-muted" />
+        <span className="text-xs font-medium text-text-muted">
           {t('app.nodeexecutionstats', language as Language)}
         </span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-[var(--border)]/30">
-              <th className="text-left py-2 px-3 text-[var(--text-muted)] font-medium">
+            <tr className="border-b border-border/30">
+              <th className="text-left py-2 px-3 text-text-muted font-medium">
                 {t('app.type', language as Language)}
               </th>
-              <th className="text-right py-2 px-3 text-[var(--text-muted)] font-medium">
+              <th className="text-right py-2 px-3 text-text-muted font-medium">
                 {t('app.count', language as Language)}
               </th>
-              <th className="text-right py-2 px-3 text-[var(--text-muted)] font-medium">
+              <th className="text-right py-2 px-3 text-text-muted font-medium">
                 {t('app.avg', language as Language)}
               </th>
-              <th className="text-right py-2 px-3 text-[var(--text-muted)] font-medium">
+              <th className="text-right py-2 px-3 text-text-muted font-medium">
                 {t('app.fail', language as Language)}
               </th>
             </tr>
@@ -360,15 +360,15 @@ function NodeStatsSection({
               .map((node) => (
                 <tr
                   key={node.nodeType}
-                  className="border-b border-[var(--border)]/10 hover:bg-[var(--border)]/5"
+                  className="border-b border-border/10 hover:bg-border/5"
                 >
-                  <td className="py-2 px-3 text-[var(--text-primary)] font-medium">
+                  <td className="py-2 px-3 text-text-primary font-medium">
                     {node.nodeType}
                   </td>
-                  <td className="py-2 px-3 text-right text-[var(--text-primary)]">
+                  <td className="py-2 px-3 text-right text-text-primary">
                     {node.count}
                   </td>
-                  <td className="py-2 px-3 text-right text-[var(--text-muted)]">
+                  <td className="py-2 px-3 text-right text-text-muted">
                     {formatDuration(node.avgDurationMs)}
                   </td>
                   <td className="py-2 px-3 text-right">
@@ -396,8 +396,8 @@ function NodeStatsSection({
 function LoadingState({ language }: { language: 'en' | 'zh' }) {
   return (
     <div className="flex flex-col items-center justify-center py-20">
-      <RefreshCw className="w-8 h-8 text-[var(--accent)] animate-spin mb-4" />
-      <span className="text-sm text-[var(--text-muted)]">
+      <RefreshCw className="w-8 h-8 text-accent animate-spin mb-4" />
+      <span className="text-sm text-text-muted">
         {t('wf.loadingmetrics', language as Language)}
       </span>
     </div>

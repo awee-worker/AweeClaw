@@ -2002,6 +2002,64 @@ export interface ElectronAPI {
   settingsDbGetProvider: (providerId: string) => Promise<any>
   settingsDbDeleteProvider: (providerId: string) => Promise<{ success: boolean; error?: string }>
   settingsDbGetPath: () => Promise<string>
+  // Workflow DB (SQLite) — 工作流定义与运行历史
+  workflowDbInitialize: () => Promise<{ ok: boolean; dbPath?: string; code?: string; error?: string }>
+  workflowDbListDefs: () => Promise<{
+    ok: boolean
+    rows?: Array<{ id: string; name: string; payload: string; created_at: number; updated_at: number }>
+    code?: string
+    error?: string
+  }>
+  workflowDbGetDef: (id: string) => Promise<{
+    ok: boolean
+    row?: { id: string; name: string; payload: string; created_at: number; updated_at: number } | null
+    code?: string
+    error?: string
+  }>
+  workflowDbUpsertDef: (def: {
+    id: string
+    name?: string
+    payload: string
+    createdAt?: number
+    updatedAt?: number
+  }) => Promise<{ ok: boolean; code?: string; error?: string }>
+  workflowDbDeleteDef: (id: string) => Promise<{ ok: boolean; code?: string; error?: string }>
+  workflowDbListRuns: (limit?: number) => Promise<{
+    ok: boolean
+    rows?: Array<{
+      id: string
+      workflow_id: string
+      status: string
+      payload: string
+      started_at: number
+      updated_at: number
+    }>
+    code?: string
+    error?: string
+  }>
+  workflowDbUpsertRun: (run: {
+    id: string
+    workflowId?: string
+    status?: string
+    payload: string
+    startedAt?: number
+    updatedAt?: number
+  }) => Promise<{ ok: boolean; code?: string; error?: string }>
+  workflowDbTrimRuns: (keep: number) => Promise<{ ok: boolean; deleted?: number; code?: string; error?: string }>
+  workflowDbDeleteRun: (id: string) => Promise<{ ok: boolean; code?: string; error?: string }>
+  workflowDbClearRuns: () => Promise<{ ok: boolean; code?: string; error?: string }>
+  workflowDbImportLegacy: (payload: {
+    defs?: Array<{ id: string; name?: string; payload: string; createdAt?: number; updatedAt?: number }>
+    runs?: Array<{
+      id: string
+      workflowId?: string
+      status?: string
+      payload: string
+      startedAt?: number
+      updatedAt?: number
+    }>
+  }) => Promise<{ ok: boolean; defs?: number; runs?: number; skipped?: number; code?: string; error?: string }>
+  workflowDbGetPath: () => Promise<{ ok: boolean; path?: string; code?: string; error?: string }>
   // 视觉模型配置（自定义模式）
   settingsDbGetVisionModelConfig: () => Promise<any | null>
   settingsDbSaveVisionModelConfig: (config: any) => Promise<{ success: boolean; error?: string }>

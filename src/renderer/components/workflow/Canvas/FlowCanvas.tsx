@@ -232,7 +232,7 @@ const FlowCanvas = memo(function FlowCanvas({
         deleteKeyCode={['Backspace', 'Delete']}
         connectionRadius={48}
         connectOnClick
-        className="bg-gray-50/50"
+        className="bg-background"
         proOptions={{ hideAttribution: true }}
         selectNodesOnDrag={false}
         panOnDrag={true}
@@ -254,11 +254,10 @@ const FlowCanvas = memo(function FlowCanvas({
           variant={BackgroundVariant.Lines}
           gap={20}
           size={0.5}
-          color="#e2e8f0"
-          style={{ opacity: 0.5 }}
+          color="rgba(148, 163, 184, 0.35)"
         />
         <Controls
-          className="!bg-white/90 !backdrop-blur-sm !border !border-gray-200 !shadow-md !rounded-xl !overflow-hidden !p-1"
+          className="!bg-popover !backdrop-blur-sm !border !border-border !shadow-md !rounded-xl !overflow-hidden !p-1"
           position="bottom-right"
         />
       </ReactFlow>
@@ -276,15 +275,15 @@ const FlowCanvas = memo(function FlowCanvas({
       {nodes.length === 0 && !isDragOver && (
         <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
           <div className="text-center max-w-xs">
-            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100/60 flex items-center justify-center shadow-sm">
+            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-accent/20/60 flex items-center justify-center shadow-sm">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2L2 7l10 5 10-5-10-5z"/>
                 <path d="M2 17l10 5 10-5"/>
                 <path d="M2 12l10 5 10-5"/>
               </svg>
             </div>
-            <p className="text-sm font-semibold text-gray-500 mb-1.5">工作流画布为空</p>
-            <p className="text-xs text-gray-400 leading-relaxed">从左侧节点面板拖拽节点到画布，或点击节点快速添加，开始构建您的工作流</p>
+            <p className="text-sm font-semibold text-text-secondary mb-1.5">工作流画布为空</p>
+            <p className="text-xs text-text-muted leading-relaxed">从左侧节点面板拖拽节点到画布，或点击节点快速添加，开始构建您的工作流</p>
           </div>
         </div>
       )}

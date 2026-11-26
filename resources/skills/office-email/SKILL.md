@@ -1,5 +1,6 @@
 ---
 name: office-email
+nameZh: 职场邮件
 description: 职场邮件写作规范——主题、称呼、正文结构与语气，让收件人一眼看懂重点并知道下一步要做什么。
 sceneMode: work
 keywords: 邮件,email,回复邮件,抄送,主题,称呼,商务沟通,对外沟通,催办,跟进

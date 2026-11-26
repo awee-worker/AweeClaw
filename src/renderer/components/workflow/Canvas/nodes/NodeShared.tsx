@@ -32,8 +32,8 @@ export type NodeData = WorkflowNodeData & {
 
 export const NODE_CLASS = [
   'rounded-2xl',
-  'border border-gray-200/80',
-  'bg-white',
+  'border border-border/80',
+  'bg-background-secondary',
   'shadow-sm',
   'transition-all duration-200',
   'min-w-[220px] max-w-[260px]',
@@ -199,16 +199,16 @@ export function NodePickerContent({
 
   return (
     <div
-      className="bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden w-52"
+      className="bg-background-secondary rounded-xl shadow-xl border border-border overflow-hidden w-52"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50/50">
-        <span className="text-[11px] font-semibold text-gray-600">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle bg-surface/50">
+        <span className="text-[11px] font-semibold text-text-secondary">
           选择下一个节点
         </span>
         <button
           onClick={onClose}
-          className="w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+          className="w-4 h-4 flex items-center justify-center rounded text-text-muted hover:text-text-secondary hover:bg-surface-active transition-colors"
         >
           <X className="w-3 h-3" />
         </button>
@@ -219,7 +219,7 @@ export function NodePickerContent({
       >
         {groupedPickerTypes.map((group) => (
           <div key={group.key} className="mb-0.5">
-            <div className="px-2 py-1.5 text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
+            <div className="px-2 py-1.5 text-[9px] font-semibold text-text-muted uppercase tracking-wider">
               {group.label}
             </div>
             <div className="space-y-0.5">
@@ -233,13 +233,13 @@ export function NodePickerContent({
                       e.stopPropagation()
                       onSelect(nt)
                     }}
-                    className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg hover:bg-gray-50 text-left transition-colors group"
+                    className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg hover:bg-surface text-left transition-colors group"
                   >
                     <div
                       className="w-2 h-2 rounded-full flex-shrink-0 group-hover:scale-125 transition-transform"
                       style={{ backgroundColor: cfg.color }}
                     />
-                    <span className="text-[11px] text-gray-700 truncate">
+                    <span className="text-[11px] text-text-primary truncate">
                       {lbl.zh}
                     </span>
                   </button>
@@ -656,7 +656,7 @@ export const BaseNode = memo(function BaseNode({
   return (
     <div
       className={[
-        'relative rounded-2xl border bg-white shadow-sm transition-all duration-200',
+        'relative rounded-2xl border bg-background-secondary shadow-sm transition-all duration-200',
         'min-w-[220px] max-w-[260px]',
         selected
           ? 'shadow-md'
@@ -670,13 +670,13 @@ export const BaseNode = memo(function BaseNode({
       }}
     >
       <div
-        className="absolute -top-7 right-0 flex h-6 items-center rounded-lg border border-gray-200/80 bg-white/95 px-0.5 text-gray-400 shadow-md backdrop-blur-[5px] opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20"
+        className="absolute -top-7 right-0 flex h-6 items-center rounded-lg border border-border/80 bg-popover px-0.5 text-text-muted shadow-md backdrop-blur-[5px] opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20"
         style={{ opacity: selected ? 1 : undefined }}
       >
         {onDuplicate && (
           <button
             type="button"
-            className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-gray-100 hover:text-gray-600 cursor-pointer transition-colors"
+            className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-surface-hover hover:text-text-secondary cursor-pointer transition-colors"
             onClick={(e) => { e.stopPropagation(); onDuplicate() }}
             title="复制"
           >
@@ -685,7 +685,7 @@ export const BaseNode = memo(function BaseNode({
         )}
         <button
           type="button"
-          className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-red-50 hover:text-red-500 cursor-pointer transition-colors"
+          className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-red-500/10 hover:text-red-500 cursor-pointer transition-colors"
           onClick={(e) => { e.stopPropagation(); onDelete?.() }}
           title="删除"
         >
@@ -707,11 +707,11 @@ interface NodeControlBarProps {
 const NodeControlBar = memo(function NodeControlBar({ nodeId }: NodeControlBarProps) {
   return (
     <div
-      className="absolute -top-7 right-0 flex h-6 items-center rounded-lg border border-gray-200/80 bg-white/95 px-0.5 text-gray-400 shadow-md backdrop-blur-[5px] opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20"
+      className="absolute -top-7 right-0 flex h-6 items-center rounded-lg border border-border/80 bg-popover px-0.5 text-text-muted shadow-md backdrop-blur-[5px] opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20"
     >
       <button
         type="button"
-        className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-gray-100 hover:text-gray-600 cursor-pointer transition-colors"
+        className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-surface-hover hover:text-text-secondary cursor-pointer transition-colors"
         onClick={(e) => { e.stopPropagation(); document.dispatchEvent(new CustomEvent('wf-duplicate-node', { detail: nodeId })) }}
         title="复制"
       >
@@ -719,7 +719,7 @@ const NodeControlBar = memo(function NodeControlBar({ nodeId }: NodeControlBarPr
       </button>
       <button
         type="button"
-        className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-red-50 hover:text-red-500 cursor-pointer transition-colors"
+        className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-red-500/10 hover:text-red-500 cursor-pointer transition-colors"
         onClick={(e) => { e.stopPropagation(); document.dispatchEvent(new CustomEvent('wf-delete-node', { detail: nodeId })) }}
         title="删除"
       >
@@ -810,14 +810,14 @@ export function NodeHeader({
             onKeyDown={handleKeyDown}
             onBlur={handleSave}
             onClick={(e) => e.stopPropagation()}
-            className="w-full h-5 px-1.5 text-[11px] rounded border border-blue-400 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400/30 transition-all"
+            className="w-full h-5 px-1.5 text-[11px] rounded border border-blue-400 bg-background-secondary text-text-primary focus:outline-none focus:ring-1 focus:ring-blue-400/30 transition-all"
           />
         ) : (
           <span
             onClick={onRename ? handleStartEdit : undefined}
             className={[
-              'text-[11px] font-semibold text-gray-800 truncate leading-tight',
-              onRename ? 'cursor-pointer hover:text-blue-600 hover:bg-blue-50/50 rounded px-0.5 -mx-0.5 transition-colors' : '',
+              'text-[11px] font-semibold text-text-primary truncate leading-tight',
+              onRename ? 'cursor-pointer hover:text-accent hover:bg-accent/5 rounded px-0.5 -mx-0.5 transition-colors' : '',
             ].join(' ')}
             title={onRename ? '点击修改名称' : undefined}
           >
@@ -828,7 +828,7 @@ export function NodeHeader({
       {onToggleExpand && (
         <button
           onClick={(e) => { e.stopPropagation(); onToggleExpand() }}
-          className={`w-5 h-5 flex items-center justify-center rounded-md text-gray-350 hover:text-gray-600 hover:bg-gray-100 transition-all flex-shrink-0 ${expanded ? 'rotate-180' : ''}`}
+          className={`w-5 h-5 flex items-center justify-center rounded-md text-text-muted hover:text-text-secondary hover:bg-surface-hover transition-all flex-shrink-0 ${expanded ? 'rotate-180' : ''}`}
         >
           <ChevronDown className="w-3 h-3" />
         </button>
@@ -841,7 +841,7 @@ export function NodeHeader({
 export function NodeBody({ children }: { children: React.ReactNode }) {
   return (
     <div className="nodrag no-wheel px-3 pb-2.5 space-y-0.5 min-w-0">
-      <div className="border-t border-gray-100 pt-1.5 min-w-0">{children}</div>
+      <div className="border-t border-border-subtle pt-1.5 min-w-0">{children}</div>
     </div>
   )
 }
@@ -849,7 +849,7 @@ export function NodeBody({ children }: { children: React.ReactNode }) {
 export function NodeInfoRow({ label, value, color, mono }: { label: string; value: React.ReactNode; color?: string; mono?: boolean }) {
   return (
     <div className="flex items-center gap-1.5 text-[10px] leading-relaxed min-w-0">
-      <span className="text-gray-400 font-medium flex-shrink-0 whitespace-nowrap min-w-[34px]">{label}</span>
+      <span className="text-text-muted font-medium flex-shrink-0 whitespace-nowrap min-w-[34px]">{label}</span>
       <span className={`truncate font-medium min-w-0 ${mono ? 'font-mono' : ''}`} style={{ color: color || '#6b7280' }}>
         {value}
       </span>

@@ -1,5 +1,6 @@
 ---
 name: study-notes
+nameZh: 笔记整理
 description: 笔记整理——把零散信息变成结构化、可检索、可复习的知识笔记。
 sceneMode: study
 keywords: 笔记,整理,归纳,知识卡片,总结,大纲,思维导图,复习,摘录

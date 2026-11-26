@@ -1,5 +1,6 @@
 ---
 name: office-ppt
+nameZh: 演示文稿制作
 description: 演示文稿制作规范——从大纲到版式的结构化方法，让每一页只讲一件事。
 sceneMode: work
 keywords: PPT,演示文稿,幻灯片,汇报,课件,路演,大纲,版式,PowerPoint,Keynote

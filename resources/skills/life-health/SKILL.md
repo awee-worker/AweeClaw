@@ -1,5 +1,6 @@
 ---
 name: life-health
+nameZh: 健康生活
 description: 健康生活陪伴——饮食搭配、运动安排与作息调整的日常建议。
 sceneMode: life
 keywords: 健康,饮食,营养,运动,健身,作息,睡眠,减脂,身体,习惯

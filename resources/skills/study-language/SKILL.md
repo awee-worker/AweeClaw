@@ -1,5 +1,6 @@
 ---
 name: study-language
+nameZh: 语言学习
 description: 语言学习——按听说读写拆分训练目标，用可执行的方法安排练习与反馈。
 sceneMode: study
 keywords: 英语,日语,语言学习,背单词,口语,听力,阅读,写作,翻译,发音

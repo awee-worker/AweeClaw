@@ -1,5 +1,6 @@
 ---
 name: study-mindmap
+nameZh: 知识结构化
 description: 知识结构化——用思维导图把零散信息组织成层级清晰、逻辑自洽的知识框架。
 sceneMode: study
 keywords: 思维导图,知识框架,结构化,脑图,梳理,大纲,知识体系,归纳,层级

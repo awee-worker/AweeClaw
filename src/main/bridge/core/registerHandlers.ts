@@ -52,6 +52,7 @@ import { registerAuditHandlers, cleanupAuditHandlers } from '../security/audit'
 import { registerSettingsHandlers } from '../storage/preferenceSync'
 import { registerSettingsDbIpcHandlers } from '../storage/settingsDb'
 import { registerSessionDbIpcHandlers } from '../storage/sessionDb'
+import { registerWorkflowDbIpcHandlers } from '../storage/workflowDb'
 import { registerMemoryDbIpcHandlers } from '../storage/memoryDb'
 import { registerScenarioDbIpcHandlers } from '../storage/scenarioDb'
 import { registerScenarioAssetsIpcHandlers } from '../storage/scenarioAssets'
@@ -354,6 +355,9 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 会话数据库
   registerOnce('session-db', () => registerSessionDbIpcHandlers())
+
+  // 工作流数据库（定义 + 运行历史，替代原 localStorage 方案）
+  registerOnce('workflow-db', () => registerWorkflowDbIpcHandlers())
 
   // 项目附件本地存储（本地优先：工作空间 .aweeclaw 缓存目录，后端兜底）
   // 附件跟随工作空间走：优先当前窗口绑定的工作空间，兜底持久化的最近工作空间

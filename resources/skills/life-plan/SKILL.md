@@ -1,5 +1,6 @@
 ---
 name: life-plan
+nameZh: 生活规划
 description: 生活规划陪伴——日程安排、习惯养成与时间管理的务实建议。
 sceneMode: life
 keywords: 生活规划,日程,计划,习惯,时间管理,目标,清单,作息,整理

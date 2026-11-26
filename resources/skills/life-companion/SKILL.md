@@ -1,5 +1,6 @@
 ---
 name: life-companion
+nameZh: 情绪陪伴
 description: 情绪陪伴——先倾听再回应，帮对方梳理感受并找到可以迈出的一小步。
 sceneMode: life
 keywords: 情绪,陪伴,倾诉,压力,焦虑,心情,烦恼,放松,安慰,聊天

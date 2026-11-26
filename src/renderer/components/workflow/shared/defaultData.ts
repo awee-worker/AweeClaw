@@ -87,8 +87,15 @@ export function createDefaultNodeData(type: WorkflowNodeTypeV2): WorkflowNodeDat
       return {
         toolName: '',
         toolArgs: {},
-        description: '调用系统内置工具完成特定操作',
+        description: '调用系统内置工具或插件工具',
         outputVar: 'toolResult',
+      }
+    case 'skill':
+      return {
+        skillName: '',
+        skillArgs: {},
+        description: '加载已安装技能，把技能指令交给下游节点',
+        outputVar: 'skillContent',
       }
     case 'mcp_service':
       return {

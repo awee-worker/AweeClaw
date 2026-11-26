@@ -43,26 +43,26 @@ export default function WorkflowToolbar({
   language = 'zh',
 }: WorkflowToolbarProps) {
   return (
-    <header className="h-10 bg-gray-50/80 dark:bg-gray-850/50 border-b border-gray-100 dark:border-gray-700/30 flex items-center px-3 gap-1.5 flex-shrink-0 select-none">
+    <header className="h-10 bg-background-secondary/80 border-b border-border flex items-center px-3 gap-1.5 flex-shrink-0 select-none">
 
       {/* Title */}
       {workflow ? (
         <div className="flex items-center gap-2 min-w-0 flex-1 ml-1">
-          <span className="text-sm font-semibold text-gray-800 truncate">
+          <span className="text-sm font-semibold text-text-primary truncate">
             {language === 'zh' ? workflow.nameZh : workflow.name}
           </span>
-          <span className="text-[10px] text-gray-400 flex-shrink-0 tabular-nums">
+          <span className="text-[10px] text-text-muted flex-shrink-0 tabular-nums">
             {workflow.nodes.length}N / {workflow.edges.length}E
           </span>
           {isModified && (
-            <span className="flex items-center gap-1 text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md flex-shrink-0">
+            <span className="flex items-center gap-1 text-[10px] font-medium text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md flex-shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
               {t('wf.unsaved', language as Language)}
             </span>
           )}
         </div>
       ) : (
-        <span className="text-sm font-medium text-gray-400 flex-1 ml-1">
+        <span className="text-sm font-medium text-text-muted flex-1 ml-1">
           {t('wf.newworkflow', language as Language)}
         </span>
       )}
@@ -74,7 +74,7 @@ export default function WorkflowToolbar({
             <button
               onClick={onUndo}
               disabled={!canUndo}
-              className="p-1.5 rounded-lg text-gray-450 hover:text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+              className="p-1.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
               title={`${t('wf.undo', language as Language)} (Ctrl+Z)`}
             >
               <Undo2 className="w-3.5 h-3.5" />
@@ -82,18 +82,18 @@ export default function WorkflowToolbar({
             <button
               onClick={onRedo}
               disabled={!canRedo}
-              className="p-1.5 rounded-lg text-gray-450 hover:text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+              className="p-1.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
               title={`${t('wf.redo', language as Language)} (Ctrl+Shift+Z)`}
             >
               <Redo2 className="w-3.5 h-3.5" />
             </button>
-            <div className="w-px h-5 bg-gray-200 mx-1" />
+            <div className="w-px h-5 bg-surface-active mx-1" />
           </>
         )}
 
         <button
           onClick={onNew}
-          className="flex items-center gap-1 h-7 px-2 text-xs font-medium text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+          className="flex items-center gap-1 h-7 px-2 text-xs font-medium text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-hover transition-colors"
           title={t('wf.newworkflow2', language as Language)}
         >
           <FilePlus2 className="w-3.5 h-3.5" />
@@ -104,7 +104,7 @@ export default function WorkflowToolbar({
 
         <button
           onClick={onAutoLayout}
-          className="flex items-center gap-1 h-7 px-2 text-xs font-medium text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+          className="flex items-center gap-1 h-7 px-2 text-xs font-medium text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-hover transition-colors"
           title={t('wf.autolayout', language as Language)}
         >
           <LayoutGrid className="w-3.5 h-3.5" />
@@ -113,12 +113,12 @@ export default function WorkflowToolbar({
           </span>
         </button>
 
-        <div className="w-px h-5 bg-gray-200 mx-1" />
+        <div className="w-px h-5 bg-surface-active mx-1" />
 
         <button
           onClick={onSave}
           disabled={!isModified}
-          className="flex items-center gap-1 h-7 px-3 text-xs font-semibold rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200/50"
+          className="flex items-center gap-1 h-7 px-3 text-xs font-semibold rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-accent/10 text-accent hover:bg-accent/15 border border-accent/30/50"
           title={t('wf.savectrls', language as Language)}
         >
           <Save className="w-3 h-3" />
@@ -139,7 +139,7 @@ export default function WorkflowToolbar({
         {onMonitor && (
           <button
             onClick={onMonitor}
-            className="flex items-center gap-1 h-7 px-2 text-xs font-medium text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+            className="flex items-center gap-1 h-7 px-2 text-xs font-medium text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-hover transition-colors"
             title={t('wf.runmonitor', language as Language)}
           >
             <BarChart3 className="w-3.5 h-3.5" />
@@ -149,7 +149,7 @@ export default function WorkflowToolbar({
         {onShare && (
           <button
             onClick={onShare}
-            className="flex items-center gap-1 h-7 px-2 text-xs font-medium text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+            className="flex items-center gap-1 h-7 px-2 text-xs font-medium text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-hover transition-colors"
             title={t('wf.share', language as Language)}
           >
             <Users className="w-3.5 h-3.5" />

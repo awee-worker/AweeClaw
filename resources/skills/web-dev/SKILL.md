@@ -1,5 +1,6 @@
 ---
 name: web-dev
+nameZh: 网站开发
 description: 网站与 Web 前端开发规范——页面结构、样式体系、交互状态、可访问性与构建调试。
 sceneMode: dev
 keywords: 网站开发,前端开发,网页,页面,组件,样式,CSS,HTML,React,Vue,响应式,landing page

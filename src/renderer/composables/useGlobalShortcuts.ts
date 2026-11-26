@@ -11,6 +11,7 @@ import { api } from '../adapters/electronBridge'
 import { keybindingService } from '@services/keybindingAdapter'
 import { goBack, goForward } from '@services/editorNavigation'
 import { platform } from '@shared/toolkit/pathHelper'
+import { WORKFLOW_ENTRY_ENABLED } from '../config/featureVisibility'
 
 const kb = keybindingService
 
@@ -156,6 +157,7 @@ const HANDLERS: KeyHandler[] = [
 
   // 工作流
   (e, ctx) => {
+    if (!WORKFLOW_ENTRY_ENABLED) return false
     if (kb.matches(e, 'workbench.action.toggleComposer')) {
       e.preventDefault()
       ctx.setShowWorkflow(true)

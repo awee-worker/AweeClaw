@@ -5,7 +5,7 @@ export { NODE_CATEGORY_MAP, NODE_TYPE_LABELS }
 
 export const NODE_TYPES_WITH_OUTPUTS: WorkflowNodeTypeV2[] = [
   'agent_task', 'agent_group', 'sub_workflow',
-  'tool_call', 'mcp_service', 'code_runner', 'http_request',
+  'tool_call', 'skill', 'mcp_service', 'code_runner', 'http_request',
   'variable_set', 'data_transform', 'knowledge_query',
   'user_input', 'user_approval', 'form_collector',
 ]

@@ -15,17 +15,17 @@ export default function DebugPanel({ workflow, visible, onClose, onNodeClick, la
   if (!visible) return null
 
   return (
-    <div className="h-64 border-t border-[var(--border)] bg-[var(--background)] flex flex-col flex-shrink-0">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)]/50 bg-[var(--background)]">
+    <div className="h-64 border-t border-border bg-background flex flex-col flex-shrink-0">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 bg-background">
         <div className="flex items-center gap-1.5">
-          <Bug className="w-3.5 h-3.5 text-[var(--accent)]" />
-          <span className="text-xs font-medium text-[var(--text-primary)]">
+          <Bug className="w-3.5 h-3.5 text-accent" />
+          <span className="text-xs font-medium text-text-primary">
             {t('wf.debugpanel', language as Language)}
           </span>
         </div>
         <button
           onClick={onClose}
-          className="p-0.5 rounded hover:bg-[var(--border)]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+          className="p-0.5 rounded hover:bg-border/50 text-text-muted hover:text-text-primary transition-colors"
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -42,7 +42,7 @@ export function DebugPanelToggle({ onClick, language = 'zh' }: { onClick: () => 
     <div className="absolute bottom-4 right-4 z-10">
       <button
         onClick={onClick}
-        className="p-2 rounded-lg bg-[var(--background)] border border-[var(--border)] shadow-lg hover:bg-[var(--border)]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+        className="p-2 rounded-lg bg-background border border-border shadow-lg hover:bg-border/50 text-text-muted hover:text-text-primary transition-all"
         title={t('wf.opendebugpanel', language as Language)}
       >
         <Bug className="w-4 h-4" />

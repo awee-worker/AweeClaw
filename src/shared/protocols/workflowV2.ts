@@ -14,6 +14,7 @@ export type WorkflowNodeTypeV2 =
   | 'parallel'
   | 'merge'
   | 'tool_call'
+  | 'skill'
   | 'mcp_service'
   | 'code_runner'
   | 'http_request'
@@ -85,13 +86,34 @@ export const SYSTEM_VARIABLES: SystemVariable[] = [
   { key: '$env.theme', label: 'Theme', labelZh: '主题', type: 'string', description: 'Current theme (light/dark)', descriptionZh: '当前主题（浅色/深色）', source: 'env' },
 ]
 
+/**
+ * 节点对智能体的引用。
+ *
+ * 三种形态并存是刻意的：
+ * - definition / squad 是新模型，节点只存 id，智能体改一次所有引用同步生效
+ * - inline 是历史残留，供已迁移但未清理的节点使用；新节点不应再产生
+ *
+ * 判定顺序：有 agentRef 就用它；没有才回退到 roleId / customRole / groupRoles。
+ * 这个回退是兼容层，不是并列方案——不要在新增逻辑里继续写内联配置。
+ */
+export type AgentRef =
+  | { kind: 'definition'; agentId: string }
+  | { kind: 'squad'; squadId: string }
+  | { kind: 'inline' }
+
 export interface WorkflowNodeData {
   _expanded?: boolean
   description?: string
   descriptionZh?: string
 
+  /** 首选：引用独立智能体实体（AgentDefinition / AgentSquad） */
+  agentRef?: AgentRef
+
+  /** @deprecated 历史内联配置，由 agentRef 取代；仅为兼容旧数据保留 */
   roleId?: string
+  /** @deprecated */
   roleName?: string
+  /** @deprecated */
   customRole?: AgentRole
   systemPrompt?: string
   userPrompt?: string
@@ -102,8 +124,15 @@ export interface WorkflowNodeData {
   boundMcpServers?: string[]
   boundMcpTools?: string[]
 
+  /** @deprecated 多智能体协作组请改用 agentRef.kind='squad' 引用编队 */
   groupRoles?: AgentRole[]
-  collaborationMode?: 'sequential' | 'debate' | 'voting'
+  /**
+   * 节点内多智能体的协作方式。
+   *
+   * parallel 与 sequential 的差别只在「组内成员怎么跑」，跨节点的串并行
+   * 仍由图的 edges + parallel/merge 节点表达——两层语义不要混用。
+   */
+  collaborationMode?: 'sequential' | 'parallel' | 'debate' | 'voting'
   maxRounds?: number
   consensusCondition?: string
 
@@ -113,7 +142,29 @@ export interface WorkflowNodeData {
 
   toolName?: string
   toolArgs?: Record<string, unknown>
+
+  /**
+   * 技能节点：已安装技能的精确名称（对应 skillService.getSkillByName）。
+   *
+   * 技能与工具是两条不同的能力通道，不能合并成一个字段：
+   * - 技能是 SKILL.md 正文（指令/规范），由本地技能目录提供
+   * - 插件工具是 MCP/内置工具，由 toolManager 注册表提供
+   * 两者都只在客户端可达，因此这类节点必须走本地执行。
+   */
+  skillName?: string
+  /** 技能节点的补充输入，非空时拼接到技能指令尾部一并交给下游 */
+  skillArgs?: Record<string, unknown>
+  /**
+   * 节点执行位置。
+   *
+   * local = 渲染进程本地执行（唯一能访问已安装技能与插件工具的通道）
+   * server = 后端执行器
+   * 缺省按 local 处理：节点里一旦配了技能或插件工具，后端必然跑不通。
+   */
+  executionTarget?: 'local' | 'server'
+
   mcpServerId?: string
+  /** mcp_service 节点：该服务器下的工具名 */
   mcpToolName?: string
 
   codeLanguage?: 'javascript' | 'typescript' | 'python' | 'bash' | 'go'
@@ -320,6 +371,7 @@ export const NODE_CATEGORY_MAP: Record<WorkflowNodeTypeV2, {
   parallel: { category: 'flow', icon: 'Layers', color: '#14b8a6' },
   merge: { category: 'flow', icon: 'Merge', color: '#0ea5e9' },
   tool_call: { category: 'tool', icon: 'Wrench', color: '#64748b' },
+  skill: { category: 'tool', icon: 'Sparkles', color: '#d946ef' },
   mcp_service: { category: 'tool', icon: 'Server', color: '#7c3aed' },
   code_runner: { category: 'tool', icon: 'Terminal', color: '#059669' },
   http_request: { category: 'tool', icon: 'Globe', color: '#0284c7' },
@@ -357,7 +409,8 @@ export const NODE_TYPE_LABELS: Record<WorkflowNodeTypeV2, { en: string; zh: stri
   loop: { en: 'Loop', zh: '循环', descEn: 'Execute steps in a loop', descZh: '循环执行步骤' },
   parallel: { en: 'Parallel', zh: '并行执行', descEn: 'Execute multiple branches in parallel', descZh: '并行执行多个分支' },
   merge: { en: 'Merge', zh: '合并', descEn: 'Merge multiple branches', descZh: '合并多个分支' },
-  tool_call: { en: 'Tool Call', zh: '工具调用', descEn: 'Call a built-in tool', descZh: '调用内置工具' },
+  tool_call: { en: 'Tool Call', zh: '工具调用', descEn: 'Call a built-in or plugin tool', descZh: '调用内置工具或插件工具' },
+  skill: { en: 'Skill', zh: '技能', descEn: 'Load an installed skill and pass its instructions downstream', descZh: '加载已安装技能，把技能指令交给下游' },
   mcp_service: { en: 'MCP Service', zh: 'MCP 服务', descEn: 'Call an MCP server tool', descZh: '调用 MCP 服务器工具' },
   code_runner: { en: 'Code Runner', zh: '代码执行', descEn: 'Execute JavaScript or Python code', descZh: '执行 JavaScript 或 Python 代码' },
   http_request: { en: 'HTTP Request', zh: 'HTTP 请求', descEn: 'Send HTTP request to external API', descZh: '向外部 API 发送 HTTP 请求' },

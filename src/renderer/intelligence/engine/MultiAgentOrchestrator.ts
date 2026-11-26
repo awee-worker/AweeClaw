@@ -287,9 +287,14 @@ export class ConsensusEngine {
   }
 }
 
-// ===== 工作流引擎 =====
+// ===== Agent 链式执行器 =====
+//
+// 说明：这里的 AgentChainEngine 与 shared/protocols/workflow 里的编排引擎
+// 不是同一套东西 —— 它只在多智能体协作内部按节点链推进子任务，
+// 不承载工作流定义、不落库、不对外暴露。命名上明确区分，避免两套
+// 同名引擎在类型与心智上互相污染。
 
-export class WorkflowEngine {
+export class AgentChainEngine {
   private nodes = new Map<string, WorkflowNode>()
   private context: WorkflowContext
 
@@ -576,8 +581,8 @@ export class MultiAgentOrchestrator {
   /**
    * 创建工作流
    */
-  createWorkflow(): WorkflowEngine {
-    return new WorkflowEngine()
+  createAgentChain(): AgentChainEngine {
+    return new AgentChainEngine()
   }
 }
 

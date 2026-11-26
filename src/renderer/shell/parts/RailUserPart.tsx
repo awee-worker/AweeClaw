@@ -26,6 +26,7 @@ import {
   Settings,
   UserCircle,
   Wallet,
+  Workflow,
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '@store'
@@ -37,6 +38,7 @@ import {
 import { closeSceneToolDrawer } from '@components/scene-tools/sceneToolDrawerStore'
 import { BRAND } from '@shared/brand'
 import { formatUserDisplayName } from '@shared/toolkit/formatHelper'
+import { WORKFLOW_ENTRY_ENABLED } from '../../config/featureVisibility'
 import { t, type Language } from '@renderer/i18n'
 import { updaterService, type UpdateStatus } from '@services/updateAdapter'
 import { useUserNotificationStore, SCENARIO_NOTIFICATION_TYPES, PLUGIN_NOTIFICATION_TYPES, SUBSCRIPTION_NOTIFICATION_TYPES } from '@store/userNotificationStore'
@@ -69,6 +71,7 @@ interface UserMenuHandlers {
   onAppearanceSettingsClick: () => void
   onExploreClick: () => void
   onScheduleClick: () => void
+  onWorkflowClick: () => void
   onLedgerClick: () => void
   onPluginCenterClick: () => void
   onExpertLibraryClick: () => void
@@ -212,8 +215,19 @@ function UserMenuDropdown({
       badge: 0,
       badgeTitle: '',
     },
-    // 工作流菜单暂时隐藏，后续版本恢复
+    {
+      icon: Workflow,
+      label: language === 'zh' ? '工作流' : 'Workflows',
+      onClick: handlers.onWorkflowClick,
+      badge: 0,
+      badgeTitle: '',
+    },
   ]
+
+  // 工作流入口未开放时，不展示在用户菜单中
+  const visibleFeatureItems = WORKFLOW_ENTRY_ENABLED
+    ? featureItems
+    : featureItems.filter((item) => item.onClick !== handlers.onWorkflowClick)
 
   const systemItems = [
     { icon: Settings, label: t('layout.settings', language as Language), onClick: handlers.onSettingsClick, hasBadge: false },
@@ -304,7 +318,7 @@ function UserMenuDropdown({
 
       {isAuthenticated && <div className="h-px bg-border/50 my-1 mx-2" />}
 
-      {featureItems.map((item) => (
+      {visibleFeatureItems.map((item) => (
         <button
           key={item.label}
           onClick={() => { item.onClick(); onClose() }}
@@ -479,6 +493,16 @@ export function RailUserPart({ expanded, placement = 'rail' }: RailUserPartProps
       setShowSettingsPage(true)
     }),
     onExploreClick: () => openExclusive(() => setShowScenarioPage(true)),
+    // 工作流工作台是全屏页：先清掉其他全屏页与抽屉，再打开，
+    // 最后一步设 true 才不会被前面的重置覆盖。
+    onWorkflowClick: () => {
+      closeSidePanelForView()
+      closePanelDrawer()
+      closeSceneToolDrawer()
+      closeAllFullPages()
+      closeInternalBrowser()
+      setShowWorkflow(true)
+    },
     onScheduleClick: () => {
       closeAllFullPages()
       closePanelDrawer()

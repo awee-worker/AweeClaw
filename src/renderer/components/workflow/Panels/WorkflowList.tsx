@@ -7,6 +7,7 @@ import {
   duplicateWorkflowDefinition,
   exportWorkflowDefinition,
   importWorkflowDefinition,
+  onWorkflowStoreReady,
 } from '@shared/configuration/workflows/workflowPersistenceV2'
 import WorkflowHistoryV2 from './WorkflowHistoryV2'
 import { t, type Language } from '@renderer/i18n'
@@ -33,6 +34,10 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
   useEffect(() => {
     refreshList()
   }, [refreshList])
+
+  // SQLite 就绪后刷新一次：首屏可能读到的是 localStorage 兜底数据，
+  // 不刷新会一直显示旧列表直到用户手动切换。
+  useEffect(() => onWorkflowStoreReady(refreshList), [refreshList])
 
   const handleDelete = useCallback(
     (id: string, e: React.MouseEvent) => {
@@ -121,21 +126,21 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <Workflow className="w-4 h-4 text-[var(--accent)]" />
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+            <Workflow className="w-4 h-4 text-accent" />
+            <h2 className="text-sm font-semibold text-text-primary">
               {t('wf.workflows', language as Language)}
             </h2>
           </div>
-          <div className="flex items-center bg-[var(--border)]/30 rounded-md p-0.5">
+          <div className="flex items-center bg-border/30 rounded-md p-0.5">
             <button
               onClick={() => setActiveTab('workflows')}
               className={`px-2.5 py-1 text-[10px] font-medium rounded transition-colors ${
                 activeTab === 'workflows'
-                  ? 'bg-[var(--background)] text-[var(--text-primary)] shadow-sm'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                  ? 'bg-background text-text-primary shadow-sm'
+                  : 'text-text-muted hover:text-text-primary'
               }`}
             >
               {t('wf.workflows2', language as Language)}
@@ -144,8 +149,8 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
               onClick={() => setActiveTab('history')}
               className={`px-2.5 py-1 text-[10px] font-medium rounded transition-colors ${
                 activeTab === 'history'
-                  ? 'bg-[var(--background)] text-[var(--text-primary)] shadow-sm'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                  ? 'bg-background text-text-primary shadow-sm'
+                  : 'text-text-muted hover:text-text-primary'
               }`}
             >
               {t('wf.history', language as Language)}
@@ -164,7 +169,7 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
             {onOpenMarket && (
               <button
                 onClick={onOpenMarket}
-                className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                className="p-1.5 rounded text-text-muted hover:text-accent hover:bg-accent/10 transition-colors"
                 title={t('wf.templatemarket', language as Language)}
               >
                 <Store className="w-3.5 h-3.5" />
@@ -172,14 +177,14 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
             )}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--border)]/50 transition-colors"
+              className="p-1.5 rounded text-text-muted hover:text-text-primary hover:bg-border/50 transition-colors"
               title={t('wf.importworkflow', language as Language)}
             >
               <Upload className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={onCreateNew}
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-colors"
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
             >
               <Plus className="w-3 h-3" />
               {t('wf.new', language as Language)}
@@ -192,14 +197,14 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
         {activeTab === 'workflows' ? (
           <div className="h-full overflow-y-auto p-3">
             {workflows.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
+              <div className="flex flex-col items-center justify-center py-16 text-text-muted">
                 <Workflow className="w-10 h-10 mb-3 opacity-30" />
                 <p className="text-xs mb-3">
                   {t('wf.noworkflowsyetcreateone', language as Language)}
                 </p>
                 <button
                   onClick={onCreateNew}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-colors"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
                 >
                   <Plus className="w-3 h-3" />
                   {t('wf.newworkflow', language as Language)}
@@ -211,33 +216,33 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
                   <div
                     key={wf.id}
                     onClick={() => onSelect(wf)}
-                    className="group p-3 rounded-lg border border-[var(--border)] bg-[var(--background)] hover:border-[var(--accent)]/30 hover:bg-[var(--accent)]/5 cursor-pointer transition-all"
+                    className="group p-3 rounded-lg border border-border bg-background hover:border-accent/30 hover:bg-accent/5 cursor-pointer transition-all"
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-base">🔄</span>
-                        <span className="text-xs font-medium text-[var(--text-primary)] truncate">
+                        <span className="text-xs font-medium text-text-primary truncate">
                           {language === 'zh' ? wf.nameZh : wf.name}
                         </span>
                       </div>
                       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={(e) => handleDuplicate(wf.id, e)}
-                          className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--border)]/50"
+                          className="p-1 rounded text-text-muted hover:text-text-primary hover:bg-border/50"
                           title={t('wf.duplicate', language as Language)}
                         >
                           <Copy className="w-3 h-3" />
                         </button>
                         <button
                           onClick={(e) => handleExport(wf, e)}
-                          className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--border)]/50"
+                          className="p-1 rounded text-text-muted hover:text-text-primary hover:bg-border/50"
                           title={t('wf.export', language as Language)}
                         >
                           <Download className="w-3 h-3" />
                         </button>
                         <button
                           onClick={(e) => handleDelete(wf.id, e)}
-                          className="p-1 rounded text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10"
+                          className="p-1 rounded text-text-muted hover:text-red-400 hover:bg-red-500/10"
                           title={t('wf.delete', language as Language)}
                         >
                           <Trash2 className="w-3 h-3" />
@@ -245,11 +250,11 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
                       </div>
                     </div>
                     {(wf.description || wf.descriptionZh) && (
-                      <p className="text-[10px] text-[var(--text-muted)] line-clamp-2 mb-2">
+                      <p className="text-[10px] text-text-muted line-clamp-2 mb-2">
                         {language === 'zh' ? wf.descriptionZh : wf.description}
                       </p>
                     )}
-                    <div className="flex items-center gap-3 text-[10px] text-[var(--text-muted)]">
+                    <div className="flex items-center gap-3 text-[10px] text-text-muted">
                       <span>{wf.nodes.length} {t('wf.nodes', language as Language)}</span>
                       <span>{wf.edges.length} {t('wf.edges', language as Language)}</span>
                       <span>{formatDate(wf.updatedAt || wf.createdAt)}</span>

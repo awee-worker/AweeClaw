@@ -1,5 +1,6 @@
 ---
 name: study-paper
+nameZh: 文献阅读
 description: 文献与论文阅读——先看结构抓结论，再判断证据是否支持结论，输出可复用的文献笔记。
 sceneMode: study
 keywords: 论文,文献,综述,文献综述,读论文,研究方法,实验,引用,学术

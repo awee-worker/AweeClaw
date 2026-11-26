@@ -1,5 +1,6 @@
 ---
 name: study-explain
+nameZh: 知识讲解
 description: 知识讲解——把抽象概念讲清楚，从直觉到严谨、从例子到原理。
 sceneMode: study
 keywords: 讲解,概念,原理,学习,理解,入门,举例,类比,为什么,怎么理解

@@ -15,6 +15,7 @@ const CATEGORY_ORDER = ['agent', 'interaction', 'flow', 'tool', 'data', 'control
 
 const RECOMMENDED_TYPES: WorkflowNodeTypeV2[] = [
   'agent_task',
+  'skill',
   'user_input',
   'condition',
   'variable_set',
@@ -26,6 +27,7 @@ const RECOMMENDED_TYPES: WorkflowNodeTypeV2[] = [
 
 const RECOMMENDED_ZH: Partial<Record<WorkflowNodeTypeV2, string>> = {
   agent_task: '让AI执行任务',
+  skill: '加载已安装技能',
   user_input: '让用户输入信息',
   condition: '根据条件分支',
   variable_set: '设置工作流变量',
@@ -37,6 +39,7 @@ const RECOMMENDED_ZH: Partial<Record<WorkflowNodeTypeV2, string>> = {
 
 const RECOMMENDED_EN: Partial<Record<WorkflowNodeTypeV2, string>> = {
   agent_task: 'AI task execution',
+  skill: 'Load an installed skill',
   user_input: 'Collect user input',
   condition: 'Branch by condition',
   variable_set: 'Set workflow variable',
@@ -92,18 +95,18 @@ export default function NodePalette({ onAddNode, language = 'zh' }: NodePaletteP
   const isSearching = searchQuery.trim().length > 0
 
   return (
-    <aside className="w-[248px] flex-shrink-0 border-r border-gray-200/80 bg-white flex flex-col h-full overflow-hidden select-none">
+    <aside className="w-[248px] flex-shrink-0 border-r border-border/80 bg-background-secondary flex flex-col h-full overflow-hidden select-none">
       {/* Header */}
       <div className="px-4 pt-3.5 pb-2">
         <div className="flex items-center gap-2">
-          <div className="p-1 rounded-md bg-blue-50">
+          <div className="p-1 rounded-md bg-accent/10">
             <Blocks className="w-3.5 h-3.5 text-blue-500" />
           </div>
           <div>
-            <h3 className="text-xs font-semibold text-gray-700 leading-tight">
+            <h3 className="text-xs font-semibold text-text-primary leading-tight">
               {t('wf.nodepalette', language as Language)}
             </h3>
-            <p className="text-[10px] text-gray-400 leading-tight mt-0.5">
+            <p className="text-[10px] text-text-muted leading-tight mt-0.5">
               {t('wf.clickordragtoadd', language as Language)}
             </p>
           </div>
@@ -113,19 +116,19 @@ export default function NodePalette({ onAddNode, language = 'zh' }: NodePaletteP
       {/* Search */}
       <div className="px-3 pb-2">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-text-muted pointer-events-none" />
           <input
             ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder={t('wf.searchnodes', language as Language)}
-            className="w-full h-8 pl-7 pr-7 text-[11px] rounded-lg border border-gray-200 bg-gray-50 text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-white transition-all"
+            className="w-full h-8 pl-7 pr-7 text-[11px] rounded-lg border border-border bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-background-secondary transition-all"
           />
           {searchQuery && (
             <button
               onClick={clearSearch}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-gray-200/60 text-gray-400 hover:text-gray-600 transition-colors"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-surface-active/60 text-text-muted hover:text-text-secondary transition-colors"
             >
               <X className="w-3 h-3" />
             </button>
@@ -143,13 +146,13 @@ export default function NodePalette({ onAddNode, language = 'zh' }: NodePaletteP
         {/* No Results */}
         {isSearching && !groupedTypes.hasResults && (
           <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-              <Search className="w-4 h-4 text-gray-400" />
+            <div className="w-10 h-10 rounded-full bg-surface-hover flex items-center justify-center mb-3">
+              <Search className="w-4 h-4 text-text-muted" />
             </div>
-            <p className="text-xs text-gray-500 font-medium">
+            <p className="text-xs text-text-secondary font-medium">
               {t('wf.nomatchingnodes', language as Language)}
             </p>
-            <p className="text-[10px] text-gray-400 mt-1">
+            <p className="text-[10px] text-text-muted mt-1">
               {t('wf.tryadifferentkeyword', language as Language)}
             </p>
           </div>
@@ -217,7 +220,7 @@ function RecommendedSection({
     <div className="mb-2">
       <div className="flex items-center gap-1.5 px-1 mb-1.5">
         <Sparkles className="w-3 h-3 text-amber-500" />
-        <span className="text-[10px] font-semibold text-amber-600 tracking-wide">
+        <span className="text-[10px] font-semibold text-amber-400 tracking-wide">
           {t('wf.quickstart', language as Language)}
         </span>
       </div>
@@ -232,7 +235,7 @@ function RecommendedSection({
             <button
               key={type}
               onClick={() => onAddNode(type)}
-              className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50 active:bg-gray-100 transition-all group"
+              className="flex flex-col items-center gap-1 p-2 rounded-lg border border-border-subtle hover:border-border hover:bg-surface active:bg-surface-hover transition-all group"
             >
               <div
                 className="flex items-center justify-center w-7 h-7 rounded-lg transition-all group-hover:scale-110 group-hover:shadow-sm"
@@ -242,10 +245,10 @@ function RecommendedSection({
                   {quickIconSvgPath(iconName)}
                 </svg>
               </div>
-              <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
+              <span className="text-[10px] font-medium text-text-primary text-center leading-tight">
                 {label}
               </span>
-              <span className="text-[8px] text-gray-400 text-center leading-tight">
+              <span className="text-[8px] text-text-muted text-center leading-tight">
                 {usage}
               </span>
             </button>
@@ -289,19 +292,19 @@ function CategorySection({
     <div className="rounded-lg overflow-hidden">
       <button
         onClick={() => onToggle(category)}
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors group"
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary hover:text-text-primary hover:bg-surface rounded-lg transition-colors group"
       >
         <span
           className="w-1.5 h-1.5 rounded-full flex-shrink-0"
           style={{ backgroundColor: colors.dot }}
         />
         <ChevronDown
-          className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 text-gray-400 group-hover:text-gray-500 ${
+          className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 text-text-muted group-hover:text-text-secondary ${
             isCollapsed ? '' : 'rotate-180'
           }`}
         />
         <span className="truncate flex-1 text-left">{label}</span>
-        <span className="text-[9px] text-gray-300 tabular-nums">{count}</span>
+        <span className="text-[9px] text-text-muted tabular-nums">{count}</span>
       </button>
       {children}
     </div>
@@ -333,7 +336,7 @@ function PaletteItem({
       e.dataTransfer.effectAllowed = 'copy'
 
       const ghost = document.createElement('div')
-      ghost.className = 'fixed px-3 py-2 rounded-xl bg-white border border-gray-200 shadow-xl text-xs font-medium text-gray-700 pointer-events-none z-[9999]'
+      ghost.className = 'fixed px-3 py-2 rounded-xl bg-background-secondary border border-border shadow-xl text-xs font-medium text-text-primary pointer-events-none z-[9999]'
       ghost.textContent = label
       ghost.style.top = '-9999px'
       ghost.style.left = '-9999px'
@@ -349,7 +352,7 @@ function PaletteItem({
       onClick={() => onAddNode(type)}
       draggable
       onDragStart={handleDragStart}
-      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left hover:bg-gray-50 active:bg-gray-100 transition-colors duration-150 group cursor-grab active:cursor-grabbing"
+      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left hover:bg-surface active:bg-surface-hover transition-colors duration-150 group cursor-grab active:cursor-grabbing"
       title={description}
     >
       <div
@@ -361,11 +364,11 @@ function PaletteItem({
         </svg>
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[11px] font-medium text-gray-700 truncate leading-tight">
+        <div className="text-[11px] font-medium text-text-primary truncate leading-tight">
           {label}
         </div>
         {!isSearching && (
-          <div className="text-[9px] text-gray-400 truncate leading-tight mt-0.5">
+          <div className="text-[9px] text-text-muted truncate leading-tight mt-0.5">
             {description}
           </div>
         )}

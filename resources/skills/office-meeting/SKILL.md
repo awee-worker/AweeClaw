@@ -1,5 +1,6 @@
 ---
 name: office-meeting
+nameZh: 会议纪要
 description: 会议纪要规范——会前准备、会中记录与会后跟进的要点沉淀方法。
 sceneMode: work
 keywords: 会议,纪要,记录,议题,决议,待办,跟进,会议准备,议程

@@ -1,5 +1,6 @@
 ---
 name: life-travel
+nameZh: 出行规划
 description: 出行规划陪伴——行程安排、交通住宿与预算清单的组织方法。
 sceneMode: life
 keywords: 旅行,出行,旅游,行程,攻略,交通,住宿,预算,清单,假期
